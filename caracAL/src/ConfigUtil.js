@@ -229,6 +229,13 @@ module.exports = {
   //how much logging you want
   //set to "debug" for more logging and "warn" for less logging
   ${ezpz("log_level", "info")},
+  lifecycle: {
+    ${ezpz("lifecycle.max_online_characters", 4)},
+    ${ezpz("lifecycle.startup_stagger_ms", 1500)},
+    ${ezpz("lifecycle.restart_base_ms", 2000)},
+    ${ezpz("lifecycle.restart_max_ms", 60000)},
+    ${ezpz("lifecycle.restart_reset_ms", 60000)}
+  },
   //where to log to
   //the lines are commands which use stdin stream and write it somwehere
   //default is a logrotate file and colorful stdout formatting
