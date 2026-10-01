@@ -289,10 +289,29 @@ async function make_game(proc_args) {
   console.log("game instance constructed");
   return game_context;
 }
+let heartbeat_task = null;
+
+function start_heartbeat(interval_ms) {
+  if (heartbeat_task) {
+    clearInterval(heartbeat_task);
+  }
+  const normalized_interval = Math.max(1000, Number(interval_ms) || 5000);
+  heartbeat_task = setInterval(() => {
+    if (!process.connected) return;
+    process.send({
+      type: "heartbeat",
+      timestamp: Date.now(),
+      pid: process.pid,
+    });
+  }, normalized_interval);
+  heartbeat_task.unref();
+}
+
 //have to use on, localstorage may send messages
 process.on("message", async (msg) => {
   if (msg.type == "process_args") {
     const { cname, clid } = msg.arguments;
+    start_heartbeat(msg.arguments.heartbeat_interval_ms);
     console.debug(
       "starting character thread with arguments: %O",
       msg.arguments,

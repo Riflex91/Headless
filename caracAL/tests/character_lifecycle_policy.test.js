@@ -10,6 +10,7 @@ const {
   computeRestartDelay,
   countActiveCharacters,
   getInitialStartupCharacters,
+  isHeartbeatStale,
   readLifecyclePolicy,
 } = require("../src/CharacterLifecyclePolicy");
 const { make_cfg_string } = require("../src/ConfigUtil");
@@ -21,6 +22,9 @@ test("lifecycle policy defaults to the four-character local limit", () => {
     restartBaseMs: 2000,
     restartMaxMs: 60000,
     restartResetMs: 60000,
+    heartbeatIntervalMs: 5000,
+    heartbeatTimeoutMs: 20000,
+    watchdogIntervalMs: 5000,
   });
 });
 
@@ -53,6 +57,24 @@ test("restart backoff grows exponentially and is capped", () => {
   assert.equal(computeRestartDelay(99, policy), 5000);
 });
 
+test("heartbeat timeout keeps a safety margin above the cadence", () => {
+  const policy = readLifecyclePolicy({
+    lifecycle: {
+      heartbeat_interval_ms: 30000,
+      heartbeat_timeout_ms: 20000,
+    },
+  });
+  assert.equal(policy.heartbeatIntervalMs, 30000);
+  assert.equal(policy.heartbeatTimeoutMs, 90000);
+});
+
+test("heartbeat staleness is deterministic", () => {
+  const now = 100000;
+  assert.equal(isHeartbeatStale(85000, now, 20000), false);
+  assert.equal(isHeartbeatStale(79999, now, 20000), true);
+  assert.equal(isHeartbeatStale(0, now, 20000), false);
+});
+
 test("startup selection schedules at most four enabled characters", () => {
   const characters = {
     A: { enabled: true },
@@ -62,7 +84,12 @@ test("startup selection schedules at most four enabled characters", () => {
     E: { enabled: true },
     F: { enabled: true },
   };
-  assert.deepEqual(getInitialStartupCharacters(characters, 4), ["A", "B", "D", "E"]);
+  assert.deepEqual(getInitialStartupCharacters(characters, 4), [
+    "A",
+    "B",
+    "D",
+    "E",
+  ]);
 });
 
 test("active count includes processes and lifecycle states that own a slot", () => {
@@ -85,6 +112,9 @@ test("generated config includes lifecycle hardening defaults", () => {
   assert.match(generated, /restart_base_ms:\s+2000/);
   assert.match(generated, /restart_max_ms:\s+60000/);
   assert.match(generated, /restart_reset_ms:\s+60000/);
+  assert.match(generated, /heartbeat_interval_ms:\s+5000/);
+  assert.match(generated, /heartbeat_timeout_ms:\s+20000/);
+  assert.match(generated, /watchdog_interval_ms:\s+5000/);
 });
 
 test("CharacterCoordinator remains syntactically valid", () => {
@@ -93,4 +123,16 @@ test("CharacterCoordinator remains syntactically valid", () => {
     "utf8",
   );
   assert.doesNotThrow(() => new Function(coordinator));
+  assert.match(coordinator, /CHARACTER_HEARTBEAT_TIMEOUT/);
+  assert.match(coordinator, /WATCHDOG_CLOCK_GAP/);
+});
+
+test("CharacterThread heartbeat code remains syntactically valid", () => {
+  const thread = fs.readFileSync(
+    path.join(__dirname, "..", "src", "CharacterThread.js"),
+    "utf8",
+  );
+  assert.doesNotThrow(() => new Function(thread));
+  assert.match(thread, /type: "heartbeat"/);
+  assert.match(thread, /heartbeat_interval_ms/);
 });

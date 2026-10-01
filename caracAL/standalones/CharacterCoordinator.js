@@ -18,6 +18,7 @@ const {
   computeRestartDelay,
   countActiveCharacters,
   getInitialStartupCharacters,
+  isHeartbeatStale,
   readLifecyclePolicy,
 } = require("../src/CharacterLifecyclePolicy");
 
@@ -150,6 +151,19 @@ function migrate_old_storage(path, localStorage) {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
+  function emit_supervisor_event(event, char_name, details = {}) {
+    log.info(
+      {
+        type: "supervisor_event",
+        event,
+        character: char_name || null,
+        timestamp: Date.now(),
+        ...details,
+      },
+      char_name ? `supervisor ${event}: ${char_name}` : `supervisor ${event}`,
+    );
+  }
+
   function set_lifecycle_state(char_name, state, reason) {
     const char_block = character_manage[char_name];
     if (!char_block) return;
@@ -166,6 +180,11 @@ function migrate_old_storage(path, localStorage) {
       },
       `${char_name} lifecycle ${previous} -> ${state}`,
     );
+    emit_supervisor_event("CHARACTER_LIFECYCLE", char_name, {
+      previous,
+      state,
+      reason: reason || null,
+    });
   }
 
   function clear_restart_timer(char_block) {
@@ -191,6 +210,9 @@ function migrate_old_storage(path, localStorage) {
     char_block.restart_timer = char_block.restart_timer || null;
     char_block.stable_timer = char_block.stable_timer || null;
     char_block.controlled_restart = false;
+    char_block.last_heartbeat_at = char_block.last_heartbeat_at || 0;
+    char_block.last_heartbeat_pid = char_block.last_heartbeat_pid || null;
+    char_block.watchdog_recovery_in_progress = false;
     return char_block;
   }
 
@@ -308,7 +330,11 @@ function migrate_old_storage(path, localStorage) {
     }
 
     clear_restart_timer(char_block);
-    set_lifecycle_state(char_name, LIFECYCLE_STATES.STARTING, "start_requested");
+    set_lifecycle_state(
+      char_name,
+      LIFECYCLE_STATES.STARTING,
+      "start_requested",
+    );
 
     let realm = my_acc.resolve_realm(char_block.realm);
     if (!realm) {
@@ -351,6 +377,7 @@ function migrate_old_storage(path, localStorage) {
       enable_map: !!(cfg.web_app && cfg.web_app.enable_minimap),
       cname: char_name,
       clid: ctype_to_clid[char.type] || -1,
+      heartbeat_interval_ms: lifecycle_policy.heartbeatIntervalMs,
     };
     if (cfg.enable_TYPECODE) {
       args.typescript_file = char_block.typescript;
@@ -363,6 +390,13 @@ function migrate_old_storage(path, localStorage) {
     result.stdout.pipe(process.stdout);
     result.stderr.pipe(process.stderr);
     char_block.instance = result;
+    char_block.last_heartbeat_at = Date.now();
+    char_block.last_heartbeat_pid = result.pid || null;
+    char_block.watchdog_recovery_in_progress = false;
+    emit_supervisor_event("CHARACTER_PROCESS_STARTED", char_name, {
+      pid: result.pid || null,
+    });
+
     result.on("exit", (code, signal) => {
       if (char_block.monitor) {
         //close monitor
@@ -371,6 +405,12 @@ function migrate_old_storage(path, localStorage) {
       }
       clear_stable_timer(char_block);
       char_block.connected = false;
+      char_block.watchdog_recovery_in_progress = false;
+      emit_supervisor_event("CHARACTER_PROCESS_EXITED", char_name, {
+        code,
+        signal,
+        pid: result.pid || null,
+      });
       if (char_block.instance === result) {
         char_block.instance = null;
       }
@@ -423,10 +463,25 @@ function migrate_old_storage(path, localStorage) {
           });
           break;
         case "initialized":
+          emit_supervisor_event("CHARACTER_INITIALIZED", char_name, {
+            pid: result.pid || null,
+          });
+          break;
+        case "heartbeat":
+          char_block.last_heartbeat_at =
+            Number.isFinite(m.timestamp) && m.timestamp > 0
+              ? m.timestamp
+              : Date.now();
+          char_block.last_heartbeat_pid = m.pid || result.pid || null;
           break;
         case "connected":
           char_block.connected = true;
+          char_block.last_heartbeat_at = Date.now();
+          char_block.watchdog_recovery_in_progress = false;
           set_lifecycle_state(char_name, LIFECYCLE_STATES.ONLINE, "connected");
+          emit_supervisor_event("CHARACTER_CONNECTED", char_name, {
+            pid: result.pid || null,
+          });
           clear_stable_timer(char_block);
           char_block.stable_timer = setTimeout(() => {
             char_block.restart_attempts = 0;
@@ -567,10 +622,62 @@ function migrate_old_storage(path, localStorage) {
   }
   //TODO beta new logic for #5
   //i need to implement decent lifecycle-handling
+  let last_watchdog_tick_at = Date.now();
+  const watchdog_task = setInterval(() => {
+    if (coordinator_shutting_down) return;
+    const now = Date.now();
+    const watchdog_gap_ms = now - last_watchdog_tick_at;
+    last_watchdog_tick_at = now;
+
+    if (watchdog_gap_ms > lifecycle_policy.heartbeatTimeoutMs) {
+      Object.values(character_manage).forEach((char_block) => {
+        if (char_block.instance) {
+          char_block.last_heartbeat_at = now;
+        }
+      });
+      emit_supervisor_event("WATCHDOG_CLOCK_GAP", null, {
+        gap_ms: watchdog_gap_ms,
+        heartbeat_timeout_ms: lifecycle_policy.heartbeatTimeoutMs,
+      });
+      return;
+    }
+
+    Object.entries(character_manage).forEach(([char_name, char_block]) => {
+      if (
+        !char_block.instance ||
+        char_block.watchdog_recovery_in_progress ||
+        !isHeartbeatStale(
+          char_block.last_heartbeat_at,
+          now,
+          lifecycle_policy.heartbeatTimeoutMs,
+        )
+      ) {
+        return;
+      }
+
+      char_block.watchdog_recovery_in_progress = true;
+      const age_ms = now - char_block.last_heartbeat_at;
+      set_lifecycle_state(
+        char_name,
+        LIFECYCLE_STATES.ERROR,
+        "heartbeat_timeout",
+      );
+      emit_supervisor_event("CHARACTER_HEARTBEAT_TIMEOUT", char_name, {
+        age_ms,
+        timeout_ms: lifecycle_policy.heartbeatTimeoutMs,
+        pid: char_block.last_heartbeat_pid,
+      });
+      softkill_block(char_block);
+    });
+  }, lifecycle_policy.watchdogIntervalMs);
+  watchdog_task.unref();
+
   ["SIGINT", "SIGTERM", "SIGQUIT"].forEach((signal) =>
     process.on(signal, async () => {
       if (coordinator_shutting_down) return;
       coordinator_shutting_down = true;
+      clearInterval(watchdog_task);
+      emit_supervisor_event("COORDINATOR_SHUTDOWN", null, { signal });
       console.log(`Received ${signal} on master. Rounding up clients`);
       //softkill all chars, giving them chance to shutdown
       await Promise.all(
@@ -608,6 +715,14 @@ function migrate_old_storage(path, localStorage) {
       "configured characters exceed the online character limit",
     );
   }
+
+  emit_supervisor_event("COORDINATOR_READY", null, {
+    max_online_characters: lifecycle_policy.maxOnlineCharacters,
+    heartbeat_interval_ms: lifecycle_policy.heartbeatIntervalMs,
+    heartbeat_timeout_ms: lifecycle_policy.heartbeatTimeoutMs,
+    watchdog_interval_ms: lifecycle_policy.watchdogIntervalMs,
+    scheduled_characters: startup_chars,
+  });
 
   startup_chars.forEach((char_name, index) => {
     const delay = index * lifecycle_policy.startupStaggerMs;

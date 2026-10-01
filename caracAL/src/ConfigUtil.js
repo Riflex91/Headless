@@ -234,7 +234,10 @@ module.exports = {
     ${ezpz("lifecycle.startup_stagger_ms", 1500)},
     ${ezpz("lifecycle.restart_base_ms", 2000)},
     ${ezpz("lifecycle.restart_max_ms", 60000)},
-    ${ezpz("lifecycle.restart_reset_ms", 60000)}
+    ${ezpz("lifecycle.restart_reset_ms", 60000)},
+    ${ezpz("lifecycle.heartbeat_interval_ms", 5000)},
+    ${ezpz("lifecycle.heartbeat_timeout_ms", 20000)},
+    ${ezpz("lifecycle.watchdog_interval_ms", 5000)}
   },
   //where to log to
   //the lines are commands which use stdin stream and write it somwehere
