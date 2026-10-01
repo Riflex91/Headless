@@ -13,6 +13,10 @@ const {
 const { log, console, ctype_to_clid } = require("../src/LogUtils");
 
 const FileStoredKeyValues = require("../src/FileStoredKeyValues");
+const {
+  CONTROL_ACTIONS,
+  DESIRED_RUNTIME_STATES,
+} = require("../src/CharacterControl");
 const { attachHeadlessDashboard } = require("../src/HeadlessDashboard");
 const {
   LIFECYCLE_STATES,
@@ -115,7 +119,7 @@ function migrate_old_storage(path, localStorage) {
     const ensure_express = () => {
       if (!express_inst) {
         express_inst = express();
-        owned_web_server = express_inst.listen(web_port);
+        owned_web_server = express_inst.listen(web_port, "127.0.0.1");
       }
       return express_inst;
     };
@@ -126,6 +130,7 @@ function migrate_old_storage(path, localStorage) {
         express,
         characterManage: character_manage,
         lifecyclePolicy: lifecycle_policy,
+        controlCharacter: control_character,
       });
       log.info(
         {
@@ -242,6 +247,11 @@ function migrate_old_storage(path, localStorage) {
     char_block.last_heartbeat_at = char_block.last_heartbeat_at || 0;
     char_block.last_heartbeat_pid = char_block.last_heartbeat_pid || null;
     char_block.watchdog_recovery_in_progress = false;
+    char_block.desired_runtime_state =
+      char_block.desired_runtime_state ||
+      (char_block.enabled
+        ? DESIRED_RUNTIME_STATES.RUNNING
+        : DESIRED_RUNTIME_STATES.STOPPED);
     return char_block;
   }
 
@@ -330,6 +340,115 @@ function migrate_old_storage(path, localStorage) {
     });
   }
 
+  function make_control_error(code, message, statusCode) {
+    const error = new Error(message);
+    error.code = code;
+    error.statusCode = statusCode;
+    return error;
+  }
+
+  async function control_character(char_name, action) {
+    const char_block = character_manage[char_name];
+    if (!char_block) {
+      throw make_control_error(
+        "CHARACTER_NOT_FOUND",
+        `Unknown character: ${char_name}`,
+        404,
+      );
+    }
+
+    switch (action) {
+      case CONTROL_ACTIONS.START: {
+        if (
+          !char_block.instance &&
+          countActiveCharacters(character_manage) >=
+            lifecycle_policy.maxOnlineCharacters
+        ) {
+          throw make_control_error(
+            "CHARACTER_SLOT_LIMIT",
+            "Maximum online character count reached",
+            409,
+          );
+        }
+
+        char_block.enabled = true;
+        char_block.desired_runtime_state = DESIRED_RUNTIME_STATES.RUNNING;
+        clear_restart_timer(char_block);
+
+        emit_supervisor_event("CHARACTER_CONTROL_REQUESTED", char_name, {
+          action,
+          desired_runtime_state: char_block.desired_runtime_state,
+        });
+
+        if (char_block.instance) {
+          safe_send(char_block.instance, {
+            type: "runtime_control",
+            state: DESIRED_RUNTIME_STATES.RUNNING,
+          });
+        } else {
+          start_char(char_name);
+        }
+        break;
+      }
+
+      case CONTROL_ACTIONS.PAUSE:
+        if (!char_block.instance) {
+          throw make_control_error(
+            "CHARACTER_NOT_ONLINE",
+            "A stopped character cannot be paused",
+            409,
+          );
+        }
+
+        char_block.enabled = true;
+        char_block.desired_runtime_state = DESIRED_RUNTIME_STATES.PAUSED;
+        emit_supervisor_event("CHARACTER_CONTROL_REQUESTED", char_name, {
+          action,
+          desired_runtime_state: char_block.desired_runtime_state,
+        });
+        safe_send(char_block.instance, {
+          type: "runtime_control",
+          state: DESIRED_RUNTIME_STATES.PAUSED,
+        });
+        break;
+
+      case CONTROL_ACTIONS.STOP:
+        char_block.enabled = false;
+        char_block.desired_runtime_state = DESIRED_RUNTIME_STATES.STOPPED;
+        clear_restart_timer(char_block);
+        clear_stable_timer(char_block);
+        emit_supervisor_event("CHARACTER_CONTROL_REQUESTED", char_name, {
+          action,
+          desired_runtime_state: char_block.desired_runtime_state,
+        });
+
+        if (char_block.instance) {
+          await softkill_block(char_block);
+        } else {
+          set_lifecycle_state(
+            char_name,
+            LIFECYCLE_STATES.STOPPED,
+            "manual_stop",
+          );
+        }
+        break;
+
+      default:
+        throw make_control_error(
+          "INVALID_CONTROL_ACTION",
+          `Unsupported control action: ${action}`,
+          400,
+        );
+    }
+
+    return {
+      character: char_name,
+      action,
+      desired_runtime_state: char_block.desired_runtime_state,
+      lifecycle_state: char_block.lifecycle_state,
+    };
+  }
+
   function start_char(char_name) {
     const char_block = character_manage[char_name];
     if (!char_block || !char_block.enabled || coordinator_shutting_down) {
@@ -407,6 +526,7 @@ function migrate_old_storage(path, localStorage) {
       cname: char_name,
       clid: ctype_to_clid[char.type] || -1,
       heartbeat_interval_ms: lifecycle_policy.heartbeatIntervalMs,
+      runtime_state: char_block.desired_runtime_state,
     };
     if (cfg.enable_TYPECODE) {
       args.typescript_file = char_block.typescript;
@@ -496,6 +616,27 @@ function migrate_old_storage(path, localStorage) {
             pid: result.pid || null,
           });
           break;
+        case "runtime_state_applied":
+          if (m.state === DESIRED_RUNTIME_STATES.PAUSED) {
+            set_lifecycle_state(
+              char_name,
+              LIFECYCLE_STATES.PAUSED,
+              "runtime_control_applied",
+            );
+          } else if (
+            m.state === DESIRED_RUNTIME_STATES.RUNNING &&
+            char_block.connected
+          ) {
+            set_lifecycle_state(
+              char_name,
+              LIFECYCLE_STATES.ONLINE,
+              "runtime_control_applied",
+            );
+          }
+          emit_supervisor_event("CHARACTER_CONTROL_APPLIED", char_name, {
+            state: m.state,
+          });
+          break;
         case "heartbeat":
           char_block.last_heartbeat_at =
             Number.isFinite(m.timestamp) && m.timestamp > 0
@@ -508,6 +649,10 @@ function migrate_old_storage(path, localStorage) {
           char_block.last_heartbeat_at = Date.now();
           char_block.watchdog_recovery_in_progress = false;
           set_lifecycle_state(char_name, LIFECYCLE_STATES.ONLINE, "connected");
+          safe_send(result, {
+            type: "runtime_control",
+            state: char_block.desired_runtime_state,
+          });
           emit_supervisor_event("CHARACTER_CONNECTED", char_name, {
             pid: result.pid || null,
           });
@@ -535,6 +680,7 @@ function migrate_old_storage(path, localStorage) {
           );
           character_manage[new_char_name] = candidate;
           candidate.enabled = true;
+          candidate.desired_runtime_state = DESIRED_RUNTIME_STATES.RUNNING;
           candidate.realm = m.realm || char_block.realm;
           if (char_block.typescript && char_block.typescript.length > 0) {
             candidate.typescript = m.script || char_block.typescript;
@@ -560,10 +706,12 @@ function migrate_old_storage(path, localStorage) {
               `shutdown requested for ${m.character} from ${char_name}`,
             );
             candidate.enabled = false;
+            candidate.desired_runtime_state = DESIRED_RUNTIME_STATES.STOPPED;
             softkill_block(candidate);
           } else {
             console.log("shutdown requested from " + char_name);
             char_block.enabled = false;
+            char_block.desired_runtime_state = DESIRED_RUNTIME_STATES.STOPPED;
             softkill_block(char_block);
           }
           break;
@@ -716,6 +864,7 @@ function migrate_old_storage(path, localStorage) {
       await Promise.all(
         Object.values(character_manage).map((char_block) => {
           char_block.enabled = false;
+          char_block.desired_runtime_state = DESIRED_RUNTIME_STATES.STOPPED;
           clear_restart_timer(char_block);
           clear_stable_timer(char_block);
           return softkill_block(char_block);
