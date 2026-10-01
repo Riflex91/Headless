@@ -1,6 +1,8 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 const test = require("node:test");
 
 const {
@@ -115,4 +117,14 @@ test("unknown character diagnostic fails explicitly", () => {
     (error) =>
       error.code === "CHARACTER_NOT_FOUND" && error.statusCode === 404,
   );
+});
+
+test("CharacterThread does not dump raw process arguments", () => {
+  const thread = fs.readFileSync(
+    path.join(__dirname, "..", "src", "CharacterThread.js"),
+    "utf8",
+  );
+
+  assert.doesNotMatch(thread, /starting character thread with arguments/);
+  assert.doesNotMatch(thread, /console\.debug\([^)]*msg\.arguments/s);
 });
