@@ -13,6 +13,18 @@ module.exports = {
   //how much logging you want
   //set to "debug" for more logging and "warn" for less logging
   log_level: "info",
+  lifecycle: {
+    //hard cap for this bot; never start more than four character processes
+    max_online_characters: 4,
+    //delay between initial character starts to avoid connection bursts
+    startup_stagger_ms: 1500,
+    //unexpected exits use exponential backoff from this delay
+    restart_base_ms: 2000,
+    //maximum unexpected-exit restart delay
+    restart_max_ms: 60000,
+    //after this much stable runtime the crash backoff is reset
+    restart_reset_ms: 60000,
+  },
   //where to log to
   //the lines are commands which use stdin stream and write it somwehere
   //default is a logrotate file and colorful stdout formatting

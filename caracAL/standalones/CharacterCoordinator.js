@@ -13,6 +13,13 @@ const {
 const { log, console, ctype_to_clid } = require("../src/LogUtils");
 
 const FileStoredKeyValues = require("../src/FileStoredKeyValues");
+const {
+  LIFECYCLE_STATES,
+  computeRestartDelay,
+  countActiveCharacters,
+  getInitialStartupCharacters,
+  readLifecyclePolicy,
+} = require("../src/CharacterLifecyclePolicy");
 
 //TODO check for invalid session
 //TODO improve termination
@@ -72,6 +79,8 @@ function migrate_old_storage(path, localStorage) {
   const version = await game_files.ensure_latest();
 
   const cfg = require("../config");
+  const lifecycle_policy = readLifecyclePolicy(cfg);
+  let coordinator_shutting_down = false;
   if (cfg.cull_versions) {
     await game_files.cull_versions([version]);
   }
@@ -140,13 +149,99 @@ function migrate_old_storage(path, localStorage) {
   function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
+
+  function set_lifecycle_state(char_name, state, reason) {
+    const char_block = character_manage[char_name];
+    if (!char_block) return;
+    if (char_block.lifecycle_state === state && !reason) return;
+    const previous = char_block.lifecycle_state || LIFECYCLE_STATES.STOPPED;
+    char_block.lifecycle_state = state;
+    log.info(
+      {
+        type: "character_lifecycle",
+        character: char_name,
+        previous,
+        state,
+        reason: reason || null,
+      },
+      `${char_name} lifecycle ${previous} -> ${state}`,
+    );
+  }
+
+  function clear_restart_timer(char_block) {
+    if (char_block && char_block.restart_timer) {
+      clearTimeout(char_block.restart_timer);
+      char_block.restart_timer = null;
+    }
+  }
+
+  function clear_stable_timer(char_block) {
+    if (char_block && char_block.stable_timer) {
+      clearTimeout(char_block.stable_timer);
+      char_block.stable_timer = null;
+    }
+  }
+
+  function initialize_char_block(char_name, char_block) {
+    char_block.name = char_name;
+    char_block.connected = false;
+    char_block.lifecycle_state =
+      char_block.lifecycle_state || LIFECYCLE_STATES.STOPPED;
+    char_block.restart_attempts = char_block.restart_attempts || 0;
+    char_block.restart_timer = char_block.restart_timer || null;
+    char_block.stable_timer = char_block.stable_timer || null;
+    char_block.controlled_restart = false;
+    return char_block;
+  }
+
+  function schedule_restart(char_name, reason) {
+    const char_block = character_manage[char_name];
+    if (
+      !char_block ||
+      !char_block.enabled ||
+      coordinator_shutting_down ||
+      char_block.restart_timer
+    ) {
+      return;
+    }
+
+    char_block.restart_attempts += 1;
+    const delay = computeRestartDelay(
+      char_block.restart_attempts,
+      lifecycle_policy,
+    );
+    set_lifecycle_state(char_name, LIFECYCLE_STATES.BACKOFF, reason);
+    log.warn(
+      {
+        type: "character_restart_scheduled",
+        character: char_name,
+        attempt: char_block.restart_attempts,
+        delay_ms: delay,
+        reason,
+      },
+      `restart for ${char_name} scheduled in ${delay}ms`,
+    );
+
+    char_block.restart_timer = setTimeout(() => {
+      char_block.restart_timer = null;
+      if (!char_block.enabled || coordinator_shutting_down) return;
+      const started = start_char(char_name);
+      if (!started && char_block.enabled && !coordinator_shutting_down) {
+        schedule_restart(char_name, "slot_unavailable");
+      }
+    }, delay);
+  }
   //attempts to softkill child processes
   //by sending an ipc if the client is connected and giving some timeout
   //why not actual SIGTERM? cause windows cant even
   async function softkill_block(char_block) {
     const proc = char_block.instance;
-    char_block.instance = null;
     if (proc) {
+      set_lifecycle_state(
+        char_block.name,
+        LIFECYCLE_STATES.STOPPING,
+        "shutdown_requested",
+      );
       if (char_block.connected) {
         console.log("telling client to self-terminate");
         safe_send(proc, {
@@ -186,6 +281,35 @@ function migrate_old_storage(path, localStorage) {
 
   function start_char(char_name) {
     const char_block = character_manage[char_name];
+    if (!char_block || !char_block.enabled || coordinator_shutting_down) {
+      return null;
+    }
+    if (char_block.instance) {
+      return char_block.instance;
+    }
+    if (
+      countActiveCharacters(character_manage) >=
+      lifecycle_policy.maxOnlineCharacters
+    ) {
+      set_lifecycle_state(
+        char_name,
+        LIFECYCLE_STATES.BACKOFF,
+        "max_online_characters",
+      );
+      log.warn(
+        {
+          type: "character_start_blocked",
+          character: char_name,
+          max_online_characters: lifecycle_policy.maxOnlineCharacters,
+        },
+        `not starting ${char_name}: online character limit reached`,
+      );
+      return null;
+    }
+
+    clear_restart_timer(char_block);
+    set_lifecycle_state(char_name, LIFECYCLE_STATES.STARTING, "start_requested");
+
     let realm = my_acc.resolve_realm(char_block.realm);
     if (!realm) {
       console.warn(
@@ -206,7 +330,12 @@ function migrate_old_storage(path, localStorage) {
         "are you sure you own this character and have not deleted it?",
       );
       char_block.enabled = false;
-      return;
+      set_lifecycle_state(
+        char_name,
+        LIFECYCLE_STATES.ERROR,
+        "character_not_owned",
+      );
+      return null;
     }
     const g_version = char_block.version || version;
     console.log(
@@ -234,21 +363,60 @@ function migrate_old_storage(path, localStorage) {
     result.stdout.pipe(process.stdout);
     result.stderr.pipe(process.stderr);
     char_block.instance = result;
-    result.on("exit", () => {
+    result.on("exit", (code, signal) => {
       if (char_block.monitor) {
         //close monitor
         char_block.monitor.destroy();
         char_block.monitor = null;
       }
+      clear_stable_timer(char_block);
       char_block.connected = false;
-      char_block.instance = null;
-      if (char_block.enabled) {
-        start_char(char_name);
+      if (char_block.instance === result) {
+        char_block.instance = null;
+      }
+
+      const controlled_restart = char_block.controlled_restart;
+      char_block.controlled_restart = false;
+
+      if (
+        controlled_restart &&
+        char_block.enabled &&
+        !coordinator_shutting_down
+      ) {
+        char_block.restart_attempts = 0;
+        set_lifecycle_state(
+          char_name,
+          LIFECYCLE_STATES.STOPPED,
+          "controlled_restart",
+        );
+        setTimeout(
+          () => start_char(char_name),
+          lifecycle_policy.startupStaggerMs,
+        );
+        return;
+      }
+
+      if (char_block.enabled && !coordinator_shutting_down) {
+        schedule_restart(
+          char_name,
+          `unexpected_exit(code=${code},signal=${signal})`,
+        );
+      } else {
+        set_lifecycle_state(
+          char_name,
+          LIFECYCLE_STATES.STOPPED,
+          coordinator_shutting_down ? "coordinator_shutdown" : "disabled",
+        );
       }
     });
     result.on("message", (m) => {
       switch (m.type) {
         case "process_ready":
+          set_lifecycle_state(
+            char_name,
+            LIFECYCLE_STATES.CONNECTING,
+            "process_ready",
+          );
           safe_send(result, {
             type: "process_args",
             arguments: args,
@@ -258,13 +426,29 @@ function migrate_old_storage(path, localStorage) {
           break;
         case "connected":
           char_block.connected = true;
+          set_lifecycle_state(char_name, LIFECYCLE_STATES.ONLINE, "connected");
+          clear_stable_timer(char_block);
+          char_block.stable_timer = setTimeout(() => {
+            char_block.restart_attempts = 0;
+            char_block.stable_timer = null;
+            log.info(
+              {
+                type: "character_restart_backoff_reset",
+                character: char_name,
+              },
+              `restart backoff reset for ${char_name}`,
+            );
+          }, lifecycle_policy.restartResetMs);
           update_siblings_and_acc(my_acc.response);
           break;
         case "deploy":
           //check for existing charblock, adjust parameters and kill it
           //or not find any, make a new one and start it
           const new_char_name = m.character || char_name;
-          const candidate = character_manage[new_char_name] || {};
+          const candidate = initialize_char_block(
+            new_char_name,
+            character_manage[new_char_name] || {},
+          );
           character_manage[new_char_name] = candidate;
           candidate.enabled = true;
           candidate.realm = m.realm || char_block.realm;
@@ -277,8 +461,8 @@ function migrate_old_storage(path, localStorage) {
           candidate.script = m.script || char_block.script;
           candidate.version = m.version || char_block.version;
           if (candidate.instance) {
+            candidate.controlled_restart = true;
             softkill_block(candidate);
-            candidate.connected = false; //TODO i need to refractor lifecycle management
           } else {
             candidate.connected = false;
             start_char(new_char_name);
@@ -385,11 +569,15 @@ function migrate_old_storage(path, localStorage) {
   //i need to implement decent lifecycle-handling
   ["SIGINT", "SIGTERM", "SIGQUIT"].forEach((signal) =>
     process.on(signal, async () => {
+      if (coordinator_shutting_down) return;
+      coordinator_shutting_down = true;
       console.log(`Received ${signal} on master. Rounding up clients`);
       //softkill all chars, giving them chance to shutdown
       await Promise.all(
         Object.values(character_manage).map((char_block) => {
           char_block.enabled = false;
+          clear_restart_timer(char_block);
+          clear_stable_timer(char_block);
           return softkill_block(char_block);
         }),
       );
@@ -398,13 +586,34 @@ function migrate_old_storage(path, localStorage) {
     }),
   );
 
-  const tasks = Object.keys(character_manage).forEach((c_name) => {
-    const char = character_manage[c_name];
-    char.connected = false;
-    if (char.enabled) {
-      start_char(c_name);
-    }
+  Object.entries(character_manage).forEach(([char_name, char_block]) => {
+    initialize_char_block(char_name, char_block);
   });
+
+  const requested_startup = Object.values(character_manage).filter(
+    (char_block) => char_block.enabled,
+  ).length;
+  const startup_chars = getInitialStartupCharacters(
+    character_manage,
+    lifecycle_policy.maxOnlineCharacters,
+  );
+  if (requested_startup > startup_chars.length) {
+    log.warn(
+      {
+        type: "character_startup_limit",
+        requested: requested_startup,
+        scheduled: startup_chars.length,
+        max_online_characters: lifecycle_policy.maxOnlineCharacters,
+      },
+      "configured characters exceed the online character limit",
+    );
+  }
+
+  startup_chars.forEach((char_name, index) => {
+    const delay = index * lifecycle_policy.startupStaggerMs;
+    setTimeout(() => start_char(char_name), delay);
+  });
+
   my_acc.add_listener(update_siblings_and_acc);
 })().catch((e) => {
   console.error("failed to start caracAL", e);

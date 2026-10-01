@@ -17,6 +17,7 @@ declare global {
        * @param characterName
        * @param serverRealm
        * @param scriptPath
+       * @param gameVersion
        * @example <caption>runs other char with script farm_snakes.js in current realm</caption>
        * parent.caracAL.deploy(another_char_name,null,"farm_snakes.js");
        * @example <caption>runs current char with current script in US 2</caption>
@@ -26,12 +27,13 @@ declare global {
         characterName: string | null | undefined,
         serverRealm: string | null | undefined,
         scriptPath: string | null | undefined,
+        gameVersion?: string | number | null,
       ): void;
 
       /**
-       * Shuts down the current character
+       * Shuts down a character. Omitting the name shuts down the current one.
        */
-      shutdown(): void;
+      shutdown(characterName?: string | null): void;
 
       /**
        * All the characters running in our current caracAL instance
