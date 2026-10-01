@@ -152,7 +152,9 @@ function configureDiagnosticCopy(card, character) {
 
     try {
       const diagnostic = await fetchDiagnostic(
-        `/headless/api/characters/${encodeURIComponent(character.name)}/diagnostic`,
+        `/headless/api/characters/${encodeURIComponent(
+          character.name,
+        )}/diagnostic`,
         range.value,
       );
       await writeClipboard(diagnostic);
