@@ -17,6 +17,7 @@ const {
   CONTROL_ACTIONS,
   DESIRED_RUNTIME_STATES,
 } = require("../src/CharacterControl");
+const { DiagnosticEventStore } = require("../src/DiagnosticStore");
 const { attachHeadlessDashboard } = require("../src/HeadlessDashboard");
 const {
   LIFECYCLE_STATES,
@@ -95,6 +96,7 @@ function migrate_old_storage(path, localStorage) {
   const default_realm = my_acc.response.servers[0];
 
   const character_manage = cfg.characters;
+  const diagnostic_store = new DiagnosticEventStore({ maxEvents: 5000 });
 
   //TODO right now this server wont terminate.
   //this is fine atm because caracAL does not terminate when all chars stop.
@@ -131,6 +133,7 @@ function migrate_old_storage(path, localStorage) {
         characterManage: character_manage,
         lifecyclePolicy: lifecycle_policy,
         controlCharacter: control_character,
+        diagnosticStore: diagnostic_store,
       });
       log.info(
         {
@@ -191,11 +194,12 @@ function migrate_old_storage(path, localStorage) {
       timestamp: Date.now(),
       ...details,
     };
+    const sanitized_payload = diagnostic_store.append(payload);
     log.info(
-      payload,
+      sanitized_payload,
       char_name ? `supervisor ${event}: ${char_name}` : `supervisor ${event}`,
     );
-    dashboard?.publish(payload);
+    dashboard?.publish(sanitized_payload);
   }
 
   function set_lifecycle_state(char_name, state, reason) {
