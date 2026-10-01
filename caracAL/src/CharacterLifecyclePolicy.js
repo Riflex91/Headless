@@ -31,6 +31,17 @@ function toInteger(value, fallback, minimum) {
 
 function readLifecyclePolicy(cfg = {}) {
   const lifecycle = cfg.lifecycle || {};
+  const heartbeatIntervalMs = toInteger(
+    lifecycle.heartbeat_interval_ms,
+    DEFAULT_LIFECYCLE_POLICY.heartbeatIntervalMs,
+    1000,
+  );
+  const configuredHeartbeatTimeoutMs = toInteger(
+    lifecycle.heartbeat_timeout_ms,
+    DEFAULT_LIFECYCLE_POLICY.heartbeatTimeoutMs,
+    2000,
+  );
+
   return {
     maxOnlineCharacters: Math.min(
       4,
@@ -60,15 +71,10 @@ function readLifecyclePolicy(cfg = {}) {
       DEFAULT_LIFECYCLE_POLICY.restartResetMs,
       1000,
     ),
-    heartbeatIntervalMs: toInteger(
-      lifecycle.heartbeat_interval_ms,
-      DEFAULT_LIFECYCLE_POLICY.heartbeatIntervalMs,
-      1000,
-    ),
-    heartbeatTimeoutMs: toInteger(
-      lifecycle.heartbeat_timeout_ms,
-      DEFAULT_LIFECYCLE_POLICY.heartbeatTimeoutMs,
-      2000,
+    heartbeatIntervalMs,
+    heartbeatTimeoutMs: Math.max(
+      configuredHeartbeatTimeoutMs,
+      heartbeatIntervalMs * 3,
     ),
     watchdogIntervalMs: toInteger(
       lifecycle.watchdog_interval_ms,
