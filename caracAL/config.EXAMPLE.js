@@ -24,6 +24,10 @@ module.exports = {
     restart_max_ms: 60000,
     //after this much stable runtime the crash backoff is reset
     restart_reset_ms: 60000,
+    //child process heartbeat cadence and stale-process watchdog
+    heartbeat_interval_ms: 5000,
+    heartbeat_timeout_ms: 20000,
+    watchdog_interval_ms: 5000,
   },
   //where to log to
   //the lines are commands which use stdin stream and write it somwehere
