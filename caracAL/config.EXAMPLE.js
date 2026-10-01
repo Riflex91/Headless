@@ -47,7 +47,9 @@ module.exports = {
     ["node", "./standalones/LogPrinter.js"],
   ],
   web_app: {
-    //enables the monitoring dashboard
+    //enables the new local headless control center at /headless
+    enable_headless_dashboard: true,
+    //enables the legacy monitoring dashboard
     enable_bwi: false,
     //enables the minimap in dashboard
     //setting this to true implicitly
