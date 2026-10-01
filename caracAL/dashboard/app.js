@@ -41,7 +41,9 @@ function formatHeading(value, direction) {
 
 function formatResources(game) {
   if (!game) return "—";
-  return `HP ${game.hp ?? "—"}/${game.max_hp ?? "—"} · MP ${game.mp ?? "—"}/${game.max_mp ?? "—"}`;
+  return `HP ${game.hp ?? "—"}/${game.max_hp ?? "—"} · MP ${
+    game.mp ?? "—"
+  }/${game.max_mp ?? "—"}`;
 }
 
 function formatMovement(game) {
@@ -51,7 +53,9 @@ function formatMovement(game) {
   const destination = game.movement_destination;
   if (!destination) return "MOVING";
 
-  return `MOVING → ${formatCoordinate(destination.x)}, ${formatCoordinate(destination.y)}`;
+  return `MOVING → ${formatCoordinate(
+    destination.x,
+  )}, ${formatCoordinate(destination.y)}`;
 }
 
 function formatTarget(game) {
@@ -285,7 +289,8 @@ function renderCharacters() {
 
   for (const character of characters) {
     activeNames.add(character.name);
-    const card = cards.get(character.name) || createCharacterCard(character.name);
+    const card =
+      cards.get(character.name) || createCharacterCard(character.name);
     updateCharacterCard(card, character);
     grid.append(card);
   }
