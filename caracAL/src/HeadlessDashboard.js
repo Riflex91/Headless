@@ -7,6 +7,49 @@ const {
   formatCharacterDiagnostic,
 } = require("./DiagnosticStore");
 
+function publicLiveState(liveState) {
+  if (!liveState) return null;
+
+  const result = {};
+  [
+    "timestamp",
+    "name",
+    "ctype",
+    "map",
+    "x",
+    "y",
+    "heading",
+    "direction",
+    "moving",
+    "going_x",
+    "going_y",
+    "movement_destination",
+    "rip",
+    "hp",
+    "max_hp",
+    "mp",
+    "max_mp",
+    "level",
+    "xp",
+    "max_xp",
+    "gold",
+    "party",
+    "isize",
+    "esize",
+    "t_mtype",
+    "t_name",
+    "target",
+    "current_status",
+    "items",
+    "slots",
+  ].forEach((key) => {
+    if (liveState[key] !== undefined) {
+      result[key] = liveState[key];
+    }
+  });
+  return result;
+}
+
 function publicCharacterState(name, charBlock = {}) {
   return {
     name,
@@ -21,6 +64,10 @@ function publicCharacterState(name, charBlock = {}) {
     last_heartbeat_at: charBlock.last_heartbeat_at || null,
     restart_attempts: charBlock.restart_attempts || 0,
     script: charBlock.typescript || charBlock.script || null,
+    game: publicLiveState(charBlock.live_state),
+    movement_trail: Array.isArray(charBlock.movement_trail)
+      ? charBlock.movement_trail
+      : [],
   };
 }
 
@@ -175,6 +222,13 @@ function attachHeadlessDashboard({
   const staticDir = publicDir || path.join(__dirname, "..", "dashboard");
   router.use("/headless", express.static(staticDir));
 
+  function publishSnapshot() {
+    const snapshot = getSnapshot();
+    for (const client of clients) {
+      client.write(encodeSseEvent("snapshot", snapshot));
+    }
+  }
+
   function publish(event) {
     const payload = {
       ...event,
@@ -196,6 +250,7 @@ function attachHeadlessDashboard({
     close,
     getSnapshot,
     publish,
+    publishSnapshot,
   };
 }
 
@@ -206,4 +261,5 @@ module.exports = {
   encodeSseEvent,
   isLoopbackAddress,
   publicCharacterState,
+  publicLiveState,
 };
