@@ -18,6 +18,9 @@ const DEFAULT_LIFECYCLE_POLICY = Object.freeze({
   restartBaseMs: 2000,
   restartMaxMs: 60000,
   restartResetMs: 60000,
+  heartbeatIntervalMs: 5000,
+  heartbeatTimeoutMs: 20000,
+  watchdogIntervalMs: 5000,
 });
 
 function toInteger(value, fallback, minimum) {
@@ -57,6 +60,21 @@ function readLifecyclePolicy(cfg = {}) {
       DEFAULT_LIFECYCLE_POLICY.restartResetMs,
       1000,
     ),
+    heartbeatIntervalMs: toInteger(
+      lifecycle.heartbeat_interval_ms,
+      DEFAULT_LIFECYCLE_POLICY.heartbeatIntervalMs,
+      1000,
+    ),
+    heartbeatTimeoutMs: toInteger(
+      lifecycle.heartbeat_timeout_ms,
+      DEFAULT_LIFECYCLE_POLICY.heartbeatTimeoutMs,
+      2000,
+    ),
+    watchdogIntervalMs: toInteger(
+      lifecycle.watchdog_interval_ms,
+      DEFAULT_LIFECYCLE_POLICY.watchdogIntervalMs,
+      1000,
+    ),
   };
 }
 
@@ -64,6 +82,11 @@ function computeRestartDelay(attempt, policy = DEFAULT_LIFECYCLE_POLICY) {
   const normalizedAttempt = Math.max(1, Math.trunc(Number(attempt) || 1));
   const raw = policy.restartBaseMs * 2 ** (normalizedAttempt - 1);
   return Math.min(raw, Math.max(policy.restartBaseMs, policy.restartMaxMs));
+}
+
+function isHeartbeatStale(lastHeartbeatAt, now, timeoutMs) {
+  if (!Number.isFinite(lastHeartbeatAt) || lastHeartbeatAt <= 0) return false;
+  return now - lastHeartbeatAt > timeoutMs;
 }
 
 function isProcessActive(charBlock) {
@@ -94,6 +117,7 @@ module.exports = {
   computeRestartDelay,
   countActiveCharacters,
   getInitialStartupCharacters,
+  isHeartbeatStale,
   isProcessActive,
   readLifecyclePolicy,
 };
