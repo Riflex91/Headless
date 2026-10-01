@@ -330,7 +330,11 @@ function migrate_old_storage(path, localStorage) {
     }
 
     clear_restart_timer(char_block);
-    set_lifecycle_state(char_name, LIFECYCLE_STATES.STARTING, "start_requested");
+    set_lifecycle_state(
+      char_name,
+      LIFECYCLE_STATES.STARTING,
+      "start_requested",
+    );
 
     let realm = my_acc.resolve_realm(char_block.realm);
     if (!realm) {
@@ -618,38 +622,41 @@ function migrate_old_storage(path, localStorage) {
   }
   //TODO beta new logic for #5
   //i need to implement decent lifecycle-handling
-  const watchdog_task = setInterval(() => {
-    if (coordinator_shutting_down) return;
-    const now = Date.now();
+  const watchdog_task = setInterval(
+    () => {
+      if (coordinator_shutting_down) return;
+      const now = Date.now();
 
-    Object.entries(character_manage).forEach(([char_name, char_block]) => {
-      if (
-        !char_block.instance ||
-        char_block.watchdog_recovery_in_progress ||
-        !isHeartbeatStale(
-          char_block.last_heartbeat_at,
-          now,
-          lifecycle_policy.heartbeatTimeoutMs,
-        )
-      ) {
-        return;
-      }
+      Object.entries(character_manage).forEach(([char_name, char_block]) => {
+        if (
+          !char_block.instance ||
+          char_block.watchdog_recovery_in_progress ||
+          !isHeartbeatStale(
+            char_block.last_heartbeat_at,
+            now,
+            lifecycle_policy.heartbeatTimeoutMs,
+          )
+        ) {
+          return;
+        }
 
-      char_block.watchdog_recovery_in_progress = true;
-      const age_ms = now - char_block.last_heartbeat_at;
-      set_lifecycle_state(
-        char_name,
-        LIFECYCLE_STATES.ERROR,
-        "heartbeat_timeout",
-      );
-      emit_supervisor_event("CHARACTER_HEARTBEAT_TIMEOUT", char_name, {
-        age_ms,
-        timeout_ms: lifecycle_policy.heartbeatTimeoutMs,
-        pid: char_block.last_heartbeat_pid,
+        char_block.watchdog_recovery_in_progress = true;
+        const age_ms = now - char_block.last_heartbeat_at;
+        set_lifecycle_state(
+          char_name,
+          LIFECYCLE_STATES.ERROR,
+          "heartbeat_timeout",
+        );
+        emit_supervisor_event("CHARACTER_HEARTBEAT_TIMEOUT", char_name, {
+          age_ms,
+          timeout_ms: lifecycle_policy.heartbeatTimeoutMs,
+          pid: char_block.last_heartbeat_pid,
+        });
+        softkill_block(char_block);
       });
-      softkill_block(char_block);
-    });
-  }, lifecycle_policy.watchdogIntervalMs);
+    },
+    lifecycle_policy.watchdogIntervalMs,
+  );
   watchdog_task.unref();
 
   ["SIGINT", "SIGTERM", "SIGQUIT"].forEach((signal) =>
