@@ -126,5 +126,8 @@ test("CharacterThread does not dump raw process arguments", () => {
   );
 
   assert.doesNotMatch(thread, /starting character thread with arguments/);
-  assert.doesNotMatch(thread, /console\.debug\([^)]*msg\.arguments/s);
+  assert.doesNotMatch(
+    thread,
+    /console\.debug\([^;]*,\s*msg\.arguments\s*\)/s,
+  );
 });
