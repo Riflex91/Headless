@@ -21,33 +21,93 @@ function humanize_int(num, digits) {
     : num.toExponential(digits);
 }
 
+function public_item(item) {
+  if (!item) return null;
+
+  const result = {};
+  [
+    "name",
+    "level",
+    "q",
+    "locked",
+    "special",
+    "p",
+    "stat_type",
+    "expires",
+  ].forEach((key) => {
+    if (item[key] !== undefined) result[key] = item[key];
+  });
+  return result;
+}
+
+function build_stat_beat(g_con) {
+  const character = g_con.character;
+  const result = { type: "stat_beat" };
+
+  [
+    "rip",
+    "hp",
+    "max_hp",
+    "mp",
+    "max_mp",
+    "level",
+    "xp",
+    "max_xp",
+    "gold",
+    "party",
+    "isize",
+    "esize",
+  ].forEach((key) => (result[key] = character[key]));
+
+  result.name = character.name || null;
+  result.ctype = character.ctype || null;
+  result.map = character.map || g_con.current_map || null;
+  result.x = character.real_x ?? character.x ?? null;
+  result.y = character.real_y ?? character.y ?? null;
+  result.moving = !!character.moving;
+  result.going_x = character.going_x ?? null;
+  result.going_y = character.going_y ?? null;
+  result.angle = Number.isFinite(character.angle) ? character.angle : null;
+  result.direction = character.direction || null;
+
+  result.items = Array.isArray(character.items)
+    ? character.items.map(public_item)
+    : [];
+  result.slots = Object.fromEntries(
+    Object.entries(character.slots || {}).map(([slot, item]) => [
+      slot,
+      public_item(item),
+    ]),
+  );
+
+  const targeting = g_con.entities[character.target];
+  result.t_mtype = (targeting && targeting.mtype) || null;
+  result.t_name = (targeting && targeting.name) || null;
+  result.target = targeting
+    ? {
+        id: character.target || null,
+        name: targeting.name || null,
+        mtype: targeting.mtype || null,
+        type: targeting.type || null,
+        x: targeting.real_x ?? targeting.x ?? null,
+        y: targeting.real_y ?? targeting.y ?? null,
+        hp: targeting.hp ?? null,
+        max_hp: targeting.max_hp ?? null,
+        target: targeting.target || null,
+      }
+    : null;
+
+  result.current_status = g_con.current_status;
+  if (g_con.caracAL.map_enabled()) {
+    result.mmap =
+      "data:image/png;base64," + generate_minimap(g_con).toString("base64");
+  }
+  return result;
+}
+
 function register_stat_beat(g_con) {
   g_con.caracAL.stat_beat = setInterval(() => {
-    const character = g_con.character;
-    const result = { type: "stat_beat" };
-    [
-      "rip",
-      "hp",
-      "max_hp",
-      "mp",
-      "max_mp",
-      "level",
-      "xp",
-      "max_xp",
-      "gold",
-      "party",
-      "isize",
-      "esize",
-    ].forEach((x) => (result[x] = character[x]));
-    const targeting = g_con.entities[character.target];
-    result.t_mtype = (targeting && targeting.mtype) || null;
-    result.t_name = (targeting && targeting.name) || null;
-    result.current_status = g_con.current_status;
-    if (g_con.caracAL.map_enabled()) {
-      result.mmap =
-        "data:image/png;base64," + generate_minimap(g_con).toString("base64");
-    }
-    process.send(result);
+    process.send(build_stat_beat(g_con));
   }, STAT_BEAT_INTERVAL);
 }
 
@@ -357,5 +417,7 @@ function generate_minimap(game_context) {
   return PNG.sync.write(png);
 }
 
+exports.build_stat_beat = build_stat_beat;
 exports.create_monitor_ui = create_monitor_ui;
+exports.public_item = public_item;
 exports.register_stat_beat = register_stat_beat;
