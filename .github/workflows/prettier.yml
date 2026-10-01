@@ -1,6 +1,7 @@
 name: Prettier
 
 on:
+  pull_request:
   push:
     branches:
       - main
@@ -11,11 +12,37 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
-          ref: ${{ github.head_ref }}
+          fetch-depth: 0
 
-      - name: Prettify code
-        uses: creyD/prettier_action@v4.3
+      - name: Use Node.js 18
+        uses: actions/setup-node@v4
         with:
-          prettier_options: --write **/*.{js,md,html,css,json}
+          node-version: 18
+          cache: npm
+          cache-dependency-path: caracAL/package-lock.json
+
+      - name: Install dependencies
+        working-directory: caracAL
+        run: npm ci
+
+      - name: Check changed caracAL files
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+          else
+            BASE="${{ github.event.before }}"
+          fi
+
+          FILES="$(git diff --name-only "$BASE" "${{ github.sha }}"             | grep -E '^caracAL/.*\.(js|md|html|css|json)$'             | sed 's#^caracAL/##' || true)"
+
+          if [ -z "$FILES" ]; then
+            echo "No changed caracAL files require Prettier."
+            exit 0
+          fi
+
+          cd caracAL
+          echo "$FILES"
+          npx prettier --check $FILES
