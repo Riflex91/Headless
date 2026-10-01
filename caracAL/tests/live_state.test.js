@@ -11,7 +11,9 @@ const {
   updateCharacterLiveState,
 } = require("../src/LiveState");
 
-test("stat beat exposes safe live character, inventory and equipment state", () => {
+test(
+  "stat beat exposes safe live character, inventory and equipment state",
+  () => {
   const game = {
     character: {
       name: "My_Ranger1",
@@ -90,9 +92,10 @@ test("stat beat exposes safe live character, inventory and equipment state", () 
     locked: true,
   });
   assert.equal(JSON.stringify(beat).includes("must-not-leak"), false);
-  assert.equal(beat.target.mtype, "goo");
-  assert.equal(beat.target.x, 130);
-});
+    assert.equal(beat.target.mtype, "goo");
+    assert.equal(beat.target.x, 130);
+  },
+);
 
 test("public item projection excludes unknown runtime fields", () => {
   assert.deepEqual(
@@ -191,7 +194,10 @@ test("movement trail is pruned to five minutes", () => {
     now,
   );
 
-  assert.equal(block.movement_trail.some((point) => point.timestamp === 1000), false);
+  assert.equal(
+    block.movement_trail.some((point) => point.timestamp === 1000),
+    false,
+  );
 });
 
 test("dashboard live-state projection rejects unrelated fields", () => {
