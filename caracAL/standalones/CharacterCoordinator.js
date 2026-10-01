@@ -17,6 +17,7 @@ const {
   CONTROL_ACTIONS,
   DESIRED_RUNTIME_STATES,
 } = require("../src/CharacterControl");
+const { DiagnosticEventStore } = require("../src/DiagnosticStore");
 const { attachHeadlessDashboard } = require("../src/HeadlessDashboard");
 const {
   LIFECYCLE_STATES,
@@ -95,6 +96,7 @@ function migrate_old_storage(path, localStorage) {
   const default_realm = my_acc.response.servers[0];
 
   const character_manage = cfg.characters;
+  const diagnostic_store = new DiagnosticEventStore({ maxEvents: 20000 });
 
   //TODO right now this server wont terminate.
   //this is fine atm because caracAL does not terminate when all chars stop.
@@ -131,6 +133,7 @@ function migrate_old_storage(path, localStorage) {
         characterManage: character_manage,
         lifecyclePolicy: lifecycle_policy,
         controlCharacter: control_character,
+        diagnosticStore: diagnostic_store,
       });
       log.info(
         {
@@ -183,6 +186,40 @@ function migrate_old_storage(path, localStorage) {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
+  function capture_character_stream(stream, char_name, stream_name) {
+    if (!stream) return;
+
+    let buffer = "";
+    const flush_line = (line) => {
+      const message = line.trimEnd();
+      if (!message) return;
+      diagnostic_store.append({
+        type: "character_log",
+        event:
+          stream_name === "stderr" ? "CHARACTER_STDERR" : "CHARACTER_STDOUT",
+        character: char_name,
+        stream: stream_name,
+        message,
+      });
+    };
+
+    stream.on("data", (chunk) => {
+      buffer += chunk.toString("utf8");
+      let newline_index = buffer.indexOf("\n");
+
+      while (newline_index >= 0) {
+        flush_line(buffer.slice(0, newline_index));
+        buffer = buffer.slice(newline_index + 1);
+        newline_index = buffer.indexOf("\n");
+      }
+    });
+
+    stream.on("end", () => {
+      if (buffer) flush_line(buffer);
+      buffer = "";
+    });
+  }
+
   function emit_supervisor_event(event, char_name, details = {}) {
     const payload = {
       type: "supervisor_event",
@@ -191,11 +228,12 @@ function migrate_old_storage(path, localStorage) {
       timestamp: Date.now(),
       ...details,
     };
+    const sanitized_payload = diagnostic_store.append(payload);
     log.info(
-      payload,
+      sanitized_payload,
       char_name ? `supervisor ${event}: ${char_name}` : `supervisor ${event}`,
     );
-    dashboard?.publish(payload);
+    dashboard?.publish(sanitized_payload);
   }
 
   function set_lifecycle_state(char_name, state, reason) {
@@ -536,6 +574,8 @@ function migrate_old_storage(path, localStorage) {
       stdio: ["ignore", "pipe", "pipe", "ipc"],
     });
 
+    capture_character_stream(result.stdout, char_name, "stdout");
+    capture_character_stream(result.stderr, char_name, "stderr");
     result.stdout.pipe(process.stdout);
     result.stderr.pipe(process.stderr);
     char_block.instance = result;

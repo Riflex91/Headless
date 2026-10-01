@@ -7,6 +7,7 @@ const test = require("node:test");
 
 const {
   buildSupervisorSnapshot,
+  diagnosticSinceFromQuery,
   encodeSseEvent,
   isLoopbackAddress,
   publicCharacterState,
@@ -72,6 +73,19 @@ test("supervisor snapshot counts active lifecycle states", () => {
     snapshot.characters.map((character) => character.name),
     ["My_Merchant", "My_Ranger1", "My_Ranger2", "My_Ranger3"],
   );
+});
+
+test("diagnostic time range query is bounded", () => {
+  const before = Date.now();
+  const since = diagnosticSinceFromQuery({ minutes: "5" });
+  const after = Date.now();
+
+  assert.equal(since <= after - 5 * 60 * 1000, true);
+  assert.equal(since >= before - 5 * 60 * 1000, true);
+  assert.equal(diagnosticSinceFromQuery({ minutes: "" }), undefined);
+
+  const bounded = diagnosticSinceFromQuery({ minutes: "99999" });
+  assert.equal(bounded >= before - 24 * 60 * 60 * 1000, true);
 });
 
 test("SSE event encoding is valid and compact", () => {

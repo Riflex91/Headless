@@ -324,10 +324,16 @@ process.on("message", async (msg) => {
   if (msg.type == "process_args") {
     const { cname, clid } = msg.arguments;
     start_heartbeat(msg.arguments.heartbeat_interval_ms);
-    console.debug(
-      "starting character thread with arguments: %O",
-      msg.arguments,
-    );
+    console.debug("starting character thread", {
+      cname,
+      clid,
+      version: msg.arguments.version,
+      realm_addr: msg.arguments.realm_addr,
+      realm_port: msg.arguments.realm_port,
+      script_file: msg.arguments.script_file,
+      typescript_file: msg.arguments.typescript_file,
+      runtime_state: msg.arguments.runtime_state,
+    });
     const new_log = LogUtils.log.child({ cname, clid });
     LogUtils.log = new_log;
     await make_game(msg.arguments);
