@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>caracAL Headless Control Center</title>
+    <link rel="stylesheet" href="/headless/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <h1>caracAL Headless Control Center</h1>
+        <p id="connection-status">Verbinde mit Supervisor …</p>
+      </div>
+      <div class="summary">
+        <span id="active-count">0 / 4 aktiv</span>
+        <span id="last-update">Noch keine Daten</span>
+      </div>
+    </header>
+
+    <main>
+      <section class="panel">
+        <div class="panel-heading">
+          <div>
+            <h2>Characters</h2>
+            <p>Live-Lifecycle, Verbindung, Prozess und Heartbeat.</p>
+          </div>
+        </div>
+        <div id="character-grid" class="character-grid" aria-live="polite"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-heading">
+          <div>
+            <h2>Supervisor Events</h2>
+            <p>Die neuesten Lifecycle- und Watchdog-Ereignisse.</p>
+          </div>
+          <button id="clear-events" type="button">Ansicht leeren</button>
+        </div>
+        <div id="event-list" class="event-list"></div>
+      </section>
+    </main>
+
+    <template id="character-card-template">
+      <article class="character-card">
+        <div class="character-header">
+          <div>
+            <h3 class="character-name"></h3>
+            <p class="character-realm"></p>
+          </div>
+          <span class="state-badge"></span>
+        </div>
+
+        <dl>
+          <div>
+            <dt>Verbindung</dt>
+            <dd class="character-connected"></dd>
+          </div>
+          <div>
+            <dt>PID</dt>
+            <dd class="character-pid"></dd>
+          </div>
+          <div>
+            <dt>Script</dt>
+            <dd class="character-script"></dd>
+          </div>
+          <div>
+            <dt>Restart-Versuche</dt>
+            <dd class="character-restarts"></dd>
+          </div>
+          <div>
+            <dt>Letzter Heartbeat</dt>
+            <dd class="character-heartbeat"></dd>
+          </div>
+        </dl>
+
+        <div class="character-actions" aria-label="Character-Steuerung">
+          <button type="button" disabled>Start</button>
+          <button type="button" disabled>Pause</button>
+          <button type="button" disabled>Stop</button>
+          <button type="button" disabled>Konfiguration</button>
+          <button type="button" disabled>Log kopieren</button>
+        </div>
+        <p class="coming-soon">
+          Steuerung wird in den nächsten Dashboard-Schnitten aktiviert.
+        </p>
+      </article>
+    </template>
+
+    <script src="/headless/app.js" defer></script>
+  </body>
+</html>
