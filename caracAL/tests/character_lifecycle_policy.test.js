@@ -57,6 +57,17 @@ test("restart backoff grows exponentially and is capped", () => {
   assert.equal(computeRestartDelay(99, policy), 5000);
 });
 
+test("heartbeat timeout keeps a safety margin above the cadence", () => {
+  const policy = readLifecyclePolicy({
+    lifecycle: {
+      heartbeat_interval_ms: 30000,
+      heartbeat_timeout_ms: 20000,
+    },
+  });
+  assert.equal(policy.heartbeatIntervalMs, 30000);
+  assert.equal(policy.heartbeatTimeoutMs, 90000);
+});
+
 test("heartbeat staleness is deterministic", () => {
   const now = 100000;
   assert.equal(isHeartbeatStale(85000, now, 20000), false);
@@ -113,6 +124,7 @@ test("CharacterCoordinator remains syntactically valid", () => {
   );
   assert.doesNotThrow(() => new Function(coordinator));
   assert.match(coordinator, /CHARACTER_HEARTBEAT_TIMEOUT/);
+  assert.match(coordinator, /WATCHDOG_CLOCK_GAP/);
 });
 
 test("CharacterThread heartbeat code remains syntactically valid", () => {
