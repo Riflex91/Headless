@@ -73,7 +73,12 @@ test("startup selection schedules at most four enabled characters", () => {
     E: { enabled: true },
     F: { enabled: true },
   };
-  assert.deepEqual(getInitialStartupCharacters(characters, 4), ["A", "B", "D", "E"]);
+  assert.deepEqual(getInitialStartupCharacters(characters, 4), [
+    "A",
+    "B",
+    "D",
+    "E",
+  ]);
 });
 
 test("active count includes processes and lifecycle states that own a slot", () => {
@@ -96,6 +101,9 @@ test("generated config includes lifecycle hardening defaults", () => {
   assert.match(generated, /restart_base_ms:\s+2000/);
   assert.match(generated, /restart_max_ms:\s+60000/);
   assert.match(generated, /restart_reset_ms:\s+60000/);
+  assert.match(generated, /heartbeat_interval_ms:\s+5000/);
+  assert.match(generated, /heartbeat_timeout_ms:\s+20000/);
+  assert.match(generated, /watchdog_interval_ms:\s+5000/);
 });
 
 test("CharacterCoordinator remains syntactically valid", () => {
