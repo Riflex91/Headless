@@ -936,6 +936,64 @@ Gate: vier Characters stabil, keine Connection-/Restart-Stürme.
 
 Ab hier wird nicht mehr blind entwickelt.
 
+## Phase 1A – GUI Foundation
+
+Diese Subphase ist verbindlicher Bestandteil von Phase 1 und schafft die technische Grundlage für alle späteren Dashboard-Funktionen.
+
+### Technische Basis
+- lokaler Web Server unter `http://localhost:924`
+- Frontend Shell
+- Hauptnavigation und Seitenstruktur
+- gemeinsames Design System
+- Shared Component Library
+- zentrales Frontend State Management
+- Realtime Transport über WebSocket oder SSE
+- klar versionierter Dashboard-/Supervisor-API-Vertrag
+- saubere Loading-, Offline-, Error- und Reconnect-Zustände
+
+### Character- und Account-Komponenten
+- Character Cards
+- gemeinsame Account-Übersicht
+- Start / Pause / Stop Controls
+- Status-/Health-Komponenten
+- Code- und Config-Revision-Anzeige
+- wiederverwendbare Character Detail Views
+
+### Adventure-Land-Visualisierung
+- lokaler Adventure-Land Asset Loader
+- lokaler Asset Cache
+- Item Icon Renderer
+- Inventory Renderer
+- Equipment Renderer
+- Map Renderer
+- Character Marker mit Blickrichtung
+- Trail Renderer für gelaufenen Weg
+- Path Renderer für geplanten Weg
+- Range-/Tether-/Target-Overlays
+
+### Konfigurationsoberfläche
+- wiederverwendbare Config Form Engine
+- klassenspezifische Skill Controls
+- Potion-/Supply-Konfiguration
+- Combat-/Farming-/Party-/Inventory-/Gear-/Safety-Konfiguration
+- Merchant-spezifische Config Tabs
+- Config Revision / Applied Status
+- Live-Übernahme ohne Character-Restart
+
+### Diagnose und Bedienung
+- Clipboard Diagnostics für Character-, Account-, Test- und Deployment-Logs
+- Filter-/Suchkomponenten
+- Incident-/Fehleranzeige
+- Timeline-Komponente
+- Decision-/WHY-Darstellung
+- klare Kennzeichnung von RUNNING / PAUSED / STOPPED / ERROR / SUSPENDED
+
+### Layout-Ziel
+Die GUI muss so aufgebaut sein, dass die gleichzeitig eingeloggten Characters parallel beobachtet werden können. Insbesondere müssen gemeinsame Ansichten für Bewegung, Inventar und Ausrüstung ohne ständiges Umschalten zwischen Character-Seiten möglich sein.
+
+### Entwicklungsregel
+Jede spätere Bot-Phase liefert ihre zugehörigen GUI-Elemente direkt mit. Neue Runtime-Funktionen gelten erst dann als vollständig integriert, wenn ihre relevanten Zustände, Aktionen, Fehler und Konfigurationsmöglichkeiten im Dashboard sichtbar bzw. bedienbar sind.
+
 ## Phase 2 – Persistence
 - SQLite
 - Schema Versioning
@@ -1314,6 +1372,7 @@ Beispiele:
 ```text
 0  caracAL stabilisieren
 1  Runtime + Observability + Dashboard V1
+1A GUI Foundation
 2  lokale Persistence
 3  Supervisor + IPC
 4  GameAdapter + ActionBoundary
