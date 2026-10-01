@@ -13,6 +13,10 @@ const lastUpdate = document.querySelector("#last-update");
 const connectionStatus = document.querySelector("#connection-status");
 const template = document.querySelector("#character-card-template");
 const clearEvents = document.querySelector("#clear-events");
+const copyAccountLog = document.querySelector("#copy-account-log");
+const accountDiagnosticRange = document.querySelector(
+  "#account-diagnostic-range",
+);
 
 function formatTimestamp(timestamp) {
   if (!timestamp) return "—";
@@ -27,6 +31,49 @@ function formatHeartbeat(timestamp) {
 
 function badgeClass(lifecycleState) {
   return `state-${String(lifecycleState || "STOPPED").toLowerCase()}`;
+}
+
+function diagnosticUrl(path, minutes) {
+  if (!minutes) return path;
+  return `${path}?minutes=${encodeURIComponent(minutes)}`;
+}
+
+async function fetchDiagnostic(path, minutes) {
+  const response = await fetch(diagnosticUrl(path, minutes), {
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    let message = `Diagnostic request failed: ${response.status}`;
+    try {
+      const payload = await response.json();
+      message = payload.message || payload.error || message;
+    } catch (_error) {
+      // Plain-text error responses keep the status-based fallback.
+    }
+    throw new Error(message);
+  }
+  return response.text();
+}
+
+async function writeClipboard(text) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.append(textarea);
+  textarea.select();
+  const copied = document.execCommand("copy");
+  textarea.remove();
+
+  if (!copied) {
+    throw new Error("Zwischenablage konnte nicht beschrieben werden");
+  }
 }
 
 async function sendCharacterControl(characterName, action) {
@@ -94,6 +141,46 @@ function configureControlButtons(card, character) {
   }
 }
 
+function configureDiagnosticCopy(card, character) {
+  const button = card.querySelector("[data-copy-log]");
+  const range = card.querySelector(".diagnostic-range");
+  const feedback = card.querySelector(".control-feedback");
+
+  button.addEventListener("click", async () => {
+    button.disabled = true;
+    feedback.textContent = "Diagnose wird erstellt …";
+
+    try {
+      const diagnostic = await fetchDiagnostic(
+        `/headless/api/characters/${encodeURIComponent(character.name)}/diagnostic`,
+        range.value,
+      );
+      await writeClipboard(diagnostic);
+      feedback.textContent = "Log in Zwischenablage kopiert ✓";
+    } catch (error) {
+      feedback.textContent = error.message;
+      addEvent({
+        timestamp: Date.now(),
+        event: "DIAGNOSTIC_COPY_ERROR",
+        character: character.name,
+        reason: error.message,
+      });
+    } finally {
+      button.disabled = false;
+    }
+  });
+}
+
+function refreshHeartbeatAges() {
+  for (const card of grid.querySelectorAll("[data-character]")) {
+    const character = state.characters.get(card.dataset.character);
+    if (!character) continue;
+    card.querySelector(".character-heartbeat").textContent = formatHeartbeat(
+      character.last_heartbeat_at,
+    );
+  }
+}
+
 function renderCharacters() {
   grid.replaceChildren();
 
@@ -104,6 +191,7 @@ function renderCharacters() {
   for (const character of characters) {
     const card = template.content.firstElementChild.cloneNode(true);
     const badge = card.querySelector(".state-badge");
+    card.dataset.character = character.name;
 
     card.querySelector(".character-name").textContent = character.name;
     card.querySelector(".character-realm").textContent =
@@ -127,6 +215,7 @@ function renderCharacters() {
     badge.className = `state-badge ${badgeClass(character.lifecycle_state)}`;
 
     configureControlButtons(card, character);
+    configureDiagnosticCopy(card, character);
     grid.append(card);
   }
 
@@ -230,9 +319,34 @@ clearEvents.addEventListener("click", () => {
   renderEvents();
 });
 
-setInterval(() => {
-  renderCharacters();
-}, 1000);
+copyAccountLog.addEventListener("click", async () => {
+  const originalText = copyAccountLog.textContent;
+  copyAccountLog.disabled = true;
+  copyAccountLog.textContent = "Kopiere …";
+
+  try {
+    const diagnostic = await fetchDiagnostic(
+      "/headless/api/diagnostic",
+      accountDiagnosticRange.value,
+    );
+    await writeClipboard(diagnostic);
+    copyAccountLog.textContent = "Kopiert ✓";
+  } catch (error) {
+    copyAccountLog.textContent = "Fehler";
+    addEvent({
+      timestamp: Date.now(),
+      event: "ACCOUNT_DIAGNOSTIC_COPY_ERROR",
+      reason: error.message,
+    });
+  } finally {
+    setTimeout(() => {
+      copyAccountLog.disabled = false;
+      copyAccountLog.textContent = originalText;
+    }, 1200);
+  }
+});
+
+setInterval(refreshHeartbeatAges, 1000);
 
 loadInitialState()
   .then(connectEvents)
