@@ -15,6 +15,17 @@
       <div class="summary">
         <span id="active-count">0 / 4 aktiv</span>
         <span id="last-update">Noch keine Daten</span>
+        <div class="account-log-actions">
+          <select id="account-diagnostic-range" aria-label="Account-Log Zeitraum">
+            <option value="">Aktuelle Session</option>
+            <option value="5">Letzte 5 Minuten</option>
+            <option value="15">Letzte 15 Minuten</option>
+            <option value="60">Letzte Stunde</option>
+          </select>
+          <button id="copy-account-log" type="button">
+            Account-Log kopieren
+          </button>
+        </div>
       </div>
     </header>
 
@@ -87,8 +98,17 @@
           <button type="button" data-control="pause">Pause</button>
           <button type="button" data-control="stop">Stop</button>
           <button type="button" disabled>Konfiguration</button>
-          <button type="button" disabled>Log kopieren</button>
+          <button type="button" data-copy-log>Log kopieren</button>
         </div>
+        <label class="diagnostic-range-label">
+          Log-Zeitraum
+          <select class="diagnostic-range">
+            <option value="">Aktuelle Session</option>
+            <option value="5">Letzte 5 Minuten</option>
+            <option value="15">Letzte 15 Minuten</option>
+            <option value="60">Letzte Stunde</option>
+          </select>
+        </label>
         <p class="control-feedback" aria-live="polite"></p>
       </article>
     </template>
