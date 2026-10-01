@@ -121,6 +121,7 @@ function attachHeadlessDashboard({
   }
 
   const clients = new Set();
+  let snapshotPublishTimer = null;
   const getSnapshot = () =>
     buildSupervisorSnapshot(characterManage, lifecyclePolicy);
 
@@ -223,10 +224,16 @@ function attachHeadlessDashboard({
   router.use("/headless", express.static(staticDir));
 
   function publishSnapshot() {
-    const snapshot = getSnapshot();
-    for (const client of clients) {
-      client.write(encodeSseEvent("snapshot", snapshot));
-    }
+    if (snapshotPublishTimer) return;
+
+    snapshotPublishTimer = setTimeout(() => {
+      snapshotPublishTimer = null;
+      const snapshot = getSnapshot();
+      for (const client of clients) {
+        client.write(encodeSseEvent("snapshot", snapshot));
+      }
+    }, 500);
+    snapshotPublishTimer.unref?.();
   }
 
   function publish(event) {
@@ -240,6 +247,10 @@ function attachHeadlessDashboard({
   }
 
   function close() {
+    if (snapshotPublishTimer) {
+      clearTimeout(snapshotPublishTimer);
+      snapshotPublishTimer = null;
+    }
     for (const client of clients) {
       client.end();
     }
