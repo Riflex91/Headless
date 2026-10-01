@@ -13,6 +13,7 @@ const {
 const { log, console, ctype_to_clid } = require("../src/LogUtils");
 
 const FileStoredKeyValues = require("../src/FileStoredKeyValues");
+const { attachHeadlessDashboard } = require("../src/HeadlessDashboard");
 const {
   LIFECYCLE_STATES,
   computeRestartDelay,
@@ -95,20 +96,49 @@ function migrate_old_storage(path, localStorage) {
   //this is fine atm because caracAL does not terminate when all chars stop.
   //when I change this in the future this might change as well.
   let bwi_instance = {};
+  let dashboard = null;
+  let owned_web_server = null;
   try {
+    const web_port = (cfg.web_app && cfg.web_app.port) || 924;
+    const dashboard_enabled =
+      !cfg.web_app || cfg.web_app.enable_headless_dashboard !== false;
+
     if (cfg.web_app && (cfg.web_app.enable_bwi || cfg.web_app.enable_minimap)) {
       bwi_instance = new bwi({
-        port: cfg.web_app.port,
+        port: web_port,
         password: null,
         updateRate: STAT_BEAT_INTERVAL,
       });
     }
+
     let express_inst = bwi_instance.router;
-    if (cfg.web_app && cfg.web_app.expose_CODE) {
+    const ensure_express = () => {
       if (!express_inst) {
         express_inst = express();
-        express_inst.listen(cfg.web_app.port);
+        owned_web_server = express_inst.listen(web_port);
       }
+      return express_inst;
+    };
+
+    if (dashboard_enabled) {
+      dashboard = attachHeadlessDashboard({
+        router: ensure_express(),
+        express,
+        characterManage: character_manage,
+        lifecyclePolicy: lifecycle_policy,
+      });
+      log.info(
+        {
+          type: "headless_dashboard_started",
+          port: web_port,
+          path: "/headless",
+        },
+        `Headless dashboard available on http://localhost:${web_port}/headless`,
+      );
+    }
+
+    if (cfg.web_app && cfg.web_app.expose_CODE) {
+      ensure_express();
       log.info(
         { type: "CODE_exposed", src_path: __dirname + "/../CODE" },
         "Serving CODE statically",
@@ -116,10 +146,7 @@ function migrate_old_storage(path, localStorage) {
       express_inst.use("/CODE", express.static(__dirname + "/../CODE"));
     }
     if (cfg.web_app && cfg.web_app.expose_TYPECODE && cfg.enable_TYPECODE) {
-      if (!express_inst) {
-        express_inst = express();
-        express_inst.listen(cfg.web_app.port);
-      }
+      ensure_express();
       log.info(
         { type: "TYPECODE_exposed", src_path: __dirname + "/../TYPECODE.out" },
         "Serving TYPECODE statically",
@@ -152,16 +179,18 @@ function migrate_old_storage(path, localStorage) {
   }
 
   function emit_supervisor_event(event, char_name, details = {}) {
+    const payload = {
+      type: "supervisor_event",
+      event,
+      character: char_name || null,
+      timestamp: Date.now(),
+      ...details,
+    };
     log.info(
-      {
-        type: "supervisor_event",
-        event,
-        character: char_name || null,
-        timestamp: Date.now(),
-        ...details,
-      },
+      payload,
       char_name ? `supervisor ${event}: ${char_name}` : `supervisor ${event}`,
     );
+    dashboard?.publish(payload);
   }
 
   function set_lifecycle_state(char_name, state, reason) {
@@ -678,6 +707,10 @@ function migrate_old_storage(path, localStorage) {
       coordinator_shutting_down = true;
       clearInterval(watchdog_task);
       emit_supervisor_event("COORDINATOR_SHUTDOWN", null, { signal });
+      dashboard?.close();
+      if (owned_web_server) {
+        owned_web_server.close();
+      }
       console.log(`Received ${signal} on master. Rounding up clients`);
       //softkill all chars, giving them chance to shutdown
       await Promise.all(
