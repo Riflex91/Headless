@@ -36,6 +36,12 @@ declare global {
       shutdown(characterName?: string | null): void;
 
       /**
+       * Desired runtime state assigned by the local headless supervisor.
+       * Cooperative bot code must not start new work while PAUSED.
+       */
+      runtime_state: "RUNNING" | "PAUSED" | "STOPPED";
+
+      /**
        * All the characters running in our current caracAL instance
        */
       siblings: string[];
