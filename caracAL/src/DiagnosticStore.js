@@ -50,8 +50,8 @@ function eventMatchesCharacter(event, characterName) {
 }
 
 class DiagnosticEventStore {
-  constructor({ maxEvents = 5000 } = {}) {
-    this.maxEvents = Math.max(100, Number(maxEvents) || 5000);
+  constructor({ maxEvents = 20000 } = {}) {
+    this.maxEvents = Math.max(100, Number(maxEvents) || 20000);
     this.events = [];
   }
 
