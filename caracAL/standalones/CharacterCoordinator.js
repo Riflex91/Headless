@@ -622,9 +622,25 @@ function migrate_old_storage(path, localStorage) {
   }
   //TODO beta new logic for #5
   //i need to implement decent lifecycle-handling
+  let last_watchdog_tick_at = Date.now();
   const watchdog_task = setInterval(() => {
     if (coordinator_shutting_down) return;
     const now = Date.now();
+    const watchdog_gap_ms = now - last_watchdog_tick_at;
+    last_watchdog_tick_at = now;
+
+    if (watchdog_gap_ms > lifecycle_policy.heartbeatTimeoutMs) {
+      Object.values(character_manage).forEach((char_block) => {
+        if (char_block.instance) {
+          char_block.last_heartbeat_at = now;
+        }
+      });
+      emit_supervisor_event("WATCHDOG_CLOCK_GAP", null, {
+        gap_ms: watchdog_gap_ms,
+        heartbeat_timeout_ms: lifecycle_policy.heartbeatTimeoutMs,
+      });
+      return;
+    }
 
     Object.entries(character_manage).forEach(([char_name, char_block]) => {
       if (
