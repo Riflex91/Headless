@@ -157,6 +157,7 @@ If you want max performance you should choose no.`,
       ["node", "./standalones/LogPrinter.js"],
     ],
     web_app: {
+      enable_headless_dashboard: true,
       enable_bwi: use_bwi,
       enable_minimap: use_minimap || false,
       expose_CODE: false,
@@ -257,7 +258,9 @@ module.exports = {
     ["node", "./standalones/LogPrinter.js"],
   ])},
   web_app: {
-    //enables the monitoring dashboard
+    //enables the new local headless control center
+    ${ezpz("web_app.enable_headless_dashboard", true)},
+    //enables the legacy monitoring dashboard
     ${ezpz("web_app.enable_bwi", false)},
     //enables the minimap in dashboard
     //setting this to true implicitly
