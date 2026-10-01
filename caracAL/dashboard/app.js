@@ -150,7 +150,8 @@ function connectEvents() {
   });
 
   source.addEventListener("error", () => {
-    connectionStatus.textContent = "Supervisor-Verbindung wird wiederhergestellt …";
+    connectionStatus.textContent =
+      "Supervisor-Verbindung wird wiederhergestellt …";
     connectionStatus.className = "disconnected";
   });
 }
