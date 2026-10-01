@@ -29,6 +29,71 @@ function badgeClass(lifecycleState) {
   return `state-${String(lifecycleState || "STOPPED").toLowerCase()}`;
 }
 
+async function sendCharacterControl(characterName, action) {
+  const response = await fetch(
+    `/headless/api/characters/${encodeURIComponent(characterName)}/control`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action }),
+    },
+  );
+  const payload = await response.json();
+
+  if (!response.ok) {
+    throw new Error(payload.message || payload.error || "Control failed");
+  }
+
+  if (payload.snapshot) {
+    applySnapshot(payload.snapshot);
+  }
+}
+
+function configureControlButtons(card, character) {
+  const desired =
+    character.desired_runtime_state ||
+    (character.enabled ? "RUNNING" : "STOPPED");
+  const buttons = card.querySelectorAll("[data-control]");
+  const feedback = card.querySelector(".control-feedback");
+
+  for (const button of buttons) {
+    const action = button.dataset.control;
+
+    if (action === "start") {
+      button.disabled =
+        desired === "RUNNING" &&
+        ["STARTING", "CONNECTING", "ONLINE"].includes(
+          character.lifecycle_state,
+        );
+    } else if (action === "pause") {
+      button.disabled =
+        !character.pid || desired === "PAUSED" || desired === "STOPPED";
+    } else if (action === "stop") {
+      button.disabled = desired === "STOPPED" && !character.pid;
+    }
+
+    button.addEventListener("click", async () => {
+      for (const control of buttons) {
+        control.disabled = true;
+      }
+      feedback.textContent = `${action.toUpperCase()} wird ausgeführt …`;
+
+      try {
+        await sendCharacterControl(character.name, action);
+      } catch (error) {
+        feedback.textContent = error.message;
+        addEvent({
+          timestamp: Date.now(),
+          event: "CONTROL_ERROR",
+          character: character.name,
+          reason: error.message,
+        });
+        await loadInitialState().catch(() => {});
+      }
+    });
+  }
+}
+
 function renderCharacters() {
   grid.replaceChildren();
 
@@ -46,6 +111,9 @@ function renderCharacters() {
     card.querySelector(".character-connected").textContent = character.connected
       ? "ONLINE"
       : "OFFLINE";
+    card.querySelector(".character-desired-state").textContent =
+      character.desired_runtime_state ||
+      (character.enabled ? "RUNNING" : "STOPPED");
     card.querySelector(".character-pid").textContent = character.pid || "—";
     card.querySelector(".character-script").textContent =
       character.script || "—";
@@ -58,6 +126,7 @@ function renderCharacters() {
     badge.textContent = character.lifecycle_state || "STOPPED";
     badge.className = `state-badge ${badgeClass(character.lifecycle_state)}`;
 
+    configureControlButtons(card, character);
     grid.append(card);
   }
 

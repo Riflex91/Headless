@@ -1,6 +1,7 @@
 "use strict";
 
 const path = require("node:path");
+const { normalizeControlAction } = require("./CharacterControl");
 
 function publicCharacterState(name, charBlock = {}) {
   return {
@@ -8,6 +9,9 @@ function publicCharacterState(name, charBlock = {}) {
     enabled: !!charBlock.enabled,
     connected: !!charBlock.connected,
     lifecycle_state: charBlock.lifecycle_state || "STOPPED",
+    desired_runtime_state:
+      charBlock.desired_runtime_state ||
+      (charBlock.enabled ? "RUNNING" : "STOPPED"),
     realm: charBlock.realm || null,
     pid: charBlock.instance?.pid || null,
     last_heartbeat_at: charBlock.last_heartbeat_at || null,
@@ -37,12 +41,22 @@ function encodeSseEvent(eventName, payload) {
   return `event: ${eventName}\ndata: ${JSON.stringify(payload)}\n\n`;
 }
 
+function isLoopbackAddress(address) {
+  const normalized = String(address || "").toLowerCase();
+  return (
+    normalized === "127.0.0.1" ||
+    normalized === "::1" ||
+    normalized === "::ffff:127.0.0.1"
+  );
+}
+
 function attachHeadlessDashboard({
   router,
   express,
   characterManage,
   lifecyclePolicy,
   publicDir,
+  controlCharacter,
 }) {
   if (!router) {
     throw new Error("headless dashboard requires an Express router");
@@ -52,9 +66,47 @@ function attachHeadlessDashboard({
   const getSnapshot = () =>
     buildSupervisorSnapshot(characterManage, lifecyclePolicy);
 
+  router.use("/headless", (req, res, next) => {
+    if (!isLoopbackAddress(req.socket?.remoteAddress)) {
+      res.status(403).json({ error: "LOCAL_ACCESS_ONLY" });
+      return;
+    }
+    next();
+  });
+
   router.get("/headless/api/state", (_req, res) => {
     res.json(getSnapshot());
   });
+
+  router.post(
+    "/headless/api/characters/:name/control",
+    express.json({ limit: "8kb" }),
+    async (req, res) => {
+      const action = normalizeControlAction(req.body?.action);
+      if (!action) {
+        res.status(400).json({ error: "INVALID_CONTROL_ACTION" });
+        return;
+      }
+      if (!controlCharacter) {
+        res.status(503).json({ error: "CONTROL_UNAVAILABLE" });
+        return;
+      }
+
+      try {
+        const result = await controlCharacter(req.params.name, action);
+        res.json({
+          ok: true,
+          result,
+          snapshot: getSnapshot(),
+        });
+      } catch (error) {
+        res.status(Number(error.statusCode) || 500).json({
+          error: error.code || "CONTROL_FAILED",
+          message: error.message,
+        });
+      }
+    },
+  );
 
   router.get("/headless/api/events", (req, res) => {
     res.status(200);
@@ -104,5 +156,6 @@ module.exports = {
   attachHeadlessDashboard,
   buildSupervisorSnapshot,
   encodeSseEvent,
+  isLoopbackAddress,
   publicCharacterState,
 };

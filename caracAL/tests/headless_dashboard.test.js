@@ -8,6 +8,7 @@ const test = require("node:test");
 const {
   buildSupervisorSnapshot,
   encodeSseEvent,
+  isLoopbackAddress,
   publicCharacterState,
 } = require("../src/HeadlessDashboard");
 const { make_cfg_string } = require("../src/ConfigUtil");
@@ -17,6 +18,7 @@ test("public character state exposes only dashboard-safe fields", () => {
     enabled: true,
     connected: true,
     lifecycle_state: "ONLINE",
+    desired_runtime_state: "PAUSED",
     realm: "EUII",
     instance: { pid: 12345, secret: "do-not-export" },
     last_heartbeat_at: 123456,
@@ -31,6 +33,7 @@ test("public character state exposes only dashboard-safe fields", () => {
     enabled: true,
     connected: true,
     lifecycle_state: "ONLINE",
+    desired_runtime_state: "PAUSED",
     realm: "EUII",
     pid: 12345,
     last_heartbeat_at: 123456,
@@ -42,6 +45,14 @@ test("public character state exposes only dashboard-safe fields", () => {
   assert.equal(serialized.includes("SECRET_SESSION"), false);
   assert.equal(serialized.includes("SECRET_AUTH"), false);
   assert.equal(serialized.includes("do-not-export"), false);
+});
+
+test("dashboard access accepts loopback addresses only", () => {
+  assert.equal(isLoopbackAddress("127.0.0.1"), true);
+  assert.equal(isLoopbackAddress("::1"), true);
+  assert.equal(isLoopbackAddress("::ffff:127.0.0.1"), true);
+  assert.equal(isLoopbackAddress("192.168.1.12"), false);
+  assert.equal(isLoopbackAddress("10.0.0.2"), false);
 });
 
 test("supervisor snapshot counts active lifecycle states", () => {

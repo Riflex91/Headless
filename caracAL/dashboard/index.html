@@ -61,6 +61,10 @@
             <dd class="character-connected"></dd>
           </div>
           <div>
+            <dt>Gewünscht</dt>
+            <dd class="character-desired-state"></dd>
+          </div>
+          <div>
             <dt>PID</dt>
             <dd class="character-pid"></dd>
           </div>
@@ -79,15 +83,13 @@
         </dl>
 
         <div class="character-actions" aria-label="Character-Steuerung">
-          <button type="button" disabled>Start</button>
-          <button type="button" disabled>Pause</button>
-          <button type="button" disabled>Stop</button>
+          <button type="button" data-control="start">Start</button>
+          <button type="button" data-control="pause">Pause</button>
+          <button type="button" data-control="stop">Stop</button>
           <button type="button" disabled>Konfiguration</button>
           <button type="button" disabled>Log kopieren</button>
         </div>
-        <p class="coming-soon">
-          Steuerung wird in den nächsten Dashboard-Schnitten aktiviert.
-        </p>
+        <p class="control-feedback" aria-live="polite"></p>
       </article>
     </template>
 

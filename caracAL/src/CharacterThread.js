@@ -8,6 +8,7 @@ const fetch = (...args) =>
   import("node-fetch").then(({ default: fetch }) => fetch(...args));
 const monitoring_util = require("../monitoring_util");
 const ipc_storage = require("../ipcStorage");
+const { DESIRED_RUNTIME_STATES } = require("./CharacterControl");
 
 const LogUtils = require("./LogUtils");
 const { console } = LogUtils;
@@ -171,6 +172,8 @@ async function make_game(proc_args) {
   const extensions = {};
 
   extensions.log = LogUtils.log;
+  extensions.runtime_state =
+    proc_args.runtime_state || DESIRED_RUNTIME_STATES.RUNNING;
 
   extensions.deploy = function (char_name, realm, script_file, game_version) {
     process.send({
@@ -272,6 +275,15 @@ async function make_game(proc_args) {
         break;
       case "send_cm":
         game_context.send_code_message(m.to, m.data);
+        break;
+      case "runtime_control":
+        if (Object.values(DESIRED_RUNTIME_STATES).includes(m.state)) {
+          extensions.runtime_state = m.state;
+          process.send({
+            type: "runtime_state_applied",
+            state: extensions.runtime_state,
+          });
+        }
         break;
     }
   });

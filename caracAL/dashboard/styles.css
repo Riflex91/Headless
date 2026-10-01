@@ -204,6 +204,13 @@ dd {
   opacity: 0.42;
 }
 
+.control-feedback {
+  min-height: 1.1rem;
+  margin: 0.55rem 0 0;
+  color: #9faac0;
+  font-size: 0.76rem;
+}
+
 .coming-soon {
   margin-top: 0.65rem;
 }
