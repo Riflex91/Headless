@@ -1,7 +1,7 @@
 "use strict";
 
 const SENSITIVE_KEY_PATTERN =
-  /^(?:auth|authorization|cookie|password|passwd|secret|sess|session|token|user_auth|api_?key)$/i;
+  /(?:auth|authorization|cookie|password|passwd|secret|sess|session|token|user_auth|api_?key)/i;
 
 function sanitizeString(value) {
   return String(value)
