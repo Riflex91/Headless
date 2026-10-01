@@ -96,7 +96,7 @@ function migrate_old_storage(path, localStorage) {
   const default_realm = my_acc.response.servers[0];
 
   const character_manage = cfg.characters;
-  const diagnostic_store = new DiagnosticEventStore({ maxEvents: 5000 });
+  const diagnostic_store = new DiagnosticEventStore({ maxEvents: 20000 });
 
   //TODO right now this server wont terminate.
   //this is fine atm because caracAL does not terminate when all chars stop.
