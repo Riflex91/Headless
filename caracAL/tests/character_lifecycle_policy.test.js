@@ -10,6 +10,7 @@ const {
   computeRestartDelay,
   countActiveCharacters,
   getInitialStartupCharacters,
+  isHeartbeatStale,
   readLifecyclePolicy,
 } = require("../src/CharacterLifecyclePolicy");
 const { make_cfg_string } = require("../src/ConfigUtil");
@@ -21,6 +22,9 @@ test("lifecycle policy defaults to the four-character local limit", () => {
     restartBaseMs: 2000,
     restartMaxMs: 60000,
     restartResetMs: 60000,
+    heartbeatIntervalMs: 5000,
+    heartbeatTimeoutMs: 20000,
+    watchdogIntervalMs: 5000,
   });
 });
 
@@ -51,6 +55,13 @@ test("restart backoff grows exponentially and is capped", () => {
   assert.equal(computeRestartDelay(3, policy), 4000);
   assert.equal(computeRestartDelay(4, policy), 5000);
   assert.equal(computeRestartDelay(99, policy), 5000);
+});
+
+test("heartbeat staleness is deterministic", () => {
+  const now = 100000;
+  assert.equal(isHeartbeatStale(85000, now, 20000), false);
+  assert.equal(isHeartbeatStale(79999, now, 20000), true);
+  assert.equal(isHeartbeatStale(0, now, 20000), false);
 });
 
 test("startup selection schedules at most four enabled characters", () => {
@@ -93,4 +104,15 @@ test("CharacterCoordinator remains syntactically valid", () => {
     "utf8",
   );
   assert.doesNotThrow(() => new Function(coordinator));
+  assert.match(coordinator, /CHARACTER_HEARTBEAT_TIMEOUT/);
+});
+
+test("CharacterThread heartbeat code remains syntactically valid", () => {
+  const thread = fs.readFileSync(
+    path.join(__dirname, "..", "src", "CharacterThread.js"),
+    "utf8",
+  );
+  assert.doesNotThrow(() => new Function(thread));
+  assert.match(thread, /type: "heartbeat"/);
+  assert.match(thread, /heartbeat_interval_ms/);
 });
