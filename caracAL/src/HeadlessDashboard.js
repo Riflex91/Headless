@@ -2,6 +2,10 @@
 
 const path = require("node:path");
 const { normalizeControlAction } = require("./CharacterControl");
+const {
+  formatAccountDiagnostic,
+  formatCharacterDiagnostic,
+} = require("./DiagnosticStore");
 
 function publicCharacterState(name, charBlock = {}) {
   return {
@@ -50,6 +54,12 @@ function isLoopbackAddress(address) {
   );
 }
 
+function diagnosticSinceFromQuery(query = {}) {
+  const minutes = Number(query.minutes);
+  if (!Number.isFinite(minutes) || minutes <= 0) return undefined;
+  return Date.now() - Math.min(minutes, 24 * 60) * 60 * 1000;
+}
+
 function attachHeadlessDashboard({
   router,
   express,
@@ -57,6 +67,7 @@ function attachHeadlessDashboard({
   lifecyclePolicy,
   publicDir,
   controlCharacter,
+  diagnosticStore,
 }) {
   if (!router) {
     throw new Error("headless dashboard requires an Express router");
@@ -76,6 +87,42 @@ function attachHeadlessDashboard({
 
   router.get("/headless/api/state", (_req, res) => {
     res.json(getSnapshot());
+  });
+
+  router.get("/headless/api/diagnostic", (req, res) => {
+    if (!diagnosticStore) {
+      res.status(503).json({ error: "DIAGNOSTICS_UNAVAILABLE" });
+      return;
+    }
+
+    const since = diagnosticSinceFromQuery(req.query);
+    const events = diagnosticStore.getEvents({ since });
+    res.type("text/plain").send(formatAccountDiagnostic(getSnapshot(), events));
+  });
+
+  router.get("/headless/api/characters/:name/diagnostic", (req, res) => {
+    if (!diagnosticStore) {
+      res.status(503).json({ error: "DIAGNOSTICS_UNAVAILABLE" });
+      return;
+    }
+
+    try {
+      const since = diagnosticSinceFromQuery(req.query);
+      const events = diagnosticStore.getEvents({
+        character: req.params.name,
+        since,
+      });
+      res
+        .type("text/plain")
+        .send(
+          formatCharacterDiagnostic(req.params.name, getSnapshot(), events),
+        );
+    } catch (error) {
+      res.status(Number(error.statusCode) || 500).json({
+        error: error.code || "DIAGNOSTIC_FAILED",
+        message: error.message,
+      });
+    }
   });
 
   router.post(
@@ -155,6 +202,7 @@ function attachHeadlessDashboard({
 module.exports = {
   attachHeadlessDashboard,
   buildSupervisorSnapshot,
+  diagnosticSinceFromQuery,
   encodeSseEvent,
   isLoopbackAddress,
   publicCharacterState,
