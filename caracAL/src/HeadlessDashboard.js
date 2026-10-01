@@ -73,8 +73,7 @@ function attachHeadlessDashboard({
     });
   });
 
-  const staticDir =
-    publicDir || path.join(__dirname, "..", "dashboard");
+  const staticDir = publicDir || path.join(__dirname, "..", "dashboard");
   router.use("/headless", express.static(staticDir));
 
   function publish(event) {
