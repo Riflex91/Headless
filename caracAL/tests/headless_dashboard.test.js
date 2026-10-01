@@ -40,6 +40,8 @@ test("public character state exposes only dashboard-safe fields", () => {
     last_heartbeat_at: 123456,
     restart_attempts: 2,
     script: "bot/main.js",
+    game: null,
+    movement_trail: [],
   });
 
   const serialized = JSON.stringify(character);
