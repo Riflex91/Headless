@@ -25,12 +25,32 @@ You can use this capability to load fully bundled versions of your code into oth
 
 ### Upgrading from a git installation
 
-If you have installed caracAL from cloning this repository you can upgrade by entering the following commands into a terminal:
+If you cloned this Headless repository before the caracAL files were moved into the `caracAL/` subfolder, first pull the update from the repository root. Keep the old root-level `config.js`, `CODE/`, `TYPECODE/`, `localStorage/`, and other ignored runtime data until you have migrated them; the root `.gitignore` keeps those legacy files protected from accidental commits.
+
+On Windows PowerShell, from the repository root:
+
+```powershell
+git pull
+New-Item -ItemType Directory -Force .\caracAL\CODE, .\caracAL\TYPECODE, .\caracAL\localStorage | Out-Null
+if (Test-Path .\config.js) { Move-Item .\config.js .\caracAL\config.js -Force }
+if (Test-Path .\CODE) { Copy-Item .\CODE\* .\caracAL\CODE\ -Recurse -Force }
+if (Test-Path .\TYPECODE) { Copy-Item .\TYPECODE\* .\caracAL\TYPECODE\ -Recurse -Force }
+if (Test-Path .\localStorage) { Copy-Item .\localStorage\* .\caracAL\localStorage\ -Recurse -Force }
+Set-Location .\caracAL
+npm install
+```
+
+After verifying that caracAL starts correctly from the nested directory, you can remove the old root-level copies of `CODE/`, `TYPECODE/`, and `localStorage/`.
+
+On Linux, enter the new project directory after pulling:
 
 ```bash
 git pull
+cd caracAL
 npm install
 ```
+
+If you previously installed the systemd service with `start_on_boot.sh`, run the script again from the new `caracAL/` directory so the service points at the relocated `main.js`.
 
 ### Simpler version
 
@@ -54,10 +74,10 @@ curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.38.0/install.sh | bash
 #install node 14
 #latest(16) does not like socket.io for some reason.
 nvm install 14
-#download caracAL
-git clone https://github.com/numbereself/caracAL.git
-#switch to directory
-cd caracAL
+#download Headless
+git clone https://github.com/Riflex91/Headless.git
+#switch to the caracAL project directory
+cd Headless/caracAL
 #use npm to download dependencies
 npm install
 #if you want caracAL to autostart run
@@ -78,14 +98,12 @@ Run the installer you just downloaded. MAKE SURE THAT YOU ENABLE THE "Add to PAT
 Next hit WINDOWS+R and type "powershell" in the window that opens, and hit enter. You should now be presented with the windows powershell. Copy and paste the following script
 
 ```
-#download caracAL
-wget https://github.com/numbereself/caracAL/archive/refs/heads/main.zip -OutFile caracAL.zip
+#download Headless
+wget https://github.com/Riflex91/Headless/archive/refs/heads/main.zip -OutFile Headless.zip
 #unzip archive
-tar -xf caracAL.zip caracAL-main
-#rename output
-ren "caracAL-main" "caracAL"
-#switch to directory
-cd caracAL
+tar -xf Headless.zip
+#switch to the caracAL project directory
+cd Headless-main\caracAL
 #use npm to download dependencies
 npm install
 #run caracAL
