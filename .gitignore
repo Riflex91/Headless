@@ -1,0 +1,11 @@
+# Legacy pre-/caracAL-layout protection.
+# Keep these root-level local files ignored while migrating an existing clone.
+/config.js
+/caracAL.service
+/node_modules/
+/game_files/
+/localStorage/
+/logs/
+/CODE/*
+/TYPECODE/*
+/TYPECODE.out/*
