@@ -81,6 +81,32 @@ h2 {
   font-size: 0.85rem;
 }
 
+.account-log-actions {
+  display: flex;
+  gap: 0.4rem;
+  margin-top: 0.35rem;
+}
+
+.account-log-actions select,
+.account-log-actions button,
+.diagnostic-range {
+  padding: 0.42rem 0.55rem;
+  border: 1px solid #374665;
+  border-radius: 0.5rem;
+  background: #18223b;
+  color: #dbe5f8;
+}
+
+.diagnostic-range-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  margin-top: 0.55rem;
+  color: #9faac0;
+  font-size: 0.76rem;
+}
+
 main {
   display: grid;
   gap: 1rem;
