@@ -46,10 +46,7 @@ test("diagnostic store associates cross-character events with both characters", 
   assert.equal(store.getEvents({ character: "My_Ranger1" }).length, 1);
   assert.equal(store.getEvents({ character: "My_Ranger2" }).length, 0);
 
-  assert.equal(
-    eventMatchesCharacter(store.getEvents()[0], "My_Ranger1"),
-    true,
-  );
+  assert.equal(eventMatchesCharacter(store.getEvents()[0], "My_Ranger1"), true);
 });
 
 test("diagnostic event store respects time filters", () => {
@@ -114,8 +111,7 @@ test("account diagnostic contains all current characters", () => {
 test("unknown character diagnostic fails explicitly", () => {
   assert.throws(
     () => formatCharacterDiagnostic("Missing", { characters: [] }, []),
-    (error) =>
-      error.code === "CHARACTER_NOT_FOUND" && error.statusCode === 404,
+    (error) => error.code === "CHARACTER_NOT_FOUND" && error.statusCode === 404,
   );
 });
 
@@ -126,8 +122,5 @@ test("CharacterThread does not dump raw process arguments", () => {
   );
 
   assert.doesNotMatch(thread, /starting character thread with arguments/);
-  assert.doesNotMatch(
-    thread,
-    /console\.debug\([^;]*,\s*msg\.arguments\s*\)/s,
-  );
+  assert.doesNotMatch(thread, /console\.debug\([^;]*,\s*msg\.arguments\s*\)/s);
 });
