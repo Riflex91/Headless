@@ -6,6 +6,10 @@ const SENSITIVE_KEY_PATTERN =
 function sanitizeString(value) {
   return String(value)
     .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [REDACTED]")
+    .replace(
+      /\b(session|sess|auth|token|password|secret)\s*[:=]\s*["']?[^\s"',}]+/gi,
+      "$1=[REDACTED]",
+    )
     .replace(/\b\d{4,}-[A-Za-z0-9_-]{12,}\b/g, "[REDACTED]");
 }
 
