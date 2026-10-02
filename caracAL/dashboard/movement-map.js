@@ -45,8 +45,7 @@
       runtimePlan.length > 0 ? runtimePlan : game.planned_path || [];
     const points = source
       .filter(
-        (point) =>
-          finitePoint(point) && (!point.map || point.map === mapName),
+        (point) => finitePoint(point) && (!point.map || point.map === mapName),
       )
       .map((point) => ({
         ...point,
@@ -371,9 +370,7 @@
       const text = document.createElement("span");
       const mode = game.movement_mode || game.movement_state || "IDLE";
       const owner = game.movement_owner ? ` · ${game.movement_owner}` : "";
-      const reason = game.movement_reason
-        ? ` · ${game.movement_reason}`
-        : "";
+      const reason = game.movement_reason ? ` · ${game.movement_reason}` : "";
       text.textContent = `${character.name} · ${mode}${owner} · ${Math.round(
         game.x ?? 0,
       )}, ${Math.round(game.y ?? 0)}${reason}`;
