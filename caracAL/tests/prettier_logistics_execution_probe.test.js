@@ -4,11 +4,12 @@ const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
 
-test("prints current canonical logistics execution formatting", async () => {
+test("prints canonical Phase 11 execution formatting safely", async () => {
   const prettier = require("prettier");
   const targets = [
     ["Planner", "../src/MerchantLogisticsPlanner.js"],
     ["Coordinator", "../standalones/CharacterCoordinator.js"],
+    ["ExecutorTest", "logistics_claim_executor.test.js"],
     ["PlannerTest", "merchant_logistics_planner.test.js"],
   ];
   const size = 100;
@@ -19,9 +20,10 @@ test("prints current canonical logistics execution formatting", async () => {
     const formatted = await prettier.format(source, { filepath: target });
     const encoded = Buffer.from(formatted, "utf8").toString("base64");
     const total = Math.ceil(encoded.length / size);
+
     for (let index = 0; index < total; index += 1) {
       console.log(
-        "PRETTIER_P11_FINAL:" +
+        "PRETTIER_P11_EXEC:" +
           key +
           ":" +
           index +
