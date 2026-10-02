@@ -152,6 +152,11 @@ async function make_runner(upper, CODE_file, version, is_typescript) {
             role: m.role,
             leader: m.leader,
             peer: m.peer,
+            baselinePairFormed:
+              typeof m.baselinePairFormed === "boolean"
+                ? m.baselinePairFormed
+                : undefined,
+            coordinatedPair: m.coordinatedPair === true,
           })
           .then((result) => {
             sendIpcMessage(process, {

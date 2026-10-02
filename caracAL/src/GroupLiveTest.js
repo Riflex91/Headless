@@ -96,6 +96,12 @@ function groupLiveTestDiagnostics(
       leader: runtime.leader || null,
       peer: runtime.peer || null,
       initial_pair_formed: runtime.preparation?.initialPairFormed === true,
+      observed_initial_pair_formed:
+        runtime.preparation?.observedInitialPairFormed === true,
+      baseline_pair_override_applied:
+        runtime.preparation?.baselinePairOverrideApplied === true,
+      pair_lifecycle_owner:
+        runtime.preparation?.pairLifecycleOwner !== false,
       dissolved_initial_pair:
         runtime.preparation?.dissolvedInitialPair === true,
       existing_party_conflict:

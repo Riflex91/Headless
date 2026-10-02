@@ -12,6 +12,8 @@ export interface GroupLiveTestOptions {
   role: GroupLiveTestRole;
   leader: string;
   peer: string;
+  baselinePairFormed?: boolean;
+  coordinatedPair?: boolean;
   timeoutMs?: number;
   holdMs?: number;
   pollIntervalMs?: number;
@@ -37,6 +39,9 @@ export interface GroupLiveTestResult {
   };
   preparation: {
     initialPairFormed: boolean;
+    observedInitialPairFormed: boolean;
+    baselinePairOverrideApplied: boolean;
+    pairLifecycleOwner: boolean;
     dissolvedInitialPair: boolean;
     existingPartyConflict: boolean;
   };
@@ -116,11 +121,18 @@ export class GroupLiveTestRunner {
     const pollIntervalMs = Math.max(50, options.pollIntervalMs || 150);
     const first = this.deps.character();
     const startMembers = members(this.deps.party());
-    const initialPairFormed = pairFormed(
+    const observedInitialPairFormed = pairFormed(
       this.deps.party(),
       options.leader,
       options.peer,
     );
+    const baselinePairOverrideApplied =
+      typeof options.baselinePairFormed === "boolean";
+    const initialPairFormed = baselinePairOverrideApplied
+      ? options.baselinePairFormed === true
+      : observedInitialPairFormed;
+    const pairLifecycleOwner =
+      options.coordinatedPair !== true || options.role === "leader";
     const allowed = new Set([options.leader, options.peer]);
     const existingPartyConflict = startMembers.some(
       (name) => !allowed.has(name),
@@ -146,6 +158,9 @@ export class GroupLiveTestRunner {
       },
       preparation: {
         initialPairFormed,
+        observedInitialPairFormed,
+        baselinePairOverrideApplied,
+        pairLifecycleOwner,
         dissolvedInitialPair: false,
         existingPartyConflict,
       },
@@ -238,7 +253,7 @@ export class GroupLiveTestRunner {
     this.deps.groupCombat.setConfigOverride(disabledGroup);
 
     try {
-      if (initialPairFormed) {
+      if (initialPairFormed && pairLifecycleOwner) {
         const leave = await this.deps.actions.partyLeave({
           module: "GroupLiveTest",
           why: "CREATE_AUTONOMOUS_PARTY_TEST_CONDITION",
@@ -338,7 +353,10 @@ export class GroupLiveTestRunner {
       this.deps.groupCombat.setConfigOverride(disabledGroup);
 
       if (!initialPairFormed) {
-        if (pairFormed(this.deps.party(), options.leader, options.peer)) {
+        if (
+          pairLifecycleOwner &&
+          pairFormed(this.deps.party(), options.leader, options.peer)
+        ) {
           const leave = await this.deps.actions.partyLeave({
             module: "GroupLiveTest",
             why: "GROUP_LIVE_TEST_CLEANUP",
@@ -349,29 +367,34 @@ export class GroupLiveTestRunner {
             result.outcome = "UNKNOWN";
             result.reason = "GROUP_LIVE_E2E_CLEANUP_UNKNOWN";
           }
-          await this.waitFor(
-            () =>
-              !pairFormed(
-                this.deps.party(),
-                options.leader,
-                options.peer,
-              ),
-            5000,
-            pollIntervalMs,
-          );
         }
-        result.cleanup.initialPartyRestored =
-          !pairFormed(
-            this.deps.party(),
-            options.leader,
-            options.peer,
-          );
-      } else {
-        result.cleanup.initialPartyRestored = pairFormed(
-          this.deps.party(),
-          options.leader,
-          options.peer,
+        const restored = await this.waitFor(
+          () =>
+            !pairFormed(
+              this.deps.party(),
+              options.leader,
+              options.peer,
+            ),
+          5000,
+          pollIntervalMs,
         );
+        result.cleanup.initialPartyRestored =
+          restored &&
+          !pairFormed(this.deps.party(), options.leader, options.peer);
+      } else {
+        const restored = await this.waitFor(
+          () =>
+            pairFormed(
+              this.deps.party(),
+              options.leader,
+              options.peer,
+            ),
+          5000,
+          pollIntervalMs,
+        );
+        result.cleanup.initialPartyRestored =
+          restored &&
+          pairFormed(this.deps.party(), options.leader, options.peer);
       }
 
       this.deps.groupCombat.clearConfigOverride();

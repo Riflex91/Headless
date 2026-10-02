@@ -150,7 +150,29 @@ function selectGroupPair(
   };
 }
 
-async function runCharacter(character, role, leader, peer) {
+function pairInitiallyFormed(snapshot, pair) {
+  const leader = pair?.leader?.name;
+  const follower = pair?.follower?.name;
+  if (!leader || !follower) return false;
+
+  return (snapshot?.characters || []).some((character) => {
+    if (character.connected !== true) return false;
+    const partyMembers = character.group_combat_runtime?.partyMembers;
+    return (
+      Array.isArray(partyMembers) &&
+      partyMembers.includes(leader) &&
+      partyMembers.includes(follower)
+    );
+  });
+}
+
+async function runCharacter(
+  character,
+  role,
+  leader,
+  peer,
+  { baselinePairFormed, coordinatedPair = true } = {},
+) {
   return readJson(
     await fetch(
       baseUrl +
@@ -160,7 +182,13 @@ async function runCharacter(character, role, leader, peer) {
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ role, leader, peer }),
+        body: JSON.stringify({
+          role,
+          leader,
+          peer,
+          baselinePairFormed,
+          coordinatedPair,
+        }),
       },
     ),
   );
@@ -171,13 +199,19 @@ async function runGroupPair(
   {
     runCharacterImpl = runCharacter,
     waitForRunningImpl = waitForGroupTestRunning,
+    baselinePairFormed = false,
   } = {},
 ) {
+  const coordinatedOptions = {
+    baselinePairFormed,
+    coordinatedPair: true,
+  };
   const leaderPromise = runCharacterImpl(
     pair.leader,
     "leader",
     pair.leader.name,
     pair.follower.name,
+    coordinatedOptions,
   );
   leaderPromise.catch(() => {});
 
@@ -188,6 +222,7 @@ async function runGroupPair(
     "follower",
     pair.leader.name,
     pair.follower.name,
+    coordinatedOptions,
   );
 
   return Promise.all([leaderPromise, followerPromise]);
@@ -225,10 +260,15 @@ async function main() {
         "\n",
     );
 
-    const [leaderPayload, followerPayload] = await runGroupPair(pair);
+    const baselinePairFormed = pairInitiallyFormed(dashboard.state, pair);
+    const [leaderPayload, followerPayload] = await runGroupPair(pair, {
+      baselinePairFormed,
+    });
 
     process.stdout.write(
-      "Leader runtime reached RUNNING before follower bootstrap\n",
+      "Leader runtime reached RUNNING before follower bootstrap; shared baseline pair=" +
+        String(baselinePairFormed) +
+        "\n",
     );
 
     const leaderResult = leaderPayload.result;
@@ -276,6 +316,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  pairInitiallyFormed,
   runGroupPair,
   selectGroupPair,
   waitForGroupTestRunning,

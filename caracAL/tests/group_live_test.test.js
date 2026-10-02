@@ -156,3 +156,59 @@ test("group live runner refuses unrelated existing party membership", async () =
   assert.equal(result.outcome, "FAIL");
   assert.equal(result.reason, "GROUP_LIVE_E2E_EXISTING_PARTY_CONFLICT");
 });
+
+
+test("coordinated follower does not mistake leader-created pair for original baseline", async () => {
+  const runner = makeRunner({
+    role: "follower",
+    initialParty: {
+      Leader: { name: "Leader" },
+      Follower: { name: "Follower" },
+    },
+  });
+
+  const result = await runner.run({
+    role: "follower",
+    leader: "Leader",
+    peer: "Follower",
+    baselinePairFormed: false,
+    coordinatedPair: true,
+    holdMs: 1000,
+    pollIntervalMs: 50,
+  });
+
+  assert.equal(result.outcome, "PASS");
+  assert.equal(result.preparation.observedInitialPairFormed, true);
+  assert.equal(result.preparation.initialPairFormed, false);
+  assert.equal(result.preparation.baselinePairOverrideApplied, true);
+  assert.equal(result.preparation.pairLifecycleOwner, false);
+  assert.equal(result.preparation.dissolvedInitialPair, false);
+  assert.equal(result.cleanup.partyLeaveStatus, null);
+  assert.equal(result.cleanup.initialPartyRestored, true);
+});
+
+test("coordinated follower preserves a true shared baseline without owning lifecycle", async () => {
+  const runner = makeRunner({
+    role: "follower",
+    initialParty: {
+      Leader: { name: "Leader" },
+      Follower: { name: "Follower" },
+    },
+  });
+
+  const result = await runner.run({
+    role: "follower",
+    leader: "Leader",
+    peer: "Follower",
+    baselinePairFormed: true,
+    coordinatedPair: true,
+    holdMs: 1000,
+    pollIntervalMs: 50,
+  });
+
+  assert.equal(result.outcome, "PASS");
+  assert.equal(result.preparation.initialPairFormed, true);
+  assert.equal(result.preparation.pairLifecycleOwner, false);
+  assert.equal(result.preparation.dissolvedInitialPair, false);
+  assert.equal(result.cleanup.initialPartyRestored, true);
+});

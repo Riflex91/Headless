@@ -4,6 +4,7 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 
 const {
+  pairInitiallyFormed,
   runGroupPair,
   selectGroupPair,
   waitForGroupTestRunning,
@@ -70,9 +71,11 @@ test("group launcher waits for leader RUNNING before starting follower", async (
   };
 
   const payloads = await runGroupPair(pair, {
-    runCharacterImpl: async (character, role) => {
+    runCharacterImpl: async (character, role, leader, peer, options) => {
       calls.push("run:" + role + ":" + character.name);
-      return { result: { outcome: "PASS", role } };
+      assert.equal(options.coordinatedPair, true);
+      assert.equal(options.baselinePairFormed, false);
+      return { result: { outcome: "PASS", role, leader, peer } };
     },
     waitForRunningImpl: async (characterName) => {
       calls.push("wait:" + characterName);
@@ -148,5 +151,103 @@ test("group launcher stops bootstrap when leader test becomes terminal", async (
         sleepImpl: async () => {},
       }),
     /GROUP_LIVE_TEST_RUNTIME_TIMEOUT/,
+  );
+});
+
+
+test("group launcher captures one shared live pair baseline before bootstrap", () => {
+  const pair = {
+    leader: { name: "Leader" },
+    follower: { name: "Follower" },
+  };
+
+  assert.equal(
+    pairInitiallyFormed(
+      {
+        characters: [
+          {
+            name: "Leader",
+            connected: true,
+            group_combat_runtime: {
+              partyMembers: ["Follower", "Leader"],
+            },
+          },
+          {
+            name: "Follower",
+            connected: true,
+            group_combat_runtime: {
+              partyMembers: ["Follower", "Leader"],
+            },
+          },
+        ],
+      },
+      pair,
+    ),
+    true,
+  );
+
+  assert.equal(
+    pairInitiallyFormed(
+      {
+        characters: [
+          {
+            name: "Leader",
+            connected: false,
+            group_combat_runtime: {
+              partyMembers: ["Follower", "Leader"],
+            },
+          },
+          {
+            name: "Follower",
+            connected: false,
+            group_combat_runtime: {
+              partyMembers: ["Follower", "Leader"],
+            },
+          },
+        ],
+      },
+      pair,
+    ),
+    false,
+  );
+});
+
+test("group launcher gives both members the same shared baseline", async () => {
+  const seen = [];
+  const pair = {
+    leader: { name: "Leader" },
+    follower: { name: "Follower" },
+  };
+
+  await runGroupPair(pair, {
+    baselinePairFormed: true,
+    runCharacterImpl: async (character, role, leader, peer, options) => {
+      seen.push({ character: character.name, role, leader, peer, ...options });
+      return { result: { outcome: "PASS" } };
+    },
+    waitForRunningImpl: async () => {},
+  });
+
+  assert.deepEqual(
+    seen.map(({ character, role, baselinePairFormed, coordinatedPair }) => ({
+      character,
+      role,
+      baselinePairFormed,
+      coordinatedPair,
+    })),
+    [
+      {
+        character: "Leader",
+        role: "leader",
+        baselinePairFormed: true,
+        coordinatedPair: true,
+      },
+      {
+        character: "Follower",
+        role: "follower",
+        baselinePairFormed: true,
+        coordinatedPair: true,
+      },
+    ],
   );
 });
