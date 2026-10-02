@@ -372,6 +372,34 @@ dd {
   gap: 0.45rem;
 }
 
+.collapse-toggle {
+  flex: 0 0 auto;
+  min-width: 2.1rem;
+  padding: 0.35rem 0.55rem;
+  border: 1px solid #374665;
+  border-radius: 0.45rem;
+  background: #18223b;
+  color: #dbe5f8;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.panel.is-collapsed > :not(.panel-heading),
+.character-card.is-collapsed > :not(.character-header) {
+  display: none !important;
+}
+
+.panel.is-collapsed
+  > .panel-heading
+  > :not(:first-child):not(.collapse-toggle) {
+  display: none !important;
+}
+
+.character-card.is-collapsed {
+  align-self: start;
+}
+
 .character-actions button,
 .panel-heading button {
   padding: 0.5rem 0.65rem;

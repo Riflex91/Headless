@@ -3,6 +3,7 @@
 (function initOriginalMapBackground(globalScope) {
   const imagePromises = new Map();
   const tileCanvases = new Map();
+  let renderSequence = 0;
 
   function assetUrl(file) {
     return (
@@ -24,16 +25,26 @@
   function placementBounds(scene, placement) {
     if (!Array.isArray(placement)) return null;
     const tile = scene?.tiles?.[placement[0]];
-    if (!tile) return null;
+    const startX = placement[1];
+    const startY = placement[2];
+    const endX = Number.isFinite(placement[3]) ? placement[3] : startX;
+    const endY = Number.isFinite(placement[4]) ? placement[4] : startY;
+    if (
+      !tile ||
+      !Number.isFinite(startX) ||
+      !Number.isFinite(startY) ||
+      !Number.isFinite(endX) ||
+      !Number.isFinite(endY) ||
+      endX < startX ||
+      endY < startY
+    ) {
+      return null;
+    }
     return {
-      minX: placement[1],
-      minY: placement[2],
-      maxX: Number.isFinite(placement[3])
-        ? placement[3] + tile.width
-        : placement[1] + tile.width,
-      maxY: Number.isFinite(placement[4])
-        ? placement[4] + tile.height
-        : placement[2] + tile.height,
+      minX: startX,
+      minY: startY,
+      maxX: endX + tile.width,
+      maxY: endY + tile.height,
     };
   }
 
@@ -58,7 +69,6 @@
       }
     };
     append(scene?.placements);
-    append(scene?.animations);
     for (const group of scene?.groups || []) append(group);
     return result;
   }
@@ -113,34 +123,56 @@
     if (!tile || !image) return;
 
     const texture = tileCanvas(tile, image);
-    if (!Number.isFinite(placement[3]) || !Number.isFinite(placement[4])) {
-      context.drawImage(texture, placement[1], placement[2]);
+    const startX = placement[1];
+    const startY = placement[2];
+    const endX = Number.isFinite(placement[3]) ? placement[3] : startX;
+    const endY = Number.isFinite(placement[4]) ? placement[4] : startY;
+    if (
+      !Number.isFinite(startX) ||
+      !Number.isFinite(startY) ||
+      !Number.isFinite(endX) ||
+      !Number.isFinite(endY) ||
+      endX < startX ||
+      endY < startY
+    ) {
+      return;
+    }
+    if (endX === startX && endY === startY) {
+      context.drawImage(texture, startX, startY);
       return;
     }
 
     context.save();
-    context.translate(placement[1], placement[2]);
+    context.translate(startX, startY);
     context.fillStyle = context.createPattern(texture, "repeat");
     context.fillRect(
       0,
       0,
-      placement[3] - placement[1] + tile.width,
-      placement[4] - placement[2] + tile.height,
+      endX - startX + tile.width,
+      endY - startY + tile.height,
     );
     context.restore();
   }
 
   function resizeCanvas(canvas) {
     const rect = canvas.getBoundingClientRect();
-    const ratio =
+    if (rect.width <= 0 || rect.height <= 0) return null;
+
+    const pixelRatio =
       typeof window !== "undefined" && Number.isFinite(window.devicePixelRatio)
         ? Math.max(1, window.devicePixelRatio)
         : 1;
-    const width = Math.max(1, Math.round(rect.width * ratio));
-    const height = Math.max(1, Math.round(rect.height * ratio));
-    if (canvas.width !== width) canvas.width = width;
-    if (canvas.height !== height) canvas.height = height;
-    return { width, height };
+    const pixelWidth = Math.max(1, Math.round(rect.width * pixelRatio));
+    const pixelHeight = Math.max(1, Math.round(rect.height * pixelRatio));
+    if (canvas.width !== pixelWidth) canvas.width = pixelWidth;
+    if (canvas.height !== pixelHeight) canvas.height = pixelHeight;
+    return {
+      cssWidth: rect.width,
+      cssHeight: rect.height,
+      pixelRatio,
+      pixelWidth,
+      pixelHeight,
+    };
   }
 
   async function renderOriginalMapBackground({ canvas, scene, bounds }) {
@@ -148,11 +180,14 @@
 
     const context = canvas.getContext("2d");
     const size = resizeCanvas(canvas);
-    context.setTransform(1, 0, 0, 1, 0, 0);
-    context.clearRect(0, 0, size.width, size.height);
-    context.fillStyle = "#080b0d";
-    context.fillRect(0, 0, size.width, size.height);
-    if (!scene?.tiles?.length) return false;
+    if (!context || !size) return false;
+
+    const renderId = ++renderSequence;
+    if (!scene?.tiles?.length) {
+      context.setTransform(1, 0, 0, 1, 0, 0);
+      context.clearRect(0, 0, size.pixelWidth, size.pixelHeight);
+      return false;
+    }
 
     const images = new Map();
     await Promise.all(
@@ -164,13 +199,20 @@
         }
       }),
     );
+    if (renderId !== renderSequence) return false;
+
+    context.setTransform(1, 0, 0, 1, 0, 0);
+    context.clearRect(0, 0, size.pixelWidth, size.pixelHeight);
+    context.setTransform(size.pixelRatio, 0, 0, size.pixelRatio, 0, 0);
+    context.fillStyle = "#080b0d";
+    context.fillRect(0, 0, size.cssWidth, size.cssHeight);
 
     const scale = Math.min(
-      size.width / bounds.width,
-      size.height / bounds.height,
+      size.cssWidth / bounds.width,
+      size.cssHeight / bounds.height,
     );
-    const offsetX = (size.width - bounds.width * scale) / 2;
-    const offsetY = (size.height - bounds.height * scale) / 2;
+    const offsetX = (size.cssWidth - bounds.width * scale) / 2;
+    const offsetY = (size.cssHeight - bounds.height * scale) / 2;
 
     context.save();
     context.imageSmoothingEnabled = false;

@@ -16,6 +16,7 @@ const {
 const {
   collectSceneAssetFiles,
   placementIntersectsBounds,
+  scenePlacements,
 } = require("../dashboard/map-background");
 const {
   publicMapScene,
@@ -307,4 +308,34 @@ test("map telemetry projects original tiles, static NPCs and nearby live monster
   assert.equal(entities.length, 1);
   assert.equal(entities[0].kind, "monster");
   assert.equal(entities[0].name, "Green Goo");
+});
+
+test("dynamic map animations are excluded from the static dashboard background", () => {
+  const scene = {
+    tiles: [{ file: "/tiles.png", width: 32, height: 32 }],
+    placements: [[0, 10, 20]],
+    animations: [[0, 30, 40, 300, 40, 100]],
+    groups: [[[0, 50, 60]]],
+  };
+  const bounds = { minX: 0, minY: 0, width: 400, height: 200 };
+
+  assert.deepEqual(scenePlacements(scene, bounds), [
+    [0, 10, 20],
+    [0, 50, 60],
+  ]);
+});
+
+test("invalid reversed map repeat ranges are ignored", () => {
+  const scene = {
+    tiles: [{ file: "/tiles.png", width: 32, height: 32 }],
+  };
+  assert.equal(
+    placementIntersectsBounds(scene, [0, 100, 100, 50, 100], {
+      minX: 0,
+      minY: 0,
+      width: 200,
+      height: 200,
+    }),
+    false,
+  );
 });

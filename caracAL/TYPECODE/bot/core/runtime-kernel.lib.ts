@@ -13,6 +13,11 @@ import {
 import { GameAdapter } from "./game-adapter.lib";
 import { CombatController, CombatControllerEvent } from "./combat-controller.lib";
 import {
+  createClassSkillController,
+  ClassSkillControllerEvent,
+} from "./class-skill-factory.lib";
+import type { ClassSkillController } from "./class-skill-controller.lib";
+import {
   CombatLiveTestOptions,
   CombatLiveTestResult,
   CombatLiveTestRunner,
@@ -27,6 +32,8 @@ import {
   MovementLiveTestRunner,
 } from "./movement-live-test.lib";
 
+const CLASS_SKILL_JOB_ID = "class-skill-loop";
+const CLASS_SKILL_INTERVAL_MS = 250;
 const COMBAT_JOB_ID = "combat-loop";
 const COMBAT_INTERVAL_MS = 250;
 const MOVEMENT_SETTLEMENT_JOB_ID = "movement-settlement";
@@ -76,6 +83,7 @@ export class BotRuntimeKernel {
   readonly actions: ActionBoundary;
   readonly movement: MovementController;
   readonly combat: CombatController;
+  readonly classSkills: ClassSkillController | null;
 
   private started = false;
   private stopping = false;
@@ -132,6 +140,27 @@ export class BotRuntimeKernel {
       config: () => runtimeConfig?.config || {},
       onEvent: (event) => this.handleCombatEvent(event),
     });
+    this.classSkills = createClassSkillController(
+      this.game.character().ctype,
+      this.game,
+      this.actions,
+      this.combat,
+      {
+        config: () => runtimeConfig?.config || {},
+        onEvent: (event) => this.handleClassSkillEvent(event),
+      },
+    );
+
+    if (this.classSkills) {
+      this.scheduler.register({
+        id: CLASS_SKILL_JOB_ID,
+        intervalMs: CLASS_SKILL_INTERVAL_MS,
+        priority: 60,
+        tick: async () => {
+          await this.classSkills?.tick();
+        },
+      });
+    }
 
     this.scheduler.register({
       id: COMBAT_JOB_ID,
@@ -173,6 +202,7 @@ export class BotRuntimeKernel {
             actionBoundaryMutations: this.actions.capabilities(),
             movement: this.movement.status(),
             combat: this.combat.status(),
+            classSkills: this.classSkills?.status() || null,
             recentActions: this.actionLedger.list(20),
           },
         });
@@ -254,6 +284,7 @@ export class BotRuntimeKernel {
       schedulerJobs: this.scheduler.list(),
       movement: this.movement.status(),
       combat: this.combat.status(),
+      classSkills: this.classSkills?.status() || null,
       recentActions: this.actionLedger.list(20),
       ...runtimeIdentity(),
     };
@@ -398,6 +429,22 @@ export class BotRuntimeKernel {
     } finally {
       this.combatLiveTestRunning = false;
     }
+  }
+
+  private handleClassSkillEvent(event: ClassSkillControllerEvent): void {
+    this.eventBus.emit({
+      module: event.module,
+      type: event.type,
+      why: event.reason,
+      ...(event.actionId && { actionId: event.actionId }),
+      data: {
+        className: event.className,
+        skill: event.skill || null,
+        targetId: event.targetId || null,
+        actionStatus: event.actionStatus || null,
+        classSkills: event.status,
+      },
+    });
   }
 
   private handleCombatEvent(event: CombatControllerEvent): void {

@@ -75,6 +75,7 @@ test("public character state exposes only dashboard-safe fields", () => {
     movement_live_test: null,
     combat_live_test: null,
     combat_runtime: null,
+    class_skill_runtime: null,
     game: null,
     movement_trail: [],
   });
@@ -218,12 +219,34 @@ test("dashboard static assets are present", () => {
   assert.match(index, /character-combat/);
   assert.match(index, /character-combat-target/);
   assert.match(index, /character-combat-cooldowns/);
+  assert.match(index, /character-class-skills/);
+  assert.match(index, /character-class-skill-action/);
   assert.match(index, /data-movement-live-test/);
   assert.match(index, /data-combat-live-test/);
   assert.match(index, /id="movement-map-background"/);
   assert.match(index, /id="show-nearby-monsters"/);
   assert.match(index, /id="show-nearby-npcs"/);
   assert.match(index, /map-background\.js/);
+});
+
+test("dashboard panels and character cards support persistent collapsing", () => {
+  const dashboardApp = fs.readFileSync(
+    path.join(__dirname, "..", "dashboard", "app.js"),
+    "utf8",
+  );
+  const styles = fs.readFileSync(
+    path.join(__dirname, "..", "dashboard", "styles.css"),
+    "utf8",
+  );
+
+  assert.match(dashboardApp, /initializeDashboardCollapsibles/);
+  assert.match(dashboardApp, /initializeCollapsible/);
+  assert.match(dashboardApp, /localStorage/);
+  assert.match(dashboardApp, /movement-panel/);
+  assert.match(styles, /\.collapse-toggle/);
+  assert.match(styles, /\.panel\.is-collapsed/);
+  assert.match(styles, /\.character-card\.is-collapsed/);
+  assert.doesNotMatch(dashboardApp, /â|Â/);
 });
 
 test("dashboard visible character views include connected characters only", () => {
@@ -323,6 +346,9 @@ test("dashboard module and coordinator remain syntactically valid", () => {
   assert.match(runtimeKernel, /movement:\s*this\.movement\.status\(\)/);
   assert.match(runtimeKernel, /combat:\s*this\.combat\.status\(\)/);
   assert.match(coordinator, /combat_runtime/);
+  assert.match(coordinator, /class_skill_runtime/);
+  assert.match(runtimeKernel, /classSkills/);
+  assert.match(runtimeKernel, /CLASS_SKILL_JOB_ID/);
   assert.match(runtimeKernel, /runMovementLiveTest/);
   assert.match(runtimeKernel, /runCombatLiveTest/);
   assert.match(characterThread, /movement_live_test/);
