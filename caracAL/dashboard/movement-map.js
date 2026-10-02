@@ -4,19 +4,17 @@
   const SVG_NS = "http://www.w3.org/2000/svg";
 
   function finitePoint(point) {
-    return (
-      point &&
-      Number.isFinite(point.x) &&
-      Number.isFinite(point.y)
-    );
+    return point && Number.isFinite(point.x) && Number.isFinite(point.y);
   }
 
   function availableMaps(characters) {
-    return [...new Set(
-      (characters || [])
-        .map((character) => character?.game?.map)
-        .filter(Boolean),
-    )].sort();
+    return [
+      ...new Set(
+        (characters || [])
+          .map((character) => character?.game?.map)
+          .filter(Boolean),
+      ),
+    ].sort();
   }
 
   function filterTrail(character, mapName, since) {
@@ -254,7 +252,10 @@
     }
     svg.append(gridGroup);
 
-    const markerLength = Math.max(28, Math.min(bounds.width, bounds.height) * 0.05);
+    const markerLength = Math.max(
+      28,
+      Math.min(bounds.width, bounds.height) * 0.05,
+    );
 
     geometries.forEach((geometry, index) => {
       const character = geometry.character;
@@ -309,9 +310,9 @@
       dot.className = `movement-legend-dot ${className}`;
       const text = document.createElement("span");
       const game = character.game || {};
-      text.textContent = `${character.name} · ${game.movement_state || "IDLE"} · ${Math.round(
-        game.x ?? 0,
-      )}, ${Math.round(game.y ?? 0)}`;
+      text.textContent = `${character.name} · ${
+        game.movement_state || "IDLE"
+      } · ${Math.round(game.x ?? 0)}, ${Math.round(game.y ?? 0)}`;
       row.append(dot, text);
       legend.append(row);
     });
