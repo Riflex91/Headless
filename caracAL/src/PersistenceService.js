@@ -205,6 +205,32 @@ class PersistenceService {
     return Number(row?.version || 0);
   }
 
+  async health() {
+    this.requireOpen();
+    const [schemaVersion, journalMode, foreignKeys, busyTimeout] =
+      await Promise.all([
+        this.schemaVersion(),
+        this.connection.get("PRAGMA journal_mode"),
+        this.connection.get("PRAGMA foreign_keys"),
+        this.connection.get("PRAGMA busy_timeout"),
+      ]);
+
+    return {
+      open: true,
+      database_path: this.databasePath,
+      schema_version: schemaVersion,
+      latest_schema_version: LATEST_SCHEMA_VERSION,
+      journal_mode:
+        journalMode?.journal_mode || journalMode?.journalMode || null,
+      foreign_keys: Number(
+        foreignKeys?.foreign_keys ?? foreignKeys?.foreignKeys ?? 0,
+      ),
+      busy_timeout_ms: Number(
+        busyTimeout?.timeout ?? busyTimeout?.busy_timeout ?? 0,
+      ),
+    };
+  }
+
   async setState(namespace, key, value) {
     return this.enqueueWrite(async (db) => {
       const updatedAt = this.now();
