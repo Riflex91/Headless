@@ -67,10 +67,24 @@ test("supervisor snapshot counts active lifecycle states", () => {
       My_Merchant: { lifecycle_state: "PAUSED" },
     },
     { maxOnlineCharacters: 4 },
+    {
+      active: true,
+      reason: "TEST_STOP",
+      activated_at: 1234,
+      cleared_at: null,
+      revision: 7,
+    },
   );
 
   assert.equal(snapshot.max_online_characters, 4);
   assert.equal(snapshot.active_characters, 3);
+  assert.deepEqual(snapshot.emergency_stop, {
+    active: true,
+    reason: "TEST_STOP",
+    activated_at: 1234,
+    cleared_at: null,
+    revision: 7,
+  });
   assert.deepEqual(
     snapshot.characters.map((character) => character.name),
     ["My_Merchant", "My_Ranger1", "My_Ranger2", "My_Ranger3"],
@@ -133,5 +147,7 @@ test("dashboard module and coordinator remain syntactically valid", () => {
   assert.doesNotThrow(() => new Function(dashboard));
   assert.doesNotThrow(() => new Function(coordinator));
   assert.match(coordinator, /attachHeadlessDashboard/);
+  assert.match(coordinator, /control_emergency_stop/);
+  assert.match(coordinator, /emergency_stop_applied/);
   assert.match(coordinator, /dashboard\?\.publish/);
 });
