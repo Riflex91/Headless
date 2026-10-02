@@ -63,6 +63,7 @@ test("runtime feature code cannot call Adventure Land mutations directly", () =>
     "compound",
     "exchange",
     "craft",
+    "wishlist",
     "party_invite",
     "party_accept",
     "party_leave",

@@ -7,6 +7,7 @@ import type {
   InventorySlotSnapshot,
   MapSnapshot,
   SkillSnapshot,
+  TradeSlotsSnapshot,
 } from "./game-adapter.lib";
 
 interface ActionIntentInput {
@@ -54,6 +55,7 @@ interface GameReadAdapter {
   entity(id: string): EntitySnapshot | null;
   inventory(): InventorySlotSnapshot[];
   equipment(): EquipmentSnapshot;
+  tradeSlots(): TradeSlotsSnapshot;
   bank(): BankSnapshot;
   skills(characterOnly?: boolean): SkillSnapshot[];
   map(): MapSnapshot;
@@ -146,6 +148,19 @@ export interface ExchangeRequest extends BoundaryRequest {
   itemSlot: number;
 }
 
+export interface CraftRequest extends BoundaryRequest {
+  recipe: string;
+  itemSlots: number[];
+}
+
+export interface WishlistRequest extends BoundaryRequest {
+  slot: string | number;
+  itemName: string;
+  price: number;
+  level?: number;
+  quantity?: number;
+}
+
 export interface MutationDriver {
   move(x: number, y: number): unknown;
   resolveEntity(id: string): unknown;
@@ -189,6 +204,14 @@ export interface MutationDriver {
     offeringSlot?: number | null,
   ): Promise<unknown> | unknown;
   exchange(itemSlot: number): Promise<unknown> | unknown;
+  craft(itemSlots: number[]): Promise<unknown> | unknown;
+  wishlist(
+    slot: string | number,
+    itemName: string,
+    price: number,
+    level?: number,
+    quantity?: number,
+  ): Promise<unknown> | unknown;
 }
 
 function runtimeFunction(name: string): (...args: unknown[]) => unknown {
@@ -269,6 +292,9 @@ export function createRuntimeMutationDriver(): MutationDriver {
         offeringSlot === undefined ? null : offeringSlot,
       ),
     exchange: (itemSlot) => runtimeFunction("exchange")(itemSlot),
+    craft: (itemSlots) => runtimeFunction("craft")(...itemSlots),
+    wishlist: (slot, itemName, price, level, quantity) =>
+      runtimeFunction("wishlist")(slot, itemName, price, level, quantity),
   };
 }
 
@@ -328,6 +354,19 @@ function gameItemDefinition(
 ): Record<string, unknown> {
   if (!name) return {};
   return objectRecord(objectRecord(gameData.items)[name]);
+}
+
+function normalizeTradeSlot(slot: string | number): string | null {
+  if (typeof slot === "number") {
+    return Number.isInteger(slot) && slot >= 1 && slot <= 30
+      ? `trade${slot}`
+      : null;
+  }
+
+  const normalized = slot.trim();
+  return /^trade(?:[1-9]|[12]\\d|30)$/.test(normalized)
+    ? normalized
+    : null;
 }
 
 function itemLocked(item: Record<string, unknown> | null): boolean {
@@ -481,6 +520,8 @@ export const ACTION_BOUNDARY_MUTATION_CAPABILITIES = [
   "UPGRADE",
   "COMPOUND",
   "EXCHANGE",
+  "CRAFT",
+  "WISHLIST",
 ] as const;
 
 export class ActionBoundary {
@@ -2310,6 +2351,316 @@ export class ActionBoundary {
             this.game.inventory(),
             request.itemSlot,
           ),
+        },
+      });
+    }
+  }
+
+
+  async craft(request: CraftRequest): Promise<ActionRecord> {
+    const recipeName = request.recipe?.trim();
+    const beforeInventory = this.game.inventory();
+    const beforeCharacter = this.game.character();
+    const gameData = this.game.gameData();
+    const recipe = recipeName
+      ? objectRecord(objectRecord(gameData.craft)[recipeName])
+      : {};
+    const requirements = Array.isArray(recipe.items) ? recipe.items : [];
+    const cost =
+      typeof recipe.cost === "number" && Number.isFinite(recipe.cost)
+        ? recipe.cost
+        : null;
+    const transaction = this.ledger.create({
+      module: request.module,
+      action: "CRAFT",
+      why: request.why,
+      correlationId: request.correlationId,
+      expectedCost: {
+        gold: cost,
+        ingredients: requirements,
+      },
+      expectedEffect: {
+        recipe: recipeName || null,
+        itemSlots: [...request.itemSlots],
+      },
+      before: {
+        gold: beforeCharacter.gold,
+        items: request.itemSlots.map((slot) =>
+          relevantInventoryState(beforeInventory, slot),
+        ),
+      },
+    });
+
+    if (transaction.status === "BLOCKED") return transaction;
+    if (!recipeName) {
+      return this.ledger.block(transaction.id, "CRAFT_RECIPE_INVALID");
+    }
+    if (!requirements.length) {
+      return this.ledger.block(transaction.id, "CRAFT_RECIPE_UNKNOWN");
+    }
+    if (
+      !Array.isArray(request.itemSlots) ||
+      request.itemSlots.length < 1 ||
+      request.itemSlots.length > 9 ||
+      request.itemSlots.some((slot) => !inventorySlotValid(slot))
+    ) {
+      return this.ledger.block(transaction.id, "CRAFT_SLOTS_INVALID");
+    }
+    if (!distinctSlots(request.itemSlots)) {
+      return this.ledger.block(transaction.id, "CRAFT_SLOTS_NOT_DISTINCT");
+    }
+    if (request.itemSlots.length !== requirements.length) {
+      return this.ledger.block(
+        transaction.id,
+        "CRAFT_INGREDIENT_COUNT_MISMATCH",
+      );
+    }
+    if (
+      cost !== null &&
+      beforeCharacter.gold !== null &&
+      beforeCharacter.gold < cost
+    ) {
+      return this.ledger.block(transaction.id, "INSUFFICIENT_GOLD");
+    }
+
+    for (let index = 0; index < requirements.length; index += 1) {
+      const rawRequirement = requirements[index];
+      if (!Array.isArray(rawRequirement) || rawRequirement.length < 2) {
+        return this.ledger.block(
+          transaction.id,
+          "CRAFT_RECIPE_REQUIREMENT_INVALID",
+        );
+      }
+
+      const requiredQuantity = Number(rawRequirement[0]);
+      const requiredName =
+        typeof rawRequirement[1] === "string" ? rawRequirement[1] : null;
+      const requiredLevel =
+        rawRequirement.length >= 3 ? Number(rawRequirement[2]) : null;
+      if (
+        !Number.isInteger(requiredQuantity) ||
+        requiredQuantity <= 0 ||
+        !requiredName ||
+        (requiredLevel !== null &&
+          (!Number.isInteger(requiredLevel) || requiredLevel < 0))
+      ) {
+        return this.ledger.block(
+          transaction.id,
+          "CRAFT_RECIPE_REQUIREMENT_INVALID",
+        );
+      }
+
+      const ingredient = inventoryItem(
+        beforeInventory,
+        request.itemSlots[index],
+      );
+      if (!ingredient) {
+        return this.ledger.block(transaction.id, "CRAFT_INGREDIENT_MISSING");
+      }
+      if (itemLocked(ingredient)) {
+        return this.ledger.block(transaction.id, "ITEM_LOCKED");
+      }
+      if (
+        itemName(ingredient) !== requiredName ||
+        itemQuantity(ingredient) < requiredQuantity ||
+        (requiredLevel !== null && itemLevel(ingredient) !== requiredLevel)
+      ) {
+        return this.ledger.block(
+          transaction.id,
+          "CRAFT_INGREDIENT_MISMATCH",
+        );
+      }
+    }
+
+    const beforeOutputQuantity = totalItemQuantity(
+      beforeInventory,
+      recipeName,
+    );
+    this.ledger.dispatch(transaction.id, {
+      mutation: "craft",
+      recipe: recipeName,
+      itemSlots: [...request.itemSlots],
+    });
+
+    try {
+      const result = await this.driver.craft([...request.itemSlots]);
+      const response = objectRecord(result);
+      const afterInventory = this.game.inventory();
+      const afterCharacter = this.game.character();
+      const afterOutputQuantity = totalItemQuantity(
+        afterInventory,
+        recipeName,
+      );
+      const ingredientStateChanged = request.itemSlots.some(
+        (slot, index) => {
+          const beforeItem = inventoryItem(beforeInventory, slot);
+          const afterItem = inventoryItem(afterInventory, slot);
+          return (
+            itemIdentity(afterItem) !== itemIdentity(beforeItem) ||
+            itemQuantity(afterItem) !== itemQuantity(beforeItem)
+          );
+        },
+      );
+      const outputIncreased = afterOutputQuantity > beforeOutputQuantity;
+      const structuredSuccess =
+        response.success === true &&
+        (response.response === "craft" ||
+          typeof response.name === "string");
+
+      if (
+        response.failed === true ||
+        (typeof response.reason === "string" && response.reason.length > 0)
+      ) {
+        return this.ledger.reject(transaction.id, {
+          why: "CRAFT_API_REJECTED",
+          after: {
+            gold: afterCharacter.gold,
+            outputQuantity: afterOutputQuantity,
+          },
+          evidence: { result: safeResultEvidence(result) },
+        });
+      }
+      if (structuredSuccess || outputIncreased || ingredientStateChanged) {
+        return this.ledger.confirm(transaction.id, {
+          why: structuredSuccess
+            ? "CRAFT_RESULT_CONFIRMED"
+            : "CRAFT_STATE_CONFIRMED",
+          after: {
+            gold: afterCharacter.gold,
+            outputQuantity: afterOutputQuantity,
+            items: request.itemSlots.map((slot) =>
+              relevantInventoryState(afterInventory, slot),
+            ),
+          },
+          evidence: {
+            structuredSuccess,
+            outputIncreased,
+            ingredientStateChanged,
+            result: safeResultEvidence(result),
+          },
+        });
+      }
+
+      return this.ledger.unknown(transaction.id, {
+        why: "CRAFT_OUTCOME_UNVERIFIED",
+        after: {
+          gold: afterCharacter.gold,
+          outputQuantity: afterOutputQuantity,
+        },
+        evidence: { result: safeResultEvidence(result) },
+      });
+    } catch (error) {
+      return this.ledger.unknown(transaction.id, {
+        why: "CRAFT_OUTCOME_UNCERTAIN",
+        error: errorMessage(error),
+        after: {
+          gold: this.game.character().gold,
+          outputQuantity: totalItemQuantity(
+            this.game.inventory(),
+            recipeName,
+          ),
+        },
+      });
+    }
+  }
+
+  wishlist(request: WishlistRequest): ActionRecord {
+    const slot = normalizeTradeSlot(request.slot);
+    const itemNameValue = request.itemName?.trim();
+    const quantity = positiveInteger(request.quantity);
+    const level =
+      request.level === undefined ? 0 : Number(request.level);
+    const gameData = this.game.gameData();
+    const definition = itemNameValue
+      ? gameItemDefinition(gameData, itemNameValue)
+      : {};
+    const beforeTradeSlots = this.game.tradeSlots();
+    const transaction = this.ledger.create({
+      module: request.module,
+      action: "WISHLIST",
+      why: request.why,
+      correlationId: request.correlationId,
+      expectedEffect: {
+        slot,
+        itemName: itemNameValue || null,
+        price: request.price,
+        level,
+        quantity,
+      },
+      before: {
+        tradeSlot: slot ? beforeTradeSlots[slot] || null : null,
+      },
+    });
+
+    if (transaction.status === "BLOCKED") return transaction;
+    if (!slot) {
+      return this.ledger.block(transaction.id, "TRADE_SLOT_INVALID");
+    }
+    if (!itemNameValue || Object.keys(definition).length === 0) {
+      return this.ledger.block(transaction.id, "WISHLIST_ITEM_INVALID");
+    }
+    if (!Number.isInteger(request.price) || request.price <= 0) {
+      return this.ledger.block(transaction.id, "WISHLIST_PRICE_INVALID");
+    }
+    if (quantity === null) {
+      return this.ledger.block(transaction.id, "QUANTITY_INVALID");
+    }
+    if (!Number.isInteger(level) || level < 0) {
+      return this.ledger.block(transaction.id, "ITEM_LEVEL_INVALID");
+    }
+
+    this.ledger.dispatch(transaction.id, {
+      mutation: "wishlist",
+      slot,
+      itemName: itemNameValue,
+      price: request.price,
+      level,
+      quantity,
+    });
+
+    try {
+      const result = this.driver.wishlist(
+        request.slot,
+        itemNameValue,
+        request.price,
+        request.level,
+        quantity,
+      );
+      const afterTradeSlots = this.game.tradeSlots();
+      const after = afterTradeSlots[slot] || null;
+      const matched =
+        !!after &&
+        after.b === true &&
+        itemName(after) === itemNameValue &&
+        Number(after.price) === request.price &&
+        itemQuantity(after) === quantity &&
+        itemLevel(after) === level;
+
+      if (explicitFailure(result)) {
+        return this.ledger.reject(transaction.id, {
+          why: "WISHLIST_API_REJECTED",
+          after: { tradeSlot: after },
+          evidence: { result: safeResultEvidence(result) },
+        });
+      }
+      if (matched) {
+        return this.ledger.confirm(transaction.id, {
+          why: "WISHLIST_STATE_CONFIRMED",
+          after: { tradeSlot: after },
+          evidence: {
+            matched,
+            result: safeResultEvidence(result),
+          },
+        });
+      }
+
+      return this.ledger.get(transaction.id)!;
+    } catch (error) {
+      return this.ledger.unknown(transaction.id, {
+        why: "WISHLIST_OUTCOME_UNCERTAIN",
+        error: errorMessage(error),
+        after: {
+          tradeSlot: this.game.tradeSlots()[slot] || null,
         },
       });
     }
