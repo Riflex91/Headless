@@ -127,6 +127,7 @@ test("runtime kernel emits periodic health without gameplay work", () => {
   assert.match(kernel, /recentActions/);
   assert.match(kernel, /schedulerJobs/);
   assert.match(kernel, /gameAdapterReads/);
+  assert.match(kernel, /actionBoundaryMutations/);
 });
 
 test("CharacterThread exposes supervisor-assigned revisions", () => {
