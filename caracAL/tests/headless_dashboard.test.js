@@ -112,6 +112,7 @@ test("dashboard static assets are present", () => {
   for (const file of [
     "index.html",
     "app.js",
+    "inventory-equipment.js",
     "movement-map.js",
     "styles.css",
   ]) {
