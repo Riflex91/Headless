@@ -11,9 +11,7 @@ const {
   updateCharacterLiveState,
 } = require("../src/LiveState");
 
-test(
-  "stat beat exposes safe live character, inventory and equipment state",
-  () => {
+test("stat beat exposes safe live character, inventory and equipment state", () => {
   const game = {
     character: {
       name: "My_Ranger1",
@@ -92,10 +90,9 @@ test(
     locked: true,
   });
   assert.equal(JSON.stringify(beat).includes("must-not-leak"), false);
-    assert.equal(beat.target.mtype, "goo");
-    assert.equal(beat.target.x, 130);
-  },
-);
+  assert.equal(beat.target.mtype, "goo");
+  assert.equal(beat.target.x, 130);
+});
 
 test("public item projection excludes unknown runtime fields", () => {
   assert.deepEqual(
@@ -117,10 +114,7 @@ test("public item projection excludes unknown runtime fields", () => {
 
 test("movement heading is derived from actual displacement", () => {
   assert.equal(Math.round(deriveHeading({ x: 0, y: 0 }, { x: 10, y: 0 })), 0);
-  assert.equal(
-    Math.round(deriveHeading({ x: 0, y: 0 }, { x: 0, y: 10 })),
-    90,
-  );
+  assert.equal(Math.round(deriveHeading({ x: 0, y: 0 }, { x: 0, y: 10 })), 90);
   assert.equal(
     Math.round(deriveHeading({ x: 0, y: 0 }, { x: -10, y: 0 })),
     180,
