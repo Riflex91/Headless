@@ -77,6 +77,9 @@ const {
 const { PersistenceService } = require("../src/PersistenceService");
 const { CharacterConfigService } = require("../src/CharacterConfigService");
 const {
+  MerchantLogisticsPlanner,
+} = require("../src/MerchantLogisticsPlanner");
+const {
   beginSnapshotPersist,
   buildCharacterProfile,
   completeSnapshotPersist,
@@ -205,6 +208,11 @@ function migrate_old_storage(path, localStorage) {
     game_version: version,
   });
   const character_config_service = new CharacterConfigService({ persistence });
+  const merchant_logistics_planner = new MerchantLogisticsPlanner();
+  let merchant_logistics_board = merchant_logistics_planner.plan(
+    character_manage,
+  );
+  let merchant_logistics_signature = null;
   const diagnostic_store = new DiagnosticEventStore({ maxEvents: 20000 });
   const emergency_stop = new EmergencyStopState();
   const structured_logger = new StructuredLogger({
@@ -279,6 +287,7 @@ function migrate_old_storage(path, localStorage) {
         getEmergencyStopState: () => emergency_stop.snapshot(),
         getRevisionSummary: revision_summary,
         getPersistenceHealth: () => persistence.health(),
+        getMerchantLogisticsState: () => merchant_logistics_board,
         getMapScene: (mapName) => dashboard_map_scenes.get(mapName) || null,
         diagnosticStore: diagnostic_store,
         incidentRecorder: incident_recorder,
@@ -316,6 +325,31 @@ function migrate_old_storage(path, localStorage) {
   } catch (e) {
     console.error(`failed to start web services.`, e);
     console.error(`no web services will be available`);
+  }
+
+  function refresh_merchant_logistics(reason = "STATE_CHANGED") {
+    const board = merchant_logistics_planner.plan(character_manage);
+    const comparable = {
+      merchantIndependent: board.merchantIndependent,
+      merchants: board.merchants,
+      claims: board.claims,
+      suppressed: board.suppressed,
+      summary: board.summary,
+    };
+    const signature = JSON.stringify(comparable);
+    const changed = signature !== merchant_logistics_signature;
+    merchant_logistics_signature = signature;
+    merchant_logistics_board = board;
+
+    if (changed) {
+      emit_supervisor_event("MERCHANT_LOGISTICS_BOARD_UPDATED", null, {
+        why: reason,
+        summary: board.summary,
+        merchant_independent: board.merchantIndependent,
+      });
+      dashboard?.publishSnapshot();
+    }
+    return board;
   }
 
   function safe_send(target, data) {
@@ -534,6 +568,7 @@ function migrate_old_storage(path, localStorage) {
     ) {
       char_block.inventory_intelligence_runtime =
         normalized.data.inventoryIntelligence;
+      refresh_merchant_logistics("INVENTORY_INTELLIGENCE_UPDATED");
     }
 
     if (
@@ -787,6 +822,7 @@ function migrate_old_storage(path, localStorage) {
       char_name,
     );
     persist_character_runtime_state(char_name, "initialize");
+    refresh_merchant_logistics("CHARACTER_INITIALIZED");
     return char_block;
   }
 
@@ -967,6 +1003,7 @@ function migrate_old_storage(path, localStorage) {
       });
     }
 
+    refresh_merchant_logistics("CONFIG_UPDATED");
     dashboard?.publishSnapshot();
     return {
       character: char_name,
@@ -4193,6 +4230,7 @@ function migrate_old_storage(path, localStorage) {
           }
           updateCharacterLiveState(char_block, m);
           maybe_persist_character_snapshot(char_name, char_block, m);
+          refresh_merchant_logistics("STAT_BEAT");
           dashboard?.publishSnapshot();
           break;
 
