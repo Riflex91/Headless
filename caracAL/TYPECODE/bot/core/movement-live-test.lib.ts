@@ -456,7 +456,7 @@ export class MovementLiveTestRunner {
           outcome: "COMPLETED",
           ownerObserved,
           pathModeObserved,
-          waypointProgressObserved: waypointProgressObserved || initialIndex === 0,
+          waypointProgressObserved: true,
         };
       }
 
