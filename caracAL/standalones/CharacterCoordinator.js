@@ -22,6 +22,8 @@ const { AdventureLandAssetCache } = require("../src/AdventureLandAssetCache");
 const { DiagnosticEventStore } = require("../src/DiagnosticStore");
 const { EmergencyStopState } = require("../src/EmergencyStopState");
 const { attachHeadlessDashboard } = require("../src/HeadlessDashboard");
+const { IncidentRecorder } = require("../src/IncidentRecorder");
+const { StructuredLogger } = require("../src/StructuredLogger");
 const { updateCharacterLiveState } = require("../src/LiveState");
 const { normalizeRuntimeEvent } = require("../src/RuntimeEventBridge");
 const {
@@ -103,6 +105,9 @@ function migrate_old_storage(path, localStorage) {
   const character_manage = cfg.characters;
   const diagnostic_store = new DiagnosticEventStore({ maxEvents: 20000 });
   const emergency_stop = new EmergencyStopState();
+  const structured_logger = new StructuredLogger({
+    rootDir: path.join(process.cwd(), "logs"),
+  });
   const asset_cache = new AdventureLandAssetCache({
     cacheDir: path.join(process.cwd(), "data", "assets", "adventure-land"),
   });
@@ -113,6 +118,11 @@ function migrate_old_storage(path, localStorage) {
   let bwi_instance = {};
   let dashboard = null;
   let owned_web_server = null;
+  const incident_recorder = new IncidentRecorder({
+    rootDir: path.join(process.cwd(), "logs", "incidents"),
+    diagnosticStore: diagnostic_store,
+    getSnapshot: () => dashboard?.getSnapshot?.() || null,
+  });
   try {
     const web_port = (cfg.web_app && cfg.web_app.port) || 924;
     const dashboard_enabled =
@@ -145,6 +155,7 @@ function migrate_old_storage(path, localStorage) {
         controlEmergencyStop: control_emergency_stop,
         getEmergencyStopState: () => emergency_stop.snapshot(),
         diagnosticStore: diagnostic_store,
+        incidentRecorder: incident_recorder,
         assetCache: asset_cache,
       });
       log.info(
@@ -198,6 +209,18 @@ function migrate_old_storage(path, localStorage) {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
+  function record_observation(payload, { publish = true } = {}) {
+    const sanitized_payload = diagnostic_store.append(payload);
+    structured_logger.write(sanitized_payload);
+    incident_recorder.maybeCapture(sanitized_payload);
+
+    if (publish) {
+      dashboard?.publish(sanitized_payload);
+    }
+
+    return sanitized_payload;
+  }
+
   function capture_character_stream(stream, char_name, stream_name) {
     if (!stream) return;
 
@@ -205,14 +228,17 @@ function migrate_old_storage(path, localStorage) {
     const flush_line = (line) => {
       const message = line.trimEnd();
       if (!message) return;
-      diagnostic_store.append({
-        type: "character_log",
-        event:
-          stream_name === "stderr" ? "CHARACTER_STDERR" : "CHARACTER_STDOUT",
-        character: char_name,
-        stream: stream_name,
-        message,
-      });
+      record_observation(
+        {
+          type: "character_log",
+          event:
+            stream_name === "stderr" ? "CHARACTER_STDERR" : "CHARACTER_STDOUT",
+          character: char_name,
+          stream: stream_name,
+          message,
+        },
+        { publish: false },
+      );
     };
 
     stream.on("data", (chunk) => {
@@ -240,12 +266,11 @@ function migrate_old_storage(path, localStorage) {
       timestamp: Date.now(),
       ...details,
     };
-    const sanitized_payload = diagnostic_store.append(payload);
+    const sanitized_payload = record_observation(payload);
     log.info(
       sanitized_payload,
       char_name ? `supervisor ${event}: ${char_name}` : `supervisor ${event}`,
     );
-    dashboard?.publish(sanitized_payload);
   }
 
   function emit_runtime_event(char_name, event) {
@@ -262,12 +287,11 @@ function migrate_old_storage(path, localStorage) {
       character: char_name,
       source: "bot_runtime",
     };
-    const sanitized_payload = diagnostic_store.append(payload);
+    const sanitized_payload = record_observation(payload);
     log.info(
       sanitized_payload,
       `${char_name} runtime ${normalized.module}:${normalized.type}`,
     );
-    dashboard?.publish(sanitized_payload);
   }
 
   function set_lifecycle_state(char_name, state, reason) {
@@ -700,6 +724,11 @@ function migrate_old_storage(path, localStorage) {
       }
 
       if (char_block.enabled && !coordinator_shutting_down) {
+        emit_supervisor_event("UNEXPECTED_CHARACTER_EXIT", char_name, {
+          code,
+          signal,
+          pid: result.pid || null,
+        });
         schedule_restart(
           char_name,
           `unexpected_exit(code=${code},signal=${signal})`,
@@ -1003,6 +1032,10 @@ function migrate_old_storage(path, localStorage) {
           return softkill_block(char_block);
         }),
       );
+      await Promise.allSettled([
+        structured_logger.flush(),
+        incident_recorder.flush(),
+      ]);
       console.log("now truly exiting");
       process.exit();
     }),
