@@ -98,16 +98,13 @@ function combatLiveTestDiagnostics(
       initial_movement_cancel_status:
         runtime.preparation?.initialMovementCancelStatus ?? null,
       respawned_at_start: runtime.preparation?.respawnedAtStart === true,
-      destination_candidates:
-        runtime.preparation?.destinationCandidates || [],
-      selected_monster_type:
-        runtime.preparation?.selectedMonsterType || null,
+      destination_candidates: runtime.preparation?.destinationCandidates || [],
+      selected_monster_type: runtime.preparation?.selectedMonsterType || null,
     },
     navigation: {
       outbound_status: runtime.navigation?.outboundStatus ?? null,
       return_status: runtime.navigation?.returnStatus ?? null,
-      final_distance_to_start:
-        runtime.navigation?.finalDistanceToStart ?? null,
+      final_distance_to_start: runtime.navigation?.finalDistanceToStart ?? null,
       returned_to_start: runtime.navigation?.returnedToStart === true,
     },
     actions: {
@@ -132,11 +129,9 @@ function combatLiveTestDiagnostics(
     observed: {
       target_selected: !!runtime.combat?.targetId,
       in_range_observed: runtime.combat?.inRangeObserved === true,
-      attack_confirmed:
-        runtime.combat?.attackActionStatus === "CONFIRMED",
+      attack_confirmed: runtime.combat?.attackActionStatus === "CONFIRMED",
       cooldown_observed: runtime.combat?.cooldownObserved === true,
-      resource_telemetry_visible:
-        runtime.combat?.resourcesVisible === true,
+      resource_telemetry_visible: runtime.combat?.resourcesVisible === true,
       returned_to_start: runtime.navigation?.returnedToStart === true,
       supervisor_evidence_complete: evidenceComplete(supervisor),
     },

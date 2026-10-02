@@ -1228,9 +1228,7 @@ function migrate_old_storage(path, localStorage) {
         409,
       );
     }
-    if (
-      ["STARTING", "RUNNING"].includes(char_block.combat_live_test?.status)
-    ) {
+    if (["STARTING", "RUNNING"].includes(char_block.combat_live_test?.status)) {
       throw make_control_error(
         "COMBAT_LIVE_TEST_ALREADY_RUNNING",
         `Combat live test already running for ${char_name}`,
@@ -1498,9 +1496,7 @@ function migrate_old_storage(path, localStorage) {
         400,
       );
     }
-    if (
-      ["STARTING", "RUNNING"].includes(char_block.combat_live_test?.status)
-    ) {
+    if (["STARTING", "RUNNING"].includes(char_block.combat_live_test?.status)) {
       throw make_control_error(
         "COMBAT_LIVE_TEST_ALREADY_RUNNING",
         `Combat live test already running for ${char_name}`,
@@ -1688,10 +1684,7 @@ function migrate_old_storage(path, localStorage) {
     } catch (error) {
       const failed_result = {
         request_id,
-        outcome:
-          error.code === "COMBAT_LIVE_TEST_TIMEOUT"
-            ? "TIMEOUT"
-            : "FAIL",
+        outcome: error.code === "COMBAT_LIVE_TEST_TIMEOUT" ? "TIMEOUT" : "FAIL",
         reason: error.code || error.message || "COMBAT_LIVE_TEST_FAILED",
         error: error.message || String(error),
         started_at,
@@ -2249,15 +2242,11 @@ function migrate_old_storage(path, localStorage) {
             result: m.result || null,
             error: m.error || null,
           });
-          emit_supervisor_event(
-            "COMBAT_LIVE_TEST_RESULT_RECEIVED",
-            char_name,
-            {
-              request_id: m.request_id,
-              outcome: m.result?.outcome || null,
-              error: m.error || null,
-            },
-          );
+          emit_supervisor_event("COMBAT_LIVE_TEST_RESULT_RECEIVED", char_name, {
+            request_id: m.request_id,
+            outcome: m.result?.outcome || null,
+            error: m.error || null,
+          });
           break;
         }
         case "config_applied": {

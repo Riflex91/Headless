@@ -302,10 +302,7 @@ test("dashboard module and coordinator remain syntactically valid", () => {
     dashboard,
     /\/headless\/api\/characters\/:name\/tests\/movement/,
   );
-  assert.match(
-    dashboard,
-    /\/headless\/api\/characters\/:name\/tests\/combat/,
-  );
+  assert.match(dashboard, /\/headless\/api\/characters\/:name\/tests\/combat/);
   assert.match(dashboard, /\/headless\/api\/maps\/:name\/scene/);
   assert.match(dashboard, /nearby_entities/);
   assert.match(coordinator, /control_character_config/);

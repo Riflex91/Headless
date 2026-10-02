@@ -49,7 +49,9 @@ async function main() {
       requested,
     );
     if (!character) {
-      throw new Error("No combat character is available for the combat live test");
+      throw new Error(
+        "No combat character is available for the combat live test",
+      );
     }
     if (character.ctype === "merchant") {
       throw new Error("Combat live E2E requires a non-merchant character");

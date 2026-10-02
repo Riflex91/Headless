@@ -563,9 +563,7 @@ function updateControlButtons(card, character) {
   const movementLiveTestButton = card.querySelector(
     "[data-movement-live-test]",
   );
-  const combatLiveTestButton = card.querySelector(
-    "[data-combat-live-test]",
-  );
+  const combatLiveTestButton = card.querySelector("[data-combat-live-test]");
   const movementTestRunning = ["STARTING", "RUNNING"].includes(
     character.movement_live_test?.status || "",
   );
@@ -652,9 +650,7 @@ function configureCardInteractions(card) {
     }
   });
 
-  const combatLiveTestButton = card.querySelector(
-    "[data-combat-live-test]",
-  );
+  const combatLiveTestButton = card.querySelector("[data-combat-live-test]");
   combatLiveTestButton?.addEventListener("click", async () => {
     const characterName = card.dataset.character;
     const character = state.characters.get(characterName);

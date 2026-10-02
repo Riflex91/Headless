@@ -215,9 +215,7 @@ test("combat live runner navigates autonomously when no target is visible", asyn
   assert.equal(result.outcome, "PASS");
   assert.equal(result.preparation.selectedMonsterType, "goo");
   assert.equal(
-    setup.calls.some(
-      (entry) => entry[0] === "smart" && entry[1] === "goo",
-    ),
+    setup.calls.some((entry) => entry[0] === "smart" && entry[1] === "goo"),
     true,
   );
 });
