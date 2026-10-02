@@ -536,6 +536,8 @@ export class MovementController {
     } else if (record.status === "UNKNOWN") {
       this.mode = "UNKNOWN";
       this.emitUnknown(record);
+    } else {
+      this.observeStuck(command);
     }
 
     return record;
