@@ -269,6 +269,9 @@ test("movement controller gives direct movement an exclusive owner", () => {
     move() {
       return actionRecord("D-1", "DISPATCHED");
     },
+    cancelDirectMove() {
+      return actionRecord("D-1", "REJECTED");
+    },
     async smartMove() {
       return actionRecord("S-1", "CONFIRMED");
     },
@@ -309,6 +312,9 @@ test("confirmed cancel releases direct movement ownership", async () => {
     move() {
       return actionRecord("D-1", "DISPATCHED");
     },
+    cancelDirectMove() {
+      return actionRecord("D-1", "REJECTED");
+    },
     async smartMove() {
       return actionRecord("S-1", "CONFIRMED");
     },
@@ -347,6 +353,9 @@ test("smart movement keeps ownership until settlement then releases it", async (
   const actions = {
     move() {
       return actionRecord("D-1", "DISPATCHED");
+    },
+    cancelDirectMove() {
+      return actionRecord("D-1", "REJECTED");
     },
     smartMove() {
       return pending.promise;
@@ -391,6 +400,9 @@ test("UNKNOWN smart movement conservatively retains ownership", async () => {
     move() {
       return actionRecord("D-1", "DISPATCHED");
     },
+    cancelDirectMove() {
+      return actionRecord("D-1", "REJECTED");
+    },
     async smartMove() {
       return actionRecord("S-1", "UNKNOWN");
     },
@@ -418,6 +430,9 @@ test("forced cancel can preempt a different movement owner", async () => {
   const actions = {
     move() {
       return actionRecord("D-1", "DISPATCHED");
+    },
+    cancelDirectMove() {
+      return actionRecord("D-1", "REJECTED");
     },
     async smartMove() {
       return actionRecord("S-1", "CONFIRMED");
@@ -462,6 +477,9 @@ test("UNKNOWN cancel retains safety ownership instead of allowing a race", async
     move() {
       return actionRecord("D-1", "DISPATCHED");
     },
+    cancelDirectMove() {
+      return actionRecord("D-1", "REJECTED");
+    },
     async smartMove() {
       return actionRecord("S-1", "CONFIRMED");
     },
@@ -493,6 +511,9 @@ test("movement controller status is exposed without mutable internal target refe
   const actions = {
     move() {
       return actionRecord("D-1", "DISPATCHED");
+    },
+    cancelDirectMove() {
+      return actionRecord("D-1", "REJECTED");
     },
     async smartMove() {
       return actionRecord("S-1", "CONFIRMED");
@@ -554,6 +575,9 @@ test("movement controller observe retains ownership in flight and releases it on
     move() {
       return actionRecord("D-1", "DISPATCHED");
     },
+    cancelDirectMove() {
+      return actionRecord("D-1", "REJECTED");
+    },
     settleMove() {
       return settlement;
     },
@@ -597,6 +621,9 @@ test("movement controller observe ignores non-direct commands", async () => {
     move() {
       return actionRecord("D-1", "DISPATCHED");
     },
+    cancelDirectMove() {
+      return actionRecord("D-1", "REJECTED");
+    },
     settleMove() {
       settlementCalls += 1;
       return actionRecord("D-1", "CONFIRMED");
@@ -621,4 +648,63 @@ test("movement controller observe ignores non-direct commands", async () => {
 
   pending.resolve(actionRecord("S-1", "CONFIRMED"));
   await smartPromise;
+});
+
+
+test("confirmed movement cancel rejects the superseded direct move", async () => {
+  const { MovementController } = coreModule("movement-controller.lib.ts");
+  const cancelledDirect = [];
+  const actions = {
+    move() {
+      return actionRecord("D-9", "DISPATCHED");
+    },
+    cancelDirectMove(actionId, reason) {
+      cancelledDirect.push([actionId, reason]);
+      return actionRecord(actionId, "REJECTED");
+    },
+    settleMove() {
+      return actionRecord("D-9", "DISPATCHED");
+    },
+    async smartMove() {
+      return actionRecord("S-1", "CONFIRMED");
+    },
+    async cancelMovement() {
+      return actionRecord("C-9", "CONFIRMED");
+    },
+  };
+  const movement = new MovementController(actions);
+
+  movement.direct({
+    owner: "Farm",
+    module: "Farm",
+    why: "CHASE_TARGET",
+    x: 10,
+    y: 20,
+  });
+  const result = await movement.cancel({
+    owner: "Farm",
+    module: "Farm",
+    why: "TARGET_GONE",
+  });
+
+  assert.equal(result.status, "CONFIRMED");
+  assert.deepEqual(cancelledDirect, [["D-9", "MOVE_CANCELLED"]]);
+  assert.equal(movement.status().owner, null);
+});
+
+test("ActionBoundary cancelDirectMove closes a dispatched move as REJECTED", () => {
+  const setup = makeBoundary();
+
+  const move = setup.boundary.move({
+    x: 100,
+    y: 200,
+    module: "Movement",
+    why: "DIRECT_MOVE",
+  });
+  assert.equal(move.status, "DISPATCHED");
+
+  const cancelled = setup.boundary.cancelDirectMove(move.id);
+  assert.equal(cancelled.status, "REJECTED");
+  assert.equal(cancelled.evidence.cancelled, true);
+  assert.equal(setup.ledger.canRetry(cancelled.id), true);
 });
