@@ -6,8 +6,93 @@ const test = require("node:test");
 const {
   ensureDashboardAvailable,
   isConnectionFailure,
+  selectMovementLiveTestCharacter,
   stopManagedRuntime,
 } = require("../src/MovementLiveTestLauncher");
+
+test("movement live character selection skips disabled combat characters when an enabled one exists", () => {
+  const selected = selectMovementLiveTestCharacter({
+    characters: [
+      {
+        name: "My_Mage",
+        ctype: "mage",
+        account_owned: true,
+        enabled: false,
+        connected: false,
+        lifecycle_state: "STOPPED",
+        desired_runtime_state: "STOPPED",
+      },
+      {
+        name: "My_Ranger1",
+        ctype: "ranger",
+        account_owned: true,
+        enabled: true,
+        connected: false,
+        lifecycle_state: "STARTING",
+        desired_runtime_state: "RUNNING",
+      },
+    ],
+  });
+
+  assert.equal(selected.name, "My_Ranger1");
+});
+
+test("movement live character selection prefers an online combat character", () => {
+  const selected = selectMovementLiveTestCharacter({
+    characters: [
+      {
+        name: "My_Ranger1",
+        ctype: "ranger",
+        account_owned: true,
+        enabled: true,
+        connected: false,
+        lifecycle_state: "STARTING",
+        desired_runtime_state: "RUNNING",
+      },
+      {
+        name: "My_Ranger2",
+        ctype: "ranger",
+        account_owned: true,
+        enabled: true,
+        connected: true,
+        lifecycle_state: "ONLINE",
+        desired_runtime_state: "RUNNING",
+      },
+    ],
+  });
+
+  assert.equal(selected.name, "My_Ranger2");
+});
+
+test("movement live character selection honors an explicit requested character", () => {
+  const selected = selectMovementLiveTestCharacter(
+    {
+      characters: [
+        {
+          name: "My_Ranger1",
+          ctype: "ranger",
+          account_owned: true,
+          enabled: true,
+          connected: true,
+          lifecycle_state: "ONLINE",
+          desired_runtime_state: "RUNNING",
+        },
+        {
+          name: "My_Mage",
+          ctype: "mage",
+          account_owned: true,
+          enabled: false,
+          connected: false,
+          lifecycle_state: "STOPPED",
+          desired_runtime_state: "STOPPED",
+        },
+      ],
+    },
+    "My_Mage",
+  );
+
+  assert.equal(selected.name, "My_Mage");
+});
 
 test("movement live launcher reuses an existing dashboard", async () => {
   let starts = 0;
