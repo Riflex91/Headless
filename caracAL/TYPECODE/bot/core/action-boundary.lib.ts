@@ -1,8 +1,50 @@
-import {
-  ActionLedger,
-  ActionRecord,
-} from "./action-ledger.lib";
-import { GameAdapter } from "./game-adapter.lib";
+import type { ActionRecord } from "./action-ledger.lib";
+import type {
+  CharacterSnapshot,
+  EntitySnapshot,
+  MapSnapshot,
+} from "./game-adapter.lib";
+
+interface ActionLedgerLike {
+  create(intent: {
+    module: string;
+    action: string;
+    why: string;
+    correlationId?: string;
+    expectedEffect?: Record<string, unknown>;
+    before?: Record<string, unknown>;
+  }): ActionRecord;
+  dispatch(
+    actionId: string,
+    evidence?: Record<string, unknown>,
+  ): ActionRecord;
+  confirm(
+    actionId: string,
+    resolution: {
+      why: string;
+      after?: Record<string, unknown>;
+      evidence?: Record<string, unknown>;
+      error?: string;
+    },
+  ): ActionRecord;
+  unknown(
+    actionId: string,
+    resolution: {
+      why: string;
+      after?: Record<string, unknown>;
+      evidence?: Record<string, unknown>;
+      error?: string;
+    },
+  ): ActionRecord;
+  block(actionId: string, why: string): ActionRecord;
+  get(actionId: string): ActionRecord | undefined;
+}
+
+interface GameReadAdapter {
+  character(): CharacterSnapshot;
+  entity(id: string): EntitySnapshot | null;
+  map(): MapSnapshot;
+}
 
 export interface MoveRequest {
   x: number;
@@ -52,8 +94,8 @@ function errorMessage(error: unknown): string {
 
 export class ActionBoundary {
   constructor(
-    private readonly ledger: ActionLedger,
-    private readonly game: GameAdapter,
+    private readonly ledger: ActionLedgerLike,
+    private readonly game: GameReadAdapter,
     private readonly driver: MutationDriver = createRuntimeMutationDriver(),
   ) {}
 
