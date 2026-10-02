@@ -133,6 +133,15 @@ test("computed bounds provide stable minimum viewport size", () => {
   assert.equal(bounds.minY < 180, true);
 });
 
+test("computed bounds expand to include nearby live entities", () => {
+  const geometry = characterGeometry(characterFixture(), "main", 0);
+  const bounds = computeBounds([geometry], [{ x: 900, y: 200 }]);
+
+  assert.ok(bounds);
+  assert.equal(bounds.minX <= 80, true);
+  assert.equal(bounds.minX + bounds.width >= 900, true);
+});
+
 
 test("nearby entity overlay deduplicates observations from multiple characters", () => {
   const characters = [
