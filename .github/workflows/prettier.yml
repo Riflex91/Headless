@@ -45,6 +45,4 @@ jobs:
 
           cd caracAL
           echo "$FILES"
-          npx prettier --write $FILES
-          git diff -- $FILES
-          exit 1
+          npx prettier --check $FILES
