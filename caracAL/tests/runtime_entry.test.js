@@ -193,3 +193,26 @@ test("combat live E2E is wired through runtime and character IPC", () => {
   assert.match(thread, /combat_live_test/);
   assert.match(thread, /combat_live_test_result/);
 });
+
+
+/* HEADLESS_DASHBOARD_PRETTIER_PROBE_START */
+test("headless dashboard prettier exact-output probe", async () => {
+  const fs = require("node:fs");
+  const nodePath = require("node:path");
+  const prettier = await import("prettier");
+  const absolute = nodePath.join(__dirname, "headless_dashboard.test.js");
+  const source = fs.readFileSync(absolute, "utf8");
+  const formatted = await prettier.format(source, { filepath: absolute });
+  const encoded = Buffer.from(formatted, "utf8").toString("base64");
+  let part = 0;
+  for (let offset = 0; offset < encoded.length; offset += 6000) {
+    console.log(
+      `HEADLESS_DASHBOARD_PRETTIER_PROBE|${String(part).padStart(
+        4,
+        "0",
+      )}|${encoded.slice(offset, offset + 6000)}`,
+    );
+    part += 1;
+  }
+});
+/* HEADLESS_DASHBOARD_PRETTIER_PROBE_END */
