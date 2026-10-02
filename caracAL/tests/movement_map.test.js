@@ -142,7 +142,6 @@ test("computed bounds expand to include nearby live entities", () => {
   assert.equal(bounds.minX + bounds.width >= 900, true);
 });
 
-
 test("nearby entity overlay deduplicates observations from multiple characters", () => {
   const characters = [
     {
@@ -218,19 +217,21 @@ test("map background keeps only visible placements and unique original assets", 
     "/images/tiles/map/custom.png?v=17",
   ]);
   assert.equal(
-    placementIntersectsBounds(
-      scene,
-      [0, 10, 20],
-      { minX: 0, minY: 0, width: 100, height: 100 },
-    ),
+    placementIntersectsBounds(scene, [0, 10, 20], {
+      minX: 0,
+      minY: 0,
+      width: 100,
+      height: 100,
+    }),
     true,
   );
   assert.equal(
-    placementIntersectsBounds(
-      scene,
-      [0, 300, 400],
-      { minX: 0, minY: 0, width: 100, height: 100 },
-    ),
+    placementIntersectsBounds(scene, [0, 300, 400], {
+      minX: 0,
+      minY: 0,
+      width: 100,
+      height: 100,
+    }),
     false,
   );
 });
