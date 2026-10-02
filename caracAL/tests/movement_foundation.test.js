@@ -537,7 +537,6 @@ test("movement controller status is exposed without mutable internal target refe
   assert.equal(movement.status().active.target.x, 10);
 });
 
-
 test("direct move settles only after observed arrival and stop", () => {
   const setup = makeBoundary({
     character: {
@@ -650,7 +649,6 @@ test("movement controller observe ignores non-direct commands", async () => {
   await smartPromise;
 });
 
-
 test("confirmed movement cancel rejects the superseded direct move", async () => {
   const { MovementController } = coreModule("movement-controller.lib.ts");
   const cancelledDirect = [];
@@ -708,7 +706,6 @@ test("ActionBoundary cancelDirectMove closes a dispatched move as REJECTED", () 
   assert.equal(cancelled.evidence.cancelled, true);
   assert.equal(setup.ledger.canRetry(cancelled.id), true);
 });
-
 
 test("smart move accepts wrapped position destinations supported by Adventure Land", async () => {
   const calls = [];
