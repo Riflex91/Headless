@@ -119,6 +119,11 @@ interface UnknownPotion {
   mp: number | null;
 }
 
+interface UnknownAttack {
+  targetId: string;
+  targetHp: number | null;
+}
+
 function objectValue(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -229,6 +234,7 @@ export class CombatController {
   private busy = false;
   private lastRespawnAt: number | null = null;
   private unknownPotion: UnknownPotion | null = null;
+  private unknownAttack: UnknownAttack | null = null;
   private configOverride: unknown | undefined;
 
   constructor(
@@ -383,6 +389,26 @@ export class CombatController {
         this.unknownPotion = null;
       }
 
+      if (this.unknownAttack) {
+        const cooldowns = this.game.cooldowns();
+        const observedTarget = this.game.entity(this.unknownAttack.targetId);
+        const observed =
+          cooldown(cooldowns, "attack") > 0 ||
+          !observedTarget ||
+          observedTarget.dead ||
+          observedTarget.rip ||
+          (this.unknownAttack.targetHp !== null &&
+            observedTarget.hp !== null &&
+            observedTarget.hp < this.unknownAttack.targetHp);
+
+        if (!observed) {
+          this.setTarget(this.unknownAttack.targetId);
+          this.setState("BLOCKED", "ATTACK_OUTCOME_UNKNOWN");
+          return this.status();
+        }
+        this.unknownAttack = null;
+      }
+
       this.ensureCombatSafePoint(config, hpPercent);
 
       const potion = this.choosePotion(config, character, hpPercent, mpPercent);
@@ -451,6 +477,14 @@ export class CombatController {
         why: "TARGET_IN_RANGE_AND_READY",
       });
       this.recordAction("ATTACK", action);
+      if (action.status === "UNKNOWN") {
+        this.unknownAttack = {
+          targetId: target.id,
+          targetHp: target.hp,
+        };
+        this.setState("BLOCKED", "ATTACK_OUTCOME_UNKNOWN");
+        return this.status();
+      }
       this.setState(
         action.status === "BLOCKED" || action.status === "REJECTED"
           ? "BLOCKED"
@@ -459,9 +493,7 @@ export class CombatController {
           ? "ATTACK_BLOCKED"
           : action.status === "REJECTED"
             ? "ATTACK_REJECTED"
-            : action.status === "UNKNOWN"
-              ? "ATTACK_OUTCOME_UNKNOWN"
-              : "ATTACK_DISPATCHED",
+            : "ATTACK_DISPATCHED",
       );
       return this.status();
     } finally {
