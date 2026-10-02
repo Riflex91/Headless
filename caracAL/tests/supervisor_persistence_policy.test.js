@@ -1,6 +1,8 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 const test = require("node:test");
 
 const {
@@ -159,4 +161,34 @@ test("character profile keeps only stable supervisor fields", () => {
     desired_runtime_state: "RUNNING",
   });
   assert.equal(JSON.stringify(profile).includes("must-not-leak"), false);
+});
+
+test("coordinator shutdown preserves persisted desired runtime intent", () => {
+  const coordinator = fs.readFileSync(
+    path.join(__dirname, "..", "standalones", "CharacterCoordinator.js"),
+    "utf8",
+  );
+  const signalStart = coordinator.indexOf(
+    '["SIGINT", "SIGTERM", "SIGQUIT"]',
+  );
+  const initializationStart = coordinator.indexOf(
+    "Object.entries(character_manage).forEach",
+    signalStart,
+  );
+
+  assert.notEqual(signalStart, -1);
+  assert.notEqual(initializationStart, -1);
+
+  const signalBlock = coordinator.slice(
+    signalStart,
+    initializationStart,
+  );
+
+  assert.doesNotMatch(
+    signalBlock,
+    /desired_runtime_state\s*=\s*DESIRED_RUNTIME_STATES\.STOPPED/,
+  );
+  assert.doesNotMatch(signalBlock, /char_block\.enabled\s*=\s*false/);
+  assert.match(signalBlock, /softkill_block/);
+  assert.match(signalBlock, /persistence\.close/);
 });
