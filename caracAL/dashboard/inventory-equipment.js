@@ -53,7 +53,10 @@
     if (intelligence?.disposition) {
       parts.push(`Disposition ${intelligence.disposition}`);
     }
-    if (Array.isArray(intelligence?.protections) && intelligence.protections.length) {
+    if (
+      Array.isArray(intelligence?.protections) &&
+      intelligence.protections.length
+    ) {
       parts.push(`Protected ${intelligence.protections.join(", ")}`);
     }
     if (intelligence?.why) parts.push(intelligence.why);
