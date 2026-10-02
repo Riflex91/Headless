@@ -278,8 +278,7 @@ class MerchantLogisticsPlanner {
           outcome: "CONFIRMED_PARTIAL",
           reason: "WAIT_FOR_STATE_RECONCILIATION",
           at: timestamp,
-          retryAt:
-            timestamp + Math.min(5000, this.completionCooldownMs),
+          retryAt: timestamp + Math.min(5000, this.completionCooldownMs),
         });
       }
       return true;
@@ -310,9 +309,7 @@ class MerchantLogisticsPlanner {
 
   clearClaimHold(claimOrId) {
     const id =
-      typeof claimOrId === "string"
-        ? claimOrId
-        : stringValue(claimOrId?.id);
+      typeof claimOrId === "string" ? claimOrId : stringValue(claimOrId?.id);
     return id ? this.outcomeHolds.delete(id) : false;
   }
 

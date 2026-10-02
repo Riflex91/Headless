@@ -386,8 +386,7 @@ function migrate_old_storage(path, localStorage) {
 
     const claim = merchant_logistics_board.claims.find(
       (candidate) =>
-        candidate.status === "READY" &&
-        logistics_execution_enabled(candidate),
+        candidate.status === "READY" && logistics_execution_enabled(candidate),
     );
     if (!claim) return false;
 
@@ -405,10 +404,7 @@ function migrate_old_storage(path, localStorage) {
 
     logistics_claim_sequence += 1;
     const request_id =
-      "logistics-claim-" +
-      Date.now() +
-      "-" +
-      logistics_claim_sequence;
+      "logistics-claim-" + Date.now() + "-" + logistics_claim_sequence;
     const pending = {
       request_id,
       claim,
@@ -4127,15 +4123,11 @@ function migrate_old_storage(path, localStorage) {
             pending.source !== char_name ||
             pending.claim?.id !== m.claim_id
           ) {
-            emit_supervisor_event(
-              "LOGISTICS_CLAIM_RESULT_IGNORED",
-              char_name,
-              {
-                why: "UNKNOWN_OR_STALE_REQUEST",
-                request_id: m.request_id || null,
-                claim_id: m.claim_id || null,
-              },
-            );
+            emit_supervisor_event("LOGISTICS_CLAIM_RESULT_IGNORED", char_name, {
+              why: "UNKNOWN_OR_STALE_REQUEST",
+              request_id: m.request_id || null,
+              claim_id: m.claim_id || null,
+            });
             break;
           }
 
@@ -4164,19 +4156,15 @@ function migrate_old_storage(path, localStorage) {
             pending.claim,
             execution_result,
           );
-          emit_supervisor_event(
-            "LOGISTICS_CLAIM_RESULT_RECEIVED",
-            char_name,
-            {
-              request_id: m.request_id,
-              claim_id: pending.claim.id,
-              claim_type: pending.claim.type,
-              outcome: execution_result.outcome || "UNKNOWN",
-              reason: execution_result.reason || null,
-              fulfilled: execution_result.fulfilled === true,
-              error: m.error || null,
-            },
-          );
+          emit_supervisor_event("LOGISTICS_CLAIM_RESULT_RECEIVED", char_name, {
+            request_id: m.request_id,
+            claim_id: pending.claim.id,
+            claim_type: pending.claim.type,
+            outcome: execution_result.outcome || "UNKNOWN",
+            reason: execution_result.reason || null,
+            fulfilled: execution_result.fulfilled === true,
+            error: m.error || null,
+          });
           refresh_merchant_logistics("LOGISTICS_CLAIM_RESULT");
           break;
         }

@@ -390,7 +390,6 @@ test("gear claim is omitted when farmer already owns desired gear", () => {
   );
 });
 
-
 test("UNKNOWN logistics outcome is held indefinitely against blind retry", () => {
   let now = 1000;
   const planner = new MerchantLogisticsPlanner({
