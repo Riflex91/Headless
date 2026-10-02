@@ -75,8 +75,10 @@ test("public character state exposes only dashboard-safe fields", () => {
     movement_live_test: null,
     combat_live_test: null,
     class_skill_live_test: null,
+    group_live_test: null,
     combat_runtime: null,
     class_skill_runtime: null,
+    group_combat_runtime: null,
     game: null,
     movement_trail: [],
   });
@@ -218,11 +220,14 @@ test("dashboard static assets are present", () => {
   assert.match(index, /character-movement-live-test/);
   assert.match(index, /character-combat-live-test/);
   assert.match(index, /character-class-skill-live-test/);
+  assert.match(index, /character-group-live-test/);
   assert.match(index, /character-combat/);
   assert.match(index, /character-combat-target/);
   assert.match(index, /character-combat-cooldowns/);
   assert.match(index, /character-class-skills/);
   assert.match(index, /character-class-skill-action/);
+  assert.match(index, /character-group-combat/);
+  assert.match(index, /character-group-tether/);
   assert.match(index, /data-movement-live-test/);
   assert.match(index, /data-combat-live-test/);
   assert.match(index, /data-class-skill-live-test/);
@@ -333,6 +338,7 @@ test("dashboard module and coordinator remain syntactically valid", () => {
     dashboard,
     /\/headless\/api\/characters\/:name\/tests\/class-skill/,
   );
+  assert.match(dashboard, /\/headless\/api\/characters\/:name\/tests\/group/);
   assert.match(dashboard, /\/headless\/api\/maps\/:name\/scene/);
   assert.match(dashboard, /nearby_entities/);
   assert.match(coordinator, /control_character_config/);
@@ -352,11 +358,16 @@ test("dashboard module and coordinator remain syntactically valid", () => {
   assert.match(coordinator, /combat_live_test_result/);
   assert.match(coordinator, /run_class_skill_live_test/);
   assert.match(coordinator, /class_skill_live_test_result/);
+  assert.match(coordinator, /run_group_live_test/);
+  assert.match(coordinator, /group_live_test_result/);
   assert.match(runtimeKernel, /movement:\s*this\.movement\.status\(\)/);
   assert.match(runtimeKernel, /combat:\s*this\.combat\.status\(\)/);
   assert.match(coordinator, /combat_runtime/);
   assert.match(coordinator, /class_skill_runtime/);
+  assert.match(coordinator, /group_combat_runtime/);
   assert.match(runtimeKernel, /classSkills/);
+  assert.match(runtimeKernel, /groupCombat/);
+  assert.match(runtimeKernel, /GROUP_COMBAT_JOB_ID/);
   assert.match(runtimeKernel, /CLASS_SKILL_JOB_ID/);
   assert.match(runtimeKernel, /runMovementLiveTest/);
   assert.match(runtimeKernel, /runCombatLiveTest/);

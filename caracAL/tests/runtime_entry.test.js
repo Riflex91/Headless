@@ -156,6 +156,8 @@ test("runtime kernel emits periodic health without gameplay work", () => {
   assert.match(kernel, /actionBoundaryMutations/);
   assert.match(kernel, /movement/);
   assert.match(kernel, /classSkills/);
+  assert.match(kernel, /groupCombat/);
+  assert.match(kernel, /GROUP_COMBAT_JOB_ID/);
   assert.match(kernel, /CLASS_SKILL_JOB_ID/);
   assert.match(kernel, /MOVEMENT_SETTLEMENT_JOB_ID/);
 });
@@ -192,8 +194,12 @@ test("combat live E2E is wired through runtime and character IPC", () => {
   assert.match(kernel, /CombatLiveTestRunner/);
   assert.match(kernel, /runClassSkillLiveTest/);
   assert.match(kernel, /ClassSkillLiveTestRunner/);
+  assert.match(kernel, /runGroupLiveTest/);
+  assert.match(kernel, /GroupLiveTestRunner/);
   assert.match(thread, /combat_live_test/);
   assert.match(thread, /combat_live_test_result/);
   assert.match(thread, /class_skill_live_test/);
   assert.match(thread, /class_skill_live_test_result/);
+  assert.match(thread, /group_live_test/);
+  assert.match(thread, /group_live_test_result/);
 });

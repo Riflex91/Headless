@@ -218,6 +218,34 @@ function formatClassSkillAction(runtime) {
   }${target}`;
 }
 
+function formatGroupCombat(runtime) {
+  if (!runtime) return "—";
+  const role = runtime.role || "NONE";
+  const state = runtime.state || "UNKNOWN";
+  const reason = runtime.reason ? ` · ${runtime.reason}` : "";
+  const party =
+    Array.isArray(runtime.partyMembers) && runtime.partyMembers.length
+      ? ` · Party ${runtime.partyMembers.join(", ")}`
+      : "";
+  return `${role} · ${state}${reason}${party}`;
+}
+
+function formatGroupTether(runtime) {
+  if (!runtime?.tether) return "—";
+  const tether = runtime.tether;
+  const distance = Number.isFinite(tether.distance)
+    ? `Dist ${Math.round(tether.distance)}`
+    : tether.leaderVisible
+    ? "Dist unbekannt"
+    : "Leader nicht sichtbar";
+  const focus = runtime.focusTargetId
+    ? ` · Focus ${runtime.focusTargetId}`
+    : "";
+  return `${distance} · Soft ${Math.round(
+    tether.softDistance || 0,
+  )} · Hard ${Math.round(tether.hardDistance || 0)}${focus}`;
+}
+
 function formatCombat(combat) {
   if (!combat) return "—";
   const reason = combat.reason ? ` · ${combat.reason}` : "";
@@ -911,6 +939,12 @@ function updateCharacterCard(card, character) {
   );
   card.querySelector(".character-class-skill-action").textContent =
     formatClassSkillAction(character.class_skill_runtime);
+  card.querySelector(".character-group-combat").textContent = formatGroupCombat(
+    character.group_combat_runtime,
+  );
+  card.querySelector(".character-group-tether").textContent = formatGroupTether(
+    character.group_combat_runtime,
+  );
   card.querySelector(".character-movement").textContent = formatMovement(game);
   card.querySelector(".character-movement-owner").textContent =
     formatMovementOwner(game);
@@ -953,6 +987,13 @@ function updateCharacterCard(card, character) {
   classSkillLiveTest.className = `character-class-skill-live-test movement-live-test-${String(
     character.class_skill_live_test?.outcome ||
       character.class_skill_live_test?.status ||
+      "idle",
+  ).toLowerCase()}`;
+  const groupLiveTest = card.querySelector(".character-group-live-test");
+  groupLiveTest.textContent = formatMovementLiveTest(character.group_live_test);
+  groupLiveTest.className = `character-group-live-test movement-live-test-${String(
+    character.group_live_test?.outcome ||
+      character.group_live_test?.status ||
       "idle",
   ).toLowerCase()}`;
   card.querySelector(".character-target").textContent = formatTarget(game);

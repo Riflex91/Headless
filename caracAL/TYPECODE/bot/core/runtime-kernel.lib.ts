@@ -18,6 +18,10 @@ import {
 } from "./class-skill-factory.lib";
 import type { ClassSkillController } from "./class-skill-controller.lib";
 import {
+  GroupCombatController,
+  GroupCombatControllerEvent,
+} from "./group-combat-controller.lib";
+import {
   CombatLiveTestOptions,
   CombatLiveTestResult,
   CombatLiveTestRunner,
@@ -28,6 +32,11 @@ import {
   ClassSkillLiveTestRunner,
 } from "./class-skill-live-test.lib";
 import {
+  GroupLiveTestOptions,
+  GroupLiveTestResult,
+  GroupLiveTestRunner,
+} from "./group-live-test.lib";
+import {
   MovementController,
   MovementControllerEvent,
 } from "./movement-controller.lib";
@@ -37,6 +46,8 @@ import {
   MovementLiveTestRunner,
 } from "./movement-live-test.lib";
 
+const GROUP_COMBAT_JOB_ID = "group-combat-loop";
+const GROUP_COMBAT_INTERVAL_MS = 250;
 const CLASS_SKILL_JOB_ID = "class-skill-loop";
 const CLASS_SKILL_INTERVAL_MS = 250;
 const COMBAT_JOB_ID = "combat-loop";
@@ -89,12 +100,14 @@ export class BotRuntimeKernel {
   readonly movement: MovementController;
   readonly combat: CombatController;
   readonly classSkills: ClassSkillController | null;
+  readonly groupCombat: GroupCombatController;
 
   private started = false;
   private stopping = false;
   private movementLiveTestRunning = false;
   private combatLiveTestRunning = false;
   private classSkillLiveTestRunning = false;
+  private groupLiveTestRunning = false;
 
   constructor() {
     this.eventBus = new EventBus({
@@ -156,6 +169,25 @@ export class BotRuntimeKernel {
         onEvent: (event) => this.handleClassSkillEvent(event),
       },
     );
+    this.groupCombat = new GroupCombatController(
+      this.game,
+      this.actions,
+      this.movement,
+      this.combat,
+      {
+        config: () => runtimeConfig?.config || {},
+        onEvent: (event) => this.handleGroupCombatEvent(event),
+      },
+    );
+
+    this.scheduler.register({
+      id: GROUP_COMBAT_JOB_ID,
+      intervalMs: GROUP_COMBAT_INTERVAL_MS,
+      priority: 70,
+      tick: async () => {
+        await this.groupCombat.tick();
+      },
+    });
 
     if (this.classSkills) {
       this.scheduler.register({
@@ -209,6 +241,7 @@ export class BotRuntimeKernel {
             movement: this.movement.status(),
             combat: this.combat.status(),
             classSkills: this.classSkills?.status() || null,
+            groupCombat: this.groupCombat.status(),
             recentActions: this.actionLedger.list(20),
           },
         });
@@ -291,6 +324,7 @@ export class BotRuntimeKernel {
       movement: this.movement.status(),
       combat: this.combat.status(),
       classSkills: this.classSkills?.status() || null,
+      groupCombat: this.groupCombat.status(),
       recentActions: this.actionLedger.list(20),
       ...runtimeIdentity(),
     };
@@ -307,6 +341,9 @@ export class BotRuntimeKernel {
     }
     if (this.classSkillLiveTestRunning) {
       throw new Error("class skill live test already running");
+    }
+    if (this.groupLiveTestRunning) {
+      throw new Error("group live test already running");
     }
     if (!this.started || this.stopping) {
       throw new Error("runtime is not ready for movement live test");
@@ -378,6 +415,9 @@ export class BotRuntimeKernel {
     }
     if (this.classSkillLiveTestRunning) {
       throw new Error("class skill live test already running");
+    }
+    if (this.groupLiveTestRunning) {
+      throw new Error("group live test already running");
     }
     if (!this.started || this.stopping) {
       throw new Error("runtime is not ready for combat live test");
@@ -458,6 +498,9 @@ export class BotRuntimeKernel {
     if (!this.classSkills) {
       throw new Error("class skill controller is unavailable");
     }
+    if (this.groupLiveTestRunning) {
+      throw new Error("group live test already running");
+    }
     if (!this.started || this.stopping) {
       throw new Error("runtime is not ready for class skill live test");
     }
@@ -521,6 +564,100 @@ export class BotRuntimeKernel {
     } finally {
       this.classSkillLiveTestRunning = false;
     }
+  }
+
+  async runGroupLiveTest(
+    options: GroupLiveTestOptions,
+  ): Promise<GroupLiveTestResult> {
+    if (this.groupLiveTestRunning) {
+      throw new Error("group live test already running");
+    }
+    if (this.movementLiveTestRunning) {
+      throw new Error("movement live test already running");
+    }
+    if (this.combatLiveTestRunning) {
+      throw new Error("combat live test already running");
+    }
+    if (this.classSkillLiveTestRunning) {
+      throw new Error("class skill live test already running");
+    }
+    if (!this.started || this.stopping) {
+      throw new Error("runtime is not ready for group live test");
+    }
+    if (runtimeState() !== "RUNNING") {
+      throw new Error("runtime must be RUNNING for group live test");
+    }
+
+    this.groupLiveTestRunning = true;
+    const requestId = options.requestId || "group-live-" + Date.now();
+    this.eventBus.emit({
+      module: "GroupLiveTest",
+      type: "GROUP_LIVE_TEST_STARTED",
+      why: "AUTONOMOUS_GROUP_E2E",
+      correlationId: requestId,
+      data: {
+        requestId,
+        role: options.role,
+        leader: options.leader,
+        peer: options.peer,
+        groupCombat: this.groupCombat.status(),
+        ...runtimeIdentity(),
+      },
+    });
+
+    try {
+      const runner = new GroupLiveTestRunner({
+        groupCombat: this.groupCombat,
+        combat: this.combat,
+        classSkills: this.classSkills,
+        actions: this.actions,
+        character: () => this.game.character(),
+        party: () => this.game.party(),
+      });
+      const result = await runner.run({
+        ...options,
+        requestId,
+      });
+      this.eventBus.emit({
+        module: "GroupLiveTest",
+        type: "GROUP_LIVE_TEST_COMPLETED",
+        why: result.reason,
+        correlationId: requestId,
+        data: {
+          result,
+          groupCombat: this.groupCombat.status(),
+        },
+      });
+      return result;
+    } catch (error) {
+      this.eventBus.emit({
+        module: "GroupLiveTest",
+        type: "GROUP_LIVE_TEST_FAILED",
+        why: "GROUP_LIVE_TEST_RUNTIME_ERROR",
+        correlationId: requestId,
+        data: {
+          error: error instanceof Error ? error.message : String(error),
+          groupCombat: this.groupCombat.status(),
+        },
+      });
+      throw error;
+    } finally {
+      this.groupLiveTestRunning = false;
+    }
+  }
+
+  private handleGroupCombatEvent(event: GroupCombatControllerEvent): void {
+    this.eventBus.emit({
+      module: "GroupCombatController",
+      type: event.type,
+      why: event.reason,
+      ...(event.actionId && { actionId: event.actionId }),
+      data: {
+        state: event.state,
+        actionStatus: event.actionStatus || null,
+        groupCombat: event.status,
+      },
+    });
   }
 
   private handleClassSkillEvent(event: ClassSkillControllerEvent): void {

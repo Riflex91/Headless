@@ -54,6 +54,7 @@ export interface CombatControllerStatus {
     safePoint: { map: string; x: number; y: number; tolerance: number } | null;
   };
   lastAction: { id: string; status: string | null; kind: string } | null;
+  preferredTargetId: string | null;
 }
 
 export interface CombatControllerEvent {
@@ -236,6 +237,7 @@ export class CombatController {
   private unknownPotion: UnknownPotion | null = null;
   private unknownAttack: UnknownAttack | null = null;
   private configOverride: unknown | undefined;
+  private preferredTargetId: string | null = null;
 
   constructor(
     private readonly game: CombatGameAdapter,
@@ -306,7 +308,15 @@ export class CombatController {
           : null,
       },
       lastAction: this.lastAction ? { ...this.lastAction } : null,
+      preferredTargetId: this.preferredTargetId,
     };
+  }
+
+  setPreferredTargetId(targetId: string | null): void {
+    this.preferredTargetId =
+      typeof targetId === "string" && targetId.trim()
+        ? targetId.trim()
+        : null;
   }
 
   setConfigOverride(config: unknown): void {
@@ -624,6 +634,10 @@ export class CombatController {
       return targetDistance !== null && targetDistance <= config.targetMaxDistance;
     };
 
+    if (config.autoTarget && this.preferredTargetId) {
+      const preferred = this.game.entity(this.preferredTargetId);
+      if (preferred && eligible(preferred)) return preferred;
+    }
     if (config.autoTarget && character.target) {
       const current = this.game.entity(character.target);
       if (current && eligible(current)) return current;
