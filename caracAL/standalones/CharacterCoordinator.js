@@ -27,6 +27,10 @@ const {
 const { AdventureLandAssetCache } = require("../src/AdventureLandAssetCache");
 const { normalizeRealmConnection } = require("../src/AdventureLandRealm");
 const {
+  MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE,
+  resolveCharacterExecutionSource,
+} = require("../src/CharacterExecutionSource");
+const {
   registerAccountCharacters,
 } = require("../src/AccountCharacterRegistry");
 const { DiagnosticEventStore } = require("../src/DiagnosticStore");
@@ -540,10 +544,19 @@ function migrate_old_storage(path, localStorage) {
   }
 
   function refresh_character_revision(char_block) {
+    const revision_block = char_block.movement_live_test_typescript_override
+      ? {
+          ...char_block,
+          typescript: char_block.movement_live_test_typescript_override,
+        }
+      : char_block;
     const script_path = resolveCharacterScriptPath(
       process.cwd(),
-      char_block,
-      !!cfg.enable_TYPECODE,
+      revision_block,
+      !!(
+        cfg.enable_TYPECODE ||
+        char_block.movement_live_test_typescript_override
+      ),
     );
     char_block.script_path = script_path;
     char_block.installed_code_revision = revision_cache.revision(script_path);
@@ -608,6 +621,7 @@ function migrate_old_storage(path, localStorage) {
     char_block.live_state = char_block.live_state || null;
     char_block.bot_runtime_started_at = null;
     char_block.movement_live_test = char_block.movement_live_test || null;
+    char_block.movement_live_test_typescript_override = null;
     char_block.running_code_revision = char_block.running_code_revision || null;
     char_block.running_config_revision =
       char_block.running_config_revision || null;
@@ -903,6 +917,95 @@ function migrate_old_storage(path, localStorage) {
     );
   }
 
+  async function wait_for_character_connected(
+    char_name,
+    timeout_ms = MOVEMENT_LIVE_TEST_RUNTIME_TIMEOUT_MS,
+  ) {
+    const started_at = Date.now();
+    while (Date.now() - started_at < timeout_ms) {
+      const char_block = character_manage[char_name];
+      if (char_block?.instance && char_block.connected) {
+        return char_block;
+      }
+      await sleep(100);
+    }
+
+    throw make_control_error(
+      "CHARACTER_RESTORE_TIMEOUT",
+      `Character did not reconnect while restoring ${char_name}`,
+      504,
+    );
+  }
+
+  async function restart_character_for_movement_runtime(
+    char_name,
+    char_block,
+  ) {
+    if (!char_block.instance) {
+      const started = start_char(char_name);
+      if (!started) {
+        throw make_control_error(
+          "MOVEMENT_LIVE_TEST_RUNTIME_START_FAILED",
+          `Could not start movement runtime for ${char_name}`,
+          503,
+        );
+      }
+      return;
+    }
+
+    clear_restart_timer(char_block);
+    clear_stable_timer(char_block);
+    char_block.controlled_restart = true;
+    await softkill_block(char_block);
+  }
+
+  async function restore_movement_live_test_execution_source(
+    char_name,
+    original_desired_state,
+  ) {
+    const char_block = character_manage[char_name];
+    if (!char_block) return;
+
+    char_block.movement_live_test_typescript_override = null;
+    emit_supervisor_event(
+      "MOVEMENT_LIVE_TEST_RUNTIME_OVERRIDE_CLEARED",
+      char_name,
+      {
+        desired_runtime_state: original_desired_state,
+      },
+    );
+
+    if (original_desired_state === DESIRED_RUNTIME_STATES.STOPPED) {
+      await control_character(char_name, CONTROL_ACTIONS.STOP);
+      return;
+    }
+
+    char_block.enabled = true;
+    char_block.desired_runtime_state = DESIRED_RUNTIME_STATES.RUNNING;
+
+    if (char_block.instance) {
+      clear_restart_timer(char_block);
+      clear_stable_timer(char_block);
+      char_block.controlled_restart = true;
+      await softkill_block(char_block);
+    } else {
+      const started = start_char(char_name);
+      if (!started) {
+        throw make_control_error(
+          "CHARACTER_RESTORE_START_FAILED",
+          `Could not restart original runtime for ${char_name}`,
+          503,
+        );
+      }
+    }
+
+    await wait_for_character_connected(char_name);
+
+    if (original_desired_state === DESIRED_RUNTIME_STATES.PAUSED) {
+      await control_character(char_name, CONTROL_ACTIONS.PAUSE);
+    }
+  }
+
   function wait_for_movement_live_test_result(char_name, request_id) {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
@@ -1032,11 +1135,48 @@ function migrate_old_storage(path, localStorage) {
     });
     dashboard?.publishSnapshot();
 
+    let runtime_override_applied = false;
+
     try {
-      if (
-        original_desired_state !== DESIRED_RUNTIME_STATES.RUNNING ||
-        !char_block.instance
-      ) {
+      const runtime_ready =
+        !!char_block.instance &&
+        char_block.connected &&
+        Number.isFinite(char_block.bot_runtime_started_at);
+
+      if (!runtime_ready) {
+        const bundle_path = path.join(
+          process.cwd(),
+          "TYPECODE.out",
+          MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE,
+        );
+        if (!fs_regular.existsSync(bundle_path)) {
+          throw make_control_error(
+            "MOVEMENT_LIVE_TEST_RUNTIME_BUNDLE_MISSING",
+            `Movement runtime bundle is missing: ${bundle_path}`,
+            503,
+          );
+        }
+
+        char_block.movement_live_test_typescript_override =
+          MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE;
+        runtime_override_applied = true;
+        emit_supervisor_event(
+          "MOVEMENT_LIVE_TEST_RUNTIME_OVERRIDE_APPLIED",
+          char_name,
+          {
+            typescript_file: MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE,
+          },
+        );
+      }
+
+      if (original_desired_state !== DESIRED_RUNTIME_STATES.RUNNING) {
+        char_block.enabled = true;
+        char_block.desired_runtime_state = DESIRED_RUNTIME_STATES.RUNNING;
+      }
+
+      if (runtime_override_applied) {
+        await restart_character_for_movement_runtime(char_name, char_block);
+      } else if (!char_block.instance) {
         await control_character(char_name, CONTROL_ACTIONS.START);
       }
 
@@ -1174,10 +1314,17 @@ function migrate_old_storage(path, localStorage) {
       }
 
       try {
-        await restore_movement_live_test_state(
-          char_name,
-          original_desired_state,
-        );
+        if (runtime_override_applied) {
+          await restore_movement_live_test_execution_source(
+            char_name,
+            original_desired_state,
+          );
+        } else {
+          await restore_movement_live_test_state(
+            char_name,
+            original_desired_state,
+          );
+        }
       } catch (restore_error) {
         emit_supervisor_event(
           "MOVEMENT_LIVE_TEST_STATE_RESTORE_FAILED",
@@ -1423,6 +1570,10 @@ function migrate_old_storage(path, localStorage) {
       return null;
     }
 
+    const execution_source = resolveCharacterExecutionSource(
+      char_block,
+      !!cfg.enable_TYPECODE,
+    );
     const args = {
       version: g_version,
       realm_address: realm_connection.address,
@@ -1431,7 +1582,7 @@ function migrate_old_storage(path, localStorage) {
       realm_port: realm_connection.legacyPort,
       sess: sess,
       cid: char.id,
-      script_file: char_block.script,
+      script_file: execution_source.scriptFile,
       enable_map: !!(cfg.web_app && cfg.web_app.enable_minimap),
       cname: char_name,
       clid: ctype_to_clid[char.type] || -1,
@@ -1439,8 +1590,8 @@ function migrate_old_storage(path, localStorage) {
       runtime_state: char_block.desired_runtime_state,
       emergency_stop: emergency_stop.snapshot(),
     };
-    if (cfg.enable_TYPECODE) {
-      args.typescript_file = char_block.typescript;
+    if (execution_source.typescriptFile) {
+      args.typescript_file = execution_source.typescriptFile;
     }
 
     const result = child_process.fork("./src/CharacterThread.js", [], {
