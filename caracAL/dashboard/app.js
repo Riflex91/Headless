@@ -780,8 +780,7 @@ function renderCharacters() {
     cards.delete(name);
   }
 
-  activeCount.textContent =
-    `${characters.length} / ${state.maxOnlineCharacters} online`;
+  activeCount.textContent = `${characters.length} / ${state.maxOnlineCharacters} online`;
 }
 
 function refreshHeartbeatAges() {
