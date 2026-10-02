@@ -717,7 +717,7 @@ function migrate_old_storage(path, localStorage) {
 
     return {
       ...plan,
-      status: "PENDING_SLOT_RELEASE",
+      status: "REQUESTED",
     };
   }
 
@@ -791,6 +791,19 @@ function migrate_old_storage(path, localStorage) {
       case CONTROL_ACTIONS.STOP:
         char_block.enabled = false;
         char_block.desired_runtime_state = DESIRED_RUNTIME_STATES.STOPPED;
+        if (char_block.rotation_source) {
+          const rotation_source = char_block.rotation_source;
+          const source = character_manage[rotation_source];
+          if (source?.rotation_replacement === char_name) {
+            source.rotation_replacement = null;
+          }
+          char_block.rotation_source = null;
+          emit_supervisor_event("CHARACTER_ROTATION_CANCELLED", char_name, {
+            stop_character: rotation_source,
+            start_character: char_name,
+            reason: "TARGET_STOPPED",
+          });
+        }
         clear_restart_timer(char_block);
         clear_stable_timer(char_block);
         persist_character_runtime_state(char_name, "manual_stop");
