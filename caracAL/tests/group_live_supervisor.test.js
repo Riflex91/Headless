@@ -122,3 +122,27 @@ test("group supervisor uses a group-specific runtime readiness error", () => {
     /run_group_live_test[\s\S]*await wait_for_group_live_test_runtime\(char_name\)/,
   );
 });
+
+test("group supervisor accepts coordinated peer-created pair without local party action", () => {
+  const evidence = {
+    groupTestStarted: true,
+    groupTestCompleted: true,
+    partyActions: 0,
+    groupProjectionVisible: true,
+    roleProjected: true,
+    leaderProjected: true,
+  };
+  const combined = combineGroupLiveTestResult(
+    {
+      outcome: "PASS",
+      reason: "GROUP_LIVE_E2E_CONFIRMED",
+      preparation: {
+        initialPairFormed: false,
+        coordinatedPeerPairObserved: true,
+      },
+    },
+    evidence,
+  );
+
+  assert.equal(combined.outcome, "PASS");
+});

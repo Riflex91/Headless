@@ -2476,6 +2476,11 @@ function migrate_old_storage(path, localStorage) {
       role: options.role,
       leader: options.leader,
       peer: options.peer,
+      baseline_pair_formed:
+        typeof options.baselinePairFormed === "boolean"
+          ? options.baselinePairFormed
+          : null,
+      coordinated_pair: options.coordinatedPair === true,
     });
     dashboard?.publishSnapshot();
 
@@ -2543,6 +2548,11 @@ function migrate_old_storage(path, localStorage) {
         role: options.role,
         leader: options.leader,
         peer: options.peer,
+        baselinePairFormed:
+          typeof options.baselinePairFormed === "boolean"
+            ? options.baselinePairFormed
+            : undefined,
+        coordinatedPair: options.coordinatedPair === true,
       });
       if (!sent) {
         const pending = group_live_test_requests.get(request_id);

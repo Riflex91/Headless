@@ -483,6 +483,11 @@ function attachHeadlessDashboard({
           role: req.body?.role,
           leader: req.body?.leader,
           peer: req.body?.peer,
+          baselinePairFormed:
+            typeof req.body?.baselinePairFormed === "boolean"
+              ? req.body.baselinePairFormed
+              : undefined,
+          coordinatedPair: req.body?.coordinatedPair === true,
         });
         res.json({
           ok: result?.outcome === "PASS",
