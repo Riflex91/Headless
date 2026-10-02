@@ -10,12 +10,21 @@ import {
   MovementPathStatus,
   MovementWaypoint,
 } from "./movement-path.lib";
+import {
+  MovementPositionSnapshot,
+  MovementSafePoint,
+  MovementSafePointStore,
+  MovementStuckDetector,
+  MovementStuckStatus,
+} from "./movement-safety.lib";
 
 export type MovementMode =
   | "IDLE"
   | "DIRECT"
   | "SMART"
   | "PATH"
+  | "RETURN"
+  | "STUCK"
   | "CANCELLING"
   | "UNKNOWN";
 
@@ -34,7 +43,12 @@ export interface MovementControllerEvent {
     | "MOVEMENT_WAYPOINT_SETTLED"
     | "MOVEMENT_PATH_COMPLETED"
     | "MOVEMENT_PATH_FAILED"
-    | "MOVEMENT_PATH_CANCELLED";
+    | "MOVEMENT_PATH_CANCELLED"
+    | "MOVEMENT_SAFE_POINT_SET"
+    | "MOVEMENT_SAFE_POINT_CLEARED"
+    | "MOVEMENT_RETURN_STARTED"
+    | "MOVEMENT_STUCK"
+    | "MOVEMENT_PROGRESS_RESUMED";
   timestamp: number;
   owner: string | null;
   previousOwner?: string | null;
@@ -46,6 +60,8 @@ export interface MovementControllerEvent {
   pathId?: number;
   waypointIndex?: number;
   waypointCount?: number;
+  safePoint?: MovementSafePoint | null;
+  stuckSince?: number | null;
 }
 
 export interface MovementControllerOptions {
@@ -53,6 +69,9 @@ export interface MovementControllerOptions {
   onEvent?: (event: MovementControllerEvent) => void;
   directSettlementTolerance?: number;
   antiPingPongDistance?: number;
+  position?: () => MovementPositionSnapshot;
+  stuckTimeoutMs?: number;
+  stuckProgressDistance?: number;
 }
 
 export interface MovementRequestBase {
@@ -79,6 +98,8 @@ export interface PathMovementRequest extends MovementRequestBase {
   waypoints: MovementWaypoint[];
   allowBacktrack?: boolean;
 }
+
+export interface ReturnMovementRequest extends MovementRequestBase {}
 
 export interface MovementActionBoundary {
   directMove(request: MoveRequest): ActionRecord;
@@ -108,6 +129,8 @@ export interface MovementControllerStatus {
   owner: string | null;
   mode: MovementMode;
   path: MovementPathStatus | null;
+  safePoint: MovementSafePoint | null;
+  stuck: MovementStuckStatus;
   active: {
     id: number;
     type: MovementCommandType;
@@ -162,10 +185,14 @@ export class MovementController {
   private readonly onEvent?: (event: MovementControllerEvent) => void;
   private readonly directSettlementTolerance: number;
   private readonly paths: MovementPathPlanner;
+  private readonly safePoints: MovementSafePointStore;
+  private readonly stuckDetector: MovementStuckDetector;
+  private readonly position?: () => MovementPositionSnapshot;
   private owner: string | null = null;
   private mode: MovementMode = "IDLE";
   private active: ActiveMovementCommand | null = null;
   private pathContext: MovementPathContext | null = null;
+  private stuckPreviousMode: MovementMode | null = null;
   private commandSequence = 0;
 
   constructor(
@@ -183,6 +210,13 @@ export class MovementController {
       now: this.now,
       antiPingPongDistance: options.antiPingPongDistance,
     });
+    this.safePoints = new MovementSafePointStore(this.now);
+    this.stuckDetector = new MovementStuckDetector({
+      now: this.now,
+      timeoutMs: options.stuckTimeoutMs,
+      minProgressDistance: options.stuckProgressDistance,
+    });
+    this.position = options.position;
   }
 
   status(): MovementControllerStatus {
@@ -190,6 +224,8 @@ export class MovementController {
       owner: this.owner,
       mode: this.mode,
       path: this.paths.status(),
+      safePoint: this.safePoints.get(),
+      stuck: this.stuckDetector.status(),
       active: this.active
         ? {
             ...this.active,
