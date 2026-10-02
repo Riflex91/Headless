@@ -5,6 +5,7 @@ const bwi = require("bot-web-interface");
 const monitoring_util = require("../monitoring_util");
 const express = require("express");
 const fs_regular = require("node:fs");
+const path = require("node:path");
 const {
   LOCALSTORAGE_PATH,
   LOCALSTORAGE_ROTA_PATH,
@@ -17,6 +18,7 @@ const {
   CONTROL_ACTIONS,
   DESIRED_RUNTIME_STATES,
 } = require("../src/CharacterControl");
+const { AdventureLandAssetCache } = require("../src/AdventureLandAssetCache");
 const { DiagnosticEventStore } = require("../src/DiagnosticStore");
 const { attachHeadlessDashboard } = require("../src/HeadlessDashboard");
 const { updateCharacterLiveState } = require("../src/LiveState");
@@ -98,6 +100,14 @@ function migrate_old_storage(path, localStorage) {
 
   const character_manage = cfg.characters;
   const diagnostic_store = new DiagnosticEventStore({ maxEvents: 20000 });
+  const asset_cache = new AdventureLandAssetCache({
+    cacheDir: path.join(
+      process.cwd(),
+      "data",
+      "assets",
+      "adventure-land",
+    ),
+  });
 
   //TODO right now this server wont terminate.
   //this is fine atm because caracAL does not terminate when all chars stop.
@@ -135,6 +145,7 @@ function migrate_old_storage(path, localStorage) {
         lifecyclePolicy: lifecycle_policy,
         controlCharacter: control_character,
         diagnosticStore: diagnostic_store,
+        assetCache: asset_cache,
       });
       log.info(
         {
