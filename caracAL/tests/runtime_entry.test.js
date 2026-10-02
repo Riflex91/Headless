@@ -42,11 +42,7 @@ test("bot main entrypoint stays role-neutral and mutation-free", () => {
 
 test("runtime feature code cannot call Adventure Land mutations directly", () => {
   const botRoot = path.join(__dirname, "..", "TYPECODE", "bot");
-  const mutationBoundary = path.join(
-    botRoot,
-    "core",
-    "action-boundary.lib.ts",
-  );
+  const mutationBoundary = path.join(botRoot, "core", "action-boundary.lib.ts");
   const mutationCalls = [
     "move",
     "smart_move",
@@ -85,7 +81,10 @@ test("runtime feature code cannot call Adventure Land mutations directly", () =>
         assert.doesNotMatch(
           source,
           directCall,
-          `${path.relative(botRoot, fullPath)} must route ${mutation} through ActionBoundary`,
+          `${path.relative(
+            botRoot,
+            fullPath,
+          )} must route ${mutation} through ActionBoundary`,
         );
       }
     }
