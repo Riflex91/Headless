@@ -26,6 +26,11 @@ import {
   FarmIntelligenceEvent,
 } from "./farm-intelligence-controller.lib";
 import {
+  FarmLiveTestOptions,
+  FarmLiveTestResult,
+  FarmLiveTestRunner,
+} from "./farm-live-test.lib";
+import {
   CombatLiveTestOptions,
   CombatLiveTestResult,
   CombatLiveTestRunner,
@@ -115,6 +120,7 @@ export class BotRuntimeKernel {
   private combatLiveTestRunning = false;
   private classSkillLiveTestRunning = false;
   private groupLiveTestRunning = false;
+  private farmLiveTestRunning = false;
 
   constructor() {
     this.eventBus = new EventBus({
@@ -367,6 +373,9 @@ export class BotRuntimeKernel {
     if (this.groupLiveTestRunning) {
       throw new Error("group live test already running");
     }
+    if (this.farmLiveTestRunning) {
+      throw new Error("farm live test already running");
+    }
     if (!this.started || this.stopping) {
       throw new Error("runtime is not ready for movement live test");
     }
@@ -440,6 +449,9 @@ export class BotRuntimeKernel {
     }
     if (this.groupLiveTestRunning) {
       throw new Error("group live test already running");
+    }
+    if (this.farmLiveTestRunning) {
+      throw new Error("farm live test already running");
     }
     if (!this.started || this.stopping) {
       throw new Error("runtime is not ready for combat live test");
@@ -523,6 +535,9 @@ export class BotRuntimeKernel {
     if (this.groupLiveTestRunning) {
       throw new Error("group live test already running");
     }
+    if (this.farmLiveTestRunning) {
+      throw new Error("farm live test already running");
+    }
     if (!this.started || this.stopping) {
       throw new Error("runtime is not ready for class skill live test");
     }
@@ -603,6 +618,9 @@ export class BotRuntimeKernel {
     if (this.classSkillLiveTestRunning) {
       throw new Error("class skill live test already running");
     }
+    if (this.farmLiveTestRunning) {
+      throw new Error("farm live test already running");
+    }
     if (!this.started || this.stopping) {
       throw new Error("runtime is not ready for group live test");
     }
@@ -665,6 +683,82 @@ export class BotRuntimeKernel {
       throw error;
     } finally {
       this.groupLiveTestRunning = false;
+    }
+  }
+
+  async runFarmIntelligenceLiveTest(
+    options: FarmLiveTestOptions = {},
+  ): Promise<FarmLiveTestResult> {
+    if (this.farmLiveTestRunning) {
+      throw new Error("farm live test already running");
+    }
+    if (this.movementLiveTestRunning) {
+      throw new Error("movement live test already running");
+    }
+    if (this.combatLiveTestRunning) {
+      throw new Error("combat live test already running");
+    }
+    if (this.classSkillLiveTestRunning) {
+      throw new Error("class skill live test already running");
+    }
+    if (this.groupLiveTestRunning) {
+      throw new Error("group live test already running");
+    }
+    if (!this.started || this.stopping) {
+      throw new Error("runtime is not ready for farm live test");
+    }
+    if (runtimeState() !== "RUNNING") {
+      throw new Error("runtime must be RUNNING for farm live test");
+    }
+
+    this.farmLiveTestRunning = true;
+    const requestId = options.requestId || `farm-live-${Date.now()}`;
+    this.eventBus.emit({
+      module: "FarmLiveTest",
+      type: "FARM_LIVE_TEST_STARTED",
+      why: "AUTONOMOUS_FARM_INTELLIGENCE_E2E",
+      correlationId: requestId,
+      data: {
+        requestId,
+        farmIntelligence: this.farmIntelligence.status(),
+        ...runtimeIdentity(),
+      },
+    });
+
+    try {
+      const runner = new FarmLiveTestRunner({
+        farmIntelligence: this.farmIntelligence,
+        character: () => this.game.character(),
+      });
+      const result = await runner.run({
+        ...options,
+        requestId,
+      });
+      this.eventBus.emit({
+        module: "FarmLiveTest",
+        type: "FARM_LIVE_TEST_COMPLETED",
+        why: result.reason,
+        correlationId: requestId,
+        data: {
+          result,
+          farmIntelligence: this.farmIntelligence.status(),
+        },
+      });
+      return result;
+    } catch (error) {
+      this.eventBus.emit({
+        module: "FarmLiveTest",
+        type: "FARM_LIVE_TEST_FAILED",
+        why: "FARM_LIVE_TEST_RUNTIME_ERROR",
+        correlationId: requestId,
+        data: {
+          error: error instanceof Error ? error.message : String(error),
+          farmIntelligence: this.farmIntelligence.status(),
+        },
+      });
+      throw error;
+    } finally {
+      this.farmLiveTestRunning = false;
     }
   }
 

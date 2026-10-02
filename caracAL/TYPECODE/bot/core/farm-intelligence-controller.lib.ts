@@ -507,6 +507,7 @@ export class FarmIntelligenceController {
   private readonly configSource: () => unknown;
   private readonly onEvent?: (event: FarmIntelligenceEvent) => void;
   private catalog: FarmCatalog | null = null;
+  private configOverride: unknown | undefined;
   private observed = new Map<string, FarmObservedPerformance>();
   private observationBaseline: ObservationBaseline | null = null;
   private selectedFarmKey: string | null = null;
@@ -535,6 +536,14 @@ export class FarmIntelligenceController {
     };
   }
 
+  setConfigOverride(config: unknown): void {
+    this.configOverride = config;
+  }
+
+  clearConfigOverride(): void {
+    this.configOverride = undefined;
+  }
+
   status(): FarmIntelligenceStatus {
     return {
       ...this.currentStatus,
@@ -553,7 +562,11 @@ export class FarmIntelligenceController {
 
   tick(): FarmIntelligenceStatus {
     const now = this.now();
-    const config = normalizeConfig(this.configSource());
+    const config = normalizeConfig(
+      this.configOverride === undefined
+        ? this.configSource()
+        : this.configOverride,
+    );
     const character = this.game.character();
 
     if (!config.enabled) {
@@ -1036,7 +1049,11 @@ export class FarmIntelligenceController {
       !this.observationBaseline ||
       this.observationBaseline.farmKey !== selected.farmKey ||
       now - this.observationBaseline.timestamp >=
-        normalizeConfig(this.configSource()).observationSampleMs;
+        normalizeConfig(
+          this.configOverride === undefined
+            ? this.configSource()
+            : this.configOverride,
+        ).observationSampleMs;
 
     this.selectedFarmKey = selected.farmKey;
     if (!shouldReset) return;
