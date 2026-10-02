@@ -111,6 +111,52 @@
     };
   }
 
+  function nearbyEntities(characters, mapName) {
+    const entities = new Map();
+
+    for (const character of characters || []) {
+      if (character?.game?.map !== mapName) continue;
+      for (const entity of character.game.nearby_entities || []) {
+        if (!finitePoint(entity)) continue;
+        if (!["monster", "npc"].includes(entity.kind)) continue;
+        const key = [
+          entity.kind,
+          entity.id || entity.mtype || entity.npc || entity.name,
+          Math.round(entity.x),
+          Math.round(entity.y),
+        ].join("|");
+        const previous = entities.get(key);
+        if (!previous || (entity.distance ?? Infinity) < (previous.distance ?? Infinity)) {
+          entities.set(key, entity);
+        }
+      }
+    }
+
+    return [...entities.values()].sort(
+      (left, right) => (left.distance ?? Infinity) - (right.distance ?? Infinity),
+    );
+  }
+
+  function sceneNpcs(mapScene) {
+    return (mapScene?.npcs || [])
+      .filter(finitePoint)
+      .map((npc) => ({
+        ...npc,
+        kind: "npc",
+      }));
+  }
+
+  function pointInBounds(point, bounds) {
+    return (
+      finitePoint(point) &&
+      !!bounds &&
+      point.x >= bounds.minX &&
+      point.x <= bounds.minX + bounds.width &&
+      point.y >= bounds.minY &&
+      point.y <= bounds.minY + bounds.height
+    );
+  }
+
   function computeBounds(geometries) {
     const points = [];
 
