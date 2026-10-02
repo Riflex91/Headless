@@ -30,6 +30,11 @@ import {
   InventoryIntelligenceEvent,
 } from "./inventory-intelligence-controller.lib";
 import {
+  LogisticsClaim,
+  LogisticsClaimExecutor,
+  LogisticsExecutionResult,
+} from "./logistics-claim-executor.lib";
+import {
   InventoryLiveTestOptions,
   InventoryLiveTestResult,
   InventoryLiveTestRunner,
@@ -119,6 +124,7 @@ export class BotRuntimeKernel {
   readonly actionLedger: ActionLedger;
   readonly game: GameAdapter;
   readonly actions: ActionBoundary;
+  readonly logisticsClaims: LogisticsClaimExecutor;
   readonly movement: MovementController;
   readonly combat: CombatController;
   readonly classSkills: ClassSkillController | null;
@@ -134,6 +140,8 @@ export class BotRuntimeKernel {
   private groupLiveTestRunning = false;
   private farmLiveTestRunning = false;
   private inventoryLiveTestRunning = false;
+  private logisticsClaimRunning = false;
+  private lastLogisticsExecution: LogisticsExecutionResult | null = null;
 
   constructor() {
     this.eventBus = new EventBus({
@@ -165,6 +173,10 @@ export class BotRuntimeKernel {
 
     this.game = new GameAdapter();
     this.actions = new ActionBoundary(this.actionLedger, this.game);
+    this.logisticsClaims = new LogisticsClaimExecutor(
+      this.actions,
+      this.game,
+    );
     this.movement = new MovementController(this.actions, {
       onEvent: (event) => this.handleMovementEvent(event),
       position: () => {
@@ -299,6 +311,10 @@ export class BotRuntimeKernel {
             groupCombat: this.groupCombat.status(),
             farmIntelligence: this.farmIntelligence.status(),
             inventoryIntelligence: this.inventoryIntelligence.status(),
+            logisticsExecution: {
+              busy: this.logisticsClaimRunning,
+              last: this.lastLogisticsExecution,
+            },
             recentActions: this.actionLedger.list(20),
           },
         });
@@ -384,9 +400,70 @@ export class BotRuntimeKernel {
       groupCombat: this.groupCombat.status(),
       farmIntelligence: this.farmIntelligence.status(),
       inventoryIntelligence: this.inventoryIntelligence.status(),
+      logisticsExecution: {
+        busy: this.logisticsClaimRunning,
+        last: this.lastLogisticsExecution,
+      },
       recentActions: this.actionLedger.list(20),
       ...runtimeIdentity(),
     };
+  }
+
+  async executeLogisticsClaim(
+    claim: LogisticsClaim,
+  ): Promise<LogisticsExecutionResult> {
+    if (this.logisticsClaimRunning) {
+      throw new Error("logistics claim already running");
+    }
+    if (!this.started || this.stopping) {
+      throw new Error("runtime is not ready for logistics claim");
+    }
+    if (runtimeState() !== "RUNNING") {
+      throw new Error("runtime must be RUNNING for logistics claim");
+    }
+
+    this.logisticsClaimRunning = true;
+    this.eventBus.emit({
+      module: "MerchantLogistics",
+      type: "LOGISTICS_CLAIM_STARTED",
+      why: claim.reason || claim.type,
+      correlationId: claim.id,
+      data: {
+        claim,
+        ...runtimeIdentity(),
+      },
+    });
+
+    try {
+      const result = await this.logisticsClaims.execute(claim);
+      this.lastLogisticsExecution = result;
+      this.eventBus.emit({
+        module: "MerchantLogistics",
+        type: "LOGISTICS_CLAIM_COMPLETED",
+        why: result.reason,
+        correlationId: claim.id,
+        ...(result.actionId && { actionId: result.actionId }),
+        data: {
+          claim,
+          result,
+        },
+      });
+      return result;
+    } catch (error) {
+      this.eventBus.emit({
+        module: "MerchantLogistics",
+        type: "LOGISTICS_CLAIM_FAILED",
+        why: "LOGISTICS_CLAIM_RUNTIME_ERROR",
+        correlationId: claim.id,
+        data: {
+          claim,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      });
+      throw error;
+    } finally {
+      this.logisticsClaimRunning = false;
+    }
   }
 
   async runMovementLiveTest(
