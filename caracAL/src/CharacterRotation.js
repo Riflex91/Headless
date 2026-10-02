@@ -59,10 +59,16 @@ function createRotationPlan(
       409,
     );
   }
-  if (!source.instance) {
+  if (
+    !source.instance ||
+    !source.enabled ||
+    source.desired_runtime_state === DESIRED_RUNTIME_STATES.STOPPED ||
+    source.lifecycle_state === "STOPPING" ||
+    source.rotation_replacement
+  ) {
     throw rotationError(
       "ROTATION_SOURCE_NOT_ACTIVE",
-      `Rotation source is not active: ${stopName}`,
+      `Rotation source is not available for rotation: ${stopName}`,
       409,
     );
   }
