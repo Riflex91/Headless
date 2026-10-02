@@ -302,6 +302,42 @@ function assertStringOrAuto(path, value, min, max) {
   assertNumberRange(null, path, value, min, max);
 }
 
+function assertOneOf(path, value, allowed) {
+  if (!allowed.includes(value)) {
+    throw makeConfigError(
+      "INVALID_CONFIG_VALUE",
+      `Expected ${path} to be one of: ${allowed.join(", ")}`,
+      400,
+      path,
+    );
+  }
+}
+
+function assertNonEmptyString(path, value) {
+  if (typeof value !== "string" || !value.trim()) {
+    throw makeConfigError(
+      "INVALID_CONFIG_VALUE",
+      `Expected non-empty string at ${path}`,
+      400,
+      path,
+    );
+  }
+}
+
+function assertStringArray(path, value) {
+  if (
+    !Array.isArray(value) ||
+    value.some((entry) => typeof entry !== "string" || !entry.trim())
+  ) {
+    throw makeConfigError(
+      "INVALID_CONFIG_VALUE",
+      `Expected string array at ${path}`,
+      400,
+      path,
+    );
+  }
+}
+
 function validateCharacterConfig(config, ctype = null) {
   if (!isPlainObject(config)) {
     throw makeConfigError(
@@ -320,6 +356,7 @@ function validateCharacterConfig(config, ctype = null) {
   }
 
   const booleanPaths = [
+    ["general.bot_enabled", config.general.bot_enabled],
     ["general.auto_reconnect", config.general.auto_reconnect],
     ["general.auto_respawn", config.general.auto_respawn],
     ["skills.automatic_use", config.skills.automatic_use],
@@ -360,6 +397,60 @@ function validateCharacterConfig(config, ctype = null) {
   for (const [skill, enabled] of Object.entries(config.skills.enabled)) {
     assertBoolean(config, `skills.enabled.${skill}`, enabled);
   }
+
+  assertOneOf("general.default_role", config.general.default_role, [
+    "AUTO",
+    "FARMER",
+    "BOSS",
+    "EVENT",
+    "SUPPORT",
+    "MERCHANT",
+    "LOGISTICS",
+    "TRAINING",
+  ]);
+  assertNonEmptyString("general.preferred_server", config.general.preferred_server);
+  assertNonEmptyString("supply.hp_potion", config.supply.hp_potion);
+  assertNonEmptyString("supply.mp_potion", config.supply.mp_potion);
+  assertOneOf("combat.kiting", config.combat.kiting, [
+    "AUTO",
+    true,
+    false,
+  ]);
+  assertNonEmptyString("farming.target", config.farming.target);
+  assertStringArray(
+    "farming.preferred_monsters",
+    config.farming.preferred_monsters,
+  );
+  assertStringArray(
+    "farming.forbidden_monsters",
+    config.farming.forbidden_monsters,
+  );
+  assertNonEmptyString("party.leader", config.party.leader);
+  assertNonEmptyString("party.formation", config.party.formation);
+  assertOneOf("gear.role", config.gear.role, [
+    "AUTO",
+    "FARMER",
+    "BOSS",
+    "EVENT",
+    "SUPPORT",
+    "MERCHANT",
+    "LOGISTICS",
+    "TRAINING",
+  ]);
+  assertOneOf("safety.unknown_policy", config.safety.unknown_policy, [
+    "SUSPEND",
+  ]);
+  assertOneOf("advanced.log_level", config.advanced.log_level, [
+    "ERROR",
+    "WARN",
+    "INFO",
+    "DEBUG",
+  ]);
+  assertOneOf(
+    "advanced.diagnostic_detail",
+    config.advanced.diagnostic_detail,
+    ["MINIMAL", "NORMAL", "VERBOSE"],
+  );
 
   const percentages = [
     ["potions.hp_use_below_pct", config.potions.hp_use_below_pct],
@@ -404,23 +495,6 @@ function validateCharacterConfig(config, ctype = null) {
   assertStringOrAuto("advanced.decision_tick_ms", config.advanced.decision_tick_ms, 25, 60000);
   assertStringOrAuto("advanced.movement_timeout_ms", config.advanced.movement_timeout_ms, 100, 600000);
   assertStringOrAuto("advanced.action_timeout_ms", config.advanced.action_timeout_ms, 100, 600000);
-
-  if (!Array.isArray(config.farming.preferred_monsters)) {
-    throw makeConfigError(
-      "INVALID_CONFIG_VALUE",
-      "farming.preferred_monsters must be an array",
-      400,
-      "farming.preferred_monsters",
-    );
-  }
-  if (!Array.isArray(config.farming.forbidden_monsters)) {
-    throw makeConfigError(
-      "INVALID_CONFIG_VALUE",
-      "farming.forbidden_monsters must be an array",
-      400,
-      "farming.forbidden_monsters",
-    );
-  }
 
   if (String(ctype || "").toLowerCase() === "merchant") {
     if (!config.merchant) {
