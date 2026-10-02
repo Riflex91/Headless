@@ -28,12 +28,7 @@ function makeState() {
       target: null,
       rip: false,
       moving: false,
-      items: [
-        { name: "wood", q: 4 },
-        { name: "blade", level: 2 },
-        null,
-        null,
-      ],
+      items: [{ name: "wood", q: 4 }, { name: "blade", level: 2 }, null, null],
       slots: {},
       bank: null,
     },
