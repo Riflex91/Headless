@@ -214,8 +214,8 @@ function formatCombatTarget(combat) {
     target.inRange === true
       ? " · IN RANGE"
       : target.inRange === false
-        ? " · OUT"
-        : "";
+      ? " · OUT"
+      : "";
   return `${label}${distance}${range}${inRange}`;
 }
 
@@ -225,6 +225,7 @@ function formatCombatCooldowns(combat) {
     combat.cooldowns.hpPotionRemainingMs || 0
   }ms · MP Pot ${combat.cooldowns.mpPotionRemainingMs || 0}ms`;
 }
+
 function formatTarget(game) {
   if (!game) return "—";
   const target = game.target;

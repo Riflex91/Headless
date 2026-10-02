@@ -477,10 +477,7 @@ function migrate_old_storage(path, localStorage) {
       `${char_name} runtime ${normalized.module}:${normalized.type}`,
     );
 
-    if (
-      char_block &&
-      (normalized.data?.movement || normalized.data?.combat)
-    ) {
+    if (char_block && (normalized.data?.movement || normalized.data?.combat)) {
       dashboard?.publishSnapshot();
     }
   }

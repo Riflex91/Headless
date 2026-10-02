@@ -1,4 +1,5 @@
 import type { ActionRecord } from "./action-ledger.lib";
+import type { ActionBoundary } from "./action-boundary.lib";
 import type { CharacterSnapshot, CooldownSnapshot, EntitySnapshot } from "./game-adapter.lib";
 import type { MovementControllerStatus } from "./movement-controller.lib";
 
@@ -71,26 +72,6 @@ interface CombatGameAdapter {
   entities(): EntitySnapshot[];
   entity(id: string): EntitySnapshot | null;
   cooldowns(): CooldownSnapshot[];
-}
-
-interface CombatActions {
-  attack(request: {
-    targetId: string;
-    module: string;
-    why: string;
-    correlationId?: string;
-  }): Promise<ActionRecord>;
-  useSkill(request: {
-    skill: string;
-    module: string;
-    why: string;
-    correlationId?: string;
-  }): Promise<ActionRecord>;
-  respawn(request: {
-    module: string;
-    why: string;
-    correlationId?: string;
-  }): ActionRecord;
 }
 
 interface CombatMovement {
@@ -246,12 +227,12 @@ export class CombatController {
   private lastAction: CombatControllerStatus["lastAction"] = null;
   private lastStatusTimestamp = 0;
   private busy = false;
-  private lastRespawnAt = 0;
+  private lastRespawnAt: number | null = null;
   private unknownPotion: UnknownPotion | null = null;
 
   constructor(
     private readonly game: CombatGameAdapter,
-    private readonly actions: CombatActions,
+    private readonly actions: ActionBoundary,
     private readonly movement: CombatMovement,
     options: CombatControllerOptions = {},
   ) {
@@ -336,7 +317,8 @@ export class CombatController {
         this.setState("DEAD", "CHARACTER_DEAD");
         if (
           config.autoRespawn &&
-          this.now() - this.lastRespawnAt >= config.respawnRetryMs
+          (this.lastRespawnAt === null ||
+            this.now() - this.lastRespawnAt >= config.respawnRetryMs)
         ) {
           this.lastRespawnAt = this.now();
           const action = this.actions.respawn({
@@ -358,7 +340,7 @@ export class CombatController {
         return this.status();
       }
 
-      this.lastRespawnAt = 0;
+      this.lastRespawnAt = null;
 
       if (!config.enabled) {
         this.setTarget(null);

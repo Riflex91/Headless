@@ -262,7 +262,7 @@ test("attack cooldown prevents dispatch", async () => {
   assert.equal(setup.calls.some((entry) => entry[0] === "attack"), false);
 });
 
-test("retreat captures healthy anchor and returns there on low HP", async () => {
+test("retreat captures anchor and returns on low HP", async () => {
   const setup = makeController({
     config: {
       combat: { enabled: true, retreat: true, retreatHpPercent: 35 },
