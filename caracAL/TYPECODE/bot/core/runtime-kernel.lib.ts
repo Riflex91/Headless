@@ -30,6 +30,11 @@ import {
   InventoryIntelligenceEvent,
 } from "./inventory-intelligence-controller.lib";
 import {
+  MerchantLogisticsController,
+  MerchantLogisticsRuntimeEvent,
+  MerchantLogisticsRuntimePlan,
+} from "./merchant-logistics-controller.lib";
+import {
   InventoryLiveTestOptions,
   InventoryLiveTestResult,
   InventoryLiveTestRunner,
@@ -64,6 +69,8 @@ import {
   MovementLiveTestRunner,
 } from "./movement-live-test.lib";
 
+const MERCHANT_LOGISTICS_JOB_ID = "merchant-logistics-loop";
+const MERCHANT_LOGISTICS_INTERVAL_MS = 500;
 const INVENTORY_INTELLIGENCE_JOB_ID = "inventory-intelligence-loop";
 const INVENTORY_INTELLIGENCE_INTERVAL_MS = 1000;
 const FARM_INTELLIGENCE_JOB_ID = "farm-intelligence-loop";
@@ -125,6 +132,7 @@ export class BotRuntimeKernel {
   readonly groupCombat: GroupCombatController;
   readonly farmIntelligence: FarmIntelligenceController;
   readonly inventoryIntelligence: InventoryIntelligenceController;
+  readonly merchantLogistics: MerchantLogisticsController;
 
   private started = false;
   private stopping = false;
@@ -216,6 +224,24 @@ export class BotRuntimeKernel {
         onEvent: (event) => this.handleInventoryIntelligenceEvent(event),
       },
     );
+    this.merchantLogistics = new MerchantLogisticsController(
+      this.game,
+      this.actions,
+      this.movement,
+      this.inventoryIntelligence,
+      {
+        onEvent: (event) => this.handleMerchantLogisticsEvent(event),
+      },
+    );
+
+    this.scheduler.register({
+      id: MERCHANT_LOGISTICS_JOB_ID,
+      intervalMs: MERCHANT_LOGISTICS_INTERVAL_MS,
+      priority: 83,
+      tick: async () => {
+        await this.merchantLogistics.tick();
+      },
+    });
 
     this.scheduler.register({
       id: INVENTORY_INTELLIGENCE_JOB_ID,
@@ -299,6 +325,7 @@ export class BotRuntimeKernel {
             groupCombat: this.groupCombat.status(),
             farmIntelligence: this.farmIntelligence.status(),
             inventoryIntelligence: this.inventoryIntelligence.status(),
+            merchantLogistics: this.merchantLogistics.status(),
             recentActions: this.actionLedger.list(20),
           },
         });
@@ -384,6 +411,7 @@ export class BotRuntimeKernel {
       groupCombat: this.groupCombat.status(),
       farmIntelligence: this.farmIntelligence.status(),
       inventoryIntelligence: this.inventoryIntelligence.status(),
+      merchantLogistics: this.merchantLogistics.status(),
       recentActions: this.actionLedger.list(20),
       ...runtimeIdentity(),
     };
@@ -811,6 +839,17 @@ export class BotRuntimeKernel {
     }
   }
 
+  setMerchantLogisticsPlan(
+    plan: MerchantLogisticsRuntimePlan,
+  ): Record<string, unknown> {
+    const status = this.merchantLogistics.setPlan(plan);
+    return {
+      accepted: true,
+      claimCount: status.claimCount,
+      planGeneratedAt: status.planGeneratedAt,
+    };
+  }
+
   runInventoryIntelligenceLiveTest(
     options: InventoryLiveTestOptions = {},
   ): InventoryLiveTestResult {
@@ -888,6 +927,20 @@ export class BotRuntimeKernel {
     } finally {
       this.inventoryLiveTestRunning = false;
     }
+  }
+
+  private handleMerchantLogisticsEvent(
+    event: MerchantLogisticsRuntimeEvent,
+  ): void {
+    this.eventBus.emit({
+      module: "MerchantLogisticsController",
+      type: event.type,
+      why: event.reason,
+      data: {
+        merchantLogistics: event.status,
+        ...(event.completion && { completion: event.completion }),
+      },
+    });
   }
 
   private handleInventoryIntelligenceEvent(
