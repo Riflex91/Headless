@@ -119,8 +119,9 @@ test("incident recorder freezes snapshot and writes sanitized package", async ()
     assert.match(incidentText, /TEST_FAILURE/);
     assert.match(incidentText, /Error: boom/);
     assert.equal(incidentText.includes("must-not-leak"), false);
-    assert.match(snapshotText, /"hp": 100/);
-    assert.doesNotMatch(snapshotText, /"hp": 1/);
+    const snapshotJson = JSON.parse(snapshotText);
+    assert.equal(snapshotJson.characters[0].game.hp, 100);
+    assert.notEqual(snapshotJson.characters[0].game.hp, 1);
     assert.equal(snapshotText.includes("must-not-leak"), false);
     assert.match(eventsText, /ACTION_DISPATCHED/);
     assert.match(eventsText, /A-1/);
