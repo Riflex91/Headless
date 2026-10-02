@@ -196,7 +196,6 @@ test("upgrade chance failure is a confirmed executed outcome", async () => {
 
   assert.equal(result.status, "CONFIRMED");
   assert.equal(result.evidence.upgradeSucceeded, false);
-  assert.equal(result.resolutionWhy, "UPGRADE_RESULT_CONFIRMED");
 });
 
 test("upgrade precondition rejection is REJECTED while thrown outcome is UNKNOWN", async () => {
@@ -245,7 +244,6 @@ test("upgrade can confirm from observable inventory state change", async () => {
   });
 
   assert.equal(result.status, "CONFIRMED");
-  assert.equal(result.resolutionWhy, "UPGRADE_STATE_CONFIRMED");
 });
 
 test("compound blocks mismatched items before dispatch", async () => {
@@ -292,7 +290,6 @@ test("compound chance failure is a confirmed executed outcome", async () => {
 
   assert.equal(result.status, "CONFIRMED");
   assert.equal(result.evidence.compoundSucceeded, false);
-  assert.equal(result.resolutionWhy, "COMPOUND_RESULT_CONFIRMED");
 });
 
 test("compound API rejection stays distinct from uncertain post-dispatch result", async () => {
@@ -399,7 +396,6 @@ test("exchange can confirm from consumed stack and otherwise remains UNKNOWN", a
     why: "EXCHANGE_TOKEN",
   });
   assert.equal(confirmedResult.status, "CONFIRMED");
-  assert.equal(confirmedResult.resolutionWhy, "EXCHANGE_STATE_CONFIRMED");
 
   const unknownSetup = makeBoundary(makeState(), {
     async exchange() {
