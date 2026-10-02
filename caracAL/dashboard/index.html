@@ -47,6 +47,63 @@
         ></div>
       </section>
 
+      <section class="panel movement-panel">
+        <div class="panel-heading movement-heading">
+          <div>
+            <h2>Live-Bewegung</h2>
+            <p>
+              Position, Blickrichtung, gelaufener Weg und geplanter
+              smart_move-Weg.
+            </p>
+          </div>
+          <div class="movement-controls">
+            <label>
+              Map
+              <select id="movement-map-select"></select>
+            </label>
+            <label>
+              Trail
+              <select id="movement-trail-range">
+                <option value="30000">30 Sekunden</option>
+                <option value="120000" selected>2 Minuten</option>
+                <option value="300000">5 Minuten</option>
+              </select>
+            </label>
+            <label class="movement-toggle">
+              <input id="show-movement-trail" type="checkbox" checked />
+              Trail
+            </label>
+            <label class="movement-toggle">
+              <input id="show-planned-path" type="checkbox" checked />
+              Plan
+            </label>
+            <label class="movement-toggle">
+              <input id="show-facing" type="checkbox" checked />
+              Blickrichtung
+            </label>
+            <label class="movement-toggle">
+              <input id="show-target-line" type="checkbox" checked />
+              Target
+            </label>
+          </div>
+        </div>
+        <div class="movement-layout">
+          <div class="movement-map-wrap">
+            <svg
+              id="movement-map"
+              class="movement-map"
+              viewBox="0 0 1000 650"
+              role="img"
+              aria-label="Live-Bewegungskarte"
+            ></svg>
+            <div id="movement-map-empty" class="movement-map-empty">
+              Noch keine Positionsdaten.
+            </div>
+          </div>
+          <aside id="movement-legend" class="movement-legend"></aside>
+        </div>
+      </section>
+
       <section class="panel">
         <div class="panel-heading">
           <div>
@@ -149,6 +206,7 @@
       </article>
     </template>
 
+    <script src="/headless/movement-map.js" defer></script>
     <script src="/headless/app.js" defer></script>
   </body>
 </html>

@@ -3,7 +3,11 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 
-const { build_stat_beat, public_item } = require("../monitoring_util");
+const {
+  build_stat_beat,
+  public_item,
+  public_smart_plot,
+} = require("../monitoring_util");
 const { publicLiveState } = require("../src/HeadlessDashboard");
 const {
   TRAIL_RETENTION_MS,
@@ -65,6 +69,17 @@ test("stat beat exposes safe live character, inventory and equipment state", () 
     },
     current_map: "main",
     current_status: "Code Active",
+    smart: {
+      moving: true,
+      searching: false,
+      map: "main",
+      x: 300,
+      y: 400,
+      plot: [
+        { map: "main", x: 150, y: 250 },
+        { map: "main", x: 300, y: 400 },
+      ],
+    },
     caracAL: {
       map_enabled: () => false,
     },
@@ -92,6 +107,55 @@ test("stat beat exposes safe live character, inventory and equipment state", () 
   assert.equal(JSON.stringify(beat).includes("must-not-leak"), false);
   assert.equal(beat.target.mtype, "goo");
   assert.equal(beat.target.x, 130);
+  assert.equal(beat.movement_state, "SMART_MOVING");
+  assert.equal(beat.planned_path.length, 2);
+  assert.deepEqual(beat.planned_destination, {
+    map: "main",
+    x: 300,
+    y: 400,
+    searching: false,
+  });
+});
+
+test("smart_move projection exposes only route geometry", () => {
+  const plot = public_smart_plot({
+    plot: [
+      {
+        map: "main",
+        x: 10,
+        y: 20,
+        transport: false,
+        secret: "must-not-leak",
+      },
+      {
+        map: "cave",
+        x: 30,
+        y: 40,
+        transport: true,
+        s: 2,
+      },
+    ],
+  });
+
+  assert.deepEqual(plot, [
+    {
+      map: "main",
+      x: 10,
+      y: 20,
+      transport: false,
+      town: false,
+      spawn: null,
+    },
+    {
+      map: "cave",
+      x: 30,
+      y: 40,
+      transport: true,
+      town: false,
+      spawn: 2,
+    },
+  ]);
+  assert.equal(JSON.stringify(plot).includes("must-not-leak"), false);
 });
 
 test("public item projection excludes unknown runtime fields", () => {

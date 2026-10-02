@@ -18,6 +18,16 @@ const copyAccountLog = document.querySelector("#copy-account-log");
 const accountDiagnosticRange = document.querySelector(
   "#account-diagnostic-range",
 );
+const movementMapApi = window.HeadlessMovementMap;
+const movementMapSvg = document.querySelector("#movement-map");
+const movementMapEmpty = document.querySelector("#movement-map-empty");
+const movementLegend = document.querySelector("#movement-legend");
+const movementMapSelect = document.querySelector("#movement-map-select");
+const movementTrailRange = document.querySelector("#movement-trail-range");
+const showMovementTrail = document.querySelector("#show-movement-trail");
+const showPlannedPath = document.querySelector("#show-planned-path");
+const showFacing = document.querySelector("#show-facing");
+const showTargetLine = document.querySelector("#show-target-line");
 
 function formatTimestamp(timestamp) {
   if (!timestamp) return "—";
@@ -48,14 +58,15 @@ function formatResources(game) {
 
 function formatMovement(game) {
   if (!game) return "—";
-  if (!game.moving) return "IDLE";
+  const movementState =
+    game.movement_state || (game.moving ? "MOVING" : "IDLE");
 
-  const destination = game.movement_destination;
-  if (!destination) return "MOVING";
+  const destination = game.planned_destination || game.movement_destination;
+  if (!destination) return movementState;
 
-  return `MOVING → ${formatCoordinate(destination.x)}, ${formatCoordinate(
-    destination.y,
-  )}`;
+  return `${movementState} → ${formatCoordinate(
+    destination.x,
+  )}, ${formatCoordinate(destination.y)}`;
 }
 
 function formatTarget(game) {
@@ -280,6 +291,45 @@ function updateCharacterCard(card, character) {
   updateControlButtons(card, character);
 }
 
+function synchronizeMovementMapOptions() {
+  if (!movementMapApi) return;
+
+  const maps = movementMapApi.availableMaps([...state.characters.values()]);
+  const previous = movementMapSelect.value;
+
+  movementMapSelect.replaceChildren();
+  for (const mapName of maps) {
+    const option = document.createElement("option");
+    option.value = mapName;
+    option.textContent = mapName;
+    movementMapSelect.append(option);
+  }
+
+  if (maps.includes(previous)) {
+    movementMapSelect.value = previous;
+  } else if (maps.length > 0) {
+    movementMapSelect.value = maps[0];
+  }
+}
+
+function renderMovementMap() {
+  if (!movementMapApi) return;
+
+  synchronizeMovementMapOptions();
+  movementMapApi.renderMovementMap({
+    svg: movementMapSvg,
+    legend: movementLegend,
+    emptyState: movementMapEmpty,
+    characters: [...state.characters.values()],
+    mapName: movementMapSelect.value,
+    trailMs: Number(movementTrailRange.value) || 120000,
+    showTrail: showMovementTrail.checked,
+    showPlan: showPlannedPath.checked,
+    showFacing: showFacing.checked,
+    showTarget: showTargetLine.checked,
+  });
+}
+
 function renderCharacters() {
   const characters = [...state.characters.values()].sort((a, b) =>
     a.name.localeCompare(b.name),
@@ -367,6 +417,7 @@ function applySnapshot(snapshot) {
   }
 
   renderCharacters();
+  renderMovementMap();
   lastUpdate.textContent = `Update ${formatTimestamp(snapshot.generated_at)}`;
 }
 
@@ -407,6 +458,17 @@ clearEvents.addEventListener("click", () => {
   state.events = [];
   renderEvents();
 });
+
+for (const control of [
+  movementMapSelect,
+  movementTrailRange,
+  showMovementTrail,
+  showPlannedPath,
+  showFacing,
+  showTargetLine,
+]) {
+  control.addEventListener("change", renderMovementMap);
+}
 
 copyAccountLog.addEventListener("click", async () => {
   const originalText = copyAccountLog.textContent;
