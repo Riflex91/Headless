@@ -252,6 +252,7 @@ function migrate_old_storage(path, localStorage) {
         lifecyclePolicy: lifecycle_policy,
         controlCharacter: control_character,
         updateCharacterConfig: control_character_config,
+        readCharacterConfig: read_character_config,
         controlRotation: control_rotation,
         runMovementLiveTest: run_movement_live_test,
         runCombatLiveTest: run_combat_live_test,
@@ -847,6 +848,33 @@ function migrate_old_storage(path, localStorage) {
     );
     dashboard?.publishSnapshot();
     return state;
+  }
+
+  function read_character_config(char_name) {
+    const char_block = character_manage[char_name];
+    if (!char_block) {
+      throw make_control_error(
+        "CHARACTER_NOT_FOUND",
+        `Unknown character: ${char_name}`,
+        404,
+      );
+    }
+
+    return {
+      character: char_name,
+      revision: Number.isInteger(char_block.runtime_config_revision)
+        ? char_block.runtime_config_revision
+        : 0,
+      applied_revision: Number.isInteger(
+        char_block.applied_runtime_config_revision,
+      )
+        ? char_block.applied_runtime_config_revision
+        : null,
+      source: char_block.runtime_config_source || "CONFIG",
+      status: char_block.config_push_status || "UNKNOWN",
+      error: char_block.config_push_error || null,
+      config: JSON.parse(JSON.stringify(char_block.runtime_config || {})),
+    };
   }
 
   async function control_character_config(char_name, config) {

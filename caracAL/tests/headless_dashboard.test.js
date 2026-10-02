@@ -406,3 +406,42 @@ test("dashboard public live state keeps nearby entity telemetry but not map scen
   assert.equal(character.game.nearby_entities.length, 1);
   assert.equal(character.game.map_scene, undefined);
 });
+
+test("dashboard character configuration UI reads edits and live-pushes config", () => {
+  const root = path.join(__dirname, "..");
+  const index = fs.readFileSync(
+    path.join(root, "dashboard", "index.html"),
+    "utf8",
+  );
+  const app = fs.readFileSync(path.join(root, "dashboard", "app.js"), "utf8");
+  const configForm = fs.readFileSync(
+    path.join(root, "dashboard", "config-form.js"),
+    "utf8",
+  );
+  const dashboard = fs.readFileSync(
+    path.join(root, "src", "HeadlessDashboard.js"),
+    "utf8",
+  );
+  const coordinator = fs.readFileSync(
+    path.join(root, "standalones", "CharacterCoordinator.js"),
+    "utf8",
+  );
+
+  assert.doesNotThrow(() => new Function(app));
+  assert.doesNotThrow(() => new Function(configForm));
+  assert.equal(index.includes("data-configure"), true);
+  assert.equal(index.includes('id="character-config-dialog"'), true);
+  assert.equal(index.includes("/headless/config-form.js"), true);
+  assert.equal(app.includes("HeadlessConfigForm"), true);
+  assert.equal(app.includes("openCharacterConfig"), true);
+  assert.equal(app.includes("sendCharacterConfig"), true);
+  assert.equal(app.includes("runtime_config_revision"), true);
+  assert.equal(app.includes("applied_runtime_config_revision"), true);
+  assert.equal(
+    dashboard.includes('router.get("/headless/api/characters/:name/config"'),
+    true,
+  );
+  assert.equal(dashboard.includes("CONFIG_READ_UNAVAILABLE"), true);
+  assert.equal(coordinator.includes("read_character_config"), true);
+  assert.equal(coordinator.includes("readCharacterConfig"), true);
+});

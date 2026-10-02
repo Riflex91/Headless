@@ -1018,3 +1018,145 @@ dd {
     grid-column: 2;
   }
 }
+
+.config-dialog {
+  width: min(1080px, 96vw);
+  max-height: 92vh;
+  border: 1px solid #2a3550;
+  border-radius: 1rem;
+  padding: 0;
+  background: #11182c;
+  color: #e8edf7;
+}
+
+.config-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.68);
+}
+
+.config-dialog-shell {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  max-height: 92vh;
+}
+
+.config-dialog-header,
+.config-dialog-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid #26314b;
+}
+
+.config-dialog-footer {
+  border-top: 1px solid #26314b;
+  border-bottom: 0;
+}
+
+.config-eyebrow {
+  margin-bottom: 0.25rem;
+  color: #9faac0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.config-dialog-meta,
+.config-dialog-footer p,
+.config-hint,
+.config-json-feedback {
+  margin-bottom: 0;
+  color: #9faac0;
+}
+
+.config-editor {
+  min-height: 0;
+  overflow: auto;
+  padding: 1rem 1.25rem 1.5rem;
+}
+
+.config-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.config-tab,
+.config-dialog button {
+  padding: 0.5rem 0.7rem;
+  border: 1px solid #374665;
+  border-radius: 0.5rem;
+  background: #18223b;
+  color: #dbe5f8;
+}
+
+.config-tab.active {
+  border-color: #6f8edc;
+  box-shadow: inset 0 0 0 1px #6f8edc;
+}
+
+.config-panel[hidden] {
+  display: none;
+}
+
+.config-field-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 0.75rem;
+}
+
+.config-field {
+  display: grid;
+  gap: 0.4rem;
+  align-content: start;
+  padding: 0.75rem;
+  border: 1px solid #2a3550;
+  border-radius: 0.65rem;
+  background: rgba(24, 34, 59, 0.5);
+}
+
+.config-field input:not([type="checkbox"]),
+.config-field select,
+.config-json-editor {
+  width: 100%;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid #374665;
+  border-radius: 0.5rem;
+  background: #0b1020;
+  color: #e8edf7;
+}
+
+.config-field input[type="checkbox"] {
+  width: 1.35rem;
+  height: 1.35rem;
+}
+
+.config-field-label {
+  font-weight: 600;
+}
+
+.config-json-editor {
+  min-height: 26rem;
+  resize: vertical;
+  margin: 0.75rem 0;
+  font:
+    0.8rem/1.45 ui-monospace,
+    SFMono-Regular,
+    Consolas,
+    monospace;
+}
+
+@media (max-width: 680px) {
+  .config-dialog-header,
+  .config-dialog-footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .config-field-grid {
+    grid-template-columns: 1fr;
+  }
+}
