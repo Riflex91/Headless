@@ -2,6 +2,7 @@
 
 const path = require("node:path");
 const { normalizeControlAction } = require("./CharacterControl");
+const { IPC_PROTOCOL_VERSION } = require("./IpcProtocol");
 const {
   formatAccountDiagnostic,
   formatCharacterDiagnostic,
@@ -92,6 +93,7 @@ function buildSupervisorSnapshot(
 
   return {
     generated_at: Date.now(),
+    ipc_protocol_version: IPC_PROTOCOL_VERSION,
     max_online_characters: lifecyclePolicy.maxOnlineCharacters || 4,
     active_characters: characters.filter((character) =>
       ["STARTING", "CONNECTING", "ONLINE", "PAUSED", "STOPPING"].includes(
