@@ -63,6 +63,8 @@ test("runtime feature code cannot call Adventure Land mutations directly", () =>
     "compound",
     "exchange",
     "craft",
+    "auto_craft",
+    "wishlist",
     "party_invite",
     "party_accept",
     "party_leave",
@@ -91,6 +93,15 @@ test("runtime feature code cannot call Adventure Land mutations directly", () =>
           )} must route ${mutation} through ActionBoundary`,
         );
       }
+
+      assert.doesNotMatch(
+        source,
+        /["']sbuy["']/,
+        `${path.relative(
+          botRoot,
+          fullPath,
+        )} must route Ponty sbuy through ActionBoundary`,
+      );
     }
   };
 
