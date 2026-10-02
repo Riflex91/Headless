@@ -1,7 +1,9 @@
 import type { ActionRecord } from "./action-ledger.lib";
 import type {
+  BankSnapshot,
   CharacterSnapshot,
   EntitySnapshot,
+  EquipmentSnapshot,
   InventorySlotSnapshot,
   MapSnapshot,
   SkillSnapshot,
@@ -51,6 +53,8 @@ interface GameReadAdapter {
   character(): CharacterSnapshot;
   entity(id: string): EntitySnapshot | null;
   inventory(): InventorySlotSnapshot[];
+  equipment(): EquipmentSnapshot;
+  bank(): BankSnapshot;
   skills(characterOnly?: boolean): SkillSnapshot[];
   map(): MapSnapshot;
   gameData(): Record<string, unknown>;
@@ -101,6 +105,31 @@ export interface SendGoldRequest extends BoundaryRequest {
   amount: number;
 }
 
+export interface BankStoreRequest extends BoundaryRequest {
+  inventorySlot: number;
+  pack?: string;
+  packSlot?: number;
+}
+
+export interface BankRetrieveRequest extends BoundaryRequest {
+  pack: string;
+  packSlot: number;
+  inventorySlot?: number;
+}
+
+export interface BankGoldRequest extends BoundaryRequest {
+  amount: number;
+}
+
+export interface EquipRequest extends BoundaryRequest {
+  inventorySlot: number;
+  slot?: string;
+}
+
+export interface UnequipRequest extends BoundaryRequest {
+  slot: string;
+}
+
 export interface MutationDriver {
   move(x: number, y: number): unknown;
   resolveEntity(id: string): unknown;
@@ -117,6 +146,20 @@ export interface MutationDriver {
     quantity?: number,
   ): Promise<unknown> | unknown;
   sendGold(recipient: string, amount: number): Promise<unknown> | unknown;
+  bankStore(
+    inventorySlot: number,
+    pack?: string,
+    packSlot?: number,
+  ): Promise<unknown> | unknown;
+  bankRetrieve(
+    pack: string,
+    packSlot: number,
+    inventorySlot?: number,
+  ): Promise<unknown> | unknown;
+  bankDeposit(amount: number): Promise<unknown> | unknown;
+  bankWithdraw(amount: number): Promise<unknown> | unknown;
+  equip(inventorySlot: number, slot?: string): Promise<unknown> | unknown;
+  unequip(slot: string): Promise<unknown> | unknown;
 }
 
 function runtimeFunction(name: string): (...args: unknown[]) => unknown {
@@ -156,6 +199,26 @@ export function createRuntimeMutationDriver(): MutationDriver {
         : runtimeFunction("send_item")(recipient, inventorySlot, quantity),
     sendGold: (recipient, amount) =>
       runtimeFunction("send_gold")(recipient, amount),
+    bankStore: (inventorySlot, pack, packSlot) => {
+      if (pack === undefined) {
+        return runtimeFunction("bank_store")(inventorySlot);
+      }
+      if (packSlot === undefined) {
+        return runtimeFunction("bank_store")(inventorySlot, pack);
+      }
+      return runtimeFunction("bank_store")(inventorySlot, pack, packSlot);
+    },
+    bankRetrieve: (pack, packSlot, inventorySlot) =>
+      inventorySlot === undefined
+        ? runtimeFunction("bank_retrieve")(pack, packSlot)
+        : runtimeFunction("bank_retrieve")(pack, packSlot, inventorySlot),
+    bankDeposit: (amount) => runtimeFunction("bank_deposit")(amount),
+    bankWithdraw: (amount) => runtimeFunction("bank_withdraw")(amount),
+    equip: (inventorySlot, slot) =>
+      slot === undefined
+        ? runtimeFunction("equip")(inventorySlot)
+        : runtimeFunction("equip")(inventorySlot, slot),
+    unequip: (slot) => runtimeFunction("unequip")(slot),
   };
 }
 
@@ -251,6 +314,70 @@ function relevantInventoryState(
   };
 }
 
+function bankPack(
+  bank: BankSnapshot,
+  packName: string,
+): InventorySlotSnapshot[] | null {
+  return bank.packs.find((pack) => pack.name === packName)?.items || null;
+}
+
+function bankItem(
+  bank: BankSnapshot,
+  packName: string,
+  slot: number,
+): Record<string, unknown> | null {
+  const pack = bankPack(bank, packName);
+  return pack ? inventoryItem(pack, slot) : null;
+}
+
+function itemIdentity(item: Record<string, unknown> | null): string | null {
+  if (!item) return null;
+  const name = itemName(item);
+  if (!name) return null;
+
+  return JSON.stringify({
+    name,
+    level: Number.isFinite(Number(item.level)) ? Number(item.level) : 0,
+    p: typeof item.p === "string" ? item.p : null,
+    stat_type: typeof item.stat_type === "string" ? item.stat_type : null,
+  });
+}
+
+function equipmentSlot(
+  equipment: EquipmentSnapshot,
+  slot: string,
+): Record<string, unknown> | null {
+  const item = equipment[slot];
+  return item && typeof item === "object" ? item : null;
+}
+
+function equipmentHasIdentity(
+  equipment: EquipmentSnapshot,
+  identity: string | null,
+): boolean {
+  if (!identity) return false;
+  return Object.values(equipment).some(
+    (item) => itemIdentity(item) === identity,
+  );
+}
+
+function inventoryHasIdentity(
+  inventory: InventorySlotSnapshot[],
+  identity: string | null,
+): boolean {
+  if (!identity) return false;
+  return inventory.some((entry) => itemIdentity(entry.item) === identity);
+}
+
+function inventoryIdentityCount(
+  inventory: InventorySlotSnapshot[],
+  identity: string | null,
+): number {
+  if (!identity) return 0;
+  return inventory.filter((entry) => itemIdentity(entry.item) === identity)
+    .length;
+}
+
 export const ACTION_BOUNDARY_MUTATION_CAPABILITIES = [
   "MOVE",
   "ATTACK",
@@ -260,6 +387,12 @@ export const ACTION_BOUNDARY_MUTATION_CAPABILITIES = [
   "SELL",
   "SEND_ITEM",
   "SEND_GOLD",
+  "BANK_STORE",
+  "BANK_RETRIEVE",
+  "BANK_DEPOSIT_GOLD",
+  "BANK_WITHDRAW_GOLD",
+  "EQUIP",
+  "UNEQUIP",
 ] as const;
 
 export class ActionBoundary {
@@ -993,4 +1126,635 @@ export class ActionBoundary {
       });
     }
   }
+
+  async bankStore(request: BankStoreRequest): Promise<ActionRecord> {
+    const beforeBank = this.game.bank();
+    const beforeInventory = this.game.inventory();
+    const beforeItem = inventoryItem(beforeInventory, request.inventorySlot);
+    const identity = itemIdentity(beforeItem);
+    const transaction = this.ledger.create({
+      module: request.module,
+      action: "BANK_STORE",
+      why: request.why,
+      correlationId: request.correlationId,
+      expectedEffect: {
+        inventorySlot: request.inventorySlot,
+        pack: request.pack || null,
+        packSlot: request.packSlot ?? null,
+        item: identity,
+      },
+      before: {
+        bankAvailable: beforeBank.available,
+        inventory: relevantInventoryState(
+          beforeInventory,
+          request.inventorySlot,
+        ),
+      },
+    });
+
+    if (transaction.status === "BLOCKED") return transaction;
+    if (!beforeBank.available) {
+      return this.ledger.block(transaction.id, "BANK_NOT_AVAILABLE");
+    }
+    if (!Number.isInteger(request.inventorySlot) || request.inventorySlot < 0) {
+      return this.ledger.block(transaction.id, "INVENTORY_SLOT_INVALID");
+    }
+    if (!beforeItem || !identity) {
+      return this.ledger.block(transaction.id, "INVENTORY_SLOT_EMPTY");
+    }
+    if (
+      request.pack !== undefined &&
+      (typeof request.pack !== "string" || !request.pack.trim())
+    ) {
+      return this.ledger.block(transaction.id, "BANK_PACK_INVALID");
+    }
+    if (request.packSlot !== undefined && request.pack === undefined) {
+      return this.ledger.block(transaction.id, "BANK_PACK_REQUIRED");
+    }
+    if (
+      request.packSlot !== undefined &&
+      (!Number.isInteger(request.packSlot) || request.packSlot < 0)
+    ) {
+      return this.ledger.block(transaction.id, "BANK_PACK_SLOT_INVALID");
+    }
+    if (
+      request.pack &&
+      !beforeBank.packs.some((pack) => pack.name === request.pack)
+    ) {
+      return this.ledger.block(transaction.id, "BANK_PACK_UNAVAILABLE");
+    }
+
+    this.ledger.dispatch(transaction.id, {
+      mutation: "bank_store",
+      inventorySlot: request.inventorySlot,
+      pack: request.pack || null,
+      packSlot: request.packSlot ?? null,
+    });
+
+    try {
+      const result = await this.driver.bankStore(
+        request.inventorySlot,
+        request.pack,
+        request.packSlot,
+      );
+      const afterInventory = this.game.inventory();
+      const afterBank = this.game.bank();
+      const afterSource = inventoryItem(afterInventory, request.inventorySlot);
+      const sourceChanged = itemIdentity(afterSource) !== identity;
+      const targetItem =
+        request.pack !== undefined && request.packSlot !== undefined
+          ? bankItem(afterBank, request.pack, request.packSlot)
+          : null;
+      const targetMatched =
+        targetItem !== null && itemIdentity(targetItem) === identity;
+
+      if (explicitFailure(result)) {
+        return this.ledger.reject(transaction.id, {
+          why: "BANK_STORE_API_REJECTED",
+          after: {
+            inventory: relevantInventoryState(
+              afterInventory,
+              request.inventorySlot,
+            ),
+          },
+          evidence: { result: safeResultEvidence(result) },
+        });
+      }
+      if (sourceChanged || targetMatched) {
+        return this.ledger.confirm(transaction.id, {
+          why: "BANK_STORE_STATE_CONFIRMED",
+          after: {
+            inventory: relevantInventoryState(
+              afterInventory,
+              request.inventorySlot,
+            ),
+            targetMatched,
+          },
+          evidence: {
+            sourceChanged,
+            targetMatched,
+            result: safeResultEvidence(result),
+          },
+        });
+      }
+
+      return this.ledger.unknown(transaction.id, {
+        why: "BANK_STORE_OUTCOME_UNVERIFIED",
+        after: {
+          inventory: relevantInventoryState(
+            afterInventory,
+            request.inventorySlot,
+          ),
+        },
+        evidence: { result: safeResultEvidence(result) },
+      });
+    } catch (error) {
+      return this.ledger.unknown(transaction.id, {
+        why: "BANK_STORE_OUTCOME_UNCERTAIN",
+        error: errorMessage(error),
+        after: {
+          inventory: relevantInventoryState(
+            this.game.inventory(),
+            request.inventorySlot,
+          ),
+        },
+      });
+    }
+  }
+
+  async bankRetrieve(request: BankRetrieveRequest): Promise<ActionRecord> {
+    const beforeBank = this.game.bank();
+    const beforeInventory = this.game.inventory();
+    const beforeItem = bankItem(beforeBank, request.pack, request.packSlot);
+    const identity = itemIdentity(beforeItem);
+    const transaction = this.ledger.create({
+      module: request.module,
+      action: "BANK_RETRIEVE",
+      why: request.why,
+      correlationId: request.correlationId,
+      expectedEffect: {
+        pack: request.pack,
+        packSlot: request.packSlot,
+        inventorySlot: request.inventorySlot ?? null,
+        item: identity,
+      },
+      before: {
+        bankAvailable: beforeBank.available,
+        bankItem: beforeItem,
+      },
+    });
+
+    if (transaction.status === "BLOCKED") return transaction;
+    if (!beforeBank.available) {
+      return this.ledger.block(transaction.id, "BANK_NOT_AVAILABLE");
+    }
+    if (!request.pack?.trim()) {
+      return this.ledger.block(transaction.id, "BANK_PACK_INVALID");
+    }
+    if (!Number.isInteger(request.packSlot) || request.packSlot < 0) {
+      return this.ledger.block(transaction.id, "BANK_PACK_SLOT_INVALID");
+    }
+    if (
+      request.inventorySlot !== undefined &&
+      (!Number.isInteger(request.inventorySlot) || request.inventorySlot < 0)
+    ) {
+      return this.ledger.block(transaction.id, "INVENTORY_SLOT_INVALID");
+    }
+    if (!bankPack(beforeBank, request.pack)) {
+      return this.ledger.block(transaction.id, "BANK_PACK_UNAVAILABLE");
+    }
+    if (!beforeItem || !identity) {
+      return this.ledger.block(transaction.id, "BANK_SLOT_EMPTY");
+    }
+
+    this.ledger.dispatch(transaction.id, {
+      mutation: "bank_retrieve",
+      pack: request.pack,
+      packSlot: request.packSlot,
+      inventorySlot: request.inventorySlot ?? null,
+    });
+
+    try {
+      const result = await this.driver.bankRetrieve(
+        request.pack,
+        request.packSlot,
+        request.inventorySlot,
+      );
+      const afterBank = this.game.bank();
+      const afterInventory = this.game.inventory();
+      const afterBankItem = bankItem(
+        afterBank,
+        request.pack,
+        request.packSlot,
+      );
+      const bankChanged = itemIdentity(afterBankItem) !== identity;
+      const inventoryMatched =
+        request.inventorySlot !== undefined
+          ? itemIdentity(
+              inventoryItem(afterInventory, request.inventorySlot),
+            ) === identity
+          : inventoryHasIdentity(afterInventory, identity);
+
+      if (explicitFailure(result)) {
+        return this.ledger.reject(transaction.id, {
+          why: "BANK_RETRIEVE_API_REJECTED",
+          after: {
+            bankItem: afterBankItem,
+          },
+          evidence: { result: safeResultEvidence(result) },
+        });
+      }
+      if (bankChanged || inventoryMatched) {
+        return this.ledger.confirm(transaction.id, {
+          why: "BANK_RETRIEVE_STATE_CONFIRMED",
+          after: {
+            bankItem: afterBankItem,
+            inventoryMatched,
+          },
+          evidence: {
+            bankChanged,
+            inventoryMatched,
+            result: safeResultEvidence(result),
+          },
+        });
+      }
+
+      return this.ledger.unknown(transaction.id, {
+        why: "BANK_RETRIEVE_OUTCOME_UNVERIFIED",
+        after: {
+          bankItem: afterBankItem,
+        },
+        evidence: { result: safeResultEvidence(result) },
+      });
+    } catch (error) {
+      return this.ledger.unknown(transaction.id, {
+        why: "BANK_RETRIEVE_OUTCOME_UNCERTAIN",
+        error: errorMessage(error),
+        after: {
+          bankItem: bankItem(
+            this.game.bank(),
+            request.pack,
+            request.packSlot,
+          ),
+        },
+      });
+    }
+  }
+
+  async bankDepositGold(request: BankGoldRequest): Promise<ActionRecord> {
+    const beforeCharacter = this.game.character();
+    const beforeBank = this.game.bank();
+    const transaction = this.ledger.create({
+      module: request.module,
+      action: "BANK_DEPOSIT_GOLD",
+      why: request.why,
+      correlationId: request.correlationId,
+      expectedCost: { gold: request.amount },
+      expectedEffect: { bankGoldIncrease: request.amount },
+      before: {
+        characterGold: beforeCharacter.gold,
+        bankGold: beforeBank.gold,
+        bankAvailable: beforeBank.available,
+      },
+    });
+
+    if (transaction.status === "BLOCKED") return transaction;
+    if (!beforeBank.available) {
+      return this.ledger.block(transaction.id, "BANK_NOT_AVAILABLE");
+    }
+    if (!Number.isInteger(request.amount) || request.amount <= 0) {
+      return this.ledger.block(transaction.id, "GOLD_AMOUNT_INVALID");
+    }
+    if (
+      beforeCharacter.gold !== null &&
+      request.amount > beforeCharacter.gold
+    ) {
+      return this.ledger.block(transaction.id, "INSUFFICIENT_GOLD");
+    }
+
+    this.ledger.dispatch(transaction.id, {
+      mutation: "bank_deposit",
+      amount: request.amount,
+    });
+
+    try {
+      const result = await this.driver.bankDeposit(request.amount);
+      const afterCharacter = this.game.character();
+      const afterBank = this.game.bank();
+      const characterDelta =
+        beforeCharacter.gold !== null && afterCharacter.gold !== null
+          ? beforeCharacter.gold - afterCharacter.gold
+          : null;
+      const bankDelta =
+        beforeBank.gold !== null && afterBank.gold !== null
+          ? afterBank.gold - beforeBank.gold
+          : null;
+
+      if (explicitFailure(result)) {
+        return this.ledger.reject(transaction.id, {
+          why: "BANK_DEPOSIT_GOLD_API_REJECTED",
+          after: {
+            characterGold: afterCharacter.gold,
+            bankGold: afterBank.gold,
+          },
+          evidence: { result: safeResultEvidence(result) },
+        });
+      }
+      if (
+        (characterDelta !== null && characterDelta >= request.amount) ||
+        (bankDelta !== null && bankDelta >= request.amount)
+      ) {
+        return this.ledger.confirm(transaction.id, {
+          why: "BANK_DEPOSIT_GOLD_STATE_CONFIRMED",
+          after: {
+            characterGold: afterCharacter.gold,
+            bankGold: afterBank.gold,
+          },
+          evidence: {
+            characterGoldDelta: characterDelta,
+            bankGoldDelta: bankDelta,
+            result: safeResultEvidence(result),
+          },
+        });
+      }
+
+      return this.ledger.get(transaction.id)!;
+    } catch (error) {
+      return this.ledger.unknown(transaction.id, {
+        why: "BANK_DEPOSIT_GOLD_OUTCOME_UNCERTAIN",
+        error: errorMessage(error),
+        after: {
+          characterGold: this.game.character().gold,
+          bankGold: this.game.bank().gold,
+        },
+      });
+    }
+  }
+
+  async bankWithdrawGold(request: BankGoldRequest): Promise<ActionRecord> {
+    const beforeCharacter = this.game.character();
+    const beforeBank = this.game.bank();
+    const transaction = this.ledger.create({
+      module: request.module,
+      action: "BANK_WITHDRAW_GOLD",
+      why: request.why,
+      correlationId: request.correlationId,
+      expectedEffect: {
+        characterGoldIncrease: request.amount,
+        bankGoldDecrease: request.amount,
+      },
+      before: {
+        characterGold: beforeCharacter.gold,
+        bankGold: beforeBank.gold,
+        bankAvailable: beforeBank.available,
+      },
+    });
+
+    if (transaction.status === "BLOCKED") return transaction;
+    if (!beforeBank.available) {
+      return this.ledger.block(transaction.id, "BANK_NOT_AVAILABLE");
+    }
+    if (!Number.isInteger(request.amount) || request.amount <= 0) {
+      return this.ledger.block(transaction.id, "GOLD_AMOUNT_INVALID");
+    }
+    if (beforeBank.gold !== null && request.amount > beforeBank.gold) {
+      return this.ledger.block(transaction.id, "INSUFFICIENT_BANK_GOLD");
+    }
+
+    this.ledger.dispatch(transaction.id, {
+      mutation: "bank_withdraw",
+      amount: request.amount,
+    });
+
+    try {
+      const result = await this.driver.bankWithdraw(request.amount);
+      const afterCharacter = this.game.character();
+      const afterBank = this.game.bank();
+      const characterDelta =
+        beforeCharacter.gold !== null && afterCharacter.gold !== null
+          ? afterCharacter.gold - beforeCharacter.gold
+          : null;
+      const bankDelta =
+        beforeBank.gold !== null && afterBank.gold !== null
+          ? beforeBank.gold - afterBank.gold
+          : null;
+
+      if (explicitFailure(result)) {
+        return this.ledger.reject(transaction.id, {
+          why: "BANK_WITHDRAW_GOLD_API_REJECTED",
+          after: {
+            characterGold: afterCharacter.gold,
+            bankGold: afterBank.gold,
+          },
+          evidence: { result: safeResultEvidence(result) },
+        });
+      }
+      if (
+        (characterDelta !== null && characterDelta >= request.amount) ||
+        (bankDelta !== null && bankDelta >= request.amount)
+      ) {
+        return this.ledger.confirm(transaction.id, {
+          why: "BANK_WITHDRAW_GOLD_STATE_CONFIRMED",
+          after: {
+            characterGold: afterCharacter.gold,
+            bankGold: afterBank.gold,
+          },
+          evidence: {
+            characterGoldDelta: characterDelta,
+            bankGoldDelta: bankDelta,
+            result: safeResultEvidence(result),
+          },
+        });
+      }
+
+      return this.ledger.get(transaction.id)!;
+    } catch (error) {
+      return this.ledger.unknown(transaction.id, {
+        why: "BANK_WITHDRAW_GOLD_OUTCOME_UNCERTAIN",
+        error: errorMessage(error),
+        after: {
+          characterGold: this.game.character().gold,
+          bankGold: this.game.bank().gold,
+        },
+      });
+    }
+  }
+
+  async equip(request: EquipRequest): Promise<ActionRecord> {
+    const beforeInventory = this.game.inventory();
+    const beforeEquipment = this.game.equipment();
+    const beforeItem = inventoryItem(
+      beforeInventory,
+      request.inventorySlot,
+    );
+    const identity = itemIdentity(beforeItem);
+    const slot = request.slot?.trim() || undefined;
+    const transaction = this.ledger.create({
+      module: request.module,
+      action: "EQUIP",
+      why: request.why,
+      correlationId: request.correlationId,
+      expectedEffect: {
+        inventorySlot: request.inventorySlot,
+        equipmentSlot: slot || null,
+        item: identity,
+      },
+      before: {
+        inventory: relevantInventoryState(
+          beforeInventory,
+          request.inventorySlot,
+        ),
+        equipment: beforeEquipment,
+      },
+    });
+
+    if (transaction.status === "BLOCKED") return transaction;
+    if (!Number.isInteger(request.inventorySlot) || request.inventorySlot < 0) {
+      return this.ledger.block(transaction.id, "INVENTORY_SLOT_INVALID");
+    }
+    if (!beforeItem || !identity) {
+      return this.ledger.block(transaction.id, "INVENTORY_SLOT_EMPTY");
+    }
+    if (request.slot !== undefined && !slot) {
+      return this.ledger.block(transaction.id, "EQUIPMENT_SLOT_INVALID");
+    }
+
+    this.ledger.dispatch(transaction.id, {
+      mutation: "equip",
+      inventorySlot: request.inventorySlot,
+      equipmentSlot: slot || null,
+    });
+
+    try {
+      const result = await this.driver.equip(request.inventorySlot, slot);
+      const afterInventory = this.game.inventory();
+      const afterEquipment = this.game.equipment();
+      const sourceChanged =
+        itemIdentity(inventoryItem(afterInventory, request.inventorySlot)) !==
+        identity;
+      const destinationMatched =
+        slot !== undefined
+          ? itemIdentity(equipmentSlot(afterEquipment, slot)) === identity
+          : equipmentHasIdentity(afterEquipment, identity);
+      const equipped = sourceChanged && destinationMatched;
+
+      if (explicitFailure(result)) {
+        return this.ledger.reject(transaction.id, {
+          why: "EQUIP_API_REJECTED",
+          after: { equipment: afterEquipment },
+          evidence: { result: safeResultEvidence(result) },
+        });
+      }
+      if (equipped) {
+        return this.ledger.confirm(transaction.id, {
+          why: "EQUIP_STATE_CONFIRMED",
+          after: {
+            inventory: relevantInventoryState(
+              afterInventory,
+              request.inventorySlot,
+            ),
+            equipment: afterEquipment,
+          },
+          evidence: {
+            sourceChanged,
+            destinationMatched,
+            result: safeResultEvidence(result),
+          },
+        });
+      }
+
+      return this.ledger.unknown(transaction.id, {
+        why: "EQUIP_OUTCOME_UNVERIFIED",
+        after: {
+          inventory: relevantInventoryState(
+            afterInventory,
+            request.inventorySlot,
+          ),
+          equipment: afterEquipment,
+        },
+        evidence: { result: safeResultEvidence(result) },
+      });
+    } catch (error) {
+      return this.ledger.unknown(transaction.id, {
+        why: "EQUIP_OUTCOME_UNCERTAIN",
+        error: errorMessage(error),
+        after: {
+          equipment: this.game.equipment(),
+        },
+      });
+    }
+  }
+
+  async unequip(request: UnequipRequest): Promise<ActionRecord> {
+    const slot = request.slot?.trim();
+    const beforeEquipment = this.game.equipment();
+    const beforeItem = slot ? equipmentSlot(beforeEquipment, slot) : null;
+    const identity = itemIdentity(beforeItem);
+    const beforeInventory = this.game.inventory();
+    const transaction = this.ledger.create({
+      module: request.module,
+      action: "UNEQUIP",
+      why: request.why,
+      correlationId: request.correlationId,
+      expectedEffect: {
+        equipmentSlot: slot || null,
+        item: identity,
+      },
+      before: {
+        equipmentItem: beforeItem,
+      },
+    });
+
+    if (transaction.status === "BLOCKED") return transaction;
+    if (!slot) {
+      return this.ledger.block(transaction.id, "EQUIPMENT_SLOT_INVALID");
+    }
+    if (!beforeItem || !identity) {
+      return this.ledger.block(transaction.id, "EQUIPMENT_SLOT_EMPTY");
+    }
+
+    this.ledger.dispatch(transaction.id, {
+      mutation: "unequip",
+      equipmentSlot: slot,
+    });
+
+    try {
+      const result = await this.driver.unequip(slot);
+      const afterEquipment = this.game.equipment();
+      const afterInventory = this.game.inventory();
+      const equipmentChanged =
+        itemIdentity(equipmentSlot(afterEquipment, slot)) !== identity;
+      const beforeInventoryCount = inventoryIdentityCount(
+        beforeInventory,
+        identity,
+      );
+      const afterInventoryCount = inventoryIdentityCount(
+        afterInventory,
+        identity,
+      );
+      const inventoryMatched = afterInventoryCount > beforeInventoryCount;
+
+      if (explicitFailure(result)) {
+        return this.ledger.reject(transaction.id, {
+          why: "UNEQUIP_API_REJECTED",
+          after: {
+            equipmentItem: equipmentSlot(afterEquipment, slot),
+          },
+          evidence: { result: safeResultEvidence(result) },
+        });
+      }
+      if (equipmentChanged && inventoryMatched) {
+        return this.ledger.confirm(transaction.id, {
+          why: "UNEQUIP_STATE_CONFIRMED",
+          after: {
+            equipmentItem: equipmentSlot(afterEquipment, slot),
+            inventoryMatched,
+          },
+          evidence: {
+            equipmentChanged,
+            inventoryMatched,
+            result: safeResultEvidence(result),
+          },
+        });
+      }
+
+      return this.ledger.unknown(transaction.id, {
+        why: "UNEQUIP_OUTCOME_UNVERIFIED",
+        after: {
+          equipmentItem: equipmentSlot(afterEquipment, slot),
+          inventoryMatched,
+        },
+        evidence: { result: safeResultEvidence(result) },
+      });
+    } catch (error) {
+      return this.ledger.unknown(transaction.id, {
+        why: "UNEQUIP_OUTCOME_UNCERTAIN",
+        error: errorMessage(error),
+        after: {
+          equipmentItem: equipmentSlot(this.game.equipment(), slot),
+        },
+      });
+    }
+  }
+
 }
