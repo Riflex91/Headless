@@ -182,6 +182,7 @@ test("dashboard static assets are present", () => {
   const index = fs.readFileSync(path.join(dashboardDir, "index.html"), "utf8");
   assert.match(index, /Letzter Incident/);
   assert.match(index, /Persistence: UNKNOWN/);
+  assert.match(index, /data-control="restart"/);
 });
 
 test("dashboard module and coordinator remain syntactically valid", () => {
