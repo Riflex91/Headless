@@ -67,9 +67,7 @@ async function main() {
         `Temporary caracAL runtime is ready at ${baseUrl}\n`,
       );
     } else {
-      process.stdout.write(
-        `Using existing caracAL runtime at ${baseUrl}\n`,
-      );
+      process.stdout.write(`Using existing caracAL runtime at ${baseUrl}\n`);
     }
 
     const character = selectCharacter(dashboard.state, requested);
