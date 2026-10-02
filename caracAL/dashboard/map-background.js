@@ -5,16 +5,20 @@
   const tileCanvases = new Map();
 
   function assetUrl(file) {
-    return "/headless/api/assets/adventure-land?path=" +
-      encodeURIComponent(file || "");
+    return (
+      "/headless/api/assets/adventure-land?path=" +
+      encodeURIComponent(file || "")
+    );
   }
 
   function collectSceneAssetFiles(scene) {
-    return [...new Set(
-      (scene?.tiles || [])
-        .map((tile) => tile?.file)
-        .filter((file) => typeof file === "string" && file),
-    )].sort();
+    return [
+      ...new Set(
+        (scene?.tiles || [])
+          .map((tile) => tile?.file)
+          .filter((file) => typeof file === "string" && file),
+      ),
+    ].sort();
   }
 
   function placementBounds(scene, placement) {
@@ -61,12 +65,15 @@
 
   function imageFor(file) {
     if (!imagePromises.has(file)) {
-      imagePromises.set(file, new Promise((resolve, reject) => {
-        const image = new Image();
-        image.onload = () => resolve(image);
-        image.onerror = reject;
-        image.src = assetUrl(file);
-      }));
+      imagePromises.set(
+        file,
+        new Promise((resolve, reject) => {
+          const image = new Image();
+          image.onload = () => resolve(image);
+          image.onerror = reject;
+          image.src = assetUrl(file);
+        }),
+      );
     }
     return imagePromises.get(file);
   }
