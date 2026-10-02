@@ -347,9 +347,13 @@ export class MovementController {
       return null;
     }
 
+    const pathBeforeSettlement = this.paths.status();
+    const settlementTolerance =
+      pathBeforeSettlement?.current?.tolerance ??
+      this.directSettlementTolerance;
     const record = this.actions.settleMove(
       command.actionId,
-      this.directSettlementTolerance,
+      settlementTolerance,
     );
     if (!this.isCurrent(command.id)) return record;
 
