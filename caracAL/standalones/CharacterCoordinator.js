@@ -554,8 +554,7 @@ function migrate_old_storage(path, localStorage) {
       process.cwd(),
       revision_block,
       !!(
-        cfg.enable_TYPECODE ||
-        char_block.movement_live_test_typescript_override
+        cfg.enable_TYPECODE || char_block.movement_live_test_typescript_override
       ),
     );
     char_block.script_path = script_path;
@@ -937,10 +936,7 @@ function migrate_old_storage(path, localStorage) {
     );
   }
 
-  async function restart_character_for_movement_runtime(
-    char_name,
-    char_block,
-  ) {
+  async function restart_character_for_movement_runtime(char_name, char_block) {
     if (!char_block.instance) {
       const started = start_char(char_name);
       if (!started) {
