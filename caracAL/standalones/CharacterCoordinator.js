@@ -26,6 +26,16 @@ const { IncidentRecorder } = require("../src/IncidentRecorder");
 const { StructuredLogger } = require("../src/StructuredLogger");
 const { updateCharacterLiveState } = require("../src/LiveState");
 const { normalizeRuntimeEvent } = require("../src/RuntimeEventBridge");
+const { PersistenceService } = require("../src/PersistenceService");
+const {
+  beginSnapshotPersist,
+  buildCharacterProfile,
+  completeSnapshotPersist,
+  failSnapshotPersist,
+  restoreDesiredRuntimeState,
+  shouldPersistSnapshot,
+  snapshotSignature,
+} = require("../src/SupervisorPersistencePolicy");
 const {
   FileRevisionCache,
   createConfigRevision,
@@ -113,6 +123,19 @@ function migrate_old_storage(path, localStorage) {
   const revision_cache = new FileRevisionCache();
   const source_revision = readGitRevision(process.cwd());
   const installed_config_revision = createConfigRevision(cfg);
+  const persistence = await PersistenceService.open({
+    databasePath: path.join(
+      process.cwd(),
+      "data",
+      "database",
+      "caracal-bot.db",
+    ),
+  });
+  await persistence.setMeta("supervisor", {
+    source_revision,
+    installed_config_revision,
+    game_version: version,
+  });
   const diagnostic_store = new DiagnosticEventStore({ maxEvents: 20000 });
   const emergency_stop = new EmergencyStopState();
   const structured_logger = new StructuredLogger({
@@ -165,6 +188,7 @@ function migrate_old_storage(path, localStorage) {
         controlEmergencyStop: control_emergency_stop,
         getEmergencyStopState: () => emergency_stop.snapshot(),
         getRevisionSummary: revision_summary,
+        getPersistenceHealth: () => persistence.health(),
         diagnosticStore: diagnostic_store,
         incidentRecorder: incident_recorder,
         assetCache: asset_cache,
@@ -220,10 +244,84 @@ function migrate_old_storage(path, localStorage) {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
+  function report_persistence_error(operation, char_name, error) {
+    const payload = diagnostic_store.append({
+      type: "persistence_error",
+      event: "PERSISTENCE_WRITE_FAILED",
+      character: char_name || null,
+      timestamp: Date.now(),
+      operation,
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack || null : null,
+    });
+    structured_logger.write(payload);
+    incident_recorder.maybeCapture(payload);
+    dashboard?.publish(payload);
+    log.error(payload, `persistence operation failed: ${operation}`);
+  }
+
+  function observe_persistence(promise, operation, char_name = null) {
+    return promise.catch((error) => {
+      report_persistence_error(operation, char_name, error);
+      return null;
+    });
+  }
+
+  function persist_character_runtime_state(char_name, reason) {
+    const char_block = character_manage[char_name];
+    if (!char_block) return;
+
+    void observe_persistence(
+      persistence.saveCharacterRuntimeState(char_name, {
+        desiredState:
+          char_block.desired_runtime_state || DESIRED_RUNTIME_STATES.STOPPED,
+        actualState: char_block.lifecycle_state || LIFECYCLE_STATES.STOPPED,
+        codeRevision: char_block.running_code_revision || null,
+        configRevision: char_block.running_config_revision || null,
+      }),
+      `runtime_state:${reason || "update"}`,
+      char_name,
+    );
+  }
+
+  function maybe_persist_character_snapshot(char_name, char_block, stat_beat) {
+    const signature = snapshotSignature(stat_beat);
+    const now = Date.now();
+
+    if (!shouldPersistSnapshot(char_block, signature, now)) return;
+
+    beginSnapshotPersist(char_block, now);
+    const operation = persistence
+      .saveCharacterSnapshot(char_name, {
+        capturedAt: now,
+        inventory: stat_beat.items || [],
+        equipment: stat_beat.slots || {},
+      })
+      .then(() => {
+        completeSnapshotPersist(char_block, signature, now);
+      })
+      .catch((error) => {
+        failSnapshotPersist(char_block);
+        throw error;
+      });
+
+    void observe_persistence(operation, "character_snapshot", char_name);
+  }
+
   function record_observation(payload, { publish = true } = {}) {
     const sanitized_payload = diagnostic_store.append(payload);
     structured_logger.write(sanitized_payload);
-    incident_recorder.maybeCapture(sanitized_payload);
+    const incident = incident_recorder.maybeCapture(sanitized_payload);
+    if (incident) {
+      void observe_persistence(
+        persistence.indexIncident(
+          incident,
+          path.join("logs", "incidents", incident.incident_id),
+        ),
+        "incident_index",
+        incident.character || null,
+      );
+    }
 
     if (publish) {
       dashboard?.publish(sanitized_payload);
@@ -326,6 +424,7 @@ function migrate_old_storage(path, localStorage) {
       state,
       reason: reason || null,
     });
+    persist_character_runtime_state(char_name, reason || "lifecycle");
   }
 
   function clear_restart_timer(char_block) {
@@ -383,10 +482,10 @@ function migrate_old_storage(path, localStorage) {
   }
 
   function initialize_char_block(char_name, char_block) {
+    const persisted_lifecycle = persistence.getLifecycleState(char_name);
+
     char_block.name = char_name;
     char_block.connected = false;
-    char_block.lifecycle_state =
-      char_block.lifecycle_state || LIFECYCLE_STATES.STOPPED;
     char_block.restart_attempts = char_block.restart_attempts || 0;
     char_block.restart_timer = char_block.restart_timer || null;
     char_block.stable_timer = char_block.stable_timer || null;
@@ -398,15 +497,32 @@ function migrate_old_storage(path, localStorage) {
     char_block.running_code_revision = char_block.running_code_revision || null;
     char_block.running_config_revision =
       char_block.running_config_revision || null;
+    char_block.snapshot_persist_inflight = false;
+    char_block.last_snapshot_persist_attempt_at = 0;
+    char_block.last_persisted_snapshot_at = 0;
+    char_block.last_persisted_snapshot_signature = null;
+    restoreDesiredRuntimeState(char_block, persisted_lifecycle);
     refresh_character_revision(char_block);
     char_block.movement_trail = Array.isArray(char_block.movement_trail)
       ? char_block.movement_trail
       : [];
-    char_block.desired_runtime_state =
-      char_block.desired_runtime_state ||
-      (char_block.enabled
-        ? DESIRED_RUNTIME_STATES.RUNNING
-        : DESIRED_RUNTIME_STATES.STOPPED);
+
+    if (persisted_lifecycle) {
+      emit_supervisor_event("PERSISTED_DESIRED_STATE_RESTORED", char_name, {
+        desired_runtime_state: char_block.desired_runtime_state,
+        persisted_actual_state: persisted_lifecycle.actual_state,
+      });
+    }
+
+    void observe_persistence(
+      persistence.saveCharacterProfile(
+        char_name,
+        buildCharacterProfile(char_name, char_block),
+      ),
+      "character_profile",
+      char_name,
+    );
+    persist_character_runtime_state(char_name, "initialize");
     return char_block;
   }
 
@@ -564,6 +680,7 @@ function migrate_old_storage(path, localStorage) {
         char_block.enabled = true;
         char_block.desired_runtime_state = DESIRED_RUNTIME_STATES.RUNNING;
         clear_restart_timer(char_block);
+        persist_character_runtime_state(char_name, "manual_start");
 
         emit_supervisor_event("CHARACTER_CONTROL_REQUESTED", char_name, {
           action,
@@ -592,6 +709,7 @@ function migrate_old_storage(path, localStorage) {
 
         char_block.enabled = true;
         char_block.desired_runtime_state = DESIRED_RUNTIME_STATES.PAUSED;
+        persist_character_runtime_state(char_name, "manual_pause");
         emit_supervisor_event("CHARACTER_CONTROL_REQUESTED", char_name, {
           action,
           desired_runtime_state: char_block.desired_runtime_state,
@@ -607,6 +725,7 @@ function migrate_old_storage(path, localStorage) {
         char_block.desired_runtime_state = DESIRED_RUNTIME_STATES.STOPPED;
         clear_restart_timer(char_block);
         clear_stable_timer(char_block);
+        persist_character_runtime_state(char_name, "manual_stop");
         emit_supervisor_event("CHARACTER_CONTROL_REQUESTED", char_name, {
           action,
           desired_runtime_state: char_block.desired_runtime_state,
@@ -701,6 +820,14 @@ function migrate_old_storage(path, localStorage) {
       );
       return null;
     }
+    void observe_persistence(
+      persistence.saveCharacterProfile(
+        char_name,
+        buildCharacterProfile(char_name, char_block, char),
+      ),
+      "character_profile_resolved",
+      char_name,
+    );
     const g_version = char_block.version || version;
     console.log(
       `starting ${char_name} running version ${g_version} in ${char_block.realm}`,
@@ -817,6 +944,7 @@ function migrate_old_storage(path, localStorage) {
           args.code_revision = char_block.running_code_revision;
           args.config_revision = char_block.running_config_revision;
           args.source_revision = source_revision;
+          persist_character_runtime_state(char_name, "process_ready");
           safe_send(result, {
             type: "process_args",
             arguments: args,
@@ -867,6 +995,7 @@ function migrate_old_storage(path, localStorage) {
           break;
         case "stat_beat":
           updateCharacterLiveState(char_block, m);
+          maybe_persist_character_snapshot(char_name, char_block, m);
           dashboard?.publishSnapshot();
           break;
 
@@ -1095,8 +1224,6 @@ function migrate_old_storage(path, localStorage) {
       //softkill all chars, giving them chance to shutdown
       await Promise.all(
         Object.values(character_manage).map((char_block) => {
-          char_block.enabled = false;
-          char_block.desired_runtime_state = DESIRED_RUNTIME_STATES.STOPPED;
           clear_restart_timer(char_block);
           clear_stable_timer(char_block);
           return softkill_block(char_block);
@@ -1106,6 +1233,7 @@ function migrate_old_storage(path, localStorage) {
         structured_logger.flush(),
         incident_recorder.flush(),
       ]);
+      await persistence.close();
       console.log("now truly exiting");
       process.exit();
     }),

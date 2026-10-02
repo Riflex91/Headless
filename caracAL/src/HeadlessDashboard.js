@@ -84,6 +84,7 @@ function buildSupervisorSnapshot(
   lifecyclePolicy = {},
   emergencyStopState = null,
   revisionSummary = null,
+  persistenceHealth = null,
 ) {
   const characters = Object.entries(characterManage)
     .map(([name, charBlock]) => publicCharacterState(name, charBlock))
@@ -108,6 +109,15 @@ function buildSupervisorSnapshot(
       source_revision: null,
       installed_config_revision: null,
       status: "UNKNOWN",
+    },
+    persistence: persistenceHealth || {
+      status: "UNKNOWN",
+      database_path: null,
+      schema_version: null,
+      current_schema_version: null,
+      flush_count: 0,
+      closed: true,
+      last_error: null,
     },
     characters,
   };
@@ -142,6 +152,7 @@ function attachHeadlessDashboard({
   controlEmergencyStop,
   getEmergencyStopState,
   getRevisionSummary,
+  getPersistenceHealth,
   diagnosticStore,
   incidentRecorder,
   assetCache,
@@ -158,6 +169,7 @@ function attachHeadlessDashboard({
       lifecyclePolicy,
       getEmergencyStopState?.(),
       getRevisionSummary?.(),
+      getPersistenceHealth?.(),
     );
 
   router.use("/headless", (req, res, next) => {

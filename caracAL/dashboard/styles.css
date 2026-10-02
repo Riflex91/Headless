@@ -187,6 +187,51 @@ h2 {
   font-weight: 700;
 }
 
+.persistence-summary {
+  display: grid;
+  gap: 0.08rem;
+  min-width: 12rem;
+  margin-bottom: 0.3rem;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid #3b4661;
+  border-radius: 0.5rem;
+  background: rgba(23, 31, 52, 0.72);
+  text-align: left;
+}
+
+.persistence-summary strong {
+  font-size: 0.75rem;
+}
+
+.persistence-summary span {
+  max-width: 18rem;
+  overflow: hidden;
+  color: #9ca9bf;
+  font-size: 0.65rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.persistence-healthy {
+  border-color: #2f8052;
+}
+
+.persistence-error,
+.persistence-schema_mismatch {
+  border-color: #a34652;
+  background: rgba(163, 70, 82, 0.18);
+}
+
+.persistence-error strong,
+.persistence-schema_mismatch strong {
+  color: #ff9aa6;
+}
+
+.persistence-closed,
+.persistence-unknown {
+  border-color: #596781;
+}
+
 .account-log-actions {
   display: flex;
   gap: 0.4rem;

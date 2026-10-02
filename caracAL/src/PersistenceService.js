@@ -146,6 +146,8 @@ class PersistenceService {
     this.queue = Promise.resolve();
     this.closed = false;
     this.flushCount = 0;
+    this.lastError = null;
+    this.cachedSchemaVersion = 0;
   }
 
   async initialize() {
@@ -187,23 +189,39 @@ class PersistenceService {
       }
     }
 
+    this.cachedSchemaVersion = this.schemaVersion();
     await this.flush();
   }
 
   schemaVersion() {
+    if (this.closed) return this.cachedSchemaVersion;
+
     const row = this.getRow(
       "SELECT MAX(version) AS version FROM schema_migrations",
     );
-    return Number(row?.version || 0);
+    const version = Number(row?.version || 0);
+    this.cachedSchemaVersion = version;
+    return version;
   }
 
   health() {
+    const schemaVersion = this.schemaVersion();
+    const status = this.closed
+      ? "CLOSED"
+      : this.lastError
+      ? "ERROR"
+      : schemaVersion === CURRENT_SCHEMA_VERSION
+      ? "HEALTHY"
+      : "SCHEMA_MISMATCH";
+
     return {
+      status,
       database_path: this.databasePath,
-      schema_version: this.schemaVersion(),
+      schema_version: schemaVersion,
       current_schema_version: CURRENT_SCHEMA_VERSION,
       flush_count: this.flushCount,
       closed: this.closed,
+      last_error: this.lastError,
     };
   }
 
@@ -390,6 +408,57 @@ class PersistenceService {
     };
   }
 
+  async saveCharacterRuntimeState(
+    characterName,
+    { desiredState, actualState, codeRevision, configRevision } = {},
+  ) {
+    return this.enqueueMutation(() => {
+      const updatedAt = this.now();
+      this.db.run(
+        `
+          INSERT INTO lifecycle_state(
+            character_name,
+            desired_state,
+            actual_state,
+            updated_at
+          )
+          VALUES (?, ?, ?, ?)
+          ON CONFLICT(character_name) DO UPDATE SET
+            desired_state = excluded.desired_state,
+            actual_state = excluded.actual_state,
+            updated_at = excluded.updated_at
+        `,
+        [
+          String(characterName),
+          String(desiredState),
+          String(actualState),
+          updatedAt,
+        ],
+      );
+      this.db.run(
+        `
+          INSERT INTO revision_state(
+            character_name,
+            code_revision,
+            config_revision,
+            updated_at
+          )
+          VALUES (?, ?, ?, ?)
+          ON CONFLICT(character_name) DO UPDATE SET
+            code_revision = excluded.code_revision,
+            config_revision = excluded.config_revision,
+            updated_at = excluded.updated_at
+        `,
+        [
+          String(characterName),
+          codeRevision || null,
+          configRevision || null,
+          updatedAt,
+        ],
+      );
+    });
+  }
+
   async saveCharacterSnapshot(
     characterName,
     { capturedAt, inventory, equipment } = {},
@@ -514,6 +583,7 @@ class PersistenceService {
     await fs.writeFile(tempPath, Buffer.from(bytes));
     await replaceFile(tempPath, this.databasePath);
     this.flushCount += 1;
+    this.lastError = null;
   }
 
   async close() {
@@ -530,11 +600,26 @@ class PersistenceService {
     }
 
     const operation = this.queue.then(async () => {
-      mutator();
+      this.db.run("BEGIN");
+      try {
+        mutator();
+        this.db.run("COMMIT");
+      } catch (error) {
+        try {
+          this.db.run("ROLLBACK");
+        } catch (_rollbackError) {
+          // Preserve the original mutation failure.
+        }
+        throw error;
+      }
       await this.flush();
     });
-    this.queue = operation.catch(() => {});
-    return operation;
+    const observed = operation.catch((error) => {
+      this.lastError = error instanceof Error ? error.message : String(error);
+      throw error;
+    });
+    this.queue = observed.catch(() => {});
+    return observed;
   }
 
   getRow(sql, params = []) {

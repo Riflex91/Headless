@@ -16,6 +16,15 @@ const state = {
     installed_config_revision: null,
     status: "UNKNOWN",
   },
+  persistence: {
+    status: "UNKNOWN",
+    database_path: null,
+    schema_version: null,
+    current_schema_version: null,
+    flush_count: 0,
+    closed: true,
+    last_error: null,
+  },
 };
 
 const cards = new Map();
@@ -58,6 +67,16 @@ const revisionSummarySource = document.querySelector(
 );
 const revisionSummaryConfig = document.querySelector(
   "#revision-summary-config",
+);
+const persistenceSummary = document.querySelector("#persistence-summary");
+const persistenceSummaryStatus = document.querySelector(
+  "#persistence-summary-status",
+);
+const persistenceSummarySchema = document.querySelector(
+  "#persistence-summary-schema",
+);
+const persistenceSummaryFlushes = document.querySelector(
+  "#persistence-summary-flushes",
 );
 
 function formatTimestamp(timestamp) {
@@ -221,6 +240,26 @@ function renderRevisionSummary() {
   revisionSummaryConfig.textContent = `Config: ${formatRevision(
     summary.installed_config_revision,
   )}`;
+}
+
+function renderPersistenceSummary() {
+  const persistence = state.persistence || {
+    status: "UNKNOWN",
+    schema_version: null,
+    current_schema_version: null,
+    flush_count: 0,
+    last_error: null,
+  };
+  const status = persistence.status || "UNKNOWN";
+
+  persistenceSummary.className = `persistence-summary persistence-${status.toLowerCase()}`;
+  persistenceSummaryStatus.textContent = `Persistence: ${status}`;
+  persistenceSummarySchema.textContent = `Schema: ${
+    persistence.schema_version ?? "—"
+  }/${persistence.current_schema_version ?? "—"}`;
+  persistenceSummaryFlushes.textContent = persistence.last_error
+    ? `Fehler: ${persistence.last_error}`
+    : `Flushes: ${persistence.flush_count ?? 0}`;
 }
 
 function renderEmergencyStop() {
@@ -554,6 +593,15 @@ function applySnapshot(snapshot) {
     installed_config_revision: null,
     status: "UNKNOWN",
   };
+  state.persistence = snapshot.persistence || {
+    status: "UNKNOWN",
+    database_path: null,
+    schema_version: null,
+    current_schema_version: null,
+    flush_count: 0,
+    closed: true,
+    last_error: null,
+  };
   state.characters.clear();
 
   for (const character of snapshot.characters || []) {
@@ -565,6 +613,7 @@ function applySnapshot(snapshot) {
   renderInventoryEquipment();
   renderEmergencyStop();
   renderRevisionSummary();
+  renderPersistenceSummary();
   lastUpdate.textContent = `Update ${formatTimestamp(snapshot.generated_at)}`;
 }
 

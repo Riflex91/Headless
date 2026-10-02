@@ -19,6 +19,7 @@ function incidentTriggerReason(event) {
   if (type === "MODULE_FAILED") return "MODULE_FAILED";
   if (type === "JOB_FAILED") return "SCHEDULER_JOB_FAILED";
   if (type === "ACTION_UNKNOWN") return "ACTION_OUTCOME_UNKNOWN";
+  if (type === "PERSISTENCE_WRITE_FAILED") return "PERSISTENCE_WRITE_FAILED";
   return null;
 }
 
@@ -26,6 +27,7 @@ function incidentSeverity(event) {
   const type = String(event?.event || event?.type || "");
   if (type === "ACTION_UNKNOWN") return "HIGH";
   if (type === "RUNTIME_START_FAILED") return "HIGH";
+  if (type === "PERSISTENCE_WRITE_FAILED") return "HIGH";
   return "ERROR";
 }
 
