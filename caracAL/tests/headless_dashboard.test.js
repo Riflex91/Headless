@@ -229,28 +229,25 @@ test("dashboard static assets are present", () => {
   assert.match(index, /map-background\.js/);
 });
 
-test(
-  "dashboard panels and character cards support persistent collapsing",
-  () => {
-    const dashboardApp = fs.readFileSync(
-      path.join(__dirname, "..", "dashboard", "app.js"),
-      "utf8",
-    );
-    const styles = fs.readFileSync(
-      path.join(__dirname, "..", "dashboard", "styles.css"),
-      "utf8",
-    );
+test("dashboard panels and character cards support persistent collapsing", () => {
+  const dashboardApp = fs.readFileSync(
+    path.join(__dirname, "..", "dashboard", "app.js"),
+    "utf8",
+  );
+  const styles = fs.readFileSync(
+    path.join(__dirname, "..", "dashboard", "styles.css"),
+    "utf8",
+  );
 
-    assert.match(dashboardApp, /initializeDashboardCollapsibles/);
-    assert.match(dashboardApp, /initializeCollapsible/);
-    assert.match(dashboardApp, /localStorage/);
-    assert.match(dashboardApp, /movement-panel/);
-    assert.match(styles, /\.collapse-toggle/);
-    assert.match(styles, /\.panel\.is-collapsed/);
-    assert.match(styles, /\.character-card\.is-collapsed/);
-    assert.doesNotMatch(dashboardApp, /â|Â/);
-  },
-);
+  assert.match(dashboardApp, /initializeDashboardCollapsibles/);
+  assert.match(dashboardApp, /initializeCollapsible/);
+  assert.match(dashboardApp, /localStorage/);
+  assert.match(dashboardApp, /movement-panel/);
+  assert.match(styles, /\.collapse-toggle/);
+  assert.match(styles, /\.panel\.is-collapsed/);
+  assert.match(styles, /\.character-card\.is-collapsed/);
+  assert.doesNotMatch(dashboardApp, /â|Â/);
+});
 
 test("dashboard visible character views include connected characters only", () => {
   const dashboardApp = fs.readFileSync(
@@ -386,5 +383,3 @@ test("dashboard public live state keeps nearby entity telemetry but not map scen
   assert.equal(character.game.nearby_entities.length, 1);
   assert.equal(character.game.map_scene, undefined);
 });
-
-
