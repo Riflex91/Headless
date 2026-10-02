@@ -386,6 +386,12 @@ function replaceRotationOptions(select, characters, placeholder) {
   }
 }
 
+function onlineCharacters() {
+  return [...state.characters.values()].filter(
+    (character) => character.connected === true,
+  );
+}
+
 function renderRotationControls() {
   const characters = [...state.characters.values()].sort((a, b) =>
     a.name.localeCompare(b.name),
@@ -709,7 +715,7 @@ function updateCharacterCard(card, character) {
 function synchronizeMovementMapOptions() {
   if (!movementMapApi) return;
 
-  const maps = movementMapApi.availableMaps([...state.characters.values()]);
+  const maps = movementMapApi.availableMaps(onlineCharacters());
   const previous = movementMapSelect.value;
 
   movementMapSelect.replaceChildren();
@@ -735,7 +741,7 @@ function renderMovementMap() {
     svg: movementMapSvg,
     legend: movementLegend,
     emptyState: movementMapEmpty,
-    characters: [...state.characters.values()],
+    characters: onlineCharacters(),
     mapName: movementMapSelect.value,
     trailMs: Number(movementTrailRange.value) || 120000,
     showTrail: showMovementTrail.checked,
@@ -750,12 +756,12 @@ function renderInventoryEquipment() {
 
   inventoryEquipmentApi.renderAccountInventory({
     container: accountInventoryGrid,
-    characters: [...state.characters.values()],
+    characters: onlineCharacters(),
   });
 }
 
 function renderCharacters() {
-  const characters = [...state.characters.values()].sort((a, b) =>
+  const characters = onlineCharacters().sort((a, b) =>
     a.name.localeCompare(b.name),
   );
   const activeNames = new Set();
@@ -774,13 +780,8 @@ function renderCharacters() {
     cards.delete(name);
   }
 
-  const active = characters.filter((character) =>
-    ["STARTING", "CONNECTING", "ONLINE", "PAUSED", "STOPPING"].includes(
-      character.lifecycle_state,
-    ),
-  ).length;
-
-  activeCount.textContent = `${active} / ${state.maxOnlineCharacters} aktiv`;
+  activeCount.textContent =
+    `${characters.length} / ${state.maxOnlineCharacters} online`;
 }
 
 function refreshHeartbeatAges() {
