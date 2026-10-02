@@ -75,15 +75,18 @@ export interface MoveRequest extends BoundaryRequest {
   y: number;
 }
 
-export type SmartMoveDestination =
+export type SmartMoveTarget =
   | string
   | {
       x: number;
       y: number;
       map?: string;
-    }
+    };
+
+export type SmartMoveDestination =
+  | SmartMoveTarget
   | {
-      to: string;
+      to: SmartMoveTarget;
       return?: boolean;
     };
 
@@ -381,30 +384,38 @@ function structuredReason(value: unknown): string | null {
     : null;
 }
 
+function validSmartMoveTarget(target: SmartMoveTarget): boolean {
+  if (typeof target === "string") {
+    return target.trim().length > 0;
+  }
+
+  return (
+    !!target &&
+    typeof target === "object" &&
+    Number.isFinite(target.x) &&
+    Number.isFinite(target.y) &&
+    (target.map === undefined ||
+      (typeof target.map === "string" && target.map.trim().length > 0))
+  );
+}
+
 function validSmartMoveDestination(
   destination: SmartMoveDestination,
 ): boolean {
   if (typeof destination === "string") {
-    return destination.trim().length > 0;
+    return validSmartMoveTarget(destination);
   }
 
   if (!destination || typeof destination !== "object") return false;
   if ("to" in destination) {
     return (
-      typeof destination.to === "string" &&
-      destination.to.trim().length > 0 &&
+      validSmartMoveTarget(destination.to) &&
       (destination.return === undefined ||
         typeof destination.return === "boolean")
     );
   }
 
-  return (
-    Number.isFinite(destination.x) &&
-    Number.isFinite(destination.y) &&
-    (destination.map === undefined ||
-      (typeof destination.map === "string" &&
-        destination.map.trim().length > 0))
-  );
+  return validSmartMoveTarget(destination);
 }
 
 function objectRecord(value: unknown): Record<string, unknown> {
