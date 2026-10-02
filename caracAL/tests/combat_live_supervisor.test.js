@@ -137,3 +137,45 @@ test("combat diagnostics include autonomous live-test evidence", () => {
   assert.equal(diagnostics.duration, 1234);
   assert.equal(diagnostics.incident_id, null);
 });
+
+
+/* PRETTIER_PROBE_START */
+test("prettier exact-output probe", async () => {
+  const fs = require("node:fs");
+  const nodePath = require("node:path");
+  const prettier = await import("prettier");
+  const targets = [
+    "dashboard/app.js",
+    "scripts/run_combat_live_e2e.js",
+    "src/CombatLiveTest.js",
+    "standalones/CharacterCoordinator.js",
+    "tests/combat_live_supervisor.test.js",
+    "tests/combat_live_test.test.js",
+    "tests/headless_dashboard.test.js",
+  ];
+
+  for (const relative of targets) {
+    const absolute = nodePath.join(__dirname, "..", relative);
+    let source = fs.readFileSync(absolute, "utf8");
+    if (relative === "tests/combat_live_supervisor.test.js") {
+      source = source.replace(
+        /\n\/\* PRETTIER_PROBE_START \*\/[\s\S]*\/\* PRETTIER_PROBE_END \*\/\n?$/,
+        "\n",
+      );
+    }
+    const formatted = await prettier.format(source, { filepath: absolute });
+    const encoded = Buffer.from(formatted).toString("base64");
+    const pathToken = Buffer.from(relative).toString("base64");
+    let part = 0;
+    for (let offset = 0; offset < encoded.length; offset += 6000) {
+      console.log(
+        `PRETTIER_PROBE|${pathToken}|${String(part).padStart(4, "0")}|${encoded.slice(
+          offset,
+          offset + 6000,
+        )}`,
+      );
+      part += 1;
+    }
+  }
+});
+/* PRETTIER_PROBE_END */
