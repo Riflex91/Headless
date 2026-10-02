@@ -35,6 +35,12 @@ test("public character state exposes only dashboard-safe fields", () => {
     installed_code_revision: "sha256-installed",
     running_config_revision: "cfg-running",
     installed_config_revision: "cfg-installed",
+    runtime_config_revision: 7,
+    applied_runtime_config_revision: 6,
+    runtime_config_source: "PERSISTED",
+    config_push_status: "PENDING",
+    config_push_error: null,
+    runtime_config: { secret_value: "DO_NOT_EXPORT_CONFIG" },
     revision_status: "STALE",
     session: "SECRET_SESSION",
     auth: "SECRET_AUTH",
@@ -60,6 +66,11 @@ test("public character state exposes only dashboard-safe fields", () => {
     installed_code_revision: "sha256-installed",
     config_revision: "cfg-running",
     installed_config_revision: "cfg-installed",
+    runtime_config_revision: 7,
+    applied_runtime_config_revision: 6,
+    runtime_config_source: "PERSISTED",
+    config_push_status: "PENDING",
+    config_push_error: null,
     revision_status: "STALE",
     game: null,
     movement_trail: [],
@@ -69,6 +80,7 @@ test("public character state exposes only dashboard-safe fields", () => {
   assert.equal(serialized.includes("SECRET_SESSION"), false);
   assert.equal(serialized.includes("SECRET_AUTH"), false);
   assert.equal(serialized.includes("do-not-export"), false);
+  assert.equal(serialized.includes("DO_NOT_EXPORT_CONFIG"), false);
 });
 
 test("dashboard access accepts loopback addresses only", () => {
@@ -190,6 +202,8 @@ test("dashboard static assets are present", () => {
   assert.match(index, /id="rotation-stop-character"/);
   assert.match(index, /id="rotation-start-character"/);
   assert.match(index, /id="rotate-characters"/);
+  assert.match(index, /character-runtime-config-revision/);
+  assert.match(index, /character-config-push-status/);
 });
 
 test("dashboard module and coordinator remain syntactically valid", () => {
@@ -223,6 +237,11 @@ test("dashboard module and coordinator remain syntactically valid", () => {
   assert.match(coordinator, /CHARACTER_ROTATION_REQUESTED/);
   assert.match(coordinator, /CHARACTER_ROTATION_COMPLETED/);
   assert.match(dashboard, /\/headless\/api\/rotation/);
+  assert.match(dashboard, /\/headless\/api\/characters\/:name\/config/);
+  assert.match(coordinator, /control_character_config/);
+  assert.match(coordinator, /CHARACTER_CONFIG_PUSH_REQUESTED/);
+  assert.match(coordinator, /CHARACTER_CONFIG_APPLIED/);
+  assert.match(coordinator, /CharacterConfigService/);
   assert.match(coordinator, /getPersistenceHealth/);
   assert.match(coordinator, /restoreDesiredRuntimeState/);
   assert.match(coordinator, /saveCharacterRuntimeState/);
