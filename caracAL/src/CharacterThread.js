@@ -10,10 +10,7 @@ const monitoring_util = require("../monitoring_util");
 const ipc_storage = require("../ipcStorage");
 const { DESIRED_RUNTIME_STATES } = require("./CharacterControl");
 const { normalizeRuntimeEvent } = require("./RuntimeEventBridge");
-const {
-  normalizeIpcMessage,
-  sendIpcMessage,
-} = require("./IpcProtocol");
+const { normalizeIpcMessage, sendIpcMessage } = require("./IpcProtocol");
 
 const LogUtils = require("./LogUtils");
 const { console } = LogUtils;
