@@ -2,25 +2,37 @@ var inside = "login";
 var user_id = "",
   user_auth = "";
 var base_url = "https://adventure.land";
-var server_addr = "",
+var server_address = "",
+  server_path = "",
+  server_addr = "",
   server_port = "";
+var selection_server_explicit = false;
 var server_names = { US: "Americas", EU: "Europas", ASIA: "Eastlands" };
 var sound_music = "",
   sound_sfx = "",
   xmas_tunes = false,
-  music_level = 0.3;
+  music_level = 0.3,
+  music_volume = 100,
+  sfx_volume = 100;
 var perfect_pixels = "1";
 var screenshot_mode = "";
 var pro_mode = "1";
 var tutorial_ui = "1";
+var proximity_guides = "";
+var close_buttons_enabled = true;
 var new_attacks = "1";
 var recording_mode = "";
 var cached_map = "1",
   scale = "2";
 var d_lines = "1";
 var sd_lines = "1";
+var Prod = "";
+var Dev = "";
+var Local = "";
+var Staging = "";
 var is_sdk = "";
 var is_electron = "",
+  is_tauri = "",
   electron_data = {};
 var is_comm = false;
 var no_eval = false;
@@ -28,7 +40,7 @@ var VERSION = "";
 var platform = "web";
 var engine_mode = "";
 var no_graphics = "1";
-var border_mode = ""; // use after adding a new monster
+var border_mode = "";
 var no_html = "bot";
 var is_bot = "1";
 var is_cli = "",
@@ -42,16 +54,21 @@ var auto_reload = "auto",
   reload_times = "0",
   character_to_load = "",
   mstand_to_load = null;
-// It's pretty complicated but there are 2 persistence, auto login routines, the above one is the first, the below one is the second, second one uses the URL data
-var url_ip = "",
-  url_port = "",
+// It's pretty complicated but there are 2 persistence, auto login routines, the above one is the first, the below one uses URL data.
+var url_address = "",
+  url_path = "",
   url_character = "";
+// Legacy aliases retained for older Adventure Land builds.
+var url_ip = "",
+  url_port = "";
 var update_notes = [];
+var update_notes_more = [];
+var last_deploy = null;
 var server_regions = { US: "Americas", EU: "Europas", ASIA: "Eastlands" };
 var X = {};
 function payment_logic() {}
 
-if (!is_sdk) {
+if (!Dev) {
   for (var f in log_flags) log_flags[f] = 0;
 }
 
@@ -123,6 +140,7 @@ X.servers = [
 ];
 X.characters = [];
 X.tutorial = { step: 0, completed: [] };
+X.merchant_tutorial = { step: 0, completed: [] };
 X.unread = 0;
 X.codes = {};
 
