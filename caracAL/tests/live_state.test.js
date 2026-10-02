@@ -6,6 +6,7 @@ const test = require("node:test");
 const {
   build_stat_beat,
   public_item,
+  public_item_icon,
   public_smart_plot,
 } = require("../monitoring_util");
 const { publicLiveState } = require("../src/HeadlessDashboard");
@@ -156,6 +157,55 @@ test("smart_move projection exposes only route geometry", () => {
     },
   ]);
   assert.equal(JSON.stringify(plot).includes("must-not-leak"), false);
+});
+
+test("item icon projection follows Adventure Land sprite metadata", () => {
+  const gameData = {
+    items: {
+      hpot1: {
+        name: "HP Potion",
+        type: "pot",
+        skin: "hpot1",
+      },
+    },
+    positions: {
+      hpot1: ["", 2, 3],
+    },
+    imagesets: {
+      pack_20: {
+        file: "/images/tiles/items/pack_20vt8.png",
+        size: 20,
+        rows: 64,
+        columns: 16,
+      },
+    },
+  };
+
+  assert.deepEqual(public_item_icon("hpot1", gameData), {
+    skin: "hpot1",
+    file: "/images/tiles/items/pack_20vt8.png",
+    x: 2,
+    y: 3,
+    size: 20,
+    rows: 64,
+    columns: 16,
+  });
+
+  assert.deepEqual(public_item({ name: "hpot1", q: 25 }, gameData), {
+    name: "hpot1",
+    q: 25,
+    display_name: "HP Potion",
+    item_type: "pot",
+    icon: {
+      skin: "hpot1",
+      file: "/images/tiles/items/pack_20vt8.png",
+      x: 2,
+      y: 3,
+      size: 20,
+      rows: 64,
+      columns: 16,
+    },
+  });
 });
 
 test("public item projection excludes unknown runtime fields", () => {
