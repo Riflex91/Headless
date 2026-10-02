@@ -809,11 +809,7 @@ class PersistenceService {
     };
   }
 
-  async saveCooldown(
-    ownerKey,
-    cooldownKey,
-    { readyAt = 0, state = {} } = {},
-  ) {
+  async saveCooldown(ownerKey, cooldownKey, { readyAt = 0, state = {} } = {}) {
     return this.enqueueMutation(() => {
       this.db.run(
         `
@@ -1132,14 +1128,7 @@ class PersistenceService {
 
   async saveTestResult(
     runId,
-    {
-      testId,
-      characterName,
-      result,
-      startedAt,
-      endedAt,
-      data = {},
-    } = {},
+    { testId, characterName, result, startedAt, endedAt, data = {} } = {},
   ) {
     return this.enqueueMutation(() => {
       this.db.run(
