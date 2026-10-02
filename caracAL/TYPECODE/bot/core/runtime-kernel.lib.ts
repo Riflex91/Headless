@@ -108,6 +108,7 @@ export class BotRuntimeKernel {
               parent.caracAL?.emergency_stop_state || null,
             modules: this.modules.list(),
             schedulerJobs: this.scheduler.list(),
+            gameAdapterReads: this.game.capabilities(),
             recentActions: this.actionLedger.list(20),
           },
         });
