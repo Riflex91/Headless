@@ -80,6 +80,7 @@ test("public character state exposes only dashboard-safe fields", () => {
     combat_runtime: null,
     class_skill_runtime: null,
     group_combat_runtime: null,
+    farm_intelligence_runtime: null,
     game: null,
     movement_trail: [],
   });
