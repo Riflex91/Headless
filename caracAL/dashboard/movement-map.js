@@ -264,6 +264,73 @@
     );
   }
 
+  function appendEntityMarker(svg, entity, markerLength) {
+    const marker = createSvgElement("g", {
+      class:
+        entity.kind === "monster"
+          ? `map-entity-marker monster-marker${entity.engaged ? " engaged" : ""}`
+          : "map-entity-marker npc-marker",
+    });
+
+    if (entity.kind === "monster") {
+      marker.append(
+        createSvgElement("circle", {
+          cx: entity.x,
+          cy: entity.y,
+          r: markerLength * 0.15,
+        }),
+      );
+    } else {
+      const radius = markerLength * 0.17;
+      marker.append(
+        createSvgElement("polygon", {
+          points: [
+            `${entity.x},${entity.y - radius}`,
+            `${entity.x + radius},${entity.y}`,
+            `${entity.x},${entity.y + radius}`,
+            `${entity.x - radius},${entity.y}`,
+          ].join(" "),
+        }),
+      );
+    }
+
+    const label = createSvgElement("text", {
+      x: entity.x + markerLength * 0.24,
+      y: entity.y - markerLength * 0.2,
+    });
+    label.textContent =
+      entity.name || entity.mtype || entity.npc || entity.id || entity.kind;
+    marker.append(label);
+
+    const title = createSvgElement("title");
+    const health =
+      Number.isFinite(entity.hp) && Number.isFinite(entity.max_hp)
+        ? ` · HP ${entity.hp}/${entity.max_hp}`
+        : "";
+    title.textContent =
+      `${label.textContent}${health}` +
+      (Number.isFinite(entity.distance) ? ` · ${entity.distance}px` : "");
+    marker.append(title);
+
+    svg.append(marker);
+  }
+
+  function appendEntityLegend(legend, monsters, npcs) {
+    const row = document.createElement("div");
+    row.className = "movement-entity-summary";
+
+    const monsterCount = document.createElement("span");
+    monsterCount.className = "monster-summary";
+    monsterCount.textContent = `Monster: ${monsters.length}`;
+
+    const npcCount = document.createElement("span");
+    npcCount.className = "npc-summary";
+    npcCount.textContent = `NPCs: ${npcs.length}`;
+
+    row.append(monsterCount, npcCount);
+    legend.append(row);
+  }
+
   function renderMovementMap({
     svg,
     legend,
