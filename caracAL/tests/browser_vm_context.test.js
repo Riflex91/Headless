@@ -4,9 +4,7 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 const vm = require("node:vm");
 
-const {
-  createIsolatedBrowserContext,
-} = require("../src/BrowserVmContext");
+const { createIsolatedBrowserContext } = require("../src/BrowserVmContext");
 
 function isolatedContext() {
   return createIsolatedBrowserContext(
