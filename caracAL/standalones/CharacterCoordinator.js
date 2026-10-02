@@ -1536,11 +1536,15 @@ function migrate_old_storage(path, localStorage) {
             result: m.result || null,
             error: m.error || null,
           });
-          emit_supervisor_event("MOVEMENT_LIVE_TEST_RESULT_RECEIVED", char_name, {
-            request_id: m.request_id,
-            outcome: m.result?.outcome || null,
-            error: m.error || null,
-          });
+          emit_supervisor_event(
+            "MOVEMENT_LIVE_TEST_RESULT_RECEIVED",
+            char_name,
+            {
+              request_id: m.request_id,
+              outcome: m.result?.outcome || null,
+              error: m.error || null,
+            },
+          );
           break;
         }
         case "config_applied": {
