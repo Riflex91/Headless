@@ -91,10 +91,7 @@ test("inventory live runner validates real classification and conservative unkno
   assert.equal(result.scope.readOnly, true);
   assert.equal(result.scope.valueMutationForced, false);
   assert.equal(result.cleanup.inventoryOverrideCleared, true);
-  assert.deepEqual(calls, [
-    ["set", true],
-    ["clear"],
-  ]);
+  assert.deepEqual(calls, [["set", true], ["clear"]]);
 });
 
 test("inventory live runner accepts a genuinely empty inventory without manual preconditions", () => {
@@ -143,8 +140,5 @@ test("inventory live runner rejects an unprotected unknown item", () => {
   const result = runner.run();
 
   assert.equal(result.outcome, "FAIL");
-  assert.equal(
-    result.reason,
-    "INVENTORY_LIVE_E2E_CLASSIFICATION_INVALID",
-  );
+  assert.equal(result.reason, "INVENTORY_LIVE_E2E_CLASSIFICATION_INVALID");
 });

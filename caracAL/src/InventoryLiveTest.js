@@ -21,9 +21,7 @@ function inventoryLiveTestEvidence(events = [], charBlock = {}) {
     liveProjection?.state === "READY" || liveProjection?.state === "EMPTY"
       ? liveProjection
       : historicalProjection || liveProjection || null;
-  const entries = Array.isArray(projection?.entries)
-    ? projection.entries
-    : [];
+  const entries = Array.isArray(projection?.entries) ? projection.entries : [];
 
   return {
     inventoryTestStarted: types.includes("INVENTORY_LIVE_TEST_STARTED"),

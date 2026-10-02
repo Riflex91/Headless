@@ -3269,8 +3269,7 @@ function migrate_old_storage(path, localStorage) {
     };
     const started_at = Date.now();
     inventory_live_test_sequence += 1;
-    const request_id =
-      `inventory-live-${started_at}-${inventory_live_test_sequence}`;
+    const request_id = `inventory-live-${started_at}-${inventory_live_test_sequence}`;
 
     char_block.inventory_live_test = {
       request_id,

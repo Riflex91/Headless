@@ -82,10 +82,7 @@ test("inventory supervisor downgrades runtime pass when evidence is incomplete",
   );
 
   assert.equal(combined.outcome, "FAIL");
-  assert.equal(
-    combined.reason,
-    "SUPERVISOR_INVENTORY_EVIDENCE_INCOMPLETE",
-  );
+  assert.equal(combined.reason, "SUPERVISOR_INVENTORY_EVIDENCE_INCOMPLETE");
 });
 
 test("inventory diagnostics preserve the read-only mutation boundary", () => {
