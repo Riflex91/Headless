@@ -60,7 +60,7 @@ export interface CancelMovementRequest extends MovementRequestBase {
 }
 
 export interface MovementActionBoundary {
-  move(request: MoveRequest): ActionRecord;
+  directMove(request: MoveRequest): ActionRecord;
   cancelDirectMove(actionId: string, reason?: string): ActionRecord;
   settleMove(actionId: string, tolerance?: number): ActionRecord;
   smartMove(request: SmartMoveRequest): Promise<ActionRecord>;
@@ -201,7 +201,7 @@ export class MovementController {
       targetForDirect(request),
     );
 
-    const record = this.actions.move({
+    const record = this.actions.directMove({
       x: request.x,
       y: request.y,
       module: request.module,
