@@ -15,12 +15,17 @@ function validateAdventureLandAssetPath(assetPath) {
     parsed = null;
   }
 
+  const allowedPrefixes = [
+    "/images/tiles/items/",
+    "/images/tiles/map/",
+    "/images/tiles/monsters/",
+  ];
   const valid =
     value.startsWith("/") &&
     !value.startsWith("//") &&
     !value.includes("..") &&
     parsed?.origin === AL_BASE_URL &&
-    parsed.pathname.startsWith("/images/tiles/items/") &&
+    allowedPrefixes.some((prefix) => parsed.pathname.startsWith(prefix)) &&
     /\.(?:png|webp)$/i.test(parsed.pathname);
 
   if (!valid) {
