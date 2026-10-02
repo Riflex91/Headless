@@ -351,3 +351,19 @@ test("death handling auto-respawns with retry throttle", async () => {
   status = await setup.controller.tick();
   assert.equal(respawns, 2);
 });
+
+ // PRETTIER_PROBE_START
+test("prettier probe", async () => {
+  const fs = require("node:fs");
+  const prettier = await import("prettier");
+  const source = fs.readFileSync(__filename, "utf8");
+  const stripped = source.replace(
+    /\n \/\/ PRETTIER_PROBE_START[\s\S]*\/\/ PRETTIER_PROBE_END\n?$/,
+    "\n",
+  );
+  const formatted = await prettier.format(stripped, { filepath: __filename });
+  console.log(
+    `PRETTIER_PROBE_BASE64=${Buffer.from(formatted).toString("base64")}`,
+  );
+});
+// PRETTIER_PROBE_END
