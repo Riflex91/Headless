@@ -229,6 +229,7 @@ export class CombatController {
   private busy = false;
   private lastRespawnAt: number | null = null;
   private unknownPotion: UnknownPotion | null = null;
+  private configOverride: unknown | undefined;
 
   constructor(
     private readonly game: CombatGameAdapter,
@@ -250,7 +251,7 @@ export class CombatController {
     const targetDistance = target ? distance(character, target) : null;
     const hpPercent = ratio(character.hp, character.maxHp);
     const mpPercent = ratio(character.mp, character.maxMp);
-    const config = normalizeConfig(this.configSource());
+    const config = normalizeConfig(this.effectiveConfig());
 
     return {
       timestamp: this.lastStatusTimestamp || this.now(),
@@ -302,12 +303,26 @@ export class CombatController {
     };
   }
 
+  setConfigOverride(config: unknown): void {
+    this.configOverride = config;
+  }
+
+  clearConfigOverride(): void {
+    this.configOverride = undefined;
+  }
+
+  private effectiveConfig(): unknown {
+    return this.configOverride === undefined
+      ? this.configSource()
+      : this.configOverride;
+  }
+
   async tick(): Promise<CombatControllerStatus> {
     if (this.busy) return this.status();
     this.busy = true;
 
     try {
-      const config = normalizeConfig(this.configSource());
+      const config = normalizeConfig(this.effectiveConfig());
       const character = this.game.character();
       const hpPercent = ratio(character.hp, character.maxHp);
       const mpPercent = ratio(character.mp, character.maxMp);

@@ -168,3 +168,26 @@ test("CharacterThread exposes supervisor-assigned revisions", () => {
   assert.match(thread, /extensions\.config_revision/);
   assert.match(thread, /extensions\.source_revision/);
 });
+
+test("combat live E2E is wired through runtime and character IPC", () => {
+  const kernel = fs.readFileSync(
+    path.join(
+      __dirname,
+      "..",
+      "TYPECODE",
+      "bot",
+      "core",
+      "runtime-kernel.lib.ts",
+    ),
+    "utf8",
+  );
+  const thread = fs.readFileSync(
+    path.join(__dirname, "..", "src", "CharacterThread.js"),
+    "utf8",
+  );
+
+  assert.match(kernel, /runCombatLiveTest/);
+  assert.match(kernel, /CombatLiveTestRunner/);
+  assert.match(thread, /combat_live_test/);
+  assert.match(thread, /combat_live_test_result/);
+});
