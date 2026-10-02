@@ -175,6 +175,9 @@ async function make_game(proc_args) {
   extensions.log = LogUtils.log;
   extensions.runtime_state =
     proc_args.runtime_state || DESIRED_RUNTIME_STATES.RUNNING;
+  extensions.code_revision = proc_args.code_revision || null;
+  extensions.config_revision = proc_args.config_revision || null;
+  extensions.source_revision = proc_args.source_revision || null;
   extensions.emergency_stop = !!proc_args.emergency_stop?.active;
   extensions.emergency_stop_state = proc_args.emergency_stop || {
     active: false,
