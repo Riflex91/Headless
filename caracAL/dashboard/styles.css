@@ -1018,3 +1018,167 @@ dd {
     grid-column: 2;
   }
 }
+
+
+.config-dialog {
+  width: min(72rem, calc(100vw - 2rem));
+  max-height: calc(100vh - 2rem);
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid #394867;
+  border-radius: 0.9rem;
+  background: #10182b;
+  color: #e8edf7;
+  box-shadow: 0 1.5rem 5rem rgba(0, 0, 0, 0.48);
+}
+
+.config-dialog::backdrop {
+  background: rgba(4, 8, 18, 0.72);
+  backdrop-filter: blur(3px);
+}
+
+.config-dialog-shell {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  max-height: calc(100vh - 2rem);
+}
+
+.config-dialog-header,
+.config-dialog-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.9rem 1rem;
+  border-color: #26314b;
+  background: #11192d;
+}
+
+.config-dialog-header {
+  border-bottom: 1px solid #26314b;
+}
+
+.config-dialog-header h2,
+.config-dialog-header p {
+  margin-bottom: 0;
+}
+
+.config-dialog-header p,
+.config-dialog-footer span {
+  color: #9faac0;
+  font-size: 0.78rem;
+}
+
+.config-dialog-close,
+.config-dialog-footer button {
+  padding: 0.48rem 0.65rem;
+  border: 1px solid #374665;
+  border-radius: 0.5rem;
+  background: #18223b;
+  color: #dbe5f8;
+}
+
+.config-dialog-close {
+  min-width: 2.3rem;
+  font-size: 1.2rem;
+}
+
+.config-dialog-footer {
+  border-top: 1px solid #26314b;
+}
+
+.config-dialog-footer > div {
+  display: flex;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.config-form-root {
+  display: grid;
+  gap: 0.65rem;
+  padding: 0.9rem;
+  overflow: auto;
+}
+
+.config-section {
+  border: 1px solid #2c3854;
+  border-radius: 0.7rem;
+  background: #0e1628;
+}
+
+.config-section > summary {
+  padding: 0.75rem 0.85rem;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.config-section-description {
+  margin: 0;
+  padding: 0 0.85rem 0.65rem;
+  color: #8f9bb3;
+  font-size: 0.76rem;
+}
+
+.config-field-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: 0.65rem;
+  padding: 0 0.85rem 0.85rem;
+}
+
+.config-field {
+  display: grid;
+  gap: 0.3rem;
+  min-width: 0;
+  color: #aeb9ce;
+  font-size: 0.76rem;
+}
+
+.config-field input:not([type="checkbox"]),
+.config-field select,
+.config-json-editor {
+  width: 100%;
+  padding: 0.5rem 0.58rem;
+  border: 1px solid #374665;
+  border-radius: 0.45rem;
+  background: #151f35;
+  color: #e8edf7;
+}
+
+.config-field input[type="checkbox"] {
+  justify-self: start;
+  width: 1.15rem;
+  height: 1.15rem;
+}
+
+.config-json-editor {
+  min-height: 8rem;
+  margin: 0 0.85rem 0.85rem;
+  width: calc(100% - 1.7rem);
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+@media (max-width: 700px) {
+  .config-dialog {
+    width: calc(100vw - 0.5rem);
+    max-height: calc(100vh - 0.5rem);
+  }
+
+  .config-dialog-shell {
+    max-height: calc(100vh - 0.5rem);
+  }
+
+  .config-dialog-footer,
+  .config-dialog-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .config-dialog-footer > div {
+    width: 100%;
+  }
+}
