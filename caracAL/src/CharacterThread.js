@@ -196,10 +196,15 @@ async function make_runner(upper, CODE_file, version, is_typescript) {
 }
 
 async function make_game(proc_args) {
-  const game_sources = game_files
-    .get_game_files()
-    .map((f) => game_files.locate_game_file(f, proc_args.version))
-    .concat(["./html_vars.js"]);
+  const game_sources_before_html_vars = game_files
+    .get_game_files_before_html_vars()
+    .map((f) => game_files.locate_game_file(f, proc_args.version));
+  const game_sources_after_html_vars = game_files
+    .get_game_files_after_html_vars()
+    .map((f) => game_files.locate_game_file(f, proc_args.version));
+  const game_sources = game_sources_before_html_vars
+    .concat(["./html_vars.js"])
+    .concat(game_sources_after_html_vars);
   console.log("constructing game instance");
   console.debug("source files:\n%s", game_sources);
   const game_context = make_context();
@@ -209,7 +214,9 @@ async function make_game(proc_args) {
   game_context.bowser = {};
   game_context.server_address = serverAddress;
   game_context.server_path = serverPath;
-  await ev_files(game_sources, game_context);
+  await ev_files(game_sources_before_html_vars, game_context);
+  await ev_files(["./html_vars.js"], game_context);
+  await ev_files(game_sources_after_html_vars, game_context);
   game_context.VERSION = "" + game_context.G.version;
   game_context.server_address = serverAddress;
   game_context.server_path = serverPath;
