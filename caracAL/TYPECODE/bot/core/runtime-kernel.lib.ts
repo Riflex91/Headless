@@ -87,6 +87,8 @@ export class BotRuntimeKernel {
             ...runtimeIdentity(),
             runtimeState: runtimeState(),
             emergencyStop: !!parent.caracAL?.emergency_stop,
+            emergencyStopState:
+              parent.caracAL?.emergency_stop_state || null,
             modules: this.modules.list(),
             schedulerJobs: this.scheduler.list(),
             recentActions: this.actionLedger.list(20),
@@ -164,6 +166,7 @@ export class BotRuntimeKernel {
       stopping: this.stopping,
       runtimeState: runtimeState(),
       emergencyStop: !!parent.caracAL?.emergency_stop,
+      emergencyStopState: parent.caracAL?.emergency_stop_state || null,
       modules: this.modules.list(),
       schedulerJobs: this.scheduler.list(),
       recentActions: this.actionLedger.list(20),
