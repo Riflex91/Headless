@@ -1,7 +1,6 @@
 const vm = require("vm");
 const io = require("socket.io-client");
 const fs = require("fs").promises;
-const { JSDOM } = require("jsdom");
 const node_query = require("jquery");
 const game_files = require("../game_files");
 const fetch = (...args) =>
@@ -12,6 +11,7 @@ const { DESIRED_RUNTIME_STATES } = require("./CharacterControl");
 const { normalizeRuntimeEvent } = require("./RuntimeEventBridge");
 const { normalizeIpcMessage, sendIpcMessage } = require("./IpcProtocol");
 const { prepareConfigPush } = require("./CharacterConfigService");
+const { createIsolatedBrowserWindow } = require("./BrowserVmContext");
 
 const LogUtils = require("./LogUtils");
 const { console } = LogUtils;
@@ -35,8 +35,7 @@ const html_spoof = `<!DOCTYPE html>
 </html>`;
 
 function make_context(upper = null) {
-  const result = new JSDOM(html_spoof, { url: "https://adventure.land/" })
-    .window;
+  const result = createIsolatedBrowserWindow(html_spoof);
   //jsdom maked globalThis point to Node global
   //but we want it to be window instead
   result.globalThis = result;
