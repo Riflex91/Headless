@@ -129,10 +129,23 @@
               <input id="show-target-line" type="checkbox" checked />
               Target
             </label>
+            <label class="movement-toggle">
+              <input id="show-nearby-monsters" type="checkbox" checked />
+              Monster
+            </label>
+            <label class="movement-toggle">
+              <input id="show-nearby-npcs" type="checkbox" checked />
+              NPCs
+            </label>
           </div>
         </div>
         <div class="movement-layout">
           <div class="movement-map-wrap">
+            <canvas
+              id="movement-map-background"
+              class="movement-map-background"
+              aria-hidden="true"
+            ></canvas>
             <svg
               id="movement-map"
               class="movement-map"
