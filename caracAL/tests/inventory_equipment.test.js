@@ -118,7 +118,10 @@ test("account inventory renders all connected live characters together", () => {
     assert.match(root.textContent, /My_Ranger1/);
     assert.match(root.textContent, /My_Merchant/);
     assert.doesNotMatch(root.textContent, /Offline/);
-    assert.equal(root.querySelectorAll(".inventory-slot-grid .live-item-slot").length, 3);
+    assert.equal(
+      root.querySelectorAll(".inventory-slot-grid .live-item-slot").length,
+      3,
+    );
     assert.equal(
       root.querySelectorAll(".equipment-grid .live-item-slot").length,
       EQUIPMENT_ORDER.length * 2,
