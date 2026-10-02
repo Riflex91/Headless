@@ -63,6 +63,10 @@ function publicCharacterState(name, charBlock = {}) {
     desired_runtime_state:
       charBlock.desired_runtime_state ||
       (charBlock.enabled ? "RUNNING" : "STOPPED"),
+    account_owned: charBlock.account_owned === true,
+    registration_source: charBlock.registration_source || "CONFIG",
+    ctype:
+      charBlock.account_character_type || charBlock.live_state?.ctype || null,
     realm: charBlock.realm || null,
     pid: charBlock.instance?.pid || null,
     last_heartbeat_at: charBlock.last_heartbeat_at || null,

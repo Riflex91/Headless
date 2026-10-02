@@ -21,6 +21,9 @@ test("public character state exposes only dashboard-safe fields", () => {
     connected: true,
     lifecycle_state: "ONLINE",
     desired_runtime_state: "PAUSED",
+    account_owned: true,
+    registration_source: "CONFIG",
+    account_character_type: "ranger",
     realm: "EUII",
     instance: { pid: 12345, secret: "do-not-export" },
     last_heartbeat_at: 123456,
@@ -41,6 +44,9 @@ test("public character state exposes only dashboard-safe fields", () => {
     connected: true,
     lifecycle_state: "ONLINE",
     desired_runtime_state: "PAUSED",
+    account_owned: true,
+    registration_source: "CONFIG",
+    ctype: "ranger",
     realm: "EUII",
     pid: 12345,
     last_heartbeat_at: 123456,
@@ -203,6 +209,8 @@ test("dashboard module and coordinator remain syntactically valid", () => {
   assert.match(coordinator, /PersistenceService/);
   assert.match(coordinator, /IPC_MESSAGE_REJECTED/);
   assert.match(coordinator, /normalizeIpcMessage/);
+  assert.match(coordinator, /registerAccountCharacters/);
+  assert.match(coordinator, /registered_character_count/);
   assert.match(coordinator, /getPersistenceHealth/);
   assert.match(coordinator, /restoreDesiredRuntimeState/);
   assert.match(coordinator, /saveCharacterRuntimeState/);
