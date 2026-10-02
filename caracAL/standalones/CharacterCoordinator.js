@@ -110,6 +110,7 @@ const CLASS_SKILL_LIVE_TEST_RESULT_TIMEOUT_MS = 120000;
 const GROUP_LIVE_TEST_RESULT_TIMEOUT_MS = 120000;
 const FARM_LIVE_TEST_RESULT_TIMEOUT_MS = 120000;
 const INVENTORY_LIVE_TEST_RESULT_TIMEOUT_MS = 120000;
+const LOGISTICS_CLAIM_RESULT_TIMEOUT_MS = 30000;
 
 //TODO check for invalid session
 //TODO improve termination
@@ -238,6 +239,9 @@ function migrate_old_storage(path, localStorage) {
   let farm_live_test_sequence = 0;
   const inventory_live_test_requests = new Map();
   let inventory_live_test_sequence = 0;
+  const logistics_claim_requests = new Map();
+  let logistics_claim_sequence = 0;
+  let logistics_dispatch_scheduled = false;
   const incident_recorder = new IncidentRecorder({
     rootDir: path.join(process.cwd(), "logs", "incidents"),
     diagnosticStore: diagnostic_store,
@@ -324,6 +328,142 @@ function migrate_old_storage(path, localStorage) {
     console.error(`no web services will be available`);
   }
 
+  function logistics_record(value) {
+    return value && typeof value === "object" && !Array.isArray(value)
+      ? value
+      : {};
+  }
+
+  function logistics_claim_route(claim) {
+    const merchant = claim?.merchant?.name || null;
+    const farmer = claim?.farmer || null;
+    if (
+      ["MLUCK", "POTION_DELIVERY", "ITEM_DELIVERY", "GEAR_DELIVERY"].includes(
+        claim?.type,
+      )
+    ) {
+      return { source: merchant, target: farmer };
+    }
+    if (["GOLD_PICKUP", "INVENTORY_PRESSURE"].includes(claim?.type)) {
+      return { source: farmer, target: merchant };
+    }
+    return { source: null, target: null };
+  }
+
+  function logistics_execution_enabled(claim) {
+    const farmer_block = character_manage[claim?.farmer];
+    const merchant_block = character_manage[claim?.merchant?.name];
+    if (!farmer_block || !merchant_block) return false;
+
+    const farmer_config = logistics_record(farmer_block.runtime_config);
+    const farmer_logistics = logistics_record(farmer_config.logistics);
+    const merchant_config = logistics_record(merchant_block.runtime_config);
+    const merchant_settings = logistics_record(merchant_config.merchant);
+    const merchant_logistics = logistics_record(merchant_settings.logistics);
+
+    const farmer_enabled =
+      farmer_logistics.executionEnabled === true ||
+      farmer_logistics.execute === true;
+    const merchant_enabled =
+      merchant_logistics.executionEnabled === true ||
+      merchant_logistics.execute === true;
+    return farmer_enabled && merchant_enabled;
+  }
+
+  function schedule_merchant_logistics_dispatch() {
+    if (logistics_dispatch_scheduled || coordinator_shutting_down) return;
+    logistics_dispatch_scheduled = true;
+    setImmediate(() => {
+      logistics_dispatch_scheduled = false;
+      dispatch_merchant_logistics_claim();
+    });
+  }
+
+  function dispatch_merchant_logistics_claim() {
+    if (coordinator_shutting_down) return false;
+    if (emergency_stop.snapshot().active) return false;
+    if (logistics_claim_requests.size > 0) return false;
+
+    const claim = merchant_logistics_board.claims.find(
+      (candidate) =>
+        candidate.status === "READY" && logistics_execution_enabled(candidate),
+    );
+    if (!claim) return false;
+
+    const route = logistics_claim_route(claim);
+    const source_block = character_manage[route.source];
+    if (
+      !route.source ||
+      !route.target ||
+      !source_block?.instance ||
+      !source_block.connected ||
+      !Number.isFinite(source_block.bot_runtime_started_at)
+    ) {
+      return false;
+    }
+
+    logistics_claim_sequence += 1;
+    const request_id =
+      "logistics-claim-" + Date.now() + "-" + logistics_claim_sequence;
+    const pending = {
+      request_id,
+      claim,
+      source: route.source,
+      target: route.target,
+      timer: null,
+    };
+
+    pending.timer = setTimeout(() => {
+      const current = logistics_claim_requests.get(request_id);
+      if (!current) return;
+      logistics_claim_requests.delete(request_id);
+      merchant_logistics_planner.recordClaimOutcome(claim, {
+        outcome: "UNKNOWN",
+        reason: "LOGISTICS_CLAIM_RESULT_TIMEOUT",
+        source: route.source,
+        target: route.target,
+        itemName: claim.itemName || null,
+        fulfilled: false,
+      });
+      emit_supervisor_event("LOGISTICS_CLAIM_TIMEOUT", route.source, {
+        request_id,
+        claim_id: claim.id,
+        why: "OUTCOME_UNCERTAIN_NO_BLIND_RETRY",
+      });
+      refresh_merchant_logistics("LOGISTICS_CLAIM_TIMEOUT");
+    }, LOGISTICS_CLAIM_RESULT_TIMEOUT_MS);
+    pending.timer.unref?.();
+    logistics_claim_requests.set(request_id, pending);
+
+    const sent = safe_send(source_block.instance, {
+      type: "logistics_claim",
+      request_id,
+      claim,
+    });
+    if (!sent) {
+      clearTimeout(pending.timer);
+      logistics_claim_requests.delete(request_id);
+      merchant_logistics_planner.recordClaimOutcome(claim, {
+        outcome: "BLOCKED",
+        reason: "LOGISTICS_CLAIM_IPC_UNAVAILABLE",
+        source: route.source,
+        target: route.target,
+        itemName: claim.itemName || null,
+        fulfilled: false,
+      });
+      refresh_merchant_logistics("LOGISTICS_CLAIM_IPC_UNAVAILABLE");
+      return false;
+    }
+
+    emit_supervisor_event("LOGISTICS_CLAIM_DISPATCHED", route.source, {
+      request_id,
+      claim_id: claim.id,
+      claim_type: claim.type,
+      target: route.target,
+    });
+    return true;
+  }
+
   function refresh_merchant_logistics(reason = "STATE_CHANGED") {
     const board = merchant_logistics_planner.plan(character_manage);
     const comparable = {
@@ -346,6 +486,7 @@ function migrate_old_storage(path, localStorage) {
       });
       dashboard?.publishSnapshot();
     }
+    schedule_merchant_logistics_dispatch();
     return board;
   }
 
@@ -3975,6 +4116,58 @@ function migrate_old_storage(path, localStorage) {
         case "runtime_event":
           emit_runtime_event(char_name, m.event);
           break;
+        case "logistics_claim_result": {
+          const pending = logistics_claim_requests.get(m.request_id);
+          if (
+            !pending ||
+            pending.source !== char_name ||
+            pending.claim?.id !== m.claim_id
+          ) {
+            emit_supervisor_event("LOGISTICS_CLAIM_RESULT_IGNORED", char_name, {
+              why: "UNKNOWN_OR_STALE_REQUEST",
+              request_id: m.request_id || null,
+              claim_id: m.claim_id || null,
+            });
+            break;
+          }
+
+          clearTimeout(pending.timer);
+          logistics_claim_requests.delete(m.request_id);
+          const fallback_result = {
+            claimId: pending.claim.id,
+            type: pending.claim.type,
+            source: pending.source,
+            target: pending.target,
+            outcome: "UNKNOWN",
+            reason: m.error || "LOGISTICS_CLAIM_RUNTIME_ERROR",
+            actionId: null,
+            itemName: pending.claim.itemName || null,
+            requestedQuantity: pending.claim.quantity || null,
+            executedQuantity: null,
+            amount: pending.claim.amount || null,
+            fulfilled: false,
+          };
+          const execution_result =
+            m.result && typeof m.result === "object"
+              ? m.result
+              : fallback_result;
+
+          merchant_logistics_planner.recordClaimOutcome(
+            pending.claim,
+            execution_result,
+          );
+          emit_supervisor_event("LOGISTICS_CLAIM_RESULT_RECEIVED", char_name, {
+            request_id: m.request_id,
+            claim_id: pending.claim.id,
+            claim_type: pending.claim.type,
+            outcome: execution_result.outcome || "UNKNOWN",
+            reason: execution_result.reason || null,
+            fulfilled: execution_result.fulfilled === true,
+            error: m.error || null,
+          });
+          refresh_merchant_logistics("LOGISTICS_CLAIM_RESULT");
+          break;
+        }
         case "movement_live_test_result": {
           const pending = movement_live_test_requests.get(m.request_id);
           if (!pending || pending.character !== char_name) {

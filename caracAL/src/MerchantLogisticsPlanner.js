@@ -213,6 +213,7 @@ class MerchantLogisticsPlanner {
     this.assignments = new Map();
     this.transferHistory = [];
     this.completedClaims = new Map();
+    this.outcomeHolds = new Map();
     this.lastBoard = this.emptyBoard();
   }
 
@@ -247,6 +248,69 @@ class MerchantLogisticsPlanner {
     });
     this.prune();
     return true;
+  }
+
+  recordClaimOutcome(claim, result = {}, at = this.now()) {
+    const id = stringValue(claim?.id);
+    if (!id) return false;
+
+    const outcome = stringValue(result?.outcome);
+    const timestamp = finite(at, this.now());
+    if (outcome === "CONFIRMED") {
+      this.outcomeHolds.delete(id);
+      if (
+        result?.itemName &&
+        result?.source &&
+        result?.target &&
+        Number(result?.executedQuantity) > 0
+      ) {
+        this.recordTransfer({
+          itemName: result.itemName,
+          from: result.source,
+          to: result.target,
+          at: timestamp,
+        });
+      }
+      if (result?.fulfilled === true) {
+        this.recordClaimCompleted(id, timestamp);
+      } else {
+        this.outcomeHolds.set(id, {
+          outcome: "CONFIRMED_PARTIAL",
+          reason: "WAIT_FOR_STATE_RECONCILIATION",
+          at: timestamp,
+          retryAt: timestamp + Math.min(5000, this.completionCooldownMs),
+        });
+      }
+      return true;
+    }
+
+    if (outcome === "UNKNOWN" || outcome === "DISPATCHED") {
+      this.outcomeHolds.set(id, {
+        outcome,
+        reason: stringValue(result?.reason) || "OUTCOME_UNCERTAIN",
+        at: timestamp,
+        retryAt: null,
+      });
+      return true;
+    }
+
+    if (outcome === "BLOCKED" || outcome === "REJECTED") {
+      this.outcomeHolds.set(id, {
+        outcome,
+        reason: stringValue(result?.reason) || outcome,
+        at: timestamp,
+        retryAt: timestamp + this.completionCooldownMs,
+      });
+      return true;
+    }
+
+    return false;
+  }
+
+  clearClaimHold(claimOrId) {
+    const id =
+      typeof claimOrId === "string" ? claimOrId : stringValue(claimOrId?.id);
+    return id ? this.outcomeHolds.delete(id) : false;
   }
 
   recordClaimCompleted(claimOrId, at = this.now()) {
@@ -357,6 +421,10 @@ class MerchantLogisticsPlanner {
               priority: priorityFor("GOLD_PICKUP", logistics.gold.priority),
               reason: "GOLD_ABOVE_RESERVE",
               direction: merchant ? farmerName + "->" + merchant.name : null,
+              metadata: {
+                keepGold,
+                pickupAbove,
+              },
             }),
           );
         }
@@ -423,6 +491,23 @@ class MerchantLogisticsPlanner {
     const claims = [];
     const suppressed = [];
     for (const claim of candidateClaims) {
+      const hold = this.outcomeHolds.get(claim.id);
+      if (hold) {
+        if (hold.retryAt === null || now < hold.retryAt) {
+          suppressed.push({
+            ...claim,
+            status: "SUPPRESSED",
+            suppressionReason:
+              hold.outcome === "UNKNOWN" || hold.outcome === "DISPATCHED"
+                ? "OUTCOME_UNCERTAIN"
+                : "EXECUTION_BACKOFF",
+            suppressionEvidence: hold,
+          });
+          continue;
+        }
+        this.outcomeHolds.delete(claim.id);
+      }
+
       const completedAt = this.completedClaims.get(claim.id);
       if (
         Number.isFinite(completedAt) &&
@@ -586,6 +671,11 @@ class MerchantLogisticsPlanner {
     for (const [id, at] of this.completedClaims) {
       if (now - at >= this.completionCooldownMs) {
         this.completedClaims.delete(id);
+      }
+    }
+    for (const [id, hold] of this.outcomeHolds) {
+      if (hold.retryAt !== null && hold.retryAt <= now) {
+        this.outcomeHolds.delete(id);
       }
     }
     for (const [key, lease] of this.assignments) {

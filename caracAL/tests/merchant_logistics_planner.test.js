@@ -145,6 +145,10 @@ test("planner creates all Phase 11 farmer claim types from live account state", 
 
   const gold = board.claims.find((claim) => claim.type === "GOLD_PICKUP");
   assert.equal(gold.amount, 4000);
+  assert.deepEqual(gold.metadata, {
+    keepGold: 1000,
+    pickupAbove: 2000,
+  });
 
   const pressure = board.claims.find(
     (claim) => claim.type === "INVENTORY_PRESSURE",
@@ -383,5 +387,176 @@ test("gear claim is omitted when farmer already owns desired gear", () => {
   assert.equal(
     board.claims.some((claim) => claim.type === "GEAR_DELIVERY"),
     false,
+  );
+});
+
+test("UNKNOWN logistics outcome is held indefinitely against blind retry", () => {
+  let now = 1000;
+  const planner = new MerchantLogisticsPlanner({
+    now: () => now,
+    completionCooldownMs: 30000,
+  });
+
+  let board = planner.plan({
+    My_Merchant: merchant(),
+    My_Ranger: farmer({
+      config: {
+        items: {
+          computer: 1,
+        },
+      },
+    }),
+  });
+  assert.equal(board.claims.length, 1);
+
+  const claim = board.claims[0];
+  planner.recordClaimOutcome(claim, {
+    outcome: "UNKNOWN",
+    reason: "SEND_ITEM_OUTCOME_UNCERTAIN",
+    source: "My_Merchant",
+    target: "My_Ranger",
+    itemName: "computer",
+    fulfilled: false,
+  });
+
+  now += 300000;
+  board = planner.plan({
+    My_Merchant: merchant(),
+    My_Ranger: farmer({
+      config: {
+        items: {
+          computer: 1,
+        },
+      },
+    }),
+  });
+
+  assert.equal(board.claims.length, 0);
+  assert.equal(board.suppressed.length, 1);
+  assert.equal(board.suppressed[0].suppressionReason, "OUTCOME_UNCERTAIN");
+
+  assert.equal(planner.clearClaimHold(claim.id), true);
+  board = planner.plan({
+    My_Merchant: merchant(),
+    My_Ranger: farmer({
+      config: {
+        items: {
+          computer: 1,
+        },
+      },
+    }),
+  });
+  assert.equal(board.claims.length, 1);
+});
+
+test("partial confirmed transfer waits for state reconciliation before retry", () => {
+  let now = 1000;
+  const planner = new MerchantLogisticsPlanner({
+    now: () => now,
+    completionCooldownMs: 30000,
+  });
+
+  let board = planner.plan({
+    My_Merchant: merchant(),
+    My_Ranger: farmer({
+      config: {
+        potions: {
+          hpot0: 100,
+        },
+      },
+    }),
+  });
+  const claim = board.claims[0];
+  planner.recordClaimOutcome(claim, {
+    outcome: "CONFIRMED",
+    reason: "SEND_ITEM_STATE_CONFIRMED",
+    source: "My_Merchant",
+    target: "My_Ranger",
+    itemName: "hpot0",
+    executedQuantity: 50,
+    fulfilled: false,
+  });
+
+  board = planner.plan({
+    My_Merchant: merchant(),
+    My_Ranger: farmer({
+      config: {
+        potions: {
+          hpot0: 100,
+        },
+      },
+    }),
+  });
+  assert.equal(board.claims.length, 0);
+  assert.equal(board.suppressed[0].suppressionReason, "EXECUTION_BACKOFF");
+
+  now += 5001;
+  board = planner.plan({
+    My_Merchant: merchant(),
+    My_Ranger: farmer({
+      config: {
+        potions: {
+          hpot0: 100,
+        },
+      },
+    }),
+  });
+  assert.equal(board.claims.length, 1);
+});
+
+test("confirmed item outcome records anti-pingpong transfer history", () => {
+  const planner = new MerchantLogisticsPlanner({ now: () => 1000 });
+  let board = planner.plan({
+    My_Merchant: merchant(),
+    My_Ranger: farmer({
+      config: {
+        items: {
+          gem0: 1,
+        },
+      },
+    }),
+  });
+  const outbound = board.claims[0];
+  planner.recordClaimOutcome(outbound, {
+    outcome: "CONFIRMED",
+    reason: "SEND_ITEM_STATE_CONFIRMED",
+    source: "My_Merchant",
+    target: "My_Ranger",
+    itemName: "gem0",
+    executedQuantity: 1,
+    fulfilled: true,
+  });
+
+  board = planner.plan({
+    My_Merchant: merchant(),
+    My_Ranger: farmer({
+      isize: 1,
+      items: [{ name: "gem0", q: 1 }],
+      config: {
+        inventoryPressure: {
+          enabled: true,
+          freeSlotsAtOrBelow: 0,
+        },
+      },
+      intelligence: {
+        entries: [
+          {
+            slot: 0,
+            name: "gem0",
+            quantity: 1,
+            disposition: "BANK",
+            protected: false,
+          },
+        ],
+      },
+    }),
+  });
+
+  assert.equal(board.claims.length, 0);
+  assert.equal(
+    board.suppressed.some(
+      (claim) => claim.suppressionReason === "ANTI_PINGPONG",
+    ),
+    true,
   );
 });
