@@ -4,7 +4,7 @@
   "description": "caracAL - Node client for adventure.land",
   "main": "main.js",
   "scripts": {
-    "test": "node --test tests/character_lifecycle_policy.test.js tests/headless_dashboard.test.js tests/character_control.test.js tests/diagnostic_store.test.js tests/live_state.test.js tests/movement_map.test.js"
+    "test": "node --test tests/character_lifecycle_policy.test.js tests/headless_dashboard.test.js tests/character_control.test.js tests/diagnostic_store.test.js tests/live_state.test.js tests/movement_map.test.js tests/adventure_land_asset_cache.test.js tests/inventory_equipment.test.js"
   },
   "author": "number_e",
   "license": "MIT",
