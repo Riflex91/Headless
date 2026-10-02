@@ -459,14 +459,10 @@ export class MovementController {
 
   observe(): ActionRecord | null {
     const command = this.active;
-    if (command) {
+    if (!command) return null;
+
+    if (command.type !== "DIRECT" || !command.actionId) {
       this.observeStuck(command);
-    }
-    if (
-      !command ||
-      command.type !== "DIRECT" ||
-      !command.actionId
-    ) {
       return null;
     }
 
