@@ -4,15 +4,14 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 const vm = require("node:vm");
 
-const { createIsolatedBrowserWindow } = require("../src/BrowserVmContext");
+const {
+  createIsolatedBrowserContext,
+} = require("../src/BrowserVmContext");
 
 function isolatedContext() {
-  const window = createIsolatedBrowserWindow(
+  return createIsolatedBrowserContext(
     "<!DOCTYPE html><html><body></body></html>",
   );
-  window.globalThis = window;
-  vm.createContext(window);
-  return window;
 }
 
 test("browser VM contexts have independent JavaScript intrinsics", () => {
@@ -25,23 +24,39 @@ test("browser VM contexts have independent JavaScript intrinsics", () => {
     });
   `;
 
-  assert.doesNotThrow(() => vm.runInContext(defineHashCode, game));
-  assert.doesNotThrow(() => vm.runInContext(defineHashCode, runner));
-  assert.equal(vm.runInContext('"x".hashCode()', game), 1);
-  assert.equal(vm.runInContext('"x".hashCode()', runner), 1);
+  assert.equal(
+    vm.runInContext(defineHashCode + '"x".hashCode()', game.context),
+    1,
+  );
+  assert.equal(
+    vm.runInContext(defineHashCode + '"x".hashCode()', runner.context),
+    1,
+  );
 });
 
 test("isolated browser prototypes do not modify Node global prototypes", () => {
-  const context = isolatedContext();
+  const browser = isolatedContext();
 
-  vm.runInContext(
-    `Object.defineProperty(String.prototype, "__caracal_vm_probe__", {
-      value: true,
-      enumerable: false
-    });`,
-    context,
+  assert.equal(
+    vm.runInContext(
+      `Object.defineProperty(String.prototype, "__caracal_vm_probe__", {
+        value: true,
+        enumerable: false
+      }); "x".__caracal_vm_probe__;`,
+      browser.context,
+    ),
+    true,
   );
 
   assert.equal(String.prototype.__caracal_vm_probe__, undefined);
-  assert.equal(vm.runInContext('"x".__caracal_vm_probe__', context), true);
+});
+
+test("jsdom DOM remains available inside the isolated VM context", () => {
+  const browser = isolatedContext();
+
+  assert.equal(
+    vm.runInContext("document.body.tagName", browser.context),
+    "BODY",
+  );
+  assert.equal(browser.context.document, browser.window.document);
 });
