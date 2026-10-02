@@ -104,6 +104,7 @@ function publicCharacterState(name, charBlock = {}) {
     class_skill_live_test: charBlock.class_skill_live_test || null,
     group_live_test: charBlock.group_live_test || null,
     farm_live_test: charBlock.farm_live_test || null,
+    inventory_live_test: charBlock.inventory_live_test || null,
     combat_runtime: charBlock.combat_runtime || null,
     class_skill_runtime: charBlock.class_skill_runtime || null,
     group_combat_runtime: charBlock.group_combat_runtime || null,
@@ -279,6 +280,7 @@ function attachHeadlessDashboard({
   runClassSkillLiveTest,
   runGroupLiveTest,
   runFarmLiveTest,
+  runInventoryLiveTest,
   controlEmergencyStop,
   getEmergencyStopState,
   getRevisionSummary,
@@ -468,6 +470,30 @@ function attachHeadlessDashboard({
       } catch (error) {
         res.status(Number(error.statusCode) || 500).json({
           error: error.code || "CLASS_SKILL_LIVE_TEST_FAILED",
+          message: error.message,
+        });
+      }
+    },
+  );
+
+  router.post(
+    "/headless/api/characters/:name/tests/inventory",
+    async (req, res) => {
+      if (!runInventoryLiveTest) {
+        res.status(503).json({ error: "INVENTORY_LIVE_TEST_UNAVAILABLE" });
+        return;
+      }
+
+      try {
+        const result = await runInventoryLiveTest(req.params.name);
+        res.json({
+          ok: result?.outcome === "PASS",
+          result,
+          snapshot: getSnapshot(),
+        });
+      } catch (error) {
+        res.status(Number(error.statusCode) || 500).json({
+          error: error.code || "INVENTORY_LIVE_TEST_FAILED",
           message: error.message,
         });
       }
