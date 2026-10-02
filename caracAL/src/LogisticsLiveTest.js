@@ -4,7 +4,11 @@ function orderedByPriority(claims) {
   for (let index = 1; index < claims.length; index += 1) {
     const previous = Number(claims[index - 1]?.priority);
     const current = Number(claims[index]?.priority);
-    if (Number.isFinite(previous) && Number.isFinite(current) && current > previous) {
+    if (
+      Number.isFinite(previous) &&
+      Number.isFinite(current) &&
+      current > previous
+    ) {
       return false;
     }
   }
@@ -17,9 +21,12 @@ function claimRouteValid(claim) {
   if (typeof merchant !== "string" || !merchant) return false;
   if (typeof farmer !== "string" || !farmer) return false;
 
-  const outbound = ["MLUCK", "POTION_DELIVERY", "ITEM_DELIVERY", "GEAR_DELIVERY"].includes(
-    claim?.type,
-  );
+  const outbound = [
+    "MLUCK",
+    "POTION_DELIVERY",
+    "ITEM_DELIVERY",
+    "GEAR_DELIVERY",
+  ].includes(claim?.type);
   const inbound = ["GOLD_PICKUP", "INVENTORY_PRESSURE"].includes(claim?.type);
   if (!outbound && !inbound) return false;
 
@@ -47,9 +54,7 @@ function logisticsLiveTestEvidence(events = [], context = {}) {
   const claims = Array.isArray(board.claims) ? board.claims : [];
   const suppressed = Array.isArray(board.suppressed) ? board.suppressed : [];
   const planner = context.planner || {};
-  const holds = Array.isArray(planner.outcomeHolds)
-    ? planner.outcomeHolds
-    : [];
+  const holds = Array.isArray(planner.outcomeHolds) ? planner.outcomeHolds : [];
   const uncertainHolds = holds.filter(
     (hold) => hold?.outcome === "UNKNOWN" || hold?.outcome === "DISPATCHED",
   );
@@ -194,11 +199,9 @@ function logisticsLiveTestDiagnostics(
       claims_not_forced: supervisor.claimsNotForced === true,
       claim_count: supervisor.claimCount ?? null,
       ready_claims: supervisor.readyClaims ?? null,
-      anti_pingpong_suppressions:
-        supervisor.antiPingPongSuppressions ?? null,
+      anti_pingpong_suppressions: supervisor.antiPingPongSuppressions ?? null,
       unknown_hold_count: supervisor.unknownHoldCount ?? null,
-      unknown_no_retry_not_forced:
-        supervisor.unknownNoRetryNotForced === true,
+      unknown_no_retry_not_forced: supervisor.unknownNoRetryNotForced === true,
       supervisor_evidence_complete: evidenceComplete(supervisor),
     },
     result: {
