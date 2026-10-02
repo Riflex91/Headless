@@ -185,6 +185,7 @@ function attachHeadlessDashboard({
   publicDir,
   controlCharacter,
   updateCharacterConfig,
+  readCharacterConfig,
   controlRotation,
   runMovementLiveTest,
   runCombatLiveTest,
@@ -224,6 +225,26 @@ function attachHeadlessDashboard({
 
   router.get("/headless/api/state", (_req, res) => {
     res.json(getSnapshot());
+  });
+
+  router.get("/headless/api/characters/:name/config", async (req, res) => {
+    if (!readCharacterConfig) {
+      res.status(503).json({ error: "CONFIG_READ_UNAVAILABLE" });
+      return;
+    }
+
+    try {
+      res.set("Cache-Control", "no-store");
+      res.json({
+        ok: true,
+        result: await readCharacterConfig(req.params.name),
+      });
+    } catch (error) {
+      res.status(Number(error.statusCode) || 500).json({
+        error: error.code || "CONFIG_READ_FAILED",
+        message: error.message,
+      });
+    }
   });
 
   router.put(

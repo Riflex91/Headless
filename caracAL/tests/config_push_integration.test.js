@@ -49,3 +49,36 @@ test("config push is wired through supervisor character IPC and runtime status",
 
   assert.match(runtimeKernel, /runtimeConfigRevision/);
 });
+
+test("config editor read endpoint keeps live push restart-free", () => {
+  const root = path.join(__dirname, "..");
+  const coordinator = fs.readFileSync(
+    path.join(root, "standalones", "CharacterCoordinator.js"),
+    "utf8",
+  );
+  const dashboard = fs.readFileSync(
+    path.join(root, "src", "HeadlessDashboard.js"),
+    "utf8",
+  );
+
+  assert.equal(coordinator.includes("read_character_config"), true);
+  assert.equal(
+    dashboard.includes(
+      'router.get("/headless/api/characters/:name/config"',
+    ),
+    true,
+  );
+
+  const start = coordinator.indexOf(
+    "async function control_character_config(char_name, config)",
+  );
+  const end = coordinator.indexOf(
+    "async function control_rotation",
+    start,
+  );
+  const updateBlock = coordinator.slice(start, end);
+  assert.equal(updateBlock.includes('type: "config_push"'), true);
+  assert.equal(updateBlock.includes("restart_character"), false);
+  assert.equal(updateBlock.includes("softkill_block"), false);
+});
+

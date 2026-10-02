@@ -361,7 +361,7 @@
           <button type="button" data-control="pause">Pause</button>
           <button type="button" data-control="restart">Restart</button>
           <button type="button" data-control="stop">Stop</button>
-          <button type="button" disabled>Konfiguration</button>
+          <button type="button" data-configure>Konfiguration</button>
           <button type="button" data-movement-live-test>Movement E2E</button>
           <button type="button" data-combat-live-test>Combat E2E</button>
           <button type="button" data-class-skill-live-test>
@@ -383,9 +383,37 @@
       </article>
     </template>
 
+    <dialog id="character-config-dialog" class="config-dialog">
+      <div class="config-dialog-shell">
+        <header class="config-dialog-header">
+          <div>
+            <p class="config-eyebrow">Character-Konfiguration</p>
+            <h2 id="character-config-title">Konfiguration</h2>
+            <p id="character-config-meta" class="config-dialog-meta"></p>
+          </div>
+          <button
+            type="button"
+            class="secondary"
+            data-config-close
+            aria-label="Konfiguration schließen"
+          >
+            Schließen
+          </button>
+        </header>
+        <div id="character-config-editor" class="config-editor"></div>
+        <footer class="config-dialog-footer">
+          <p id="character-config-feedback" aria-live="polite"></p>
+          <button type="button" data-config-save>
+            Speichern &amp; live übernehmen
+          </button>
+        </footer>
+      </div>
+    </dialog>
+
     <script src="/headless/map-background.js" defer></script>
     <script src="/headless/movement-map.js" defer></script>
     <script src="/headless/inventory-equipment.js" defer></script>
+    <script src="/headless/config-form.js" defer></script>
     <script src="/headless/app.js" defer></script>
   </body>
 </html>

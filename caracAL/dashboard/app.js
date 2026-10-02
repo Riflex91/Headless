@@ -57,6 +57,7 @@ const showTargetLine = document.querySelector("#show-target-line");
 const showNearbyMonsters = document.querySelector("#show-nearby-monsters");
 const showNearbyNpcs = document.querySelector("#show-nearby-npcs");
 const inventoryEquipmentApi = window.HeadlessInventoryEquipment;
+const configFormApi = window.HeadlessConfigForm;
 const accountInventoryGrid = document.querySelector("#account-inventory-grid");
 const emergencyStopControl = document.querySelector("#emergency-stop-control");
 const emergencyStopStatus = document.querySelector("#emergency-stop-status");
@@ -92,6 +93,20 @@ const rotationStartCharacter = document.querySelector(
   "#rotation-start-character",
 );
 const rotateCharacters = document.querySelector("#rotate-characters");
+const characterConfigDialog = document.querySelector(
+  "#character-config-dialog",
+);
+const characterConfigTitle = document.querySelector("#character-config-title");
+const characterConfigMeta = document.querySelector("#character-config-meta");
+const characterConfigEditor = document.querySelector(
+  "#character-config-editor",
+);
+const characterConfigFeedback = document.querySelector(
+  "#character-config-feedback",
+);
+const characterConfigSave = document.querySelector("[data-config-save]");
+const characterConfigClose = document.querySelector("[data-config-close]");
+let characterConfigSession = null;
 
 function formatTimestamp(timestamp) {
   if (!timestamp) return "—";
@@ -539,6 +554,141 @@ async function sendCharacterControl(characterName, action) {
   }
 }
 
+async function readCharacterConfig(characterName) {
+  const response = await fetch(
+    `/headless/api/characters/${encodeURIComponent(characterName)}/config`,
+    { cache: "no-store" },
+  );
+  const payload = await response.json();
+
+  if (!response.ok) {
+    throw new Error(payload.message || payload.error || "Config read failed");
+  }
+  return payload.result;
+}
+
+async function sendCharacterConfig(characterName, config) {
+  const response = await fetch(
+    `/headless/api/characters/${encodeURIComponent(characterName)}/config`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ config }),
+    },
+  );
+  const payload = await response.json();
+
+  if (payload.snapshot) {
+    applySnapshot(payload.snapshot);
+  }
+  if (!response.ok) {
+    throw new Error(payload.message || payload.error || "Config save failed");
+  }
+  return payload.result;
+}
+
+function configStatusText(character, loaded = null) {
+  const revision =
+    character?.runtime_config_revision ?? loaded?.revision ?? 0;
+  const applied =
+    character?.applied_runtime_config_revision ??
+    loaded?.applied_revision ??
+    "—";
+  const status =
+    character?.config_push_status || loaded?.status || "UNKNOWN";
+  const source =
+    character?.runtime_config_source || loaded?.source || "CONFIG";
+  const error = character?.config_push_error || loaded?.error;
+  return `Revision ${revision} · Applied ${applied} · ${status} · ${source}${
+    error ? ` · ${error}` : ""
+  }`;
+}
+
+function refreshCharacterConfigStatus() {
+  if (!characterConfigSession || !characterConfigMeta) return;
+  const character = state.characters.get(characterConfigSession.characterName);
+  characterConfigMeta.textContent = configStatusText(
+    character,
+    characterConfigSession.loaded,
+  );
+}
+
+async function openCharacterConfig(characterName) {
+  const character = state.characters.get(characterName);
+  if (!character) {
+    throw new Error("Character ist im Supervisor-State nicht verfügbar");
+  }
+  if (!configFormApi?.createEditor) {
+    throw new Error("Config form engine is unavailable");
+  }
+
+  characterConfigFeedback.textContent = "Konfiguration wird geladen …";
+  const loaded = await readCharacterConfig(characterName);
+  characterConfigTitle.textContent =
+    `${characterName} · ${character.ctype || "unknown"}`;
+  characterConfigSession?.editor?.destroy?.();
+  characterConfigSession = {
+    characterName,
+    loaded,
+    editor: configFormApi.createEditor({
+      container: characterConfigEditor,
+      character,
+      config: loaded.config || {},
+    }),
+  };
+  refreshCharacterConfigStatus();
+  characterConfigFeedback.textContent = "";
+
+  if (typeof characterConfigDialog.showModal === "function") {
+    characterConfigDialog.showModal();
+  } else {
+    characterConfigDialog.setAttribute("open", "");
+  }
+}
+
+async function saveOpenCharacterConfig() {
+  if (!characterConfigSession) return;
+
+  characterConfigSave.disabled = true;
+  characterConfigFeedback.textContent = "Speichern und Live-Push …";
+  try {
+    const config = characterConfigSession.editor.getConfig();
+    const result = await sendCharacterConfig(
+      characterConfigSession.characterName,
+      config,
+    );
+    characterConfigSession.loaded = {
+      ...characterConfigSession.loaded,
+      revision: result.revision,
+      status: result.status,
+      config,
+    };
+    characterConfigFeedback.textContent =
+      result.status === "PENDING"
+        ? "Gespeichert · Live-Push läuft …"
+        : "Gespeichert ✓";
+    refreshCharacterConfigStatus();
+  } catch (error) {
+    characterConfigFeedback.textContent = error.message;
+    addEvent({
+      timestamp: Date.now(),
+      event: "CHARACTER_CONFIG_UI_ERROR",
+      character: characterConfigSession.characterName,
+      reason: error.message,
+    });
+  } finally {
+    characterConfigSave.disabled = false;
+  }
+}
+
+function closeCharacterConfig() {
+  if (typeof characterConfigDialog.close === "function") {
+    characterConfigDialog.close();
+  } else {
+    characterConfigDialog.removeAttribute("open");
+  }
+}
+
 async function sendMovementLiveTest(characterName) {
   const response = await fetch(
     `/headless/api/characters/${encodeURIComponent(
@@ -634,6 +784,7 @@ function updateControlButtons(card, character) {
     }
   }
 
+  const configureButton = card.querySelector("[data-configure]");
   const movementLiveTestButton = card.querySelector(
     "[data-movement-live-test]",
   );
@@ -650,9 +801,18 @@ function updateControlButtons(card, character) {
   const classSkillTestRunning = ["STARTING", "RUNNING"].includes(
     character.class_skill_live_test?.status || "",
   );
+  const groupTestRunning = ["STARTING", "RUNNING"].includes(
+    character.group_live_test?.status || "",
+  );
   const anyLiveTestRunning =
-    movementTestRunning || combatTestRunning || classSkillTestRunning;
+    movementTestRunning ||
+    combatTestRunning ||
+    classSkillTestRunning ||
+    groupTestRunning;
 
+  if (configureButton) {
+    configureButton.disabled = busy || anyLiveTestRunning;
+  }
   if (movementLiveTestButton) {
     movementLiveTestButton.disabled = busy || anyLiveTestRunning;
   }
@@ -761,6 +921,33 @@ function configureCardInteractions(card) {
       }
     });
   }
+
+  const configureButton = card.querySelector("[data-configure]");
+  configureButton?.addEventListener("click", async () => {
+    const characterName = card.dataset.character;
+    const character = state.characters.get(characterName);
+    if (!character) return;
+
+    card.dataset.controlBusy = "true";
+    updateControlButtons(card, character);
+    feedback.textContent = "Konfiguration wird geöffnet …";
+    try {
+      await openCharacterConfig(characterName);
+      feedback.textContent = "";
+    } catch (error) {
+      feedback.textContent = error.message;
+      addEvent({
+        timestamp: Date.now(),
+        event: "CHARACTER_CONFIG_UI_ERROR",
+        character: characterName,
+        reason: error.message,
+      });
+    } finally {
+      card.dataset.controlBusy = "false";
+      const current = state.characters.get(characterName);
+      if (current) updateControlButtons(card, current);
+    }
+  });
 
   const movementLiveTestButton = card.querySelector(
     "[data-movement-live-test]",
@@ -1243,6 +1430,7 @@ function applySnapshot(snapshot) {
   renderEmergencyStop();
   renderRevisionSummary();
   renderPersistenceSummary();
+  refreshCharacterConfigStatus();
   lastUpdate.textContent = `Update ${formatTimestamp(snapshot.generated_at)}`;
 }
 
@@ -1278,6 +1466,14 @@ function connectEvents() {
     connectionStatus.className = "disconnected";
   });
 }
+
+characterConfigSave?.addEventListener("click", saveOpenCharacterConfig);
+characterConfigClose?.addEventListener("click", closeCharacterConfig);
+characterConfigDialog?.addEventListener("close", () => {
+  characterConfigSession?.editor?.destroy?.();
+  characterConfigSession = null;
+  characterConfigFeedback.textContent = "";
+});
 
 clearEvents.addEventListener("click", () => {
   state.events = [];
