@@ -10,12 +10,21 @@ import {
   MovementPathStatus,
   MovementWaypoint,
 } from "./movement-path.lib";
+import {
+  MovementPositionSnapshot,
+  MovementSafePoint,
+  MovementSafePointStore,
+  MovementStuckDetector,
+  MovementStuckStatus,
+} from "./movement-safety.lib";
 
 export type MovementMode =
   | "IDLE"
   | "DIRECT"
   | "SMART"
   | "PATH"
+  | "RETURN"
+  | "STUCK"
   | "CANCELLING"
   | "UNKNOWN";
 
@@ -34,7 +43,12 @@ export interface MovementControllerEvent {
     | "MOVEMENT_WAYPOINT_SETTLED"
     | "MOVEMENT_PATH_COMPLETED"
     | "MOVEMENT_PATH_FAILED"
-    | "MOVEMENT_PATH_CANCELLED";
+    | "MOVEMENT_PATH_CANCELLED"
+    | "MOVEMENT_SAFE_POINT_SET"
+    | "MOVEMENT_SAFE_POINT_CLEARED"
+    | "MOVEMENT_RETURN_STARTED"
+    | "MOVEMENT_STUCK"
+    | "MOVEMENT_PROGRESS_RESUMED";
   timestamp: number;
   owner: string | null;
   previousOwner?: string | null;
@@ -46,6 +60,8 @@ export interface MovementControllerEvent {
   pathId?: number;
   waypointIndex?: number;
   waypointCount?: number;
+  safePoint?: MovementSafePoint | null;
+  stuckSince?: number | null;
 }
 
 export interface MovementControllerOptions {
@@ -53,6 +69,9 @@ export interface MovementControllerOptions {
   onEvent?: (event: MovementControllerEvent) => void;
   directSettlementTolerance?: number;
   antiPingPongDistance?: number;
+  position?: () => MovementPositionSnapshot;
+  stuckTimeoutMs?: number;
+  stuckProgressDistance?: number;
 }
 
 export interface MovementRequestBase {
@@ -79,6 +98,8 @@ export interface PathMovementRequest extends MovementRequestBase {
   waypoints: MovementWaypoint[];
   allowBacktrack?: boolean;
 }
+
+export interface ReturnMovementRequest extends MovementRequestBase {}
 
 export interface MovementActionBoundary {
   directMove(request: MoveRequest): ActionRecord;
@@ -108,6 +129,8 @@ export interface MovementControllerStatus {
   owner: string | null;
   mode: MovementMode;
   path: MovementPathStatus | null;
+  safePoint: MovementSafePoint | null;
+  stuck: MovementStuckStatus;
   active: {
     id: number;
     type: MovementCommandType;
@@ -162,10 +185,14 @@ export class MovementController {
   private readonly onEvent?: (event: MovementControllerEvent) => void;
   private readonly directSettlementTolerance: number;
   private readonly paths: MovementPathPlanner;
+  private readonly safePoints: MovementSafePointStore;
+  private readonly stuckDetector: MovementStuckDetector;
+  private readonly position?: () => MovementPositionSnapshot;
   private owner: string | null = null;
   private mode: MovementMode = "IDLE";
   private active: ActiveMovementCommand | null = null;
   private pathContext: MovementPathContext | null = null;
+  private stuckPreviousMode: MovementMode | null = null;
   private commandSequence = 0;
 
   constructor(
@@ -183,6 +210,13 @@ export class MovementController {
       now: this.now,
       antiPingPongDistance: options.antiPingPongDistance,
     });
+    this.safePoints = new MovementSafePointStore(this.now);
+    this.stuckDetector = new MovementStuckDetector({
+      now: this.now,
+      timeoutMs: options.stuckTimeoutMs,
+      minProgressDistance: options.stuckProgressDistance,
+    });
+    this.position = options.position;
   }
 
   status(): MovementControllerStatus {
@@ -190,6 +224,8 @@ export class MovementController {
       owner: this.owner,
       mode: this.mode,
       path: this.paths.status(),
+      safePoint: this.safePoints.get(),
+      stuck: this.stuckDetector.status(),
       active: this.active
         ? {
             ...this.active,
@@ -219,6 +255,8 @@ export class MovementController {
     if (this.owner !== requested || this.active !== null) return false;
 
     this.owner = null;
+    this.stuckPreviousMode = null;
+    this.stuckDetector.clear();
     this.mode = "IDLE";
     this.emit({
       type: "MOVEMENT_OWNER_RELEASED",
@@ -227,6 +265,88 @@ export class MovementController {
       reason,
     });
     return true;
+  }
+
+  setSafePoint(
+    point: { map: string; x: number; y: number; tolerance?: number },
+    source = "MANUAL",
+  ): MovementSafePoint {
+    const safePoint = this.safePoints.set(point, source);
+    this.emit({
+      type: "MOVEMENT_SAFE_POINT_SET",
+      owner: this.owner,
+      safePoint,
+    });
+    return safePoint;
+  }
+
+  captureSafePoint(
+    tolerance?: number,
+    source = "CURRENT_POSITION",
+  ): MovementSafePoint {
+    const position = this.readPosition();
+    if (!position) {
+      throw new Error("movement position source unavailable");
+    }
+
+    const safePoint = this.safePoints.capture(
+      position,
+      tolerance,
+      source,
+    );
+    this.emit({
+      type: "MOVEMENT_SAFE_POINT_SET",
+      owner: this.owner,
+      safePoint,
+    });
+    return safePoint;
+  }
+
+  clearSafePoint(): MovementSafePoint | null {
+    const safePoint = this.safePoints.clear();
+    if (safePoint) {
+      this.emit({
+        type: "MOVEMENT_SAFE_POINT_CLEARED",
+        owner: this.owner,
+        safePoint,
+      });
+    }
+    return safePoint;
+  }
+
+  async returnToSafePoint(
+    request: ReturnMovementRequest,
+  ): Promise<ActionRecord> {
+    const safePoint = this.safePoints.get();
+    if (!safePoint) {
+      throw new Error("movement safe point is not configured");
+    }
+
+    const owner = requiredOwner(request.owner);
+    const promise = this.smart({
+      owner,
+      module: request.module,
+      why: request.why,
+      correlationId: request.correlationId,
+      destination: {
+        map: safePoint.map,
+        x: safePoint.x,
+        y: safePoint.y,
+      },
+    });
+
+    if (this.owner === owner && this.active?.type === "SMART") {
+      this.mode = "RETURN";
+      this.emit({
+        type: "MOVEMENT_RETURN_STARTED",
+        owner,
+        commandId: this.active.id,
+        actionId: this.active.actionId || undefined,
+        safePoint,
+      });
+    }
+
+    return promise;
   }
 
   direct(request: DirectMovementRequest): ActionRecord {
@@ -339,11 +459,10 @@ export class MovementController {
 
   observe(): ActionRecord | null {
     const command = this.active;
-    if (
-      !command ||
-      command.type !== "DIRECT" ||
-      !command.actionId
-    ) {
+    if (!command) return null;
+
+    if (command.type !== "DIRECT" || !command.actionId) {
+      this.observeStuck(command);
       return null;
     }
 
@@ -417,6 +536,8 @@ export class MovementController {
     } else if (record.status === "UNKNOWN") {
       this.mode = "UNKNOWN";
       this.emitUnknown(record);
+    } else {
+      this.observeStuck(command);
     }
 
     return record;
@@ -502,6 +623,15 @@ export class MovementController {
     this.active = previousActive;
     this.mode = previousActive ? previousMode : "IDLE";
     this.owner = previousOwner;
+    this.stuckPreviousMode = null;
+    if (previousActive) {
+      this.stuckDetector.reset(
+        this.commandKey(previousActive),
+        this.readPosition(),
+      );
+    } else {
+      this.stuckDetector.clear();
+    }
     this.emit({
       type: "MOVEMENT_COMMAND_SETTLED",
       owner: this.owner,
@@ -586,6 +716,63 @@ export class MovementController {
     });
   }
 
+  private observeStuck(command: ActiveMovementCommand): void {
+    const position = this.readPosition();
+    if (!position) return;
+
+    const observation = this.stuckDetector.observe(
+      this.commandKey(command),
+      position,
+    );
+
+    if (observation.transition === "STUCK") {
+      if (this.mode !== "STUCK") {
+        this.stuckPreviousMode = this.mode;
+      }
+      this.mode = "STUCK";
+      this.emit({
+        type: "MOVEMENT_STUCK",
+        owner: this.owner,
+        commandType: command.type,
+        commandId: command.id,
+        actionId: command.actionId || undefined,
+        stuckSince: observation.status.stuckSince,
+      });
+    } else if (observation.transition === "RESUMED") {
+      const restoredMode = this.stuckPreviousMode;
+      this.stuckPreviousMode = null;
+      this.mode =
+        restoredMode && restoredMode !== "STUCK"
+          ? restoredMode
+          : command.type === "SMART"
+            ? "SMART"
+            : this.paths.status()
+              ? "PATH"
+              : "DIRECT";
+      this.emit({
+        type: "MOVEMENT_PROGRESS_RESUMED",
+        owner: this.owner,
+        commandType: command.type,
+        commandId: command.id,
+        actionId: command.actionId || undefined,
+      });
+    }
+  }
+
+  private readPosition(): MovementPositionSnapshot | null {
+    if (!this.position) return null;
+
+    try {
+      return this.position();
+    } catch (_error) {
+      return null;
+    }
+  }
+
+  private commandKey(command: ActiveMovementCommand): string {
+    return `${command.owner}:${command.id}`;
+  }
+
   private requireOwner(owner: string): string {
     const requested = requiredOwner(owner);
     if (this.owner === null) {
@@ -624,6 +811,8 @@ export class MovementController {
       target: target ? { ...target } : null,
     };
     this.active = command;
+    this.stuckPreviousMode = null;
+    this.stuckDetector.reset(this.commandKey(command), this.readPosition());
     this.mode =
       type === "DIRECT"
         ? "DIRECT"
@@ -652,6 +841,8 @@ export class MovementController {
 
     const owner = this.owner;
     this.active = null;
+    this.stuckPreviousMode = null;
+    this.stuckDetector.clear();
     this.mode = "IDLE";
     if (releaseOwnership) this.owner = null;
 
