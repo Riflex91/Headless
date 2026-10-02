@@ -562,14 +562,17 @@ test("structured persistence domains survive a restart", async () => {
       sample_ended_at: 7000,
       stats: { gold: 567, xp: 1234 },
     });
-    assert.deepEqual(reopened.listEncounterHistory({ encounterKey: "goo" })[0], {
-      encounter_key: "goo",
-      character_name: "My_Ranger1",
-      started_at: 7100,
-      ended_at: 7200,
-      result: "VICTORY",
-      encounter: { kills: 1 },
-    });
+    assert.deepEqual(
+      reopened.listEncounterHistory({ encounterKey: "goo" })[0],
+      {
+        encounter_key: "goo",
+        character_name: "My_Ranger1",
+        started_at: 7100,
+        ended_at: 7200,
+        result: "VICTORY",
+        encounter: { kills: 1 },
+      },
+    );
     assert.deepEqual(reopened.getTestResult("run-1"), {
       run_id: "run-1",
       test_id: "restart-state",
