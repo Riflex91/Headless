@@ -88,13 +88,17 @@ function logisticsLiveTestEvidence(events = [], context = {}) {
     unknownHoldCount: uncertainHolds.length,
     unknownNoRetryObserved: uncertainHolds.length > 0,
     unknownNoRetryNotForced: uncertainHolds.length === 0,
-    unknownHoldsSuppressed: uncertainHolds.every((hold) =>
-      suppressed.some(
-        (claim) =>
-          claim?.id === hold?.id &&
-          claim?.suppressionReason === "OUTCOME_UNCERTAIN",
-      ),
-    ),
+    unknownHoldsSuppressed: uncertainHolds.every((hold) => {
+      if (hold?.retryAt !== null) return false;
+      const matchingCandidate = [...claims, ...suppressed].find(
+        (claim) => claim?.id === hold?.id,
+      );
+      return (
+        !matchingCandidate ||
+        (matchingCandidate.suppressionReason === "OUTCOME_UNCERTAIN" &&
+          matchingCandidate.status === "SUPPRESSED")
+      );
+    }),
     executionEligibility: execution,
     dispatcherSuppressedDuringTest:
       context.dispatcherSuppressedDuringTest === true,
