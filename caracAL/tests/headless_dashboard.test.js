@@ -72,6 +72,7 @@ test("public character state exposes only dashboard-safe fields", () => {
     config_push_status: "PENDING",
     config_push_error: null,
     revision_status: "STALE",
+    movement_live_test: null,
     game: null,
     movement_trail: [],
   });
@@ -209,6 +210,8 @@ test("dashboard static assets are present", () => {
   assert.match(index, /character-movement-reason/);
   assert.match(index, /character-safe-point/);
   assert.match(index, /character-stuck-state/);
+  assert.match(index, /character-movement-live-test/);
+  assert.match(index, /data-movement-live-test/);
 });
 
 test("dashboard module and coordinator remain syntactically valid", () => {
@@ -229,6 +232,10 @@ test("dashboard module and coordinator remain syntactically valid", () => {
       "core",
       "runtime-kernel.lib.ts",
     ),
+    "utf8",
+  );
+  const characterThread = fs.readFileSync(
+    path.join(__dirname, "..", "src", "CharacterThread.js"),
     "utf8",
   );
 
@@ -254,6 +261,10 @@ test("dashboard module and coordinator remain syntactically valid", () => {
   assert.match(coordinator, /CHARACTER_ROTATION_COMPLETED/);
   assert.match(dashboard, /\/headless\/api\/rotation/);
   assert.match(dashboard, /\/headless\/api\/characters\/:name\/config/);
+  assert.match(
+    dashboard,
+    /\/headless\/api\/characters\/:name\/tests\/movement/,
+  );
   assert.match(coordinator, /control_character_config/);
   assert.match(coordinator, /CHARACTER_CONFIG_PUSH_REQUESTED/);
   assert.match(coordinator, /CHARACTER_CONFIG_APPLIED/);
@@ -265,5 +276,10 @@ test("dashboard module and coordinator remain syntactically valid", () => {
   assert.match(coordinator, /UNEXPECTED_CHARACTER_EXIT/);
   assert.match(coordinator, /dashboard\?\.publish/);
   assert.match(coordinator, /updateCharacterMovementRuntime/);
+  assert.match(coordinator, /run_movement_live_test/);
+  assert.match(coordinator, /movement_live_test_result/);
   assert.match(runtimeKernel, /movement:\s*this\.movement\.status\(\)/);
+  assert.match(runtimeKernel, /runMovementLiveTest/);
+  assert.match(characterThread, /movement_live_test/);
+  assert.match(characterThread, /movement_live_test_result/);
 });
