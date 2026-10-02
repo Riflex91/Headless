@@ -10,9 +10,18 @@ const monitoring_util = require("../monitoring_util");
 const ipc_storage = require("../ipcStorage");
 const { DESIRED_RUNTIME_STATES } = require("./CharacterControl");
 const { normalizeRuntimeEvent } = require("./RuntimeEventBridge");
+const {
+  normalizeIpcMessage,
+  sendIpcMessage,
+} = require("./IpcProtocol");
 
 const LogUtils = require("./LogUtils");
 const { console } = LogUtils;
+
+function acceptedIpcMessage(rawMessage) {
+  const normalized = normalizeIpcMessage(rawMessage);
+  return normalized.ok ? normalized.message : null;
+}
 
 process.on("unhandledRejection", function (exception) {
   console.warn("promise rejected: \n", exception);
@@ -78,7 +87,7 @@ async function make_runner(upper, CODE_file, version, is_typescript) {
   );
   await ev_files(runner_sources, runner_context);
   runner_context.send_cm = function (to, data) {
-    process.send({
+    sendIpcMessage(process, {
       type: "cm",
       to,
       data,
@@ -102,7 +111,9 @@ async function make_runner(upper, CODE_file, version, is_typescript) {
     runner_context,
   );
 
-  process.on("message", (m) => {
+  process.on("message", (rawMessage) => {
+    const m = acceptedIpcMessage(rawMessage);
+    if (!m) return;
     switch (m.type) {
       case "closing_client":
         console.log("terminating self");
@@ -121,7 +132,7 @@ async function make_runner(upper, CODE_file, version, is_typescript) {
   ["SIGINT", "SIGTERM", "SIGQUIT"].forEach((signal) =>
     process.on(signal, async () => {
       console.log(`Received ${signal} on client. Requesting termination`);
-      process.send({
+      sendIpcMessage(process, {
         type: "shutdown",
       });
     }),
@@ -130,7 +141,9 @@ async function make_runner(upper, CODE_file, version, is_typescript) {
   //awaits the arrival of a message from parent process
   //indicating the servers_and_characters proxy that we use
   const connected_signoff = new Promise((resolve) => {
-    process.on("message", (m) => {
+    process.on("message", (rawMessage) => {
+    const m = acceptedIpcMessage(rawMessage);
+    if (!m) return;
       switch (m.type) {
         case "siblings_and_acc":
           resolve();
@@ -139,7 +152,7 @@ async function make_runner(upper, CODE_file, version, is_typescript) {
     });
   });
 
-  process.send({ type: "connected" });
+  sendIpcMessage(process, { type: "connected" });
 
   console.log("runner instance constructed");
   monitoring_util.register_stat_beat(upper);
@@ -188,7 +201,7 @@ async function make_game(proc_args) {
   };
 
   extensions.deploy = function (char_name, realm, script_file, game_version) {
-    process.send({
+    sendIpcMessage(process, {
       type: "deploy",
       ...(char_name && { character: char_name }),
       ...(realm && { realm }),
@@ -197,7 +210,7 @@ async function make_game(proc_args) {
     });
   };
   extensions.shutdown = function (char_name) {
-    process.send({
+    sendIpcMessage(process, {
       type: "shutdown",
       character: char_name,
     });
@@ -209,7 +222,7 @@ async function make_game(proc_args) {
     const normalized = normalizeRuntimeEvent(event);
     if (!normalized || !process.connected) return false;
 
-    process.send({
+    sendIpcMessage(process, {
       type: "runtime_event",
       event: normalized,
     });
@@ -281,8 +294,10 @@ async function make_game(proc_args) {
     'show_json = function(json) {caracAL.log.warn({data:json, type:"AL", func:"show_json"});}',
     game_context,
   );
-  process.send({ type: "initialized" });
-  process.on("message", (m) => {
+  sendIpcMessage(process, { type: "initialized" });
+  process.on("message", (rawMessage) => {
+    const m = acceptedIpcMessage(rawMessage);
+    if (!m) return;
     switch (m.type) {
       case "siblings_and_acc":
         extensions.siblings = m.siblings;
@@ -301,7 +316,7 @@ async function make_game(proc_args) {
       case "runtime_control":
         if (Object.values(DESIRED_RUNTIME_STATES).includes(m.state)) {
           extensions.runtime_state = m.state;
-          process.send({
+          sendIpcMessage(process, {
             type: "runtime_state_applied",
             state: extensions.runtime_state,
           });
@@ -316,7 +331,7 @@ async function make_game(proc_args) {
           cleared_at: null,
           revision: 0,
         };
-        process.send({
+        sendIpcMessage(process, {
           type: "emergency_stop_applied",
           state: extensions.emergency_stop_state,
         });
@@ -346,7 +361,7 @@ function start_heartbeat(interval_ms) {
   const normalized_interval = Math.max(1000, Number(interval_ms) || 5000);
   heartbeat_task = setInterval(() => {
     if (!process.connected) return;
-    process.send({
+    sendIpcMessage(process, {
       type: "heartbeat",
       timestamp: Date.now(),
       pid: process.pid,
@@ -356,7 +371,9 @@ function start_heartbeat(interval_ms) {
 }
 
 //have to use on, localstorage may send messages
-process.on("message", async (msg) => {
+process.on("message", async (rawMessage) => {
+  const msg = acceptedIpcMessage(rawMessage);
+  if (!msg) return;
   if (msg.type == "process_args") {
     const { cname, clid } = msg.arguments;
     start_heartbeat(msg.arguments.heartbeat_interval_ms);
@@ -376,6 +393,6 @@ process.on("message", async (msg) => {
   }
 });
 
-process.send({
+sendIpcMessage(process, {
   type: "process_ready",
 });
