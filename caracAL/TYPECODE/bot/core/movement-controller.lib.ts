@@ -61,6 +61,7 @@ export interface CancelMovementRequest extends MovementRequestBase {
 
 export interface MovementActionBoundary {
   move(request: MoveRequest): ActionRecord;
+  cancelDirectMove(actionId: string, reason?: string): ActionRecord;
   settleMove(actionId: string, tolerance?: number): ActionRecord;
   smartMove(request: SmartMoveRequest): Promise<ActionRecord>;
   cancelMovement(request: BoundaryRequest): Promise<ActionRecord>;
@@ -330,6 +331,15 @@ export class MovementController {
     this.active!.actionId = record.id;
 
     if (record.status === "CONFIRMED") {
+      if (
+        previousActive?.type === "DIRECT" &&
+        previousActive.actionId
+      ) {
+        this.actions.cancelDirectMove(
+          previousActive.actionId,
+          "MOVE_CANCELLED",
+        );
+      }
       this.settleCurrent(record, true);
       return record;
     }
