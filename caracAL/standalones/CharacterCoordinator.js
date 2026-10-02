@@ -22,6 +22,7 @@ const FileStoredKeyValues = require("../src/FileStoredKeyValues");
 const {
   CONTROL_ACTIONS,
   DESIRED_RUNTIME_STATES,
+  canRestartCharacter,
 } = require("../src/CharacterControl");
 const { AdventureLandAssetCache } = require("../src/AdventureLandAssetCache");
 const {
@@ -763,12 +764,7 @@ function migrate_old_storage(path, localStorage) {
         break;
 
       case CONTROL_ACTIONS.RESTART:
-        if (
-          !char_block.instance ||
-          !char_block.enabled ||
-          char_block.desired_runtime_state === DESIRED_RUNTIME_STATES.STOPPED ||
-          char_block.lifecycle_state === LIFECYCLE_STATES.STOPPING
-        ) {
+        if (!canRestartCharacter(char_block)) {
           throw make_control_error(
             "CHARACTER_NOT_RESTARTABLE",
             "Only an active RUNNING or PAUSED character can be restarted",
