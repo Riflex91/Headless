@@ -66,5 +66,8 @@ test("runtime kernel emits periodic health without gameplay work", () => {
   assert.match(kernel, /RUNTIME_STATUS/);
   assert.match(kernel, /PERIODIC_RUNTIME_HEALTH/);
   assert.match(kernel, /runtimeState/);
+  assert.match(kernel, /emergencyStop/);
+  assert.match(kernel, /actionLedger/);
+  assert.match(kernel, /recentActions/);
   assert.match(kernel, /schedulerJobs/);
 });
