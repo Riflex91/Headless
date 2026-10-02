@@ -360,3 +360,18 @@ test("death handling auto-respawns with retry throttle", async () => {
   status = await setup.controller.tick();
   assert.equal(respawns, 2);
 });
+
+test("config override can isolate a live test from production config", async () => {
+  const setup = makeController({ config: { combat: { enabled: false } } });
+
+  setup.controller.setConfigOverride({
+    combat: { enabled: true },
+    potionUsage: { enabled: false },
+  });
+  let status = await setup.controller.tick();
+  assert.notEqual(status.state, "DISABLED");
+
+  setup.controller.clearConfigOverride();
+  status = await setup.controller.tick();
+  assert.equal(status.state, "DISABLED");
+});

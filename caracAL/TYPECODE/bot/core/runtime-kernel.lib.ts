@@ -13,6 +13,11 @@ import {
 import { GameAdapter } from "./game-adapter.lib";
 import { CombatController, CombatControllerEvent } from "./combat-controller.lib";
 import {
+  CombatLiveTestOptions,
+  CombatLiveTestResult,
+  CombatLiveTestRunner,
+} from "./combat-live-test.lib";
+import {
   MovementController,
   MovementControllerEvent,
 } from "./movement-controller.lib";
@@ -75,6 +80,7 @@ export class BotRuntimeKernel {
   private started = false;
   private stopping = false;
   private movementLiveTestRunning = false;
+  private combatLiveTestRunning = false;
 
   constructor() {
     this.eventBus = new EventBus({
@@ -259,6 +265,9 @@ export class BotRuntimeKernel {
     if (this.movementLiveTestRunning) {
       throw new Error("movement live test already running");
     }
+    if (this.combatLiveTestRunning) {
+      throw new Error("combat live test already running");
+    }
     if (!this.started || this.stopping) {
       throw new Error("runtime is not ready for movement live test");
     }
@@ -315,6 +324,79 @@ export class BotRuntimeKernel {
       throw error;
     } finally {
       this.movementLiveTestRunning = false;
+    }
+  }
+
+  async runCombatLiveTest(
+    options: CombatLiveTestOptions = {},
+  ): Promise<CombatLiveTestResult> {
+    if (this.combatLiveTestRunning) {
+      throw new Error("combat live test already running");
+    }
+    if (this.movementLiveTestRunning) {
+      throw new Error("movement live test already running");
+    }
+    if (!this.started || this.stopping) {
+      throw new Error("runtime is not ready for combat live test");
+    }
+    if (runtimeState() !== "RUNNING") {
+      throw new Error("runtime must be RUNNING for combat live test");
+    }
+
+    this.combatLiveTestRunning = true;
+    const requestId = options.requestId || `combat-live-${Date.now()}`;
+    this.eventBus.emit({
+      module: "CombatLiveTest",
+      type: "COMBAT_LIVE_TEST_STARTED",
+      why: "AUTONOMOUS_COMBAT_E2E",
+      correlationId: requestId,
+      data: {
+        requestId,
+        combat: this.combat.status(),
+        movement: this.movement.status(),
+        ...runtimeIdentity(),
+      },
+    });
+
+    try {
+      const runner = new CombatLiveTestRunner({
+        combat: this.combat,
+        movement: this.movement,
+        character: () => this.game.character(),
+        entities: () => this.game.entities(),
+        gameData: () => this.game.gameData(),
+      });
+      const result = await runner.run({
+        ...options,
+        requestId,
+      });
+      this.eventBus.emit({
+        module: "CombatLiveTest",
+        type: "COMBAT_LIVE_TEST_COMPLETED",
+        why: result.reason,
+        correlationId: requestId,
+        data: {
+          result,
+          combat: this.combat.status(),
+          movement: this.movement.status(),
+        },
+      });
+      return result;
+    } catch (error) {
+      this.eventBus.emit({
+        module: "CombatLiveTest",
+        type: "COMBAT_LIVE_TEST_FAILED",
+        why: "COMBAT_LIVE_TEST_RUNTIME_ERROR",
+        correlationId: requestId,
+        data: {
+          error: error instanceof Error ? error.message : String(error),
+          combat: this.combat.status(),
+          movement: this.movement.status(),
+        },
+      });
+      throw error;
+    } finally {
+      this.combatLiveTestRunning = false;
     }
   }
 
