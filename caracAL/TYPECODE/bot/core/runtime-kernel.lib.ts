@@ -1,3 +1,4 @@
+import { ActionBoundary } from "./action-boundary.lib";
 import { ActionLedger } from "./action-ledger.lib";
 import { EventBus, RuntimeEvent } from "./event-bus.lib";
 import {
@@ -9,6 +10,7 @@ import {
   Scheduler,
   SchedulerEvent,
 } from "./scheduler.lib";
+import { GameAdapter } from "./game-adapter.lib";
 
 const STATUS_JOB_ID = "runtime-status";
 const STATUS_INTERVAL_MS = 5000;
@@ -51,6 +53,8 @@ export class BotRuntimeKernel {
   readonly scheduler: Scheduler;
   readonly modules: ModuleRegistry;
   readonly actionLedger: ActionLedger;
+  readonly game: GameAdapter;
+  readonly actions: ActionBoundary;
 
   private started = false;
   private stopping = false;
@@ -82,6 +86,9 @@ export class BotRuntimeKernel {
         });
       },
     });
+
+    this.game = new GameAdapter();
+    this.actions = new ActionBoundary(this.actionLedger, this.game);
 
     this.scheduler.register({
       id: STATUS_JOB_ID,

@@ -40,6 +40,59 @@ test("bot main entrypoint stays role-neutral and mutation-free", () => {
   }
 });
 
+test("runtime feature code cannot call Adventure Land mutations directly", () => {
+  const botRoot = path.join(__dirname, "..", "TYPECODE", "bot");
+  const mutationBoundary = path.join(botRoot, "core", "action-boundary.lib.ts");
+  const mutationCalls = [
+    "move",
+    "smart_move",
+    "attack",
+    "use_skill",
+    "loot",
+    "buy",
+    "sell",
+    "send_item",
+    "send_gold",
+    "equip",
+    "unequip",
+    "upgrade",
+    "compound",
+    "exchange",
+    "craft",
+    "party_invite",
+    "party_accept",
+    "party_leave",
+  ];
+
+  const visit = (directory) => {
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      const fullPath = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        visit(fullPath);
+        continue;
+      }
+      if (!entry.name.endsWith(".ts") || fullPath === mutationBoundary) {
+        continue;
+      }
+
+      const source = fs.readFileSync(fullPath, "utf8");
+      for (const mutation of mutationCalls) {
+        const directCall = new RegExp(`\\b${mutation}\\s*\\(`);
+        assert.doesNotMatch(
+          source,
+          directCall,
+          `${path.relative(
+            botRoot,
+            fullPath,
+          )} must route ${mutation} through ActionBoundary`,
+        );
+      }
+    }
+  };
+
+  visit(botRoot);
+});
+
 test("webpack keeps shared bot libraries out of direct entrypoints", () => {
   const webpackConfig = fs.readFileSync(
     path.join(__dirname, "..", "webpack.config.js"),
