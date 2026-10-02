@@ -282,11 +282,10 @@ export class ClassSkillLiveTestRunner {
       const beforeAction = this.deps.character();
       this.deps.classSkills.setConfigOverride(ENABLED_CLASS_SKILL_CONFIG);
 
-      let status: ClassSkillControllerStatus | null = null;
       const actionSeen = await this.waitFor(
         async () => {
-          status = await this.deps.classSkills.tick();
-          const action = status.lastAction;
+          const tickStatus = await this.deps.classSkills.tick();
+          const action = tickStatus.lastAction;
           return (
             !!action && action.id !== baseline && action.skill === SAFE_SKILL
           );
@@ -296,8 +295,9 @@ export class ClassSkillLiveTestRunner {
       );
 
       this.deps.classSkills.setConfigOverride(DISABLED_CLASS_SKILL_CONFIG);
+      const status = this.deps.classSkills.status();
 
-      if (!actionSeen || !status?.lastAction) {
+      if (!actionSeen || !status.lastAction) {
         result.outcome = "TIMEOUT";
         result.reason = "CLASS_SKILL_ACTION_TIMEOUT";
         return result;
