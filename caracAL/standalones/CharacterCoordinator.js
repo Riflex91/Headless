@@ -63,7 +63,7 @@ const {
   readLifecyclePolicy,
 } = require("../src/CharacterLifecyclePolicy");
 
-const CONFIG_PUSH_TIMEOUT_MS = 15000;
+const CONFIG_PUSH_TIMEOUT_MS = 30000;
 
 //TODO check for invalid session
 //TODO improve termination
@@ -557,7 +557,8 @@ function migrate_old_storage(path, localStorage) {
     char_block.runtime_config_revision = runtime_config.revision;
     char_block.runtime_config_source = runtime_config.source;
     char_block.applied_runtime_config_revision = null;
-    char_block.config_push_status = "READY";
+    char_block.config_push_status =
+      runtime_config.source === "PERSISTED" ? "STORED" : "READY";
     char_block.config_push_error = null;
     char_block.config_push_timer = null;
     char_block.last_heartbeat_at = char_block.last_heartbeat_at || 0;
@@ -745,7 +746,9 @@ function migrate_old_storage(path, localStorage) {
         config,
       );
     } catch (error) {
-      report_persistence_error("character_config", char_name, error);
+      if (!String(error.code || "").startsWith("CHARACTER_CONFIG_")) {
+        report_persistence_error("character_config", char_name, error);
+      }
       throw error;
     }
 
@@ -1080,9 +1083,8 @@ function migrate_old_storage(path, localStorage) {
       }
       clear_stable_timer(char_block);
       clear_config_push_timer(char_block);
-      if (char_block.config_push_status === "PENDING") {
-        char_block.config_push_status = "STORED";
-      }
+      char_block.config_push_status = "STORED";
+      char_block.applied_runtime_config_revision = null;
       char_block.connected = false;
       char_block.watchdog_recovery_in_progress = false;
       emit_supervisor_event("CHARACTER_PROCESS_EXITED", char_name, {
@@ -1210,6 +1212,7 @@ function migrate_old_storage(path, localStorage) {
           args.source_revision = source_revision;
           args.character_config = char_block.runtime_config;
           args.character_config_revision = char_block.runtime_config_revision;
+          char_block.applied_runtime_config_revision = null;
           char_block.config_push_status = "PENDING";
           char_block.config_push_error = null;
           arm_config_push_timeout(char_name, char_block.runtime_config_revision);
@@ -1314,6 +1317,30 @@ function migrate_old_storage(path, localStorage) {
           char_block.last_heartbeat_at = Date.now();
           char_block.watchdog_recovery_in_progress = false;
           set_lifecycle_state(char_name, LIFECYCLE_STATES.ONLINE, "connected");
+          if (
+            char_block.applied_runtime_config_revision !==
+            char_block.runtime_config_revision
+          ) {
+            char_block.config_push_status = "PENDING";
+            char_block.config_push_error = null;
+            safe_send(result, {
+              type: "config_push",
+              revision: char_block.runtime_config_revision,
+              config: char_block.runtime_config,
+            });
+            arm_config_push_timeout(
+              char_name,
+              char_block.runtime_config_revision,
+            );
+            emit_supervisor_event(
+              "CHARACTER_CONFIG_PUSH_REQUESTED",
+              char_name,
+              {
+                why: "SYNC_CONFIG_AFTER_CONNECT",
+                revision: char_block.runtime_config_revision,
+              },
+            );
+          }
           safe_send(result, {
             type: "runtime_control",
             state: char_block.desired_runtime_state,
