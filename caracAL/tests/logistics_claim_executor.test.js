@@ -32,7 +32,19 @@ function makeAction(status = "CONFIRMED", why = "CONFIRMED") {
 
 function setup({
   character = "My_Merchant",
+  gold = 10000,
   items = [],
+  protectedSlots = [],
+  dispositions = {},
+  entities = [
+    {
+      id: "farmer-entity",
+      type: "character",
+      name: "My_Ranger",
+      dead: false,
+      rip: false,
+    },
+  ],
   actionStatus = "CONFIRMED",
 } = {}) {
   const calls = [];
@@ -53,15 +65,42 @@ function setup({
   };
   const game = {
     character() {
-      return { name: character };
+      return { name: character, gold };
+    },
+    entities() {
+      return entities.map((entity) => ({ ...entity }));
     },
     inventory() {
       return items.map((item, slot) => ({ slot, item }));
     },
   };
+  const inventoryIntelligence = {
+    status() {
+      return {
+        entries: items
+          .map((item, slot) =>
+            item
+              ? {
+                  slot,
+                  name: item.name || null,
+                  protected: protectedSlots.includes(slot),
+                  disposition:
+                    dispositions[slot] ||
+                    (protectedSlots.includes(slot) ? "RESERVED" : "KEEP"),
+                }
+              : null,
+          )
+          .filter(Boolean),
+      };
+    },
+  };
   return {
     calls,
-    executor: new LogisticsClaimExecutor(actions, game),
+    executor: new LogisticsClaimExecutor(
+      actions,
+      game,
+      inventoryIntelligence,
+    ),
   };
 }
 
@@ -83,7 +122,7 @@ test("mluck claim executes from merchant through ActionBoundary", async () => {
     "useSkill",
     {
       skill: "mluck",
-      targetId: "My_Ranger",
+      targetId: "farmer-entity",
       module: "MerchantLogistics",
       why: "MLUCK_REQUESTED",
       correlationId: "claim-mluck",
@@ -235,6 +274,100 @@ test("UNKNOWN outcome is preserved and never reported as fulfilled", async () =>
 
   assert.equal(result.outcome, "UNKNOWN");
   assert.equal(result.fulfilled, false);
+});
+
+test("mluck blocks when farmer is not visible instead of guessing target identity", async () => {
+  const { executor, calls } = setup({ entities: [] });
+  const result = await executor.execute({
+    id: "claim-mluck-hidden",
+    type: "MLUCK",
+    farmer: "My_Ranger",
+    merchant: { name: "My_Merchant", live: true },
+  });
+
+  assert.equal(result.outcome, "BLOCKED");
+  assert.equal(result.reason, "CLAIM_TARGET_NOT_VISIBLE");
+  assert.equal(calls.length, 0);
+});
+
+test("protected outbound item is revalidated immediately before mutation", async () => {
+  const { executor, calls } = setup({
+    items: [{ name: "bow", level: 3 }],
+    protectedSlots: [0],
+  });
+  const result = await executor.execute({
+    id: "claim-gear-protected",
+    type: "GEAR_DELIVERY",
+    farmer: "My_Ranger",
+    merchant: { name: "My_Merchant", live: true },
+    itemName: "bow",
+    quantity: 1,
+  });
+
+  assert.equal(result.outcome, "BLOCKED");
+  assert.equal(result.reason, "CLAIM_ITEM_UNAVAILABLE");
+  assert.equal(calls.length, 0);
+});
+
+test("inventory pressure blocks if item became protected after claim creation", async () => {
+  const { executor, calls } = setup({
+    character: "My_Ranger",
+    items: [{ name: "junk", q: 4 }],
+    protectedSlots: [0],
+  });
+  const result = await executor.execute({
+    id: "claim-pressure-protected",
+    type: "INVENTORY_PRESSURE",
+    farmer: "My_Ranger",
+    merchant: { name: "My_Merchant", live: true },
+    itemName: "junk",
+    inventorySlot: 0,
+    quantity: 3,
+  });
+
+  assert.equal(result.outcome, "BLOCKED");
+  assert.equal(result.reason, "CLAIM_ITEM_PROTECTED");
+  assert.equal(calls.length, 0);
+});
+
+test("gold pickup revalidates reserve and caps stale claim amount", async () => {
+  const { executor, calls } = setup({
+    character: "My_Ranger",
+    gold: 2500,
+  });
+  const result = await executor.execute({
+    id: "claim-gold-reserve",
+    type: "GOLD_PICKUP",
+    farmer: "My_Ranger",
+    merchant: { name: "My_Merchant", live: true },
+    amount: 4000,
+    metadata: { keepGold: 1000 },
+  });
+
+  assert.equal(result.outcome, "CONFIRMED");
+  assert.equal(result.amount, 1500);
+  assert.equal(result.fulfilled, false);
+  assert.equal(calls[0][0], "sendGold");
+  assert.equal(calls[0][1].amount, 1500);
+});
+
+test("gold pickup blocks when current balance reached reserve", async () => {
+  const { executor, calls } = setup({
+    character: "My_Ranger",
+    gold: 1000,
+  });
+  const result = await executor.execute({
+    id: "claim-gold-reserve-block",
+    type: "GOLD_PICKUP",
+    farmer: "My_Ranger",
+    merchant: { name: "My_Merchant", live: true },
+    amount: 4000,
+    metadata: { keepGold: 1000 },
+  });
+
+  assert.equal(result.outcome, "BLOCKED");
+  assert.equal(result.reason, "CLAIM_GOLD_RESERVE_REACHED");
+  assert.equal(calls.length, 0);
 });
 
 test("missing outbound item blocks before mutation", async () => {
