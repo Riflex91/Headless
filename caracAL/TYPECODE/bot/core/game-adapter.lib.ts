@@ -44,11 +44,95 @@ export interface MapSnapshot {
   y: number | null;
 }
 
+export interface NpcPositionSnapshot {
+  x: number;
+  y: number;
+}
+
+export interface NpcSnapshot {
+  id: string;
+  name: string | null;
+  role: string | null;
+  map: string;
+  x: number | null;
+  y: number | null;
+  visible: boolean;
+  positions: NpcPositionSnapshot[];
+  items: string[];
+}
+
+export interface BankPackSnapshot {
+  name: string;
+  items: InventorySlotSnapshot[];
+}
+
+export interface BankPackAccessSnapshot {
+  name: string;
+  map: string | null;
+  goldPrice: number | null;
+  shellPrice: number | null;
+}
+
+export interface BankSnapshot {
+  available: boolean;
+  gold: number | null;
+  packs: BankPackSnapshot[];
+  access: BankPackAccessSnapshot[];
+}
+
+export interface MarketListingSnapshot {
+  merchantId: string;
+  merchantName: string | null;
+  map: string | null;
+  x: number | null;
+  y: number | null;
+  stand: string | boolean | null;
+  slot: string;
+  side: "BUY" | "SELL";
+  item: {
+    name: string | null;
+    level: number | null;
+    quantity: number | null;
+    price: number | null;
+    rid: string | null;
+    giveaway: number | null;
+  };
+}
+
+export interface SkillSnapshot {
+  key: string;
+  name: string | null;
+  classes: string[];
+  mp: number | null;
+  cooldown: number | null;
+  range: number | null;
+  hostile: boolean;
+  party: boolean;
+  passive: boolean;
+}
+
+export interface CooldownSnapshot {
+  skill: string;
+  readyAt: number;
+  remainingMs: number;
+  ready: boolean;
+}
+
+export interface ZoneSnapshot {
+  map: string;
+  type: string | null;
+  drop: string | null;
+  polygon: Array<[number, number]>;
+}
+
 export interface GameAdapterSource {
   character(): unknown;
   entities(): unknown;
   party(): unknown;
   gameData(): unknown;
+  nextSkill(): unknown;
+  bankPacks(): unknown;
+  now(): number;
 }
 
 function record(value: unknown): Record<string, unknown> {
@@ -63,6 +147,23 @@ function stringOrNull(value: unknown): string | null {
 
 function numberOrNull(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function dateMsOrNull(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (
+    value &&
+    typeof value === "object" &&
+    Object.prototype.toString.call(value) === "[object Date]"
+  ) {
+    const timestamp = (
+      value as unknown as {
+        getTime(): number;
+      }
+    ).getTime();
+    return Number.isFinite(timestamp) ? timestamp : null;
+  }
+  return null;
 }
 
 function cloneJsonValue(
@@ -115,12 +216,34 @@ function runtimeValue(name: string): unknown {
   return parentScope?.[name];
 }
 
+function positionsFromMapNpc(value: unknown): NpcPositionSnapshot[] {
+  const npc = record(value);
+  const positions: NpcPositionSnapshot[] = [];
+  const add = (candidate: unknown): void => {
+    if (!Array.isArray(candidate) || candidate.length < 2) return;
+    const x = numberOrNull(candidate[0]);
+    const y = numberOrNull(candidate[1]);
+    if (x === null || y === null) return;
+    positions.push({ x, y });
+  };
+
+  add(npc.position);
+  if (Array.isArray(npc.positions)) {
+    for (const candidate of npc.positions) add(candidate);
+  }
+
+  return positions;
+}
+
 export function createRuntimeGameAdapterSource(): GameAdapterSource {
   return {
     character: () => runtimeValue("character"),
     entities: () => runtimeValue("entities"),
     party: () => runtimeValue("party"),
     gameData: () => runtimeValue("G"),
+    nextSkill: () => runtimeValue("next_skill"),
+    bankPacks: () => runtimeValue("bank_packs"),
+    now: () => Date.now(),
   };
 }
 
@@ -197,6 +320,7 @@ export class GameAdapter {
     const result: EquipmentSnapshot = {};
 
     for (const [slot, item] of Object.entries(slots)) {
+      if (slot.startsWith("trade")) continue;
       result[slot] =
         item && typeof item === "object"
           ? ((cloneJsonValue(item) as Record<string, unknown>) || null)
@@ -206,6 +330,200 @@ export class GameAdapter {
     return result;
   }
 
+  npcs(mapName = this.character().map): NpcSnapshot[] {
+    if (!mapName) return [];
+
+    const gameData = record(this.source.gameData());
+    const maps = record(gameData.maps);
+    const npcDefinitions = record(gameData.npcs);
+    const mapDefinition = record(maps[mapName]);
+    const mapNpcs = Array.isArray(mapDefinition.npcs)
+      ? mapDefinition.npcs
+      : [];
+    const entities = record(this.source.entities());
+
+    return mapNpcs
+      .map((mapNpcValue) => {
+        const mapNpc = record(mapNpcValue);
+        const id = stringOrNull(mapNpc.id);
+        if (!id) return null;
+
+        const definition = record(npcDefinitions[id]);
+        const visibleEntry = Object.entries(entities).find(([, rawEntity]) => {
+          const entity = record(rawEntity);
+          return entity.type === "npc" && entity.npc === id;
+        });
+        const visible = visibleEntry ? record(visibleEntry[1]) : null;
+        const positions = positionsFromMapNpc(mapNpc);
+        const firstPosition = positions[0] || null;
+        const items = Array.isArray(definition.items)
+          ? definition.items.filter(
+              (item): item is string => typeof item === "string",
+            )
+          : [];
+
+        return {
+          id,
+          name:
+            stringOrNull(visible?.name) ||
+            stringOrNull(definition.name) ||
+            stringOrNull(mapNpc.name),
+          role: stringOrNull(visible?.role) || stringOrNull(definition.role),
+          map: mapName,
+          x: numberOrNull(visible?.x) ?? firstPosition?.x ?? null,
+          y: numberOrNull(visible?.y) ?? firstPosition?.y ?? null,
+          visible: !!visible,
+          positions,
+          items,
+        };
+      })
+      .filter((npc): npc is NpcSnapshot => npc !== null)
+      .sort((a, b) => a.id.localeCompare(b.id));
+  }
+
+  bank(): BankSnapshot {
+    const current = record(this.source.character());
+    const bankValue = current.bank;
+    const bank = record(bankValue);
+    const packs = Object.entries(bank)
+      .filter(([name, value]) => name.startsWith("items") && Array.isArray(value))
+      .map(([name, value]) => ({
+        name,
+        items: (value as unknown[]).map((item, slot) => ({
+          slot,
+          item:
+            item && typeof item === "object"
+              ? ((cloneJsonValue(item) as Record<string, unknown>) || null)
+              : null,
+        })),
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    const access = Object.entries(record(this.source.bankPacks()))
+      .map(([name, value]) => {
+        const metadata = Array.isArray(value) ? value : [];
+        return {
+          name,
+          map: stringOrNull(metadata[0]),
+          goldPrice: numberOrNull(metadata[1]),
+          shellPrice: numberOrNull(metadata[2]),
+        };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    return {
+      available: !!bankValue && typeof bankValue === "object",
+      gold: numberOrNull(bank.gold),
+      packs,
+      access,
+    };
+  }
+
+  market(): MarketListingSnapshot[] {
+    const listings: MarketListingSnapshot[] = [];
+
+    for (const [fallbackId, rawEntity] of Object.entries(
+      record(this.source.entities()),
+    )) {
+      const entity = record(rawEntity);
+      if (entity.type !== "character" || !entity.stand) continue;
+
+      const merchantId = stringOrNull(entity.id) || fallbackId;
+      const slots = record(entity.slots);
+      for (const [slot, rawItem] of Object.entries(slots)) {
+        if (!/^trade\d+$/.test(slot)) continue;
+        if (!rawItem || typeof rawItem !== "object") continue;
+
+        const item = record(rawItem);
+        listings.push({
+          merchantId,
+          merchantName: stringOrNull(entity.name),
+          map: stringOrNull(entity.map),
+          x: numberOrNull(entity.x),
+          y: numberOrNull(entity.y),
+          stand:
+            typeof entity.stand === "string" ||
+            typeof entity.stand === "boolean"
+              ? entity.stand
+              : null,
+          slot,
+          side: item.b === true ? "BUY" : "SELL",
+          item: {
+            name: stringOrNull(item.name),
+            level: numberOrNull(item.level),
+            quantity: numberOrNull(item.q),
+            price: numberOrNull(item.price),
+            rid: stringOrNull(item.rid),
+            giveaway: numberOrNull(item.giveaway),
+          },
+        });
+      }
+    }
+
+    return listings.sort(
+      (a, b) =>
+        a.merchantId.localeCompare(b.merchantId) ||
+        a.slot.localeCompare(b.slot),
+    );
+  }
+
+  skills(characterOnly = true): SkillSnapshot[] {
+    const gameData = record(this.source.gameData());
+    const skills = record(gameData.skills);
+    const ctype = this.character().ctype;
+
+    return Object.entries(skills)
+      .map(([key, rawSkill]) => {
+        const skill = record(rawSkill);
+        const classes = Array.isArray(skill.class)
+          ? skill.class.filter(
+              (className): className is string =>
+                typeof className === "string",
+            )
+          : [];
+
+        return {
+          key,
+          name: stringOrNull(skill.name),
+          classes,
+          mp: numberOrNull(skill.mp),
+          cooldown: numberOrNull(skill.cooldown),
+          range: numberOrNull(skill.range),
+          hostile: skill.hostile === true,
+          party: skill.party === true,
+          passive: skill.passive === true,
+        };
+      })
+      .filter(
+        (skill) =>
+          !characterOnly ||
+          skill.classes.length === 0 ||
+          (!!ctype && skill.classes.includes(ctype)),
+      )
+      .sort((a, b) => a.key.localeCompare(b.key));
+  }
+
+  cooldowns(): CooldownSnapshot[] {
+    const now = this.source.now();
+    return Object.entries(record(this.source.nextSkill()))
+      .map(([skill, value]) => {
+        const readyAt = dateMsOrNull(value);
+        if (readyAt === null) return null;
+
+        const remainingMs = Math.max(0, readyAt - now);
+        return {
+          skill,
+          readyAt,
+          remainingMs,
+          ready: remainingMs === 0,
+        };
+      })
+      .filter(
+        (cooldown): cooldown is CooldownSnapshot => cooldown !== null,
+      )
+      .sort((a, b) => a.skill.localeCompare(b.skill));
+  }
+
   map(): MapSnapshot {
     const current = this.character();
     return {
@@ -213,6 +531,38 @@ export class GameAdapter {
       x: current.x,
       y: current.y,
     };
+  }
+
+  zones(mapName = this.character().map): ZoneSnapshot[] {
+    if (!mapName) return [];
+
+    const gameData = record(this.source.gameData());
+    const mapDefinition = record(record(gameData.maps)[mapName]);
+    const zones = Array.isArray(mapDefinition.zones)
+      ? mapDefinition.zones
+      : [];
+
+    return zones.map((rawZone) => {
+      const zone = record(rawZone);
+      const polygon = Array.isArray(zone.polygon)
+        ? zone.polygon
+            .filter(
+              (point): point is unknown[] =>
+                Array.isArray(point) && point.length >= 2,
+            )
+            .map((point) => [
+              numberOrNull(point[0]) ?? 0,
+              numberOrNull(point[1]) ?? 0,
+            ] as [number, number])
+        : [];
+
+      return {
+        map: mapName,
+        type: stringOrNull(zone.type),
+        drop: stringOrNull(zone.drop),
+        polygon,
+      };
+    });
   }
 
   gameData(): Record<string, unknown> {
