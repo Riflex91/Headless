@@ -316,6 +316,11 @@ function updateControlButtons(card, character) {
     } else if (action === "pause") {
       button.disabled =
         !character.pid || desired === "PAUSED" || desired === "STOPPED";
+    } else if (action === "restart") {
+      button.disabled =
+        !character.pid ||
+        desired === "STOPPED" ||
+        character.lifecycle_state === "STOPPING";
     } else if (action === "stop") {
       button.disabled = desired === "STOPPED" && !character.pid;
     }
