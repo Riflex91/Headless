@@ -8,8 +8,19 @@ const {
   characterGeometry,
   computeBounds,
   filterTrail,
+  nearbyEntities,
   plannedPath,
+  pointInBounds,
+  sceneNpcs,
 } = require("../dashboard/movement-map");
+const {
+  collectSceneAssetFiles,
+  placementIntersectsBounds,
+} = require("../dashboard/map-background");
+const {
+  publicMapScene,
+  publicNearbyEntities,
+} = require("../src/DashboardMapTelemetry");
 
 function characterFixture() {
   return {
@@ -120,4 +131,170 @@ test("computed bounds provide stable minimum viewport size", () => {
   assert.equal(bounds.height >= 500, true);
   assert.equal(bounds.minX < 80, true);
   assert.equal(bounds.minY < 180, true);
+});
+
+
+test("nearby entity overlay deduplicates observations from multiple characters", () => {
+  const characters = [
+    {
+      game: {
+        map: "main",
+        nearby_entities: [
+          {
+            id: "goo-1",
+            kind: "monster",
+            name: "Green Goo",
+            x: 110,
+            y: 210,
+            distance: 20,
+          },
+        ],
+      },
+    },
+    {
+      game: {
+        map: "main",
+        nearby_entities: [
+          {
+            id: "goo-1",
+            kind: "monster",
+            name: "Green Goo",
+            x: 110.2,
+            y: 209.8,
+            distance: 12,
+          },
+        ],
+      },
+    },
+  ];
+
+  const result = nearbyEntities(characters, "main");
+  assert.equal(result.length, 1);
+  assert.equal(result[0].distance, 12);
+});
+
+test("scene NPCs and bounds filtering support dashboard overlays", () => {
+  assert.deepEqual(
+    sceneNpcs({
+      npcs: [{ id: "pots", name: "Pots", x: 25, y: 35 }],
+    }),
+    [{ id: "pots", name: "Pots", x: 25, y: 35, kind: "npc" }],
+  );
+  assert.equal(
+    pointInBounds(
+      { x: 25, y: 35 },
+      { minX: 0, minY: 0, width: 100, height: 100 },
+    ),
+    true,
+  );
+});
+
+test("map background keeps only visible placements and unique original assets", () => {
+  const scene = {
+    tiles: [
+      {
+        file: "/images/tiles/map/custom.png?v=17",
+        width: 32,
+        height: 32,
+      },
+      {
+        file: "/images/tiles/map/custom.png?v=17",
+        width: 16,
+        height: 16,
+      },
+    ],
+  };
+
+  assert.deepEqual(collectSceneAssetFiles(scene), [
+    "/images/tiles/map/custom.png?v=17",
+  ]);
+  assert.equal(
+    placementIntersectsBounds(
+      scene,
+      [0, 10, 20],
+      { minX: 0, minY: 0, width: 100, height: 100 },
+    ),
+    true,
+  );
+  assert.equal(
+    placementIntersectsBounds(
+      scene,
+      [0, 300, 400],
+      { minX: 0, minY: 0, width: 100, height: 100 },
+    ),
+    false,
+  );
+});
+
+test("map telemetry projects original tiles, static NPCs and nearby live monsters", () => {
+  const game = {
+    current_map: "main",
+    character: {
+      name: "My_Ranger1",
+      map: "main",
+      x: 100,
+      y: 200,
+    },
+    G: {
+      geometry: {
+        main: {
+          min_x: -500,
+          min_y: -400,
+          max_x: 900,
+          max_y: 800,
+          default: 0,
+          tiles: [["outside", 0, 0, 32, 32]],
+          placements: [[0, -100, -100, 100, 100]],
+        },
+      },
+      tilesets: {
+        outside: {
+          file: "/images/tiles/map/outside.png?v=7",
+        },
+      },
+      maps: {
+        main: {
+          name: "Town",
+          npcs: [{ id: "pots", name: "Pots", position: [112, 40] }],
+        },
+      },
+      npcs: {
+        pots: { name: "Pots" },
+      },
+      monsters: {
+        goo: { name: "Green Goo" },
+      },
+    },
+    entities: {
+      one: {
+        id: "goo-1",
+        mtype: "goo",
+        x: 130,
+        y: 220,
+        hp: 80,
+        max_hp: 100,
+      },
+      far: {
+        id: "goo-far",
+        mtype: "goo",
+        x: 5000,
+        y: 5000,
+      },
+    },
+  };
+
+  const scene = publicMapScene(game);
+  assert.equal(scene.map, "main");
+  assert.equal(scene.tiles[0].file, "/images/tiles/map/outside.png?v=7");
+  assert.deepEqual(scene.npcs[0], {
+    id: "pots",
+    name: "Pots",
+    x: 112,
+    y: 40,
+  });
+
+  const entities = publicNearbyEntities(game);
+  assert.equal(entities.length, 1);
+  assert.equal(entities[0].kind, "monster");
+  assert.equal(entities[0].name, "Green Goo");
 });
