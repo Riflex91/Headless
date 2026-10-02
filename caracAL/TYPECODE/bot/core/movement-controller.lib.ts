@@ -113,6 +113,9 @@ interface ActiveMovementCommand {
   id: number;
   type: MovementCommandType;
   owner: string;
+  module: string;
+  reason: string;
+  correlationId?: string;
   startedAt: number;
   actionId: string | null;
   target: Record<string, unknown> | null;
@@ -135,6 +138,9 @@ export interface MovementControllerStatus {
     id: number;
     type: MovementCommandType;
     owner: string;
+    module: string;
+    reason: string;
+    correlationId?: string;
     startedAt: number;
     actionId: string | null;
     target: Record<string, unknown> | null;
@@ -355,6 +361,7 @@ export class MovementController {
       "DIRECT",
       owner,
       targetForDirect(request),
+      request,
     );
 
     const record = this.actions.directMove({
@@ -430,6 +437,7 @@ export class MovementController {
       "SMART",
       owner,
       targetForSmart(request),
+      request,
     );
 
     const promise = this.actions.smartMove({
@@ -574,7 +582,13 @@ export class MovementController {
       this.owner = requestedOwner;
     }
 
-    const command = this.startCommand("CANCEL", requestedOwner, null, true);
+    const command = this.startCommand(
+      "CANCEL",
+      requestedOwner,
+      null,
+      request,
+      true,
+    );
     const record = await this.actions.cancelMovement({
       module: request.module,
       why: request.why,
@@ -793,6 +807,10 @@ export class MovementController {
     type: MovementCommandType,
     owner: string,
     target: Record<string, unknown> | null,
+    request: Pick<
+      MovementRequestBase,
+      "module" | "why" | "correlationId"
+    >,
     replaceActive = false,
   ): ActiveMovementCommand {
     if (this.active && !replaceActive) {
@@ -806,6 +824,11 @@ export class MovementController {
       id: this.commandSequence,
       type,
       owner,
+      module: request.module,
+      reason: request.why,
+      ...(request.correlationId && {
+        correlationId: request.correlationId,
+      }),
       startedAt: this.now(),
       actionId: null,
       target: target ? { ...target } : null,
