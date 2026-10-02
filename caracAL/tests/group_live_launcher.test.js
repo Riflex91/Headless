@@ -62,7 +62,6 @@ test("group launcher respects explicit distinct pair", () => {
   assert.equal(pair.follower.name, "A");
 });
 
-
 test("group launcher waits for leader RUNNING before starting follower", async () => {
   const calls = [];
   const pair = {
@@ -126,10 +125,7 @@ test("group launcher observes STARTING until leader reaches RUNNING", async () =
   });
 
   assert.equal(reads, 2);
-  assert.equal(
-    result.characters[0].group_live_test.status,
-    "RUNNING",
-  );
+  assert.equal(result.characters[0].group_live_test.status, "RUNNING");
 });
 
 test("group launcher stops bootstrap when leader test becomes terminal", async () => {

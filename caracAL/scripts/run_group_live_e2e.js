@@ -40,9 +40,7 @@ async function waitForGroupTestRunning(
     timeoutMs = Number(
       process.env.CARACAL_GROUP_LIVE_BOOTSTRAP_TIMEOUT_MS || 60000,
     ),
-    pollMs = Number(
-      process.env.CARACAL_GROUP_LIVE_BOOTSTRAP_POLL_MS || 250,
-    ),
+    pollMs = Number(process.env.CARACAL_GROUP_LIVE_BOOTSTRAP_POLL_MS || 250),
     now = Date.now,
     sleepImpl = sleep,
   } = {},

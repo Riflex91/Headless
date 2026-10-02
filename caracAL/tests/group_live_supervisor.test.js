@@ -109,15 +109,9 @@ test("group supervisor diagnostics expose autonomous cleanup", () => {
   assert.equal(diagnostics.result.outcome, "PASS");
 });
 
-
 test("group supervisor uses a group-specific runtime readiness error", () => {
   const coordinator = fs.readFileSync(
-    path.join(
-      __dirname,
-      "..",
-      "standalones",
-      "CharacterCoordinator.js",
-    ),
+    path.join(__dirname, "..", "standalones", "CharacterCoordinator.js"),
     "utf8",
   );
 
@@ -129,45 +123,3 @@ test("group supervisor uses a group-specific runtime readiness error", () => {
   );
 });
 
-
-/* GROUP_BOOTSTRAP_PRETTIER_PROBE_START */
-test("group bootstrap exact prettier output probe", async () => {
-  const fs = require("node:fs");
-  const nodePath = require("node:path");
-  const prettier = await import("prettier");
-  const targets = [
-    "scripts/run_group_live_e2e.js",
-    "tests/group_live_launcher.test.js",
-    "tests/group_live_supervisor.test.js",
-  ];
-
-  for (const relative of targets) {
-    const absolute = nodePath.join(__dirname, "..", relative);
-    const original = fs.readFileSync(absolute, "utf8");
-    const formatted = await prettier.format(original, { filepath: absolute });
-    const pathToken = Buffer.from(relative, "utf8").toString("base64");
-    const encoded = Buffer.from(formatted, "utf8").toString("base64");
-
-    for (
-      let offset = 0, part = 0;
-      offset < encoded.length;
-      offset += 600, part += 1
-    ) {
-      console.log(
-        "GROUP_BOOTSTRAP_PRETTIER|" +
-          pathToken +
-          "|" +
-          String(part).padStart(3, "0") +
-          "|" +
-          encoded.slice(offset, offset + 600),
-      );
-    }
-    console.log(
-      "GROUP_BOOTSTRAP_PRETTIER_LENGTH|" +
-        pathToken +
-        "|" +
-        String(formatted.length),
-    );
-  }
-});
-/* GROUP_BOOTSTRAP_PRETTIER_PROBE_END */
