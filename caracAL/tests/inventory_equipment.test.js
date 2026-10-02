@@ -92,6 +92,17 @@ test("account inventory renders all connected live characters together", () => {
             items: [item, null],
             slots: { mainhand: { ...item, name: "bow", q: 1, level: 8 } },
           },
+          inventory_intelligence_runtime: {
+            state: "READY",
+            entries: [
+              {
+                slot: 0,
+                disposition: "CONSUMABLE",
+                protections: ["VALUABLE"],
+                why: "CONSUMABLE via Adventure Land item metadata · protected: VALUABLE",
+              },
+            ],
+          },
         },
         {
           name: "My_Merchant",
@@ -129,6 +140,13 @@ test("account inventory renders all connected live characters together", () => {
     assert.match(root.innerHTML, /pack_20vt8\.png/);
     assert.match(root.textContent, /123/);
     assert.match(root.textContent, /\+8/);
+    assert.match(root.textContent, /CONSUMABLE/);
+    assert.equal(root.querySelectorAll(".item-disposition-badge").length, 1);
+    assert.equal(root.querySelectorAll(".item-protection-badge").length, 1);
+    assert.match(
+      root.querySelector('[data-disposition="CONSUMABLE"]').title,
+      /VALUABLE/,
+    );
   } finally {
     global.document = previousDocument;
     dom.window.close();
