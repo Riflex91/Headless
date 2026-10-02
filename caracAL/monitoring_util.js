@@ -1,10 +1,7 @@
 const prettyMilliseconds = require("pretty-ms");
 const { PNG } = require("pngjs");
 const { STAT_BEAT_INTERVAL } = require("./src/CONSTANTS.js");
-const {
-  normalizeIpcMessage,
-  sendIpcMessage,
-} = require("./src/IpcProtocol");
+const { normalizeIpcMessage, sendIpcMessage } = require("./src/IpcProtocol");
 const { max, min, abs, round, floor } = Math;
 
 function humanize_int(num, digits) {
