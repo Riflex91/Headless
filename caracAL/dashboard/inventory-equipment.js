@@ -54,12 +54,10 @@
   }
 
   function orderedEquipmentSlots(slots = {}) {
-    const present = new Set(Object.keys(slots));
-    const ordered = EQUIPMENT_ORDER.filter((slot) => present.has(slot));
-    const extra = [...present]
+    const extra = Object.keys(slots)
       .filter((slot) => !EQUIPMENT_ORDER.includes(slot))
       .sort();
-    return [...ordered, ...extra];
+    return [...EQUIPMENT_ORDER, ...extra];
   }
 
   function spriteStyle(icon, displaySize = 40) {
