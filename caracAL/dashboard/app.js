@@ -6,6 +6,7 @@ const state = {
   maxOnlineCharacters: 4,
 };
 
+const cards = new Map();
 const grid = document.querySelector("#character-grid");
 const eventList = document.querySelector("#event-list");
 const activeCount = document.querySelector("#active-count");
@@ -27,6 +28,50 @@ function formatHeartbeat(timestamp) {
   if (!timestamp) return "noch keiner";
   const ageSeconds = Math.max(0, Math.round((Date.now() - timestamp) / 1000));
   return `${formatTimestamp(timestamp)} (${ageSeconds}s)`;
+}
+
+function formatCoordinate(value) {
+  return Number.isFinite(value) ? Math.round(value) : "—";
+}
+
+function formatHeading(value, direction) {
+  if (Number.isFinite(value)) return `${Math.round(value)}°`;
+  return direction || "—";
+}
+
+function formatResources(game) {
+  if (!game) return "—";
+  return `HP ${game.hp ?? "—"}/${game.max_hp ?? "—"} · MP ${game.mp ?? "—"}/${
+    game.max_mp ?? "—"
+  }`;
+}
+
+function formatMovement(game) {
+  if (!game) return "—";
+  if (!game.moving) return "IDLE";
+
+  const destination = game.movement_destination;
+  if (!destination) return "MOVING";
+
+  return `MOVING → ${formatCoordinate(destination.x)}, ${formatCoordinate(
+    destination.y,
+  )}`;
+}
+
+function formatTarget(game) {
+  if (!game) return "—";
+  const target = game.target;
+  if (target) {
+    return target.name || target.mtype || target.id || "Target";
+  }
+  return game.t_name || game.t_mtype || "—";
+}
+
+function formatInventory(game) {
+  if (!game || !Number.isFinite(game.isize)) return "—";
+  const free = Number.isFinite(game.esize) ? game.esize : 0;
+  const used = Math.max(0, game.isize - free);
+  return `${used}/${game.isize} belegt · ${free} frei`;
 }
 
 function badgeClass(lifecycleState) {
@@ -96,17 +141,17 @@ async function sendCharacterControl(characterName, action) {
   }
 }
 
-function configureControlButtons(card, character) {
+function updateControlButtons(card, character) {
   const desired =
     character.desired_runtime_state ||
     (character.enabled ? "RUNNING" : "STOPPED");
-  const buttons = card.querySelectorAll("[data-control]");
-  const feedback = card.querySelector(".control-feedback");
+  const busy = card.dataset.controlBusy === "true";
 
-  for (const button of buttons) {
+  for (const button of card.querySelectorAll("[data-control]")) {
     const action = button.dataset.control;
-
-    if (action === "start") {
+    if (busy) {
+      button.disabled = true;
+    } else if (action === "start") {
       button.disabled =
         desired === "RUNNING" &&
         ["STARTING", "CONNECTING", "ONLINE"].includes(
@@ -118,42 +163,54 @@ function configureControlButtons(card, character) {
     } else if (action === "stop") {
       button.disabled = desired === "STOPPED" && !character.pid;
     }
+  }
+}
 
+function configureCardInteractions(card) {
+  const feedback = card.querySelector(".control-feedback");
+
+  for (const button of card.querySelectorAll("[data-control]")) {
     button.addEventListener("click", async () => {
-      for (const control of buttons) {
-        control.disabled = true;
-      }
+      const characterName = card.dataset.character;
+      const character = state.characters.get(characterName);
+      if (!character) return;
+
+      const action = button.dataset.control;
+      card.dataset.controlBusy = "true";
+      updateControlButtons(card, character);
       feedback.textContent = `${action.toUpperCase()} wird ausgeführt …`;
 
       try {
-        await sendCharacterControl(character.name, action);
+        await sendCharacterControl(characterName, action);
+        feedback.textContent = `${action.toUpperCase()} angefordert ✓`;
       } catch (error) {
         feedback.textContent = error.message;
         addEvent({
           timestamp: Date.now(),
           event: "CONTROL_ERROR",
-          character: character.name,
+          character: characterName,
           reason: error.message,
         });
         await loadInitialState().catch(() => {});
+      } finally {
+        card.dataset.controlBusy = "false";
+        const current = state.characters.get(characterName);
+        if (current) updateControlButtons(card, current);
       }
     });
   }
-}
 
-function configureDiagnosticCopy(card, character) {
-  const button = card.querySelector("[data-copy-log]");
+  const copyButton = card.querySelector("[data-copy-log]");
   const range = card.querySelector(".diagnostic-range");
-  const feedback = card.querySelector(".control-feedback");
-
-  button.addEventListener("click", async () => {
-    button.disabled = true;
+  copyButton.addEventListener("click", async () => {
+    const characterName = card.dataset.character;
+    copyButton.disabled = true;
     feedback.textContent = "Diagnose wird erstellt …";
 
     try {
       const diagnostic = await fetchDiagnostic(
         `/headless/api/characters/${encodeURIComponent(
-          character.name,
+          characterName,
         )}/diagnostic`,
         range.value,
       );
@@ -164,61 +221,83 @@ function configureDiagnosticCopy(card, character) {
       addEvent({
         timestamp: Date.now(),
         event: "DIAGNOSTIC_COPY_ERROR",
-        character: character.name,
+        character: characterName,
         reason: error.message,
       });
     } finally {
-      button.disabled = false;
+      copyButton.disabled = false;
     }
   });
 }
 
-function refreshHeartbeatAges() {
-  for (const card of grid.querySelectorAll("[data-character]")) {
-    const character = state.characters.get(card.dataset.character);
-    if (!character) continue;
-    card.querySelector(".character-heartbeat").textContent = formatHeartbeat(
-      character.last_heartbeat_at,
-    );
-  }
+function createCharacterCard(characterName) {
+  const card = template.content.firstElementChild.cloneNode(true);
+  card.dataset.character = characterName;
+  card.dataset.controlBusy = "false";
+  configureCardInteractions(card);
+  cards.set(characterName, card);
+  return card;
+}
+
+function updateCharacterCard(card, character) {
+  const game = character.game;
+  const badge = card.querySelector(".state-badge");
+
+  card.querySelector(".character-name").textContent = character.name;
+  card.querySelector(".character-realm").textContent =
+    character.realm || "Realm unbekannt";
+  card.querySelector(".character-connected").textContent = character.connected
+    ? "ONLINE"
+    : "OFFLINE";
+  card.querySelector(".character-desired-state").textContent =
+    character.desired_runtime_state ||
+    (character.enabled ? "RUNNING" : "STOPPED");
+  card.querySelector(".character-class").textContent = game?.ctype || "—";
+  card.querySelector(".character-map").textContent = game?.map || "—";
+  card.querySelector(".character-position").textContent = game
+    ? `${formatCoordinate(game.x)}, ${formatCoordinate(game.y)}`
+    : "—";
+  card.querySelector(".character-heading").textContent = formatHeading(
+    game?.heading,
+    game?.direction,
+  );
+  card.querySelector(".character-resources").textContent =
+    formatResources(game);
+  card.querySelector(".character-movement").textContent = formatMovement(game);
+  card.querySelector(".character-target").textContent = formatTarget(game);
+  card.querySelector(".character-inventory-summary").textContent =
+    formatInventory(game);
+  card.querySelector(".character-pid").textContent = character.pid || "—";
+  card.querySelector(".character-script").textContent = character.script || "—";
+  card.querySelector(".character-restarts").textContent =
+    character.restart_attempts ?? 0;
+  card.querySelector(".character-heartbeat").textContent = formatHeartbeat(
+    character.last_heartbeat_at,
+  );
+
+  badge.textContent = character.lifecycle_state || "STOPPED";
+  badge.className = `state-badge ${badgeClass(character.lifecycle_state)}`;
+  updateControlButtons(card, character);
 }
 
 function renderCharacters() {
-  grid.replaceChildren();
-
   const characters = [...state.characters.values()].sort((a, b) =>
     a.name.localeCompare(b.name),
   );
+  const activeNames = new Set();
 
   for (const character of characters) {
-    const card = template.content.firstElementChild.cloneNode(true);
-    const badge = card.querySelector(".state-badge");
-    card.dataset.character = character.name;
-
-    card.querySelector(".character-name").textContent = character.name;
-    card.querySelector(".character-realm").textContent =
-      character.realm || "Realm unbekannt";
-    card.querySelector(".character-connected").textContent = character.connected
-      ? "ONLINE"
-      : "OFFLINE";
-    card.querySelector(".character-desired-state").textContent =
-      character.desired_runtime_state ||
-      (character.enabled ? "RUNNING" : "STOPPED");
-    card.querySelector(".character-pid").textContent = character.pid || "—";
-    card.querySelector(".character-script").textContent =
-      character.script || "—";
-    card.querySelector(".character-restarts").textContent =
-      character.restart_attempts ?? 0;
-    card.querySelector(".character-heartbeat").textContent = formatHeartbeat(
-      character.last_heartbeat_at,
-    );
-
-    badge.textContent = character.lifecycle_state || "STOPPED";
-    badge.className = `state-badge ${badgeClass(character.lifecycle_state)}`;
-
-    configureControlButtons(card, character);
-    configureDiagnosticCopy(card, character);
+    activeNames.add(character.name);
+    const card =
+      cards.get(character.name) || createCharacterCard(character.name);
+    updateCharacterCard(card, character);
     grid.append(card);
+  }
+
+  for (const [name, card] of cards) {
+    if (activeNames.has(name)) continue;
+    card.remove();
+    cards.delete(name);
   }
 
   const active = characters.filter((character) =>
@@ -228,6 +307,16 @@ function renderCharacters() {
   ).length;
 
   activeCount.textContent = `${active} / ${state.maxOnlineCharacters} aktiv`;
+}
+
+function refreshHeartbeatAges() {
+  for (const [name, card] of cards) {
+    const character = state.characters.get(name);
+    if (!character) continue;
+    card.querySelector(".character-heartbeat").textContent = formatHeartbeat(
+      character.last_heartbeat_at,
+    );
+  }
 }
 
 function addEvent(event) {
@@ -304,8 +393,6 @@ function connectEvents() {
   source.addEventListener("supervisor", (message) => {
     const event = JSON.parse(message.data);
     addEvent(event);
-
-    // Lifecycle events affect card state, so fetch one authoritative snapshot.
     loadInitialState().catch(() => {});
   });
 

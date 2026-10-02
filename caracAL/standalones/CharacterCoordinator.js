@@ -19,6 +19,7 @@ const {
 } = require("../src/CharacterControl");
 const { DiagnosticEventStore } = require("../src/DiagnosticStore");
 const { attachHeadlessDashboard } = require("../src/HeadlessDashboard");
+const { updateCharacterLiveState } = require("../src/LiveState");
 const {
   LIFECYCLE_STATES,
   computeRestartDelay,
@@ -285,6 +286,10 @@ function migrate_old_storage(path, localStorage) {
     char_block.last_heartbeat_at = char_block.last_heartbeat_at || 0;
     char_block.last_heartbeat_pid = char_block.last_heartbeat_pid || null;
     char_block.watchdog_recovery_in_progress = false;
+    char_block.live_state = char_block.live_state || null;
+    char_block.movement_trail = Array.isArray(char_block.movement_trail)
+      ? char_block.movement_trail
+      : [];
     char_block.desired_runtime_state =
       char_block.desired_runtime_state ||
       (char_block.enabled
@@ -684,6 +689,11 @@ function migrate_old_storage(path, localStorage) {
               : Date.now();
           char_block.last_heartbeat_pid = m.pid || result.pid || null;
           break;
+        case "stat_beat":
+          updateCharacterLiveState(char_block, m);
+          dashboard?.publishSnapshot();
+          break;
+
         case "connected":
           char_block.connected = true;
           char_block.last_heartbeat_at = Date.now();
