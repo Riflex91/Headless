@@ -273,6 +273,14 @@ class MerchantLogisticsPlanner {
       }
       if (result?.fulfilled === true) {
         this.recordClaimCompleted(id, timestamp);
+      } else {
+        this.outcomeHolds.set(id, {
+          outcome: "CONFIRMED_PARTIAL",
+          reason: "WAIT_FOR_STATE_RECONCILIATION",
+          at: timestamp,
+          retryAt:
+            timestamp + Math.min(5000, this.completionCooldownMs),
+        });
       }
       return true;
     }
