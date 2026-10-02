@@ -8,6 +8,12 @@ export interface CharacterSnapshot {
   maxHp: number | null;
   mp: number | null;
   maxMp: number | null;
+  level: number | null;
+  xp: number | null;
+  attack: number | null;
+  frequency: number | null;
+  armor: number | null;
+  resistance: number | null;
   range: number | null;
   gold: number | null;
   target: string | null;
@@ -25,6 +31,12 @@ export interface EntitySnapshot {
   y: number | null;
   hp: number | null;
   maxHp: number | null;
+  level: number | null;
+  attack: number | null;
+  frequency: number | null;
+  armor: number | null;
+  resistance: number | null;
+  range: number | null;
   target: string | null;
   dead: boolean;
   rip: boolean;
@@ -289,6 +301,12 @@ export class GameAdapter {
       maxHp: numberOrNull(current.max_hp),
       mp: numberOrNull(current.mp),
       maxMp: numberOrNull(current.max_mp),
+      level: numberOrNull(current.level),
+      xp: numberOrNull(current.xp),
+      attack: numberOrNull(current.attack),
+      frequency: numberOrNull(current.frequency),
+      armor: numberOrNull(current.armor),
+      resistance: numberOrNull(current.resistance),
       range: numberOrNull(current.range),
       gold: numberOrNull(current.gold),
       target: stringOrNull(current.target),
@@ -312,6 +330,12 @@ export class GameAdapter {
           y: numberOrNull(entity.y),
           hp: numberOrNull(entity.hp),
           maxHp: numberOrNull(entity.max_hp),
+          level: numberOrNull(entity.level),
+          attack: numberOrNull(entity.attack),
+          frequency: numberOrNull(entity.frequency),
+          armor: numberOrNull(entity.armor),
+          resistance: numberOrNull(entity.resistance),
+          range: numberOrNull(entity.range),
           target: stringOrNull(entity.target),
           dead: entity.dead === true,
           rip: entity.rip === true,
