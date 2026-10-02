@@ -161,6 +161,12 @@ export interface WishlistRequest extends BoundaryRequest {
   quantity?: number;
 }
 
+export interface PontyBuyRequest extends BoundaryRequest {
+  rid: string;
+  itemName: string;
+  price: number;
+}
+
 export interface MutationDriver {
   move(x: number, y: number): unknown;
   resolveEntity(id: string): unknown;
@@ -212,6 +218,7 @@ export interface MutationDriver {
     level?: number,
     quantity?: number,
   ): Promise<unknown> | unknown;
+  pontyBuy(rid: string): Promise<unknown> | unknown;
 }
 
 function runtimeFunction(name: string): (...args: unknown[]) => unknown {
@@ -223,6 +230,26 @@ function runtimeFunction(name: string): (...args: unknown[]) => unknown {
   }
 
   return fn as (...args: unknown[]) => unknown;
+}
+
+function runtimeSocketEmit(event: string, payload: unknown): unknown {
+  const local = globalThis as unknown as Record<string, unknown>;
+  const parentScope =
+    typeof parent === "undefined"
+      ? null
+      : (parent as unknown as Record<string, unknown>);
+  const socket = objectRecord(local.socket ?? parentScope?.socket);
+  const emit = socket.emit;
+
+  if (typeof emit !== "function") {
+    throw new Error("Adventure Land socket unavailable");
+  }
+
+  return (emit as (event: string, payload: unknown) => unknown).call(
+    socket,
+    event,
+    payload,
+  );
 }
 
 export function createRuntimeMutationDriver(): MutationDriver {
@@ -295,6 +322,7 @@ export function createRuntimeMutationDriver(): MutationDriver {
     craft: (itemSlots) => runtimeFunction("craft")(...itemSlots),
     wishlist: (slot, itemName, price, level, quantity) =>
       runtimeFunction("wishlist")(slot, itemName, price, level, quantity),
+    pontyBuy: (rid) => runtimeSocketEmit("sbuy", { rid }),
   };
 }
 
@@ -522,6 +550,7 @@ export const ACTION_BOUNDARY_MUTATION_CAPABILITIES = [
   "EXCHANGE",
   "CRAFT",
   "WISHLIST",
+  "PONTY_BUY",
 ] as const;
 
 export class ActionBoundary {
@@ -2661,6 +2690,117 @@ export class ActionBoundary {
         error: errorMessage(error),
         after: {
           tradeSlot: this.game.tradeSlots()[slot] || null,
+        },
+      });
+    }
+  }
+
+
+  pontyBuy(request: PontyBuyRequest): ActionRecord {
+    const rid = request.rid?.trim();
+    const itemNameValue = request.itemName?.trim();
+    const beforeCharacter = this.game.character();
+    const beforeInventory = this.game.inventory();
+    const itemDefinition = itemNameValue
+      ? gameItemDefinition(this.game.gameData(), itemNameValue)
+      : {};
+    const transaction = this.ledger.create({
+      module: request.module,
+      action: "PONTY_BUY",
+      why: request.why,
+      correlationId: request.correlationId,
+      expectedCost: {
+        gold: request.price,
+      },
+      expectedEffect: {
+        rid: rid || null,
+        itemName: itemNameValue || null,
+      },
+      before: {
+        gold: beforeCharacter.gold,
+        itemQuantity: itemNameValue
+          ? totalItemQuantity(beforeInventory, itemNameValue)
+          : 0,
+      },
+    });
+
+    if (transaction.status === "BLOCKED") return transaction;
+    if (!rid) {
+      return this.ledger.block(transaction.id, "PONTY_RID_INVALID");
+    }
+    if (!itemNameValue || !Object.keys(itemDefinition).length) {
+      return this.ledger.block(transaction.id, "PONTY_ITEM_INVALID");
+    }
+    if (!Number.isInteger(request.price) || request.price <= 0) {
+      return this.ledger.block(transaction.id, "PONTY_PRICE_INVALID");
+    }
+    if (
+      beforeCharacter.gold !== null &&
+      request.price > beforeCharacter.gold
+    ) {
+      return this.ledger.block(transaction.id, "INSUFFICIENT_GOLD");
+    }
+
+    this.ledger.dispatch(transaction.id, {
+      mutation: "sbuy",
+      rid,
+      itemName: itemNameValue,
+      price: request.price,
+    });
+
+    try {
+      const result = this.driver.pontyBuy(rid);
+      const afterInventory = this.game.inventory();
+      const afterCharacter = this.game.character();
+      const beforeQuantity = totalItemQuantity(
+        beforeInventory,
+        itemNameValue,
+      );
+      const afterQuantity = totalItemQuantity(afterInventory, itemNameValue);
+      const goldDelta =
+        beforeCharacter.gold !== null && afterCharacter.gold !== null
+          ? beforeCharacter.gold - afterCharacter.gold
+          : null;
+
+      if (explicitFailure(result)) {
+        return this.ledger.reject(transaction.id, {
+          why: "PONTY_BUY_API_REJECTED",
+          after: {
+            gold: afterCharacter.gold,
+            itemQuantity: afterQuantity,
+          },
+          evidence: { result: safeResultEvidence(result) },
+        });
+      }
+      if (
+        afterQuantity > beforeQuantity ||
+        (goldDelta !== null && goldDelta >= request.price)
+      ) {
+        return this.ledger.confirm(transaction.id, {
+          why: "PONTY_BUY_STATE_CONFIRMED",
+          after: {
+            gold: afterCharacter.gold,
+            itemQuantity: afterQuantity,
+          },
+          evidence: {
+            itemDelta: afterQuantity - beforeQuantity,
+            goldDelta,
+            result: safeResultEvidence(result),
+          },
+        });
+      }
+
+      return this.ledger.get(transaction.id)!;
+    } catch (error) {
+      return this.ledger.unknown(transaction.id, {
+        why: "PONTY_BUY_OUTCOME_UNCERTAIN",
+        error: errorMessage(error),
+        after: {
+          gold: this.game.character().gold,
+          itemQuantity: totalItemQuantity(
+            this.game.inventory(),
+            itemNameValue,
+          ),
         },
       });
     }
