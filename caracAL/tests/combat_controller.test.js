@@ -191,7 +191,10 @@ test("HP management uses potion before attacking", async () => {
   assert.deepEqual(setup.calls[0], ["skill", "use_hp"]);
   assert.equal(status.state, "RECOVERING");
   assert.equal(status.reason, "HP_POTION_USED");
-  assert.equal(setup.calls.some((entry) => entry[0] === "attack"), false);
+  assert.equal(
+    setup.calls.some((entry) => entry[0] === "attack"),
+    false,
+  );
 });
 
 test("MP management uses potion at configured threshold", async () => {
@@ -247,7 +250,10 @@ test("range gating prevents out-of-range attack", async () => {
   const status = await setup.controller.tick();
   assert.equal(status.state, "OUT_OF_RANGE");
   assert.equal(status.reason, "TARGET_OUT_OF_ATTACK_RANGE");
-  assert.equal(setup.calls.some((entry) => entry[0] === "attack"), false);
+  assert.equal(
+    setup.calls.some((entry) => entry[0] === "attack"),
+    false,
+  );
 });
 
 test("attack cooldown prevents dispatch", async () => {
@@ -258,7 +264,10 @@ test("attack cooldown prevents dispatch", async () => {
   const status = await setup.controller.tick();
   assert.equal(status.state, "COOLDOWN");
   assert.equal(status.cooldowns.attackRemainingMs, 500);
-  assert.equal(setup.calls.some((entry) => entry[0] === "attack"), false);
+  assert.equal(
+    setup.calls.some((entry) => entry[0] === "attack"),
+    false,
+  );
 });
 
 test("retreat captures anchor and returns on low HP", async () => {
@@ -351,19 +360,3 @@ test("death handling auto-respawns with retry throttle", async () => {
   status = await setup.controller.tick();
   assert.equal(respawns, 2);
 });
-
- // PRETTIER_PROBE_START
-test("prettier probe", async () => {
-  const fs = require("node:fs");
-  const prettier = await import("prettier");
-  const source = fs.readFileSync(__filename, "utf8");
-  const stripped = source.replace(
-    /\n \/\/ PRETTIER_PROBE_START[\s\S]*\/\/ PRETTIER_PROBE_END\n?$/,
-    "\n",
-  );
-  const formatted = await prettier.format(stripped, { filepath: __filename });
-  console.log(
-    `PRETTIER_PROBE_BASE64=${Buffer.from(formatted).toString("base64")}`,
-  );
-});
-// PRETTIER_PROBE_END
