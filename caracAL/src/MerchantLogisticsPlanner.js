@@ -72,9 +72,7 @@ function isLive(block) {
 }
 
 function inventoryItems(block) {
-  return Array.isArray(block?.live_state?.items)
-    ? block.live_state.items
-    : [];
+  return Array.isArray(block?.live_state?.items) ? block.live_state.items : [];
 }
 
 function equipmentItems(block) {
@@ -253,9 +251,7 @@ class MerchantLogisticsPlanner {
 
   recordClaimCompleted(claimOrId, at = this.now()) {
     const id =
-      typeof claimOrId === "string"
-        ? claimOrId
-        : stringValue(claimOrId?.id);
+      typeof claimOrId === "string" ? claimOrId : stringValue(claimOrId?.id);
     if (!id) return false;
     this.completedClaims.set(id, finite(at, this.now()));
     this.prune();
@@ -303,9 +299,7 @@ class MerchantLogisticsPlanner {
             merchant,
             priority: priorityFor("MLUCK", logistics.mluck.priority),
             reason: "MLUCK_REQUESTED",
-            direction: merchant
-              ? merchant.name + "->" + farmerName
-              : null,
+            direction: merchant ? merchant.name + "->" + farmerName : null,
           }),
         );
       }
@@ -322,9 +316,7 @@ class MerchantLogisticsPlanner {
             quantity: target.target - current,
             priority: priorityFor("POTION_DELIVERY", target.priority),
             reason: "POTION_BELOW_TARGET",
-            direction: merchant
-              ? merchant.name + "->" + farmerName
-              : null,
+            direction: merchant ? merchant.name + "->" + farmerName : null,
           }),
         );
       }
@@ -341,9 +333,7 @@ class MerchantLogisticsPlanner {
             quantity: target.target - current,
             priority: priorityFor("ITEM_DELIVERY", target.priority),
             reason: "ITEM_BELOW_TARGET",
-            direction: merchant
-              ? merchant.name + "->" + farmerName
-              : null,
+            direction: merchant ? merchant.name + "->" + farmerName : null,
           }),
         );
       }
@@ -354,10 +344,7 @@ class MerchantLogisticsPlanner {
         keepGold,
         finite(logistics.gold.pickupAbove, keepGold),
       );
-      const minTransfer = Math.max(
-        1,
-        finite(logistics.gold.minTransfer, 1),
-      );
+      const minTransfer = Math.max(1, finite(logistics.gold.minTransfer, 1));
       if (logistics.gold.enabled === true && farmerGold > pickupAbove) {
         const amount = Math.floor(farmerGold - keepGold);
         if (amount >= minTransfer) {
@@ -367,14 +354,9 @@ class MerchantLogisticsPlanner {
               farmer: farmerName,
               merchant,
               amount,
-              priority: priorityFor(
-                "GOLD_PICKUP",
-                logistics.gold.priority,
-              ),
+              priority: priorityFor("GOLD_PICKUP", logistics.gold.priority),
               reason: "GOLD_ABOVE_RESERVE",
-              direction: merchant
-                ? farmerName + "->" + merchant.name
-                : null,
+              direction: merchant ? farmerName + "->" + merchant.name : null,
             }),
           );
         }
@@ -409,9 +391,7 @@ class MerchantLogisticsPlanner {
                   logistics.inventoryPressure.priority,
                 ),
                 reason: "FARMER_INVENTORY_PRESSURE",
-                direction: merchant
-                  ? farmerName + "->" + merchant.name
-                  : null,
+                direction: merchant ? farmerName + "->" + merchant.name : null,
                 metadata: {
                   freeSlots,
                   threshold,
@@ -434,9 +414,7 @@ class MerchantLogisticsPlanner {
             quantity: 1,
             priority: priorityFor("GEAR_DELIVERY", target.priority),
             reason: "DESIRED_GEAR_MISSING",
-            direction: merchant
-              ? merchant.name + "->" + farmerName
-              : null,
+            direction: merchant ? merchant.name + "->" + farmerName : null,
           }),
         );
       }

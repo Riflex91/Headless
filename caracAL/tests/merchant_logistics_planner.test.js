@@ -139,9 +139,7 @@ test("planner creates all Phase 11 farmer claim types from live account state", 
     assert.equal(types.has(type), true, type + " missing");
   }
 
-  const potion = board.claims.find(
-    (claim) => claim.type === "POTION_DELIVERY",
-  );
+  const potion = board.claims.find((claim) => claim.type === "POTION_DELIVERY");
   assert.equal(potion.itemName, "hpot0");
   assert.equal(potion.quantity, 80);
 

@@ -5,9 +5,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
 
-const {
-  buildSupervisorSnapshot,
-} = require("../src/HeadlessDashboard");
+const { buildSupervisorSnapshot } = require("../src/HeadlessDashboard");
 
 test("supervisor snapshot exposes account-wide merchant logistics board", () => {
   const board = {

@@ -76,9 +76,7 @@ const {
 } = require("../src/InventoryLiveTest");
 const { PersistenceService } = require("../src/PersistenceService");
 const { CharacterConfigService } = require("../src/CharacterConfigService");
-const {
-  MerchantLogisticsPlanner,
-} = require("../src/MerchantLogisticsPlanner");
+const { MerchantLogisticsPlanner } = require("../src/MerchantLogisticsPlanner");
 const {
   beginSnapshotPersist,
   buildCharacterProfile,
@@ -209,9 +207,8 @@ function migrate_old_storage(path, localStorage) {
   });
   const character_config_service = new CharacterConfigService({ persistence });
   const merchant_logistics_planner = new MerchantLogisticsPlanner();
-  let merchant_logistics_board = merchant_logistics_planner.plan(
-    character_manage,
-  );
+  let merchant_logistics_board =
+    merchant_logistics_planner.plan(character_manage);
   let merchant_logistics_signature = null;
   const diagnostic_store = new DiagnosticEventStore({ maxEvents: 20000 });
   const emergency_stop = new EmergencyStopState();
