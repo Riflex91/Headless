@@ -106,6 +106,7 @@ function publicCharacterState(name, charBlock = {}) {
     combat_runtime: charBlock.combat_runtime || null,
     class_skill_runtime: charBlock.class_skill_runtime || null,
     group_combat_runtime: charBlock.group_combat_runtime || null,
+    farm_intelligence_runtime: charBlock.farm_intelligence_runtime || null,
     game: publicLiveState(charBlock.live_state),
     movement_trail: Array.isArray(charBlock.movement_trail)
       ? charBlock.movement_trail

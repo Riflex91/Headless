@@ -262,6 +262,27 @@ function formatGroupTether(runtime) {
   )} · Hard ${Math.round(tether.hardDistance || 0)}${focus}`;
 }
 
+function formatFarmIntelligence(runtime) {
+  if (!runtime) return "—";
+  if (runtime.state === "DISABLED") return "DISABLED";
+  const selected = runtime.selected;
+  if (!selected) return runtime.reason || runtime.state || "NO_CANDIDATES";
+  const observed = selected.observed
+    ? ` · Obs XP/h ${Math.round(
+        selected.observed.xpPerHour || 0,
+      )} · Gold/h ${Math.round(selected.observed.goldPerHour || 0)}`
+    : "";
+  return `${selected.monster} · ${selected.map} · Score ${selected.score}${observed}`;
+}
+
+function formatFarmWhyMonster(runtime) {
+  return runtime?.selected?.whyMonster || "—";
+}
+
+function formatFarmWhySpot(runtime) {
+  return runtime?.selected?.whySpot || "—";
+}
+
 function formatCombat(combat) {
   if (!combat) return "—";
   const reason = combat.reason ? ` · ${combat.reason}` : "";
@@ -1136,6 +1157,12 @@ function updateCharacterCard(card, character) {
   card.querySelector(".character-group-tether").textContent = formatGroupTether(
     character.group_combat_runtime,
   );
+  card.querySelector(".character-farm-intelligence").textContent =
+    formatFarmIntelligence(character.farm_intelligence_runtime);
+  card.querySelector(".character-farm-why-monster").textContent =
+    formatFarmWhyMonster(character.farm_intelligence_runtime);
+  card.querySelector(".character-farm-why-spot").textContent =
+    formatFarmWhySpot(character.farm_intelligence_runtime);
   card.querySelector(".character-movement").textContent = formatMovement(game);
   card.querySelector(".character-movement-owner").textContent =
     formatMovementOwner(game);
