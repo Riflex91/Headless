@@ -52,6 +52,7 @@ export interface ActionLedgerOptions {
   nextCorrelationId?: () => string;
   maxRecords?: number;
   isEmergencyStopActive?: () => boolean;
+  allowDuringEmergencyStop?: (action: string) => boolean;
   emit?: (event: ActionLedgerEvent) => void;
 }
 
@@ -63,6 +64,7 @@ export class ActionLedger {
   private readonly nextCorrelationId: () => string;
   private readonly maxRecords: number;
   private readonly isEmergencyStopActive: () => boolean;
+  private readonly allowDuringEmergencyStop: (action: string) => boolean;
   private readonly emit?: (event: ActionLedgerEvent) => void;
   private actionSequence = 0;
   private correlationSequence = 0;
@@ -84,6 +86,8 @@ export class ActionLedger {
     this.maxRecords = Math.max(50, options.maxRecords || 1000);
     this.isEmergencyStopActive =
       options.isEmergencyStopActive || (() => false);
+    this.allowDuringEmergencyStop =
+      options.allowDuringEmergencyStop || (() => false);
     this.emit = options.emit;
   }
 
