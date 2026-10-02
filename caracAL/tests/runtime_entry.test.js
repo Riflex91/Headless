@@ -193,5 +193,3 @@ test("combat live E2E is wired through runtime and character IPC", () => {
   assert.match(thread, /combat_live_test/);
   assert.match(thread, /combat_live_test_result/);
 });
-
-
