@@ -104,6 +104,15 @@ test("runtime feature code cannot call Adventure Land mutations directly", () =>
           fullPath,
         )} must route Ponty sbuy through ActionBoundary`,
       );
+
+      assert.doesNotMatch(
+        source,
+        /\bstop\s*\(\s*["']move["']\s*\)/,
+        `${path.relative(
+          botRoot,
+          fullPath,
+        )} must route movement cancellation through ActionBoundary`,
+      );
     }
   };
 
@@ -145,6 +154,8 @@ test("runtime kernel emits periodic health without gameplay work", () => {
   assert.match(kernel, /schedulerJobs/);
   assert.match(kernel, /gameAdapterReads/);
   assert.match(kernel, /actionBoundaryMutations/);
+  assert.match(kernel, /movement/);
+  assert.match(kernel, /MOVEMENT_SETTLEMENT_JOB_ID/);
 });
 
 test("CharacterThread exposes supervisor-assigned revisions", () => {
