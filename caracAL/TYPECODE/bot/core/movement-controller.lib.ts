@@ -540,6 +540,13 @@ export class MovementController {
     });
 
     if (
+      record.status === "DISPATCHED" &&
+      this.paths.status()?.id === path.id
+    ) {
+      this.mode = "PATH";
+    }
+
+    if (
       record.status === "BLOCKED" ||
       record.status === "REJECTED"
     ) {
