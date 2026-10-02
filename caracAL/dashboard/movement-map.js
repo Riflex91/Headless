@@ -333,6 +333,7 @@
 
   function renderMovementMap({
     svg,
+    backgroundCanvas,
     legend,
     emptyState,
     characters,
@@ -342,6 +343,9 @@
     showPlan,
     showFacing,
     showTarget,
+    showMonsters,
+    showNpcs,
+    mapScene,
     now = Date.now(),
   }) {
     if (!svg || !legend || !emptyState) return;
@@ -362,6 +366,10 @@
 
     if (!bounds) {
       emptyState.hidden = false;
+      if (backgroundCanvas) {
+        const context = backgroundCanvas.getContext?.("2d");
+        context?.clearRect(0, 0, backgroundCanvas.width, backgroundCanvas.height);
+      }
       return;
     }
 
@@ -370,6 +378,15 @@
       "viewBox",
       `${bounds.minX} ${bounds.minY} ${bounds.width} ${bounds.height}`,
     );
+
+    const backgroundApi = globalScope?.HeadlessOriginalMapBackground;
+    if (backgroundCanvas && backgroundApi?.renderOriginalMapBackground) {
+      void backgroundApi.renderOriginalMapBackground({
+        canvas: backgroundCanvas,
+        scene: mapScene,
+        bounds,
+      });
+    }
 
     const gridSize = 100;
     const gridGroup = createSvgElement("g", { class: "map-grid" });
@@ -404,6 +421,35 @@
       28,
       Math.min(bounds.width, bounds.height) * 0.05,
     );
+
+    const liveEntities = nearbyEntities(characters, mapName).filter((entity) =>
+      pointInBounds(entity, bounds),
+    );
+    const monsters = liveEntities.filter((entity) => entity.kind === "monster");
+    const npcMap = new Map();
+    for (const npc of sceneNpcs(mapScene).concat(
+      liveEntities.filter((entity) => entity.kind === "npc"),
+    )) {
+      if (!pointInBounds(npc, bounds)) continue;
+      const key = [
+        npc.id || npc.npc || npc.name,
+        Math.round(npc.x),
+        Math.round(npc.y),
+      ].join("|");
+      npcMap.set(key, npc);
+    }
+    const npcs = [...npcMap.values()];
+
+    if (showMonsters) {
+      for (const monster of monsters) {
+        appendEntityMarker(svg, monster, markerLength);
+      }
+    }
+    if (showNpcs) {
+      for (const npc of npcs) {
+        appendEntityMarker(svg, npc, markerLength);
+      }
+    }
 
     geometries.forEach((geometry, index) => {
       const character = geometry.character;
@@ -490,6 +536,12 @@
       row.append(dot, text);
       legend.append(row);
     });
+
+    appendEntityLegend(
+      legend,
+      showMonsters ? monsters : [],
+      showNpcs ? npcs : [],
+    );
   }
 
   const api = {
@@ -498,8 +550,11 @@
     computeBounds,
     filterTrail,
     finitePoint,
+    nearbyEntities,
     plannedPath,
+    pointInBounds,
     renderMovementMap,
+    sceneNpcs,
   };
 
   if (typeof module !== "undefined" && module.exports) {
