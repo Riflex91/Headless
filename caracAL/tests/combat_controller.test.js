@@ -244,6 +244,33 @@ test("nearest eligible monster is attacked in range", async () => {
   assert.equal(status.target.inRange, true);
 });
 
+test("UNKNOWN attack outcome is not blindly retried", async () => {
+  let attacks = 0;
+  const setup = makeController({
+    actions: {
+      async attack() {
+        attacks += 1;
+        return action("unknown-attack", "UNKNOWN");
+      },
+    },
+  });
+
+  let status = await setup.controller.tick();
+  assert.equal(status.reason, "ATTACK_OUTCOME_UNKNOWN");
+  assert.equal(attacks, 1);
+
+  status = await setup.controller.tick();
+  assert.equal(status.reason, "ATTACK_OUTCOME_UNKNOWN");
+  assert.equal(attacks, 1);
+
+  setup.state.cooldowns = [
+    { skill: "attack", readyAt: 2000, remainingMs: 1000, ready: false },
+  ];
+  status = await setup.controller.tick();
+  assert.equal(status.state, "COOLDOWN");
+  assert.equal(attacks, 1);
+});
+
 test("range gating prevents out-of-range attack", async () => {
   const setup = makeController();
   setup.state.entities = [setup.state.entities[1]];
