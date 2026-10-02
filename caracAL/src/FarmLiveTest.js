@@ -111,8 +111,7 @@ function farmLiveTestDiagnostics(
     },
     observed: {
       candidate_selected: !!runtime.selection?.sampled,
-      why_monster_projected:
-        runtime.selection?.whyMonsterProjected === true,
+      why_monster_projected: runtime.selection?.whyMonsterProjected === true,
       why_spot_projected: runtime.selection?.whySpotProjected === true,
       observed_performance_projected:
         runtime.selection?.observedPerformanceProjected === true,
