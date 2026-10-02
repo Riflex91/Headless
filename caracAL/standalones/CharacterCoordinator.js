@@ -34,7 +34,10 @@ const { attachHeadlessDashboard } = require("../src/HeadlessDashboard");
 const { IncidentRecorder } = require("../src/IncidentRecorder");
 const { createRotationPlan } = require("../src/CharacterRotation");
 const { StructuredLogger } = require("../src/StructuredLogger");
-const { updateCharacterLiveState } = require("../src/LiveState");
+const {
+  updateCharacterLiveState,
+  updateCharacterMovementRuntime,
+} = require("../src/LiveState");
 const { normalizeRuntimeEvent } = require("../src/RuntimeEventBridge");
 const { PersistenceService } = require("../src/PersistenceService");
 const { CharacterConfigService } = require("../src/CharacterConfigService");
@@ -415,6 +418,19 @@ function migrate_old_storage(path, localStorage) {
       return;
     }
 
+    const char_block = character_manage[char_name];
+    if (char_block && normalized.data?.movement) {
+      updateCharacterMovementRuntime(
+        char_block,
+        normalized.data.movement,
+        {
+          timestamp: normalized.timestamp,
+          eventType: normalized.type,
+          eventReason: normalized.why || null,
+        },
+      );
+    }
+
     const payload = {
       ...normalized,
       character: char_name,
@@ -425,6 +441,10 @@ function migrate_old_storage(path, localStorage) {
       sanitized_payload,
       `${char_name} runtime ${normalized.module}:${normalized.type}`,
     );
+
+    if (char_block && normalized.data?.movement) {
+      dashboard?.publishSnapshot();
+    }
   }
 
   function set_lifecycle_state(char_name, state, reason) {
