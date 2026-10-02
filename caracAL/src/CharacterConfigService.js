@@ -45,6 +45,33 @@ function nextCharacterConfigRevision(currentRevision) {
   return normalized + 1;
 }
 
+function prepareConfigPush(currentRevision, incomingRevision, config) {
+  const current = Number(currentRevision);
+  const normalizedCurrent =
+    Number.isInteger(current) && current >= 0 ? current : 0;
+  const incoming = Number(incomingRevision);
+
+  if (!Number.isInteger(incoming) || incoming < 0) {
+    throw configError(
+      "CHARACTER_CONFIG_REVISION_INVALID",
+      "Character config revision must be a non-negative integer",
+    );
+  }
+  if (incoming < normalizedCurrent) {
+    throw configError(
+      "CHARACTER_CONFIG_REVISION_STALE",
+      `Config revision ${incoming} is older than applied revision ${normalizedCurrent}`,
+      409,
+    );
+  }
+
+  return {
+    revision: incoming,
+    config: normalizeCharacterConfig(config),
+    changed: incoming > normalizedCurrent,
+  };
+}
+
 class CharacterConfigService {
   constructor({ persistence } = {}) {
     if (!persistence) {
@@ -94,4 +121,5 @@ module.exports = {
   configError,
   nextCharacterConfigRevision,
   normalizeCharacterConfig,
+  prepareConfigPush,
 };
