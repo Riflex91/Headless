@@ -98,6 +98,7 @@ function publicCharacterState(name, charBlock = {}) {
     config_push_status: charBlock.config_push_status || "UNKNOWN",
     config_push_error: charBlock.config_push_error || null,
     revision_status: charBlock.revision_status || "UNKNOWN",
+    movement_live_test: charBlock.movement_live_test || null,
     game: publicLiveState(charBlock.live_state),
     movement_trail: Array.isArray(charBlock.movement_trail)
       ? charBlock.movement_trail
@@ -178,6 +179,7 @@ function attachHeadlessDashboard({
   controlCharacter,
   updateCharacterConfig,
   controlRotation,
+  runMovementLiveTest,
   controlEmergencyStop,
   getEmergencyStopState,
   getRevisionSummary,
@@ -263,6 +265,30 @@ function attachHeadlessDashboard({
       } catch (error) {
         res.status(Number(error.statusCode) || 500).json({
           error: error.code || "ROTATION_FAILED",
+          message: error.message,
+        });
+      }
+    },
+  );
+
+  router.post(
+    "/headless/api/characters/:name/tests/movement",
+    async (req, res) => {
+      if (!runMovementLiveTest) {
+        res.status(503).json({ error: "MOVEMENT_LIVE_TEST_UNAVAILABLE" });
+        return;
+      }
+
+      try {
+        const result = await runMovementLiveTest(req.params.name);
+        res.json({
+          ok: result?.outcome === "PASS",
+          result,
+          snapshot: getSnapshot(),
+        });
+      } catch (error) {
+        res.status(Number(error.statusCode) || 500).json({
+          error: error.code || "MOVEMENT_LIVE_TEST_FAILED",
           message: error.message,
         });
       }
