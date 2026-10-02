@@ -41,9 +41,9 @@ function formatHeading(value, direction) {
 
 function formatResources(game) {
   if (!game) return "—";
-  return `HP ${game.hp ?? "—"}/${game.max_hp ?? "—"} · MP ${
-    game.mp ?? "—"
-  }/${game.max_mp ?? "—"}`;
+  return `HP ${game.hp ?? "—"}/${game.max_hp ?? "—"} · MP ${game.mp ?? "—"}/${
+    game.max_mp ?? "—"
+  }`;
 }
 
 function formatMovement(game) {
@@ -53,9 +53,9 @@ function formatMovement(game) {
   const destination = game.movement_destination;
   if (!destination) return "MOVING";
 
-  return `MOVING → ${formatCoordinate(
-    destination.x,
-  )}, ${formatCoordinate(destination.y)}`;
+  return `MOVING → ${formatCoordinate(destination.x)}, ${formatCoordinate(
+    destination.y,
+  )}`;
 }
 
 function formatTarget(game) {
@@ -268,8 +268,7 @@ function updateCharacterCard(card, character) {
   card.querySelector(".character-inventory-summary").textContent =
     formatInventory(game);
   card.querySelector(".character-pid").textContent = character.pid || "—";
-  card.querySelector(".character-script").textContent =
-    character.script || "—";
+  card.querySelector(".character-script").textContent = character.script || "—";
   card.querySelector(".character-restarts").textContent =
     character.restart_attempts ?? 0;
   card.querySelector(".character-heartbeat").textContent = formatHeartbeat(
