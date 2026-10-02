@@ -109,6 +109,7 @@ test("logistics supervisor proves priority, routing and UNKNOWN no-retry when na
       suppressed: [
         {
           id: "ITEM_DELIVERY:My_Ranger:My_Merchant:computer:",
+          status: "SUPPRESSED",
           suppressionReason: "OUTCOME_UNCERTAIN",
         },
         {
