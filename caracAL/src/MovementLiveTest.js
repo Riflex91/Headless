@@ -142,8 +142,9 @@ function movementLiveTestDiagnostics(
     },
     result: runtime.outcome || null,
     reason: runtime.reason || null,
-    duration_ms:
-      Number.isFinite(runtime.durationMs) ? runtime.durationMs : null,
+    duration_ms: Number.isFinite(runtime.durationMs)
+      ? runtime.durationMs
+      : null,
     incident_id: incidentId,
   };
 }
