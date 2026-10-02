@@ -68,9 +68,7 @@ const revisionSummarySource = document.querySelector(
 const revisionSummaryConfig = document.querySelector(
   "#revision-summary-config",
 );
-const persistenceSummary = document.querySelector(
-  "#persistence-summary",
-);
+const persistenceSummary = document.querySelector("#persistence-summary");
 const persistenceSummaryStatus = document.querySelector(
   "#persistence-summary-status",
 );
@@ -254,17 +252,14 @@ function renderPersistenceSummary() {
   };
   const status = persistence.status || "UNKNOWN";
 
-  persistenceSummary.className =
-    `persistence-summary persistence-${status.toLowerCase()}`;
+  persistenceSummary.className = `persistence-summary persistence-${status.toLowerCase()}`;
   persistenceSummaryStatus.textContent = `Persistence: ${status}`;
-  persistenceSummarySchema.textContent =
-    `Schema: ${persistence.schema_version ?? "—"}/${
-      persistence.current_schema_version ?? "—"
-    }`;
-  persistenceSummaryFlushes.textContent =
-    persistence.last_error
-      ? `Fehler: ${persistence.last_error}`
-      : `Flushes: ${persistence.flush_count ?? 0}`;
+  persistenceSummarySchema.textContent = `Schema: ${
+    persistence.schema_version ?? "—"
+  }/${persistence.current_schema_version ?? "—"}`;
+  persistenceSummaryFlushes.textContent = persistence.last_error
+    ? `Fehler: ${persistence.last_error}`
+    : `Flushes: ${persistence.flush_count ?? 0}`;
 }
 
 function renderEmergencyStop() {
