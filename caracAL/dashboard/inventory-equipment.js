@@ -120,7 +120,9 @@
 
     if (!item?.icon) {
       sprite.classList.add("item-icon-fallback");
-      sprite.textContent = item?.name ? item.name.slice(0, 3).toUpperCase() : "";
+      sprite.textContent = item?.name
+        ? item.name.slice(0, 3).toUpperCase()
+        : "";
     }
 
     const index = document.createElement("span");
