@@ -91,7 +91,7 @@ async function make_runner(upper, CODE_file, version, is_typescript) {
   //TODO in the future i should consider parsing the relevant parts out of the html files directly
   //for the runners as well as the instances
   vm.runInContext(
-    "var active=false,catch_errors=true,is_code=1,is_server=0,is_game=0,is_bot=parent.is_bot,is_cli=parent.is_cli,is_sdk=parent.is_sdk;",
+    "var active=false,catch_errors=true,Place='code',is_code=1,is_server=0,is_game=0,is_bot=parent.is_bot,is_cli=parent.is_cli,is_sdk=parent.is_sdk,Dev=parent.Dev,Staging=parent.Staging,Prod=parent.Prod,Local=parent.Local;",
     runner_context,
   );
   await ev_files(runner_sources, runner_context);
@@ -219,6 +219,7 @@ async function make_game(proc_args) {
   console.log("constructing game instance");
   console.debug("source files:\n%s", game_sources);
   const game_context = make_context();
+  game_context.Place = "game";
   setAdventureLandAuthCookie(game_context, proc_args.sess);
   const serverAddress = proc_args.realm_address || proc_args.realm_addr;
   const serverPath = proc_args.realm_path || "/socket.io";
