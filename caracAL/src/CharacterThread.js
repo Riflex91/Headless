@@ -178,6 +178,13 @@ async function make_game(proc_args) {
   extensions.code_revision = proc_args.code_revision || null;
   extensions.config_revision = proc_args.config_revision || null;
   extensions.source_revision = proc_args.source_revision || null;
+  extensions.character_config = proc_args.character_config || {};
+  extensions.character_config_revision = Number.isInteger(
+    proc_args.character_config_revision,
+  )
+    ? proc_args.character_config_revision
+    : 0;
+  extensions.character_config_applied_at = Date.now();
   extensions.emergency_stop = !!proc_args.emergency_stop?.active;
   extensions.emergency_stop_state = proc_args.emergency_stop || {
     active: false,
@@ -282,6 +289,11 @@ async function make_game(proc_args) {
     game_context,
   );
   process.send({ type: "initialized" });
+  process.send({
+    type: "config_applied",
+    revision: extensions.character_config_revision,
+    timestamp: extensions.character_config_applied_at,
+  });
   process.on("message", (m) => {
     switch (m.type) {
       case "siblings_and_acc":
@@ -321,6 +333,28 @@ async function make_game(proc_args) {
           state: extensions.emergency_stop_state,
         });
         break;
+      case "config_changed": {
+        const revision = Number(m.revision);
+        if (
+          Number.isInteger(revision) &&
+          revision >= extensions.character_config_revision &&
+          m.config &&
+          typeof m.config === "object" &&
+          !Array.isArray(m.config)
+        ) {
+          if (revision > extensions.character_config_revision) {
+            extensions.character_config = m.config;
+            extensions.character_config_revision = revision;
+            extensions.character_config_applied_at = Date.now();
+          }
+          process.send({
+            type: "config_applied",
+            revision: extensions.character_config_revision,
+            timestamp: extensions.character_config_applied_at,
+          });
+        }
+        break;
+      }
     }
   });
   vm.runInContext("the_game()", game_context);
