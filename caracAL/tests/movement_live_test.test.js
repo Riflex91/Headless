@@ -210,9 +210,7 @@ test("movement live runner autonomously paths and returns to captured safe point
 });
 
 test("movement live runner retries a known rejected local route autonomously", async () => {
-  const { MovementLiveTestRunner } = coreModule(
-    "movement-live-test.lib.ts",
-  );
+  const { MovementLiveTestRunner } = coreModule("movement-live-test.lib.ts");
   const harness = successfulHarness({ rejectFirstRoute: true });
   const runner = new MovementLiveTestRunner({
     movement: harness.movement,
@@ -229,9 +227,7 @@ test("movement live runner retries a known rejected local route autonomously", a
 });
 
 test("movement live runner never blind-retries UNKNOWN movement", async () => {
-  const { MovementLiveTestRunner } = coreModule(
-    "movement-live-test.lib.ts",
-  );
+  const { MovementLiveTestRunner } = coreModule("movement-live-test.lib.ts");
   let pathCalls = 0;
   let cancelCalls = 0;
   let safePoint = null;
