@@ -173,6 +173,20 @@ function formatMovementStuck(game) {
     : "STUCK";
 }
 
+function formatMovementLiveTest(liveTest) {
+  if (!liveTest) return "noch nicht ausgeführt";
+  if (liveTest.status === "STARTING" || liveTest.status === "RUNNING") {
+    return `${liveTest.status} · ${liveTest.request_id || "—"}`;
+  }
+
+  const outcome = liveTest.outcome || liveTest.status || "UNKNOWN";
+  const reason = liveTest.reason ? ` · ${liveTest.reason}` : "";
+  const completed = liveTest.completed_at
+    ? ` · ${formatTimestamp(liveTest.completed_at)}`
+    : "";
+  return `${outcome}${reason}${completed}`;
+}
+
 function formatTarget(game) {
   if (!game) return "—";
   const target = game.target;
@@ -428,6 +442,28 @@ async function sendCharacterControl(characterName, action) {
   }
 }
 
+async function sendMovementLiveTest(characterName) {
+  const response = await fetch(
+    `/headless/api/characters/${encodeURIComponent(
+      characterName,
+    )}/tests/movement`,
+    {
+      method: "POST",
+    },
+  );
+  const payload = await response.json();
+
+  if (payload.snapshot) {
+    applySnapshot(payload.snapshot);
+  }
+  if (!response.ok) {
+    throw new Error(
+      payload.message || payload.error || "Movement live test failed",
+    );
+  }
+  return payload.result;
+}
+
 function updateControlButtons(card, character) {
   const desired =
     character.desired_runtime_state ||
@@ -455,6 +491,17 @@ function updateControlButtons(card, character) {
     } else if (action === "stop") {
       button.disabled = desired === "STOPPED" && !character.pid;
     }
+  }
+
+  const movementLiveTestButton = card.querySelector(
+    "[data-movement-live-test]",
+  );
+  if (movementLiveTestButton) {
+    movementLiveTestButton.disabled =
+      busy ||
+      ["STARTING", "RUNNING"].includes(
+        character.movement_live_test?.status || "",
+      );
   }
 }
 
@@ -491,6 +538,39 @@ function configureCardInteractions(card) {
       }
     });
   }
+
+  const movementLiveTestButton = card.querySelector(
+    "[data-movement-live-test]",
+  );
+  movementLiveTestButton?.addEventListener("click", async () => {
+    const characterName = card.dataset.character;
+    const character = state.characters.get(characterName);
+    if (!character) return;
+
+    card.dataset.controlBusy = "true";
+    updateControlButtons(card, character);
+    feedback.textContent = "Autonomer Movement-E2E-Test läuft …";
+
+    try {
+      const result = await sendMovementLiveTest(characterName);
+      feedback.textContent = `Movement E2E: ${result?.outcome || "UNKNOWN"} · ${
+        result?.reason || "ohne Reason"
+      }`;
+    } catch (error) {
+      feedback.textContent = error.message;
+      addEvent({
+        timestamp: Date.now(),
+        event: "MOVEMENT_LIVE_TEST_UI_ERROR",
+        character: characterName,
+        reason: error.message,
+      });
+      await loadInitialState().catch(() => {});
+    } finally {
+      card.dataset.controlBusy = "false";
+      const current = state.characters.get(characterName);
+      if (current) updateControlButtons(card, current);
+    }
+  });
 
   const copyButton = card.querySelector("[data-copy-log]");
   const range = card.querySelector(".diagnostic-range");
@@ -570,6 +650,17 @@ function updateCharacterCard(card, character) {
     "movement-stuck-active",
     !!game?.movement_stuck?.stuck,
   );
+  const movementLiveTest = card.querySelector(
+    ".character-movement-live-test",
+  );
+  movementLiveTest.textContent = formatMovementLiveTest(
+    character.movement_live_test,
+  );
+  movementLiveTest.className = `character-movement-live-test movement-live-test-${String(
+    character.movement_live_test?.outcome ||
+      character.movement_live_test?.status ||
+      "idle",
+  ).toLowerCase()}`;
   card.querySelector(".character-target").textContent = formatTarget(game);
   card.querySelector(".character-inventory-summary").textContent =
     formatInventory(game);
