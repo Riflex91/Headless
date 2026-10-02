@@ -541,9 +541,12 @@ test("movement controller status is exposed without mutable internal target refe
   });
 
   const status = movement.status();
+  assert.equal(status.active.module, "Farm");
+  assert.equal(status.active.reason, "MOVE");
   status.active.target.x = 999;
 
   assert.equal(movement.status().active.target.x, 10);
+  assert.equal(movement.status().active.reason, "MOVE");
 });
 
 test("direct move settles only after observed arrival and stop", () => {
