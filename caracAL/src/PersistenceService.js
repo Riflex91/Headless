@@ -81,7 +81,9 @@ function loadSqlJs() {
   const wasmPath = require.resolve("sql.js/dist/sql-wasm.wasm");
   return initSqlJs({
     locateFile: (file) =>
-      file.endsWith(".wasm") ? wasmPath : path.join(path.dirname(wasmPath), file),
+      file.endsWith(".wasm")
+        ? wasmPath
+        : path.join(path.dirname(wasmPath), file),
   });
 }
 
