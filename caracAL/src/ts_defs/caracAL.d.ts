@@ -77,6 +77,13 @@ declare global {
       source_revision: string | null;
 
       /**
+       * Persistent per-character bot configuration supplied by the supervisor.
+       */
+      character_config: Record<string, unknown>;
+      character_config_revision: number;
+      character_config_applied_at: number;
+
+      /**
        * Global account mutation safety stop controlled by the local supervisor.
        */
       emergency_stop: boolean;
