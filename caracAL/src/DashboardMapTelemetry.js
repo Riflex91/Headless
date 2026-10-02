@@ -59,8 +59,8 @@ function publicMapNpcs(mapDefinition, gameData) {
     const rawPositions = Array.isArray(npc?.positions)
       ? npc.positions
       : Array.isArray(npc?.position)
-        ? [npc.position]
-        : [];
+      ? [npc.position]
+      : [];
 
     for (const position of rawPositions) {
       if (!Array.isArray(position)) continue;
@@ -97,9 +97,7 @@ function publicMapScene(gameContext) {
       max_x: finiteNumber(geometry.max_x),
       max_y: finiteNumber(geometry.max_y),
     },
-    default_tile: Number.isInteger(geometry.default)
-      ? geometry.default
-      : null,
+    default_tile: Number.isInteger(geometry.default) ? geometry.default : null,
     tiles: geometry.tiles.map((definition) =>
       publicTileDefinition(definition, gameContext.G),
     ),
@@ -116,10 +114,7 @@ function publicMapScene(gameContext) {
   };
 }
 
-function publicNearbyEntities(
-  gameContext,
-  radius = NEARBY_ENTITY_RADIUS,
-) {
+function publicNearbyEntities(gameContext, radius = NEARBY_ENTITY_RADIUS) {
   const character = gameContext?.character;
   const characterX = finiteNumber(character?.real_x ?? character?.x);
   const characterY = finiteNumber(character?.real_y ?? character?.y);
@@ -142,8 +137,8 @@ function publicNearbyEntities(
         typeof entity.npc === "string"
           ? entity.npc
           : typeof entity.id === "string" && kind === "npc"
-            ? entity.id
-            : null;
+          ? entity.id
+          : null;
       const name =
         entity.name ||
         (entity.mtype && gameContext?.G?.monsters?.[entity.mtype]?.name) ||
