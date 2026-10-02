@@ -78,6 +78,7 @@ test("public character state exposes only dashboard-safe fields", () => {
     class_skill_live_test: null,
     group_live_test: null,
     farm_live_test: null,
+    inventory_live_test: null,
     combat_runtime: null,
     class_skill_runtime: null,
     group_combat_runtime: null,
@@ -408,6 +409,7 @@ test("dashboard module and coordinator remain syntactically valid", () => {
   assert.match(coordinator, /group_combat_runtime/);
   assert.match(coordinator, /farm_intelligence_runtime/);
   assert.match(coordinator, /inventory_intelligence_runtime/);
+  assert.match(coordinator, /inventory_live_test/);
   assert.match(coordinator, /appendFarmStatistic/);
   assert.match(runtimeKernel, /classSkills/);
   assert.match(runtimeKernel, /groupCombat/);
