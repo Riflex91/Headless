@@ -81,9 +81,12 @@ class IncidentRecorder {
       character: character || event?.character || null,
       trigger_event: sanitizeDiagnosticValue(event || null),
     };
+    const frozenSnapshot = sanitizeDiagnosticValue(
+      this.getSnapshot() || null,
+    );
 
     this.queue = this.queue
-      .then(() => this.writeIncident(summary, extra))
+      .then(() => this.writeIncident(summary, extra, frozenSnapshot))
       .catch((error) => {
         this.lastError = error;
       });
@@ -101,6 +104,7 @@ class IncidentRecorder {
   }
 
   async list({ limit = 50, character } = {}) {
+    await this.queue;
     let entries;
     try {
       entries = await fs.readdir(this.rootDir, { withFileTypes: true });
@@ -143,6 +147,7 @@ class IncidentRecorder {
   }
 
   async readText(incidentId) {
+    await this.queue;
     const safeId = safeFilePart(incidentId);
     if (!safeId || safeId !== incidentId) {
       const error = new Error("Invalid incident id");
@@ -178,7 +183,7 @@ class IncidentRecorder {
     ].join("\n");
   }
 
-  async writeIncident(summary, extra) {
+  async writeIncident(summary, extra, frozenSnapshot) {
     const dir = path.join(this.rootDir, summary.incident_id);
     const since = summary.timestamp - this.windowMs;
     const events = this.diagnosticStore.getEvents({ since });
@@ -188,7 +193,7 @@ class IncidentRecorder {
         )
       : events;
 
-    const snapshot = sanitizeDiagnosticValue(this.getSnapshot() || null);
+    const snapshot = frozenSnapshot;
     const incident = sanitizeDiagnosticValue({
       ...summary,
       window_ms: this.windowMs,
