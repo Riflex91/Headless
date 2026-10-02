@@ -147,6 +147,7 @@ class PersistenceService {
     this.closed = false;
     this.flushCount = 0;
     this.lastError = null;
+    this.cachedSchemaVersion = 0;
   }
 
   async initialize() {
@@ -188,14 +189,19 @@ class PersistenceService {
       }
     }
 
+    this.cachedSchemaVersion = this.schemaVersion();
     await this.flush();
   }
 
   schemaVersion() {
+    if (this.closed) return this.cachedSchemaVersion;
+
     const row = this.getRow(
       "SELECT MAX(version) AS version FROM schema_migrations",
     );
-    return Number(row?.version || 0);
+    const version = Number(row?.version || 0);
+    this.cachedSchemaVersion = version;
+    return version;
   }
 
   health() {
@@ -599,7 +605,18 @@ class PersistenceService {
     }
 
     const operation = this.queue.then(async () => {
-      mutator();
+      this.db.run("BEGIN");
+      try {
+        mutator();
+        this.db.run("COMMIT");
+      } catch (error) {
+        try {
+          this.db.run("ROLLBACK");
+        } catch (_rollbackError) {
+          // Preserve the original mutation failure.
+        }
+        throw error;
+      }
       await this.flush();
     });
     const observed = operation.catch((error) => {
