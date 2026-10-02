@@ -81,9 +81,7 @@ class IncidentRecorder {
       character: character || event?.character || null,
       trigger_event: sanitizeDiagnosticValue(event || null),
     };
-    const frozenSnapshot = sanitizeDiagnosticValue(
-      this.getSnapshot() || null,
-    );
+    const frozenSnapshot = sanitizeDiagnosticValue(this.getSnapshot() || null);
 
     this.queue = this.queue
       .then(() => this.writeIncident(summary, extra, frozenSnapshot))
