@@ -78,6 +78,17 @@ function publicCharacterState(name, charBlock = {}) {
     installed_code_revision: charBlock.installed_code_revision || null,
     config_revision: charBlock.running_config_revision || null,
     installed_config_revision: charBlock.installed_config_revision || null,
+    runtime_config_revision: Number.isInteger(charBlock.runtime_config_revision)
+      ? charBlock.runtime_config_revision
+      : 0,
+    applied_runtime_config_revision: Number.isInteger(
+      charBlock.applied_runtime_config_revision,
+    )
+      ? charBlock.applied_runtime_config_revision
+      : null,
+    runtime_config_source: charBlock.runtime_config_source || "CONFIG",
+    config_push_status: charBlock.config_push_status || "UNKNOWN",
+    config_push_error: charBlock.config_push_error || null,
     revision_status: charBlock.revision_status || "UNKNOWN",
     game: publicLiveState(charBlock.live_state),
     movement_trail: Array.isArray(charBlock.movement_trail)
@@ -157,6 +168,7 @@ function attachHeadlessDashboard({
   lifecyclePolicy,
   publicDir,
   controlCharacter,
+  updateCharacterConfig,
   controlRotation,
   controlEmergencyStop,
   getEmergencyStopState,
@@ -192,6 +204,34 @@ function attachHeadlessDashboard({
   router.get("/headless/api/state", (_req, res) => {
     res.json(getSnapshot());
   });
+
+  router.put(
+    "/headless/api/characters/:name/config",
+    express.json({ limit: "96kb" }),
+    async (req, res) => {
+      if (!updateCharacterConfig) {
+        res.status(503).json({ error: "CONFIG_PUSH_UNAVAILABLE" });
+        return;
+      }
+
+      try {
+        const result = await updateCharacterConfig(
+          req.params.name,
+          req.body?.config,
+        );
+        res.json({
+          ok: true,
+          result,
+          snapshot: getSnapshot(),
+        });
+      } catch (error) {
+        res.status(Number(error.statusCode) || 500).json({
+          error: error.code || "CONFIG_PUSH_FAILED",
+          message: error.message,
+        });
+      }
+    },
+  );
 
   router.post(
     "/headless/api/rotation",
