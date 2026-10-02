@@ -25,6 +25,11 @@ test("public character state exposes only dashboard-safe fields", () => {
     last_heartbeat_at: 123456,
     restart_attempts: 2,
     typescript: "bot/main.js",
+    running_code_revision: "sha256-running",
+    installed_code_revision: "sha256-installed",
+    running_config_revision: "cfg-running",
+    installed_config_revision: "cfg-installed",
+    revision_status: "STALE",
     session: "SECRET_SESSION",
     auth: "SECRET_AUTH",
   });
@@ -40,6 +45,11 @@ test("public character state exposes only dashboard-safe fields", () => {
     last_heartbeat_at: 123456,
     restart_attempts: 2,
     script: "bot/main.js",
+    code_revision: "sha256-running",
+    installed_code_revision: "sha256-installed",
+    config_revision: "cfg-running",
+    installed_config_revision: "cfg-installed",
+    revision_status: "STALE",
     game: null,
     movement_trail: [],
   });
@@ -74,6 +84,11 @@ test("supervisor snapshot counts active lifecycle states", () => {
       cleared_at: null,
       revision: 7,
     },
+    {
+      source_revision: "abc123",
+      installed_config_revision: "cfg-account",
+      status: "STALE",
+    },
   );
 
   assert.equal(snapshot.max_online_characters, 4);
@@ -84,6 +99,11 @@ test("supervisor snapshot counts active lifecycle states", () => {
     activated_at: 1234,
     cleared_at: null,
     revision: 7,
+  });
+  assert.deepEqual(snapshot.revision_summary, {
+    source_revision: "abc123",
+    installed_config_revision: "cfg-account",
+    status: "STALE",
   });
   assert.deepEqual(
     snapshot.characters.map((character) => character.name),
@@ -156,6 +176,9 @@ test("dashboard module and coordinator remain syntactically valid", () => {
   assert.match(coordinator, /emergency_stop_applied/);
   assert.match(coordinator, /StructuredLogger/);
   assert.match(coordinator, /IncidentRecorder/);
+  assert.match(coordinator, /FileRevisionCache/);
+  assert.match(coordinator, /running_code_revision/);
+  assert.match(coordinator, /installed_code_revision/);
   assert.match(coordinator, /UNEXPECTED_CHARACTER_EXIT/);
   assert.match(coordinator, /dashboard\?\.publish/);
 });

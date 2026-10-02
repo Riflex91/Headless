@@ -11,6 +11,11 @@ const state = {
     cleared_at: null,
     revision: 0,
   },
+  revisionSummary: {
+    source_revision: null,
+    installed_config_revision: null,
+    status: "UNKNOWN",
+  },
 };
 
 const cards = new Map();
@@ -44,6 +49,16 @@ const activateEmergencyStop = document.querySelector(
   "#activate-emergency-stop",
 );
 const clearEmergencyStop = document.querySelector("#clear-emergency-stop");
+const revisionSummary = document.querySelector("#revision-summary");
+const revisionSummaryStatus = document.querySelector(
+  "#revision-summary-status",
+);
+const revisionSummarySource = document.querySelector(
+  "#revision-summary-source",
+);
+const revisionSummaryConfig = document.querySelector(
+  "#revision-summary-config",
+);
 
 function formatTimestamp(timestamp) {
   if (!timestamp) return "—";
@@ -184,6 +199,28 @@ async function sendEmergencyStop(action) {
   if (payload.snapshot) {
     applySnapshot(payload.snapshot);
   }
+}
+
+function formatRevision(value) {
+  return value || "—";
+}
+
+function renderRevisionSummary() {
+  const summary = state.revisionSummary || {
+    source_revision: null,
+    installed_config_revision: null,
+    status: "UNKNOWN",
+  };
+  const status = summary.status || "UNKNOWN";
+
+  revisionSummary.className = `revision-summary revision-${status.toLowerCase()}`;
+  revisionSummaryStatus.textContent = `Revision: ${status}`;
+  revisionSummarySource.textContent = `Source: ${formatRevision(
+    summary.source_revision,
+  )}`;
+  revisionSummaryConfig.textContent = `Config: ${formatRevision(
+    summary.installed_config_revision,
+  )}`;
 }
 
 function renderEmergencyStop() {
@@ -349,6 +386,21 @@ function updateCharacterCard(card, character) {
     formatInventory(game);
   card.querySelector(".character-pid").textContent = character.pid || "—";
   card.querySelector(".character-script").textContent = character.script || "—";
+  card.querySelector(".character-code-revision").textContent = formatRevision(
+    character.code_revision,
+  );
+  card.querySelector(".character-installed-code-revision").textContent =
+    formatRevision(character.installed_code_revision);
+  card.querySelector(".character-config-revision").textContent = formatRevision(
+    character.config_revision,
+  );
+  card.querySelector(".character-installed-config-revision").textContent =
+    formatRevision(character.installed_config_revision);
+  const revisionStatus = card.querySelector(".character-revision-status");
+  revisionStatus.textContent = character.revision_status || "UNKNOWN";
+  revisionStatus.className = `character-revision-status revision-text-${String(
+    character.revision_status || "UNKNOWN",
+  ).toLowerCase()}`;
   card.querySelector(".character-restarts").textContent =
     character.restart_attempts ?? 0;
   card.querySelector(".character-heartbeat").textContent = formatHeartbeat(
@@ -497,6 +549,11 @@ function applySnapshot(snapshot) {
     cleared_at: null,
     revision: 0,
   };
+  state.revisionSummary = snapshot.revision_summary || {
+    source_revision: null,
+    installed_config_revision: null,
+    status: "UNKNOWN",
+  };
   state.characters.clear();
 
   for (const character of snapshot.characters || []) {
@@ -507,6 +564,7 @@ function applySnapshot(snapshot) {
   renderMovementMap();
   renderInventoryEquipment();
   renderEmergencyStop();
+  renderRevisionSummary();
   lastUpdate.textContent = `Update ${formatTimestamp(snapshot.generated_at)}`;
 }
 

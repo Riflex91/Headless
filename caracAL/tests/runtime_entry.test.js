@@ -66,8 +66,22 @@ test("runtime kernel emits periodic health without gameplay work", () => {
   assert.match(kernel, /RUNTIME_STATUS/);
   assert.match(kernel, /PERIODIC_RUNTIME_HEALTH/);
   assert.match(kernel, /runtimeState/);
+  assert.match(kernel, /codeRevision/);
+  assert.match(kernel, /configRevision/);
+  assert.match(kernel, /sourceRevision/);
   assert.match(kernel, /emergencyStop/);
   assert.match(kernel, /actionLedger/);
   assert.match(kernel, /recentActions/);
   assert.match(kernel, /schedulerJobs/);
+});
+
+test("CharacterThread exposes supervisor-assigned revisions", () => {
+  const thread = fs.readFileSync(
+    path.join(__dirname, "..", "src", "CharacterThread.js"),
+    "utf8",
+  );
+
+  assert.match(thread, /extensions\.code_revision/);
+  assert.match(thread, /extensions\.config_revision/);
+  assert.match(thread, /extensions\.source_revision/);
 });

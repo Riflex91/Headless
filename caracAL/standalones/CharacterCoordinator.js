@@ -27,6 +27,13 @@ const { StructuredLogger } = require("../src/StructuredLogger");
 const { updateCharacterLiveState } = require("../src/LiveState");
 const { normalizeRuntimeEvent } = require("../src/RuntimeEventBridge");
 const {
+  FileRevisionCache,
+  createConfigRevision,
+  readGitRevision,
+  resolveCharacterScriptPath,
+  revisionStatus,
+} = require("../src/RuntimeRevision");
+const {
   LIFECYCLE_STATES,
   computeRestartDelay,
   countActiveCharacters,
@@ -103,6 +110,9 @@ function migrate_old_storage(path, localStorage) {
   const default_realm = my_acc.response.servers[0];
 
   const character_manage = cfg.characters;
+  const revision_cache = new FileRevisionCache();
+  const source_revision = readGitRevision(process.cwd());
+  const installed_config_revision = createConfigRevision(cfg);
   const diagnostic_store = new DiagnosticEventStore({ maxEvents: 20000 });
   const emergency_stop = new EmergencyStopState();
   const structured_logger = new StructuredLogger({
@@ -154,6 +164,7 @@ function migrate_old_storage(path, localStorage) {
         controlCharacter: control_character,
         controlEmergencyStop: control_emergency_stop,
         getEmergencyStopState: () => emergency_stop.snapshot(),
+        getRevisionSummary: revision_summary,
         diagnosticStore: diagnostic_store,
         incidentRecorder: incident_recorder,
         assetCache: asset_cache,
@@ -331,6 +342,46 @@ function migrate_old_storage(path, localStorage) {
     }
   }
 
+  function refresh_character_revision(char_block) {
+    const script_path = resolveCharacterScriptPath(
+      process.cwd(),
+      char_block,
+      !!cfg.enable_TYPECODE,
+    );
+    char_block.script_path = script_path;
+    char_block.installed_code_revision = revision_cache.revision(script_path);
+    char_block.installed_config_revision = installed_config_revision;
+    char_block.revision_status = revisionStatus({
+      runningCodeRevision: char_block.running_code_revision,
+      installedCodeRevision: char_block.installed_code_revision,
+      runningConfigRevision: char_block.running_config_revision,
+      installedConfigRevision: char_block.installed_config_revision,
+    });
+    return char_block.revision_status;
+  }
+
+  function revision_summary() {
+    Object.values(character_manage).forEach(refresh_character_revision);
+    const active = Object.values(character_manage).filter(
+      (char_block) => char_block.instance,
+    );
+    const statuses = active.map((char_block) => char_block.revision_status);
+    const status =
+      statuses.length === 0
+        ? "UNKNOWN"
+        : statuses.includes("STALE")
+        ? "STALE"
+        : statuses.every((value) => value === "HEALTHY")
+        ? "HEALTHY"
+        : "UNKNOWN";
+
+    return {
+      source_revision,
+      installed_config_revision,
+      status,
+    };
+  }
+
   function initialize_char_block(char_name, char_block) {
     char_block.name = char_name;
     char_block.connected = false;
@@ -344,6 +395,10 @@ function migrate_old_storage(path, localStorage) {
     char_block.last_heartbeat_pid = char_block.last_heartbeat_pid || null;
     char_block.watchdog_recovery_in_progress = false;
     char_block.live_state = char_block.live_state || null;
+    char_block.running_code_revision = char_block.running_code_revision || null;
+    char_block.running_config_revision =
+      char_block.running_config_revision || null;
+    refresh_character_revision(char_block);
     char_block.movement_trail = Array.isArray(char_block.movement_trail)
       ? char_block.movement_trail
       : [];
@@ -749,6 +804,19 @@ function migrate_old_storage(path, localStorage) {
             LIFECYCLE_STATES.CONNECTING,
             "process_ready",
           );
+          refresh_character_revision(char_block);
+          char_block.running_code_revision = char_block.installed_code_revision;
+          char_block.running_config_revision =
+            char_block.installed_config_revision;
+          char_block.revision_status = revisionStatus({
+            runningCodeRevision: char_block.running_code_revision,
+            installedCodeRevision: char_block.installed_code_revision,
+            runningConfigRevision: char_block.running_config_revision,
+            installedConfigRevision: char_block.installed_config_revision,
+          });
+          args.code_revision = char_block.running_code_revision;
+          args.config_revision = char_block.running_config_revision;
+          args.source_revision = source_revision;
           safe_send(result, {
             type: "process_args",
             arguments: args,
@@ -967,6 +1035,8 @@ function migrate_old_storage(path, localStorage) {
     const now = Date.now();
     const watchdog_gap_ms = now - last_watchdog_tick_at;
     last_watchdog_tick_at = now;
+    Object.values(character_manage).forEach(refresh_character_revision);
+    dashboard?.publishSnapshot();
 
     if (watchdog_gap_ms > lifecycle_policy.heartbeatTimeoutMs) {
       Object.values(character_manage).forEach((char_block) => {
