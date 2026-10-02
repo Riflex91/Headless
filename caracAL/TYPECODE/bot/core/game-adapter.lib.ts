@@ -38,6 +38,10 @@ export interface EquipmentSnapshot {
   [slot: string]: Record<string, unknown> | null;
 }
 
+export interface TradeSlotsSnapshot {
+  [slot: string]: Record<string, unknown> | null;
+}
+
 export interface MapSnapshot {
   name: string | null;
   x: number | null;
@@ -341,6 +345,22 @@ export class GameAdapter {
 
     for (const [slot, item] of Object.entries(slots)) {
       if (slot.startsWith("trade")) continue;
+      result[slot] =
+        item && typeof item === "object"
+          ? ((cloneJsonValue(item) as Record<string, unknown>) || null)
+          : null;
+    }
+
+    return result;
+  }
+
+  tradeSlots(): TradeSlotsSnapshot {
+    const current = record(this.source.character());
+    const slots = record(current.slots);
+    const result: TradeSlotsSnapshot = {};
+
+    for (const [slot, item] of Object.entries(slots)) {
+      if (!/^trade\\d+$/.test(slot)) continue;
       result[slot] =
         item && typeof item === "object"
           ? ((cloneJsonValue(item) as Record<string, unknown>) || null)
