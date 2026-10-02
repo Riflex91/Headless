@@ -65,8 +65,6 @@ test("planned path starts at the current position and stays on selected map", ()
   ]);
 });
 
-
-
 test("runtime controller waypoints override smart plot and inherit the selected map", () => {
   const character = characterFixture();
   character.game.runtime_planned_path = [
