@@ -8,6 +8,7 @@ export interface CharacterSnapshot {
   maxHp: number | null;
   mp: number | null;
   maxMp: number | null;
+  range: number | null;
   gold: number | null;
   target: string | null;
   rip: boolean;
@@ -288,6 +289,7 @@ export class GameAdapter {
       maxHp: numberOrNull(current.max_hp),
       mp: numberOrNull(current.mp),
       maxMp: numberOrNull(current.max_mp),
+      range: numberOrNull(current.range),
       gold: numberOrNull(current.gold),
       target: stringOrNull(current.target),
       rip: current.rip === true,

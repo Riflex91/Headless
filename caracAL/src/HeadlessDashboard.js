@@ -100,6 +100,7 @@ function publicCharacterState(name, charBlock = {}) {
     config_push_error: charBlock.config_push_error || null,
     revision_status: charBlock.revision_status || "UNKNOWN",
     movement_live_test: charBlock.movement_live_test || null,
+    combat_runtime: charBlock.combat_runtime || null,
     game: publicLiveState(charBlock.live_state),
     movement_trail: Array.isArray(charBlock.movement_trail)
       ? charBlock.movement_trail

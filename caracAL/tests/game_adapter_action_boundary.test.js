@@ -94,6 +94,7 @@ test("GameAdapter returns read-only snapshots instead of live references", () =>
     maxHp: 1000,
     mp: 400,
     maxMp: 500,
+    range: null,
     gold: 12345,
     target: "m-1",
     rip: false,

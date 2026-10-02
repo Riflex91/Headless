@@ -450,6 +450,14 @@ function migrate_old_storage(path, localStorage) {
       char_block.bot_runtime_started_at = null;
     }
 
+    if (
+      char_block &&
+      normalized.data?.combat &&
+      typeof normalized.data.combat === "object"
+    ) {
+      char_block.combat_runtime = normalized.data.combat;
+    }
+
     if (char_block && normalized.data?.movement) {
       updateCharacterMovementRuntime(char_block, normalized.data.movement, {
         timestamp: normalized.timestamp,
@@ -469,7 +477,7 @@ function migrate_old_storage(path, localStorage) {
       `${char_name} runtime ${normalized.module}:${normalized.type}`,
     );
 
-    if (char_block && normalized.data?.movement) {
+    if (char_block && (normalized.data?.movement || normalized.data?.combat)) {
       dashboard?.publishSnapshot();
     }
   }
@@ -622,6 +630,7 @@ function migrate_old_storage(path, localStorage) {
     char_block.live_state = char_block.live_state || null;
     char_block.bot_runtime_started_at = null;
     char_block.movement_live_test = char_block.movement_live_test || null;
+    char_block.combat_runtime = char_block.combat_runtime || null;
     char_block.movement_live_test_typescript_override = null;
     char_block.running_code_revision = char_block.running_code_revision || null;
     char_block.running_config_revision =
