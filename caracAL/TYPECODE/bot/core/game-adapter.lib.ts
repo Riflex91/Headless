@@ -288,6 +288,7 @@ export class GameAdapter {
       maxHp: numberOrNull(current.max_hp),
       mp: numberOrNull(current.mp),
       maxMp: numberOrNull(current.max_mp),
+      range: numberOrNull(current.range),
       gold: numberOrNull(current.gold),
       target: stringOrNull(current.target),
       rip: current.rip === true,

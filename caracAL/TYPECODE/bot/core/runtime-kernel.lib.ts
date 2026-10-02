@@ -10,7 +10,8 @@ import {
   Scheduler,
   SchedulerEvent,
 } from "./scheduler.lib";
-import { GameAdapter } from "./game-adapter.lib";\nimport { CombatController, CombatControllerEvent } from "./combat-controller.lib";
+import { GameAdapter } from "./game-adapter.lib";
+import { CombatController, CombatControllerEvent } from "./combat-controller.lib";
 import {
   MovementController,
   MovementControllerEvent,
@@ -21,7 +22,9 @@ import {
   MovementLiveTestRunner,
 } from "./movement-live-test.lib";
 
-const COMBAT_JOB_ID = "combat-loop";\nconst COMBAT_INTERVAL_MS = 250;\nconst MOVEMENT_SETTLEMENT_JOB_ID = "movement-settlement";
+const COMBAT_JOB_ID = "combat-loop";
+const COMBAT_INTERVAL_MS = 250;
+const MOVEMENT_SETTLEMENT_JOB_ID = "movement-settlement";
 const MOVEMENT_SETTLEMENT_INTERVAL_MS = 100;
 const STATUS_JOB_ID = "runtime-status";
 const STATUS_INTERVAL_MS = 5000;
@@ -67,6 +70,7 @@ export class BotRuntimeKernel {
   readonly game: GameAdapter;
   readonly actions: ActionBoundary;
   readonly movement: MovementController;
+  readonly combat: CombatController;
 
   private started = false;
   private stopping = false;
@@ -115,6 +119,22 @@ export class BotRuntimeKernel {
       },
     });
 
+    const runtimeConfig = parent.caracAL as
+      | (NonNullable<typeof parent.caracAL> & { config?: unknown })
+      | undefined;
+    this.combat = new CombatController(this.game, this.actions, this.movement, {
+      config: () => runtimeConfig?.config || {},
+      onEvent: (event) => this.handleCombatEvent(event),
+    });
+
+    this.scheduler.register({
+      id: COMBAT_JOB_ID,
+      intervalMs: COMBAT_INTERVAL_MS,
+      priority: 50,
+      tick: async () => {
+        await this.combat.tick();
+      },
+    });
     this.scheduler.register({
       id: MOVEMENT_SETTLEMENT_JOB_ID,
       intervalMs: MOVEMENT_SETTLEMENT_INTERVAL_MS,
@@ -146,6 +166,7 @@ export class BotRuntimeKernel {
             gameAdapterReads: this.game.capabilities(),
             actionBoundaryMutations: this.actions.capabilities(),
             movement: this.movement.status(),
+            combat: this.combat.status(),
             recentActions: this.actionLedger.list(20),
           },
         });
@@ -226,6 +247,7 @@ export class BotRuntimeKernel {
       modules: this.modules.list(),
       schedulerJobs: this.scheduler.list(),
       movement: this.movement.status(),
+      combat: this.combat.status(),
       recentActions: this.actionLedger.list(20),
       ...runtimeIdentity(),
     };
