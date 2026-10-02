@@ -73,57 +73,55 @@ function makeSetup({
     entities: entities.map((entry) => ({ ...entry })),
     party: { ...party },
     inventory: [{ slot: 0, item: { name: "slime", q: 1 } }],
-    gameData:
-      gameData ||
-      {
-        monsters: {
-          goo: {
-            hp: 100,
-            xp: 50,
-            attack: 20,
-            frequency: 1,
-            respawn: 1,
-            drop: "goo_drop",
-          },
-          bee: {
-            hp: 400,
-            xp: 300,
-            attack: 100,
-            frequency: 1,
-            respawn: 5,
-            drop: "bee_drop",
-          },
+    gameData: gameData || {
+      monsters: {
+        goo: {
+          hp: 100,
+          xp: 50,
+          attack: 20,
+          frequency: 1,
+          respawn: 1,
+          drop: "goo_drop",
         },
-        monster_gold: {
-          goo: 20,
-          bee: 200,
-        },
-        items: {
-          slime: {},
-          honey: {},
-        },
-        drops: {
-          goo_drop: [[1, "slime"]],
-          bee_drop: [[1, "honey"]],
-        },
-        maps: {
-          main: {
-            monsters: [
-              { type: "goo", count: 5, boundary: [-100, -100, 100, 100] },
-              { type: "bee", count: 3, boundary: [500, 0, 600, 100] },
-            ],
-          },
-          winterland: {
-            monsters: [
-              {
-                type: "bee",
-                count: 8,
-                boundary: [-200, -100, 0, 100],
-              },
-            ],
-          },
+        bee: {
+          hp: 400,
+          xp: 300,
+          attack: 100,
+          frequency: 1,
+          respawn: 5,
+          drop: "bee_drop",
         },
       },
+      monster_gold: {
+        goo: 20,
+        bee: 200,
+      },
+      items: {
+        slime: {},
+        honey: {},
+      },
+      drops: {
+        goo_drop: [[1, "slime"]],
+        bee_drop: [[1, "honey"]],
+      },
+      maps: {
+        main: {
+          monsters: [
+            { type: "goo", count: 5, boundary: [-100, -100, 100, 100] },
+            { type: "bee", count: 3, boundary: [500, 0, 600, 100] },
+          ],
+        },
+        winterland: {
+          monsters: [
+            {
+              type: "bee",
+              count: 8,
+              boundary: [-200, -100, 0, 100],
+            },
+          ],
+        },
+      },
+    },
   };
 
   const game = {
@@ -154,27 +152,24 @@ function makeSetup({
   };
 }
 
-test(
-  "farm intelligence can select by XP potential and explains the choice",
-  () => {
-    const setup = makeSetup({
-      farming: {
-        weights: scoreWeights({ xp: 1 }),
-      },
-    });
+test("farm intelligence can select by XP potential and explains the choice", () => {
+  const setup = makeSetup({
+    farming: {
+      weights: scoreWeights({ xp: 1 }),
+    },
+  });
 
-    const status = setup.controller.tick();
+  const status = setup.controller.tick();
 
-    assert.equal(status.state, "READY");
-    assert.equal(status.selected.monster, "bee");
-    assert.equal(status.selected.map, "main");
-    assert.equal(status.selected.components.xpPerHourPotential > 0, true);
-    assert.equal(status.selected.estimated.partyDps, 100);
-    assert.match(status.selected.whyMonster, /bee: Score/);
-    assert.match(status.selected.whyMonster, /XP/);
-    assert.match(status.selected.whySpot, /main/);
-  },
-);
+  assert.equal(status.state, "READY");
+  assert.equal(status.selected.monster, "bee");
+  assert.equal(status.selected.map, "main");
+  assert.equal(status.selected.components.xpPerHourPotential > 0, true);
+  assert.equal(status.selected.estimated.partyDps, 100);
+  assert.match(status.selected.whyMonster, /bee: Score/);
+  assert.match(status.selected.whyMonster, /XP/);
+  assert.match(status.selected.whySpot, /main/);
+});
 
 test("goal utility and forbidden monsters are applied before ranking", () => {
   const setup = makeSetup({
@@ -223,83 +218,77 @@ test("travel scoring prefers the nearby spot for the same monster", () => {
   );
 });
 
-test(
-  "party DPS and tank safety include visible configured party members",
-  () => {
-    const setup = makeSetup({
-      party: { Farmer: {}, Tank: {} },
-      entities: [
-        {
-          id: "tank-id",
-          type: "character",
-          name: "Tank",
-          mtype: null,
-          map: "main",
-          x: 5,
-          y: 5,
-          hp: 2000,
-          maxHp: 2000,
-          level: 50,
-          attack: 250,
-          frequency: 1.2,
-          armor: 500,
-          resistance: 300,
-          range: 60,
-          target: null,
-          dead: false,
-          rip: false,
-        },
-      ],
-      farming: {
-        weights: scoreWeights({ partyDps: 1 }),
+test("party DPS and tank safety include visible configured party members", () => {
+  const setup = makeSetup({
+    party: { Farmer: {}, Tank: {} },
+    entities: [
+      {
+        id: "tank-id",
+        type: "character",
+        name: "Tank",
+        mtype: null,
+        map: "main",
+        x: 5,
+        y: 5,
+        hp: 2000,
+        maxHp: 2000,
+        level: 50,
+        attack: 250,
+        frequency: 1.2,
+        armor: 500,
+        resistance: 300,
+        range: 60,
+        target: null,
+        dead: false,
+        rip: false,
       },
-    });
+    ],
+    farming: {
+      weights: scoreWeights({ partyDps: 1 }),
+    },
+  });
 
-    const status = setup.controller.tick();
+  const status = setup.controller.tick();
 
-    assert.equal(status.selected.estimated.partyDps, 400);
-    assert.equal(status.selected.estimated.tankHp, 2000);
-    assert.equal(status.selected.components.partyDpsFit > 0, true);
-    assert.equal(status.selected.components.tankSafety > 0, true);
-  },
-);
+  assert.equal(status.selected.estimated.partyDps, 400);
+  assert.equal(status.selected.estimated.tankHp, 2000);
+  assert.equal(status.selected.components.partyDpsFit > 0, true);
+  assert.equal(status.selected.components.tankSafety > 0, true);
+});
 
-test(
-  "observed performance records XP, gold and positive inventory deltas",
-  () => {
-    const setup = makeSetup({
-      farming: {
-        forbiddenMonsters: ["bee"],
-        observationSampleMs: 5000,
-        observationWindowMs: 60000,
-        weights: scoreWeights({ observed: 1 }),
-      },
-    });
+test("observed performance records XP, gold and positive inventory deltas", () => {
+  const setup = makeSetup({
+    farming: {
+      forbiddenMonsters: ["bee"],
+      observationSampleMs: 5000,
+      observationWindowMs: 60000,
+      weights: scoreWeights({ observed: 1 }),
+    },
+  });
 
-    let status = setup.controller.tick();
-    assert.equal(status.selected.monster, "goo");
+  let status = setup.controller.tick();
+  assert.equal(status.selected.monster, "goo");
 
-    setup.state.character.xp += 120;
-    setup.state.character.gold += 60;
-    setup.state.inventory[0].item.q = 3;
-    setup.advance(6000);
+  setup.state.character.xp += 120;
+  setup.state.character.gold += 60;
+  setup.state.inventory[0].item.q = 3;
+  setup.advance(6000);
 
-    status = setup.controller.tick();
-    const sampleEvent = setup.events.find(
-      (event) => event.type === "FARM_INTELLIGENCE_SAMPLE",
-    );
+  status = setup.controller.tick();
+  const sampleEvent = setup.events.find(
+    (event) => event.type === "FARM_INTELLIGENCE_SAMPLE",
+  );
 
-    assert.ok(sampleEvent);
-    assert.equal(sampleEvent.sample.monster, "goo");
-    assert.equal(sampleEvent.sample.stats.xpDelta, 120);
-    assert.equal(sampleEvent.sample.stats.goldDelta, 60);
-    assert.equal(sampleEvent.sample.stats.dropDelta, 2);
-    assert.equal(sampleEvent.sample.stats.xpPerHour, 72000);
-    assert.equal(sampleEvent.sample.stats.goldPerHour, 36000);
-    assert.equal(sampleEvent.sample.stats.dropsPerHour, 1200);
-    assert.equal(status.selected.observed.xpPerHour, 72000);
-  },
-);
+  assert.ok(sampleEvent);
+  assert.equal(sampleEvent.sample.monster, "goo");
+  assert.equal(sampleEvent.sample.stats.xpDelta, 120);
+  assert.equal(sampleEvent.sample.stats.goldDelta, 60);
+  assert.equal(sampleEvent.sample.stats.dropDelta, 2);
+  assert.equal(sampleEvent.sample.stats.xpPerHour, 72000);
+  assert.equal(sampleEvent.sample.stats.goldPerHour, 36000);
+  assert.equal(sampleEvent.sample.stats.dropsPerHour, 1200);
+  assert.equal(status.selected.observed.xpPerHour, 72000);
+});
 
 test("farm intelligence stays disabled unless explicitly configured", () => {
   const FarmIntelligenceController = loadController();
