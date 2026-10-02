@@ -13,6 +13,7 @@ const {
   publicCharacterState,
 } = require("../src/HeadlessDashboard");
 const { make_cfg_string } = require("../src/ConfigUtil");
+const { IPC_PROTOCOL_VERSION } = require("../src/IpcProtocol");
 
 test("public character state exposes only dashboard-safe fields", () => {
   const character = publicCharacterState("My_Ranger1", {
@@ -100,6 +101,7 @@ test("supervisor snapshot counts active lifecycle states", () => {
     },
   );
 
+  assert.equal(snapshot.ipc_protocol_version, IPC_PROTOCOL_VERSION);
   assert.equal(snapshot.max_online_characters, 4);
   assert.equal(snapshot.active_characters, 3);
   assert.deepEqual(snapshot.emergency_stop, {
@@ -199,6 +201,8 @@ test("dashboard module and coordinator remain syntactically valid", () => {
   assert.match(coordinator, /running_code_revision/);
   assert.match(coordinator, /installed_code_revision/);
   assert.match(coordinator, /PersistenceService/);
+  assert.match(coordinator, /IPC_MESSAGE_REJECTED/);
+  assert.match(coordinator, /normalizeIpcMessage/);
   assert.match(coordinator, /getPersistenceHealth/);
   assert.match(coordinator, /restoreDesiredRuntimeState/);
   assert.match(coordinator, /saveCharacterRuntimeState/);

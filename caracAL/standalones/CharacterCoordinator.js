@@ -12,6 +12,11 @@ const {
   STAT_BEAT_INTERVAL,
 } = require("../src/CONSTANTS");
 const { log, console, ctype_to_clid } = require("../src/LogUtils");
+const {
+  IPC_PROTOCOL_VERSION,
+  normalizeIpcMessage,
+  sendIpcMessage,
+} = require("../src/IpcProtocol");
 
 const FileStoredKeyValues = require("../src/FileStoredKeyValues");
 const {
@@ -228,16 +233,14 @@ function migrate_old_storage(path, localStorage) {
   }
 
   function safe_send(target, data) {
-    if (target) {
-      target.send(data, undefined, undefined, (e) => {
-        //This can occur due to node closing ipc
-        //before firing its close handlers
-        if (e) {
-          //console.error(`failed to send ipc`);
-          //console.error(`target: `,target);
-        }
-      });
-    }
+    return sendIpcMessage(target, data, (e) => {
+      //This can occur due to node closing ipc
+      //before firing its close handlers
+      if (e) {
+        //console.error(`failed to send ipc`);
+        //console.error(`target: `,target);
+      }
+    });
   }
 
   function sleep(ms) {
@@ -923,7 +926,19 @@ function migrate_old_storage(path, localStorage) {
         );
       }
     });
-    result.on("message", (m) => {
+    result.on("message", (raw_message) => {
+      const ipc = normalizeIpcMessage(raw_message);
+      if (!ipc.ok) {
+        emit_supervisor_event("IPC_MESSAGE_REJECTED", char_name, {
+          reason: ipc.code,
+          protocol_version: ipc.protocol_version,
+          message_type: raw_message?.type || null,
+          supported_protocol_version: IPC_PROTOCOL_VERSION,
+        });
+        return;
+      }
+
+      const m = ipc.message;
       switch (m.type) {
         case "process_ready":
           set_lifecycle_state(

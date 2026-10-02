@@ -1,10 +1,12 @@
+const { normalizeIpcMessage, sendIpcMessage } = require("./src/IpcProtocol");
+
 function make_IPC_storage(ident) {
   const items = new Map();
   const mock_parent = {
     setItem(_key, _val) {
       const key = String(_key);
       const val = String(_val);
-      process.send({
+      sendIpcMessage(process, {
         type: "stor",
         op: "set",
         ident,
@@ -18,7 +20,7 @@ function make_IPC_storage(ident) {
     },
     removeItem(_key) {
       const key = String(_key);
-      process.send({
+      sendIpcMessage(process, {
         type: "stor",
         op: "del",
         ident,
@@ -27,7 +29,7 @@ function make_IPC_storage(ident) {
       items.delete(key);
     },
     clear() {
-      process.send({
+      sendIpcMessage(process, {
         type: "stor",
         op: "clear",
         ident,
@@ -41,7 +43,11 @@ function make_IPC_storage(ident) {
       return items.size;
     },
   };
-  process.on("message", (m) => {
+  process.on("message", (rawMessage) => {
+    const normalized = normalizeIpcMessage(rawMessage);
+    if (!normalized.ok) return;
+    const m = normalized.message;
+
     if (m.type == "stor" && m.ident == ident) {
       if (m.op == "set") {
         for (let key in m.data) {
@@ -59,7 +65,7 @@ function make_IPC_storage(ident) {
     }
   });
 
-  process.send({
+  sendIpcMessage(process, {
     type: "stor",
     op: "init",
     ident,
