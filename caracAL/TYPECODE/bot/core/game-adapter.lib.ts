@@ -247,10 +247,30 @@ export function createRuntimeGameAdapterSource(): GameAdapterSource {
   };
 }
 
+export const GAME_ADAPTER_READ_CAPABILITIES = [
+  "CHARACTER",
+  "ENTITIES",
+  "PARTY",
+  "INVENTORY",
+  "EQUIPMENT",
+  "NPC",
+  "BANK",
+  "MARKET",
+  "SKILLS",
+  "COOLDOWNS",
+  "MAP",
+  "ZONES",
+  "G",
+] as const;
+
 export class GameAdapter {
   constructor(
     private readonly source: GameAdapterSource = createRuntimeGameAdapterSource(),
   ) {}
+
+  capabilities(): readonly string[] {
+    return GAME_ADAPTER_READ_CAPABILITIES;
+  }
 
   character(): CharacterSnapshot {
     const current = record(this.source.character());
