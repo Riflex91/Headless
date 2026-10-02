@@ -14,6 +14,7 @@ const {
   TRAIL_RETENTION_MS,
   deriveHeading,
   updateCharacterLiveState,
+  updateCharacterMovementRuntime,
 } = require("../src/LiveState");
 
 test("stat beat exposes safe live character, inventory and equipment state", () => {
@@ -323,5 +324,144 @@ test("dashboard live-state projection rejects unrelated fields", () => {
   assert.equal(live.map, "main");
   assert.equal(live.x, 1);
   assert.equal(live.items[0].name, "hpot1");
+  assert.equal(JSON.stringify(live).includes("must-not-leak"), false);
+});
+
+
+test("runtime movement telemetry survives stat beats and exposes controller plan", () => {
+  const block = {};
+
+  updateCharacterMovementRuntime(
+    block,
+    {
+      owner: "Farm",
+      mode: "PATH",
+      path: {
+        id: 3,
+        owner: "Farm",
+        startedAt: 9000,
+        index: 1,
+        total: 3,
+        current: { x: 50, y: 60, tolerance: 4 },
+        destination: { map: "main", x: 90, y: 100 },
+        remaining: [
+          { x: 50, y: 60, tolerance: 4 },
+          { map: "main", x: 90, y: 100 },
+        ],
+      },
+      safePoint: {
+        map: "main",
+        x: 10,
+        y: 20,
+        tolerance: 5,
+        source: "CURRENT_POSITION",
+        capturedAt: 8000,
+      },
+      stuck: {
+        commandKey: "Farm:7",
+        stuck: true,
+        stuckSince: 9800,
+        lastProgressAt: 9200,
+        lastPosition: { map: "main", x: 40, y: 50, moving: true },
+      },
+      active: {
+        id: 7,
+        type: "DIRECT",
+        owner: "Farm",
+        module: "Farm",
+        reason: "PATROL_ROUTE:WAYPOINT_2",
+        correlationId: "PATH-3",
+        startedAt: 9100,
+        actionId: "A-7",
+        target: { x: 50, y: 60 },
+      },
+    },
+    {
+      timestamp: 10000,
+      eventType: "MOVEMENT_STUCK",
+      eventReason: null,
+    },
+  );
+
+  updateCharacterLiveState(
+    block,
+    {
+      type: "stat_beat",
+      map: "main",
+      x: 40,
+      y: 50,
+      moving: false,
+      planned_path: [],
+      planned_destination: null,
+      items: [],
+      slots: {},
+    },
+    10100,
+  );
+
+  assert.equal(block.live_state.movement_mode, "PATH");
+  assert.equal(block.live_state.movement_owner, "Farm");
+  assert.equal(
+    block.live_state.movement_reason,
+    "PATROL_ROUTE:WAYPOINT_2",
+  );
+  assert.equal(block.live_state.movement_command.actionId, "A-7");
+  assert.equal(block.live_state.movement_stuck.stuck, true);
+  assert.equal(block.live_state.safe_point.source, "CURRENT_POSITION");
+  assert.deepEqual(block.live_state.runtime_planned_path, [
+    { map: "main", x: 50, y: 60, tolerance: 4 },
+    { map: "main", x: 90, y: 100 },
+  ]);
+  assert.deepEqual(block.live_state.runtime_planned_destination, {
+    map: "main",
+    x: 90,
+    y: 100,
+  });
+
+  updateCharacterLiveState(
+    block,
+    {
+      type: "stat_beat",
+      map: "main",
+      x: 42,
+      y: 50,
+      moving: true,
+      items: [],
+      slots: {},
+    },
+    10200,
+  );
+
+  assert.equal(block.live_state.movement_owner, "Farm");
+  assert.equal(block.live_state.movement_mode, "PATH");
+  assert.equal(block.live_state.movement_stuck.stuck, true);
+});
+
+test("dashboard projection includes movement telemetry without arbitrary fields", () => {
+  const live = publicLiveState({
+    map: "main",
+    x: 1,
+    y: 2,
+    movement_mode: "RETURN",
+    movement_owner: "Safety",
+    movement_reason: "RETURN_SAFE",
+    movement_command: { id: 4, type: "SMART" },
+    movement_stuck: { stuck: false },
+    runtime_planned_path: [{ map: "main", x: 10, y: 20 }],
+    runtime_planned_destination: { map: "main", x: 30, y: 40 },
+    safe_point: { map: "main", x: 30, y: 40 },
+    movement_runtime: {
+      owner: "Safety",
+      mode: "RETURN",
+      arbitrary_private_field: "nested-value-is-runtime-sanitized-upstream",
+    },
+    unrelated_secret: "must-not-leak",
+  });
+
+  assert.equal(live.movement_mode, "RETURN");
+  assert.equal(live.movement_owner, "Safety");
+  assert.equal(live.movement_reason, "RETURN_SAFE");
+  assert.equal(live.runtime_planned_path.length, 1);
+  assert.equal(live.safe_point.x, 30);
   assert.equal(JSON.stringify(live).includes("must-not-leak"), false);
 });
