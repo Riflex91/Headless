@@ -45,10 +45,7 @@ function publicMovementCommand(active) {
   };
 
   if (active.target && typeof active.target === "object") {
-    if (
-      Number.isFinite(active.target.x) &&
-      Number.isFinite(active.target.y)
-    ) {
+    if (Number.isFinite(active.target.x) && Number.isFinite(active.target.y)) {
       command.target = {
         x: active.target.x,
         y: active.target.y,
