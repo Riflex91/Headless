@@ -77,6 +77,7 @@ test("movement path dispatches waypoints in order and retains ownership until co
 
   assert.equal(first.id, "D-1");
   assert.equal(movement.status().owner, "Farm");
+  assert.equal(movement.status().mode, "PATH");
   assert.equal(movement.status().path.index, 0);
   assert.equal(movement.status().path.total, 2);
   assert.deepEqual(
@@ -89,6 +90,7 @@ test("movement path dispatches waypoints in order and retains ownership until co
   assert.equal(firstSettled.status, "CONFIRMED");
   assert.equal(firstSettled.evidence.tolerance, 3);
   assert.equal(movement.status().owner, "Farm");
+  assert.equal(movement.status().mode, "PATH");
   assert.equal(movement.status().path.index, 1);
   assert.deepEqual(
     setup.dispatched.map((entry) => [entry.request.x, entry.request.y]),
