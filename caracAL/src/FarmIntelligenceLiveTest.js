@@ -5,20 +5,28 @@ function farmIntelligenceLiveTestEvidence(events = [], charBlock = {}) {
     (event) => event?.source === "bot_runtime",
   );
   const types = runtimeEvents.map((event) => event.type);
-  const farm = charBlock.farm_intelligence_runtime || null;
+  const projectedFarmStates = runtimeEvents
+    .map((event) => event?.data?.farmIntelligence)
+    .filter((farm) => farm && typeof farm === "object");
+  if (charBlock.farm_intelligence_runtime) {
+    projectedFarmStates.push(charBlock.farm_intelligence_runtime);
+  }
+  const selectedState = projectedFarmStates.find(
+    (farm) =>
+      farm?.selected &&
+      typeof farm.selected.monster === "string" &&
+      typeof farm.selected.whyMonster === "string" &&
+      typeof farm.selected.whySpot === "string",
+  );
 
   return {
     farmTestStarted: types.includes("FARM_INTELLIGENCE_LIVE_TEST_STARTED"),
     farmTestCompleted: types.includes("FARM_INTELLIGENCE_LIVE_TEST_COMPLETED"),
-    farmProjectionVisible:
-      !!farm &&
-      typeof farm.state === "string" &&
-      Array.isArray(farm.candidates),
-    selectionProjected:
-      !!farm?.selected &&
-      typeof farm.selected.monster === "string" &&
-      typeof farm.selected.whyMonster === "string" &&
-      typeof farm.selected.whySpot === "string",
+    farmProjectionVisible: projectedFarmStates.some(
+      (farm) =>
+        typeof farm.state === "string" && Array.isArray(farm.candidates),
+    ),
+    selectionProjected: !!selectedState,
     sampleEvents: runtimeEvents.filter(
       (event) =>
         event?.module === "FarmIntelligenceController" &&
