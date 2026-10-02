@@ -1215,7 +1215,10 @@ function migrate_old_storage(path, localStorage) {
           char_block.applied_runtime_config_revision = null;
           char_block.config_push_status = "PENDING";
           char_block.config_push_error = null;
-          arm_config_push_timeout(char_name, char_block.runtime_config_revision);
+          arm_config_push_timeout(
+            char_name,
+            char_block.runtime_config_revision,
+          );
           persist_character_runtime_state(char_name, "process_ready");
           safe_send(result, {
             type: "process_args",
@@ -1241,7 +1244,10 @@ function migrate_old_storage(path, localStorage) {
             char_block.config_push_status = "APPLIED";
             char_block.config_push_error = null;
             emit_supervisor_event("CHARACTER_CONFIG_APPLIED", char_name, {
-              why: m.source === "process_args" ? "PROCESS_START_CONFIG" : "LIVE_CONFIG_PUSH",
+              why:
+                m.source === "process_args"
+                  ? "PROCESS_START_CONFIG"
+                  : "LIVE_CONFIG_PUSH",
               revision: applied_revision,
               changed: m.changed !== false,
             });
