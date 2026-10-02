@@ -111,6 +111,28 @@ test("emergency stop can block pending action at dispatch time", () => {
   assert.equal(blocked.dispatchedAt, undefined);
 });
 
+test("dispatched actions cannot be relabeled BLOCKED", () => {
+  const { ActionLedger } = loadLedgerModule();
+  const ledger = new ActionLedger({
+    now: () => 1000,
+    nextActionId: () => "A-dispatched",
+    nextCorrelationId: () => "C-dispatched",
+  });
+
+  const action = ledger.create({
+    module: "Trade",
+    action: "SEND_GOLD",
+    why: "CONTROLLED_TRANSFER",
+  });
+  ledger.dispatch(action.id);
+
+  assert.throws(
+    () => ledger.block(action.id, "EMERGENCY_STOP_AFTER_DISPATCH"),
+    /cannot block from DISPATCHED/,
+  );
+  assert.equal(ledger.get(action.id).status, "DISPATCHED");
+});
+
 test("UNKNOWN actions reject blind retry", () => {
   const { ActionLedger } = loadLedgerModule();
   const ledger = new ActionLedger({
