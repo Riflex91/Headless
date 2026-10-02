@@ -87,8 +87,8 @@ function build_stat_beat(g_con) {
   result.movement_state = smart?.moving
     ? "SMART_MOVING"
     : character.moving
-      ? "MOVING"
-      : "IDLE";
+    ? "MOVING"
+    : "IDLE";
   result.planned_path = public_smart_plot(smart);
   result.planned_destination =
     smart && (smart.moving || smart.searching)
