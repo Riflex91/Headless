@@ -705,6 +705,36 @@ export class ActionBoundary {
     }
   }
 
+  cancelDirectMove(
+    actionId: string,
+    reason = "MOVE_CANCELLED",
+  ): ActionRecord {
+    const record = this.ledger.get(actionId);
+    if (!record) {
+      throw new Error(`unknown movement action: ${actionId}`);
+    }
+    if (record.action !== "MOVE") {
+      throw new Error(
+        `action ${actionId} is not a direct movement action`,
+      );
+    }
+    if (record.status !== "DISPATCHED") return record;
+
+    const after = this.game.character();
+    return this.ledger.reject(actionId, {
+      why: reason,
+      after: {
+        map: after.map,
+        x: after.x,
+        y: after.y,
+        moving: after.moving,
+      },
+      evidence: {
+        cancelled: true,
+      },
+    });
+  }
+
   settleMove(actionId: string, tolerance = 5): ActionRecord {
     const record = this.ledger.get(actionId);
     if (!record) {
