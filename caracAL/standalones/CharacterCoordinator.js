@@ -25,6 +25,7 @@ const {
   canRestartCharacter,
 } = require("../src/CharacterControl");
 const { AdventureLandAssetCache } = require("../src/AdventureLandAssetCache");
+const { normalizeRealmConnection } = require("../src/AdventureLandRealm");
 const {
   registerAccountCharacters,
 } = require("../src/AccountCharacterRegistry");
@@ -1409,10 +1410,25 @@ function migrate_old_storage(path, localStorage) {
     console.log(
       `starting ${char_name} running version ${g_version} in ${char_block.realm}`,
     );
+    const realm_connection = normalizeRealmConnection(realm);
+    if (!realm_connection.address) {
+      console.error(
+        `could not resolve connection address for realm ${char_block.realm}`,
+      );
+      set_lifecycle_state(
+        char_name,
+        LIFECYCLE_STATES.ERROR,
+        "realm_connection_missing",
+      );
+      return null;
+    }
+
     const args = {
       version: g_version,
-      realm_addr: realm.addr,
-      realm_port: realm.port,
+      realm_address: realm_connection.address,
+      realm_path: realm_connection.path,
+      realm_addr: realm_connection.legacyAddr,
+      realm_port: realm_connection.legacyPort,
       sess: sess,
       cid: char.id,
       script_file: char_block.script,
