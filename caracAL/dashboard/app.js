@@ -509,6 +509,28 @@ async function sendMovementLiveTest(characterName) {
   return payload.result;
 }
 
+async function sendCombatLiveTest(characterName) {
+  const response = await fetch(
+    `/headless/api/characters/${encodeURIComponent(
+      characterName,
+    )}/tests/combat`,
+    {
+      method: "POST",
+    },
+  );
+  const payload = await response.json();
+
+  if (payload.snapshot) {
+    applySnapshot(payload.snapshot);
+  }
+  if (!response.ok) {
+    throw new Error(
+      payload.message || payload.error || "Combat live test failed",
+    );
+  }
+  return payload.result;
+}
+
 function updateControlButtons(card, character) {
   const desired =
     character.desired_runtime_state ||
@@ -541,12 +563,25 @@ function updateControlButtons(card, character) {
   const movementLiveTestButton = card.querySelector(
     "[data-movement-live-test]",
   );
+  const combatLiveTestButton = card.querySelector(
+    "[data-combat-live-test]",
+  );
+  const movementTestRunning = ["STARTING", "RUNNING"].includes(
+    character.movement_live_test?.status || "",
+  );
+  const combatTestRunning = ["STARTING", "RUNNING"].includes(
+    character.combat_live_test?.status || "",
+  );
   if (movementLiveTestButton) {
     movementLiveTestButton.disabled =
+      busy || movementTestRunning || combatTestRunning;
+  }
+  if (combatLiveTestButton) {
+    combatLiveTestButton.disabled =
       busy ||
-      ["STARTING", "RUNNING"].includes(
-        character.movement_live_test?.status || "",
-      );
+      movementTestRunning ||
+      combatTestRunning ||
+      character.ctype === "merchant";
   }
 }
 
@@ -606,6 +641,39 @@ function configureCardInteractions(card) {
       addEvent({
         timestamp: Date.now(),
         event: "MOVEMENT_LIVE_TEST_UI_ERROR",
+        character: characterName,
+        reason: error.message,
+      });
+      await loadInitialState().catch(() => {});
+    } finally {
+      card.dataset.controlBusy = "false";
+      const current = state.characters.get(characterName);
+      if (current) updateControlButtons(card, current);
+    }
+  });
+
+  const combatLiveTestButton = card.querySelector(
+    "[data-combat-live-test]",
+  );
+  combatLiveTestButton?.addEventListener("click", async () => {
+    const characterName = card.dataset.character;
+    const character = state.characters.get(characterName);
+    if (!character) return;
+
+    card.dataset.controlBusy = "true";
+    updateControlButtons(card, character);
+    feedback.textContent = "Autonomer Combat-E2E-Test läuft …";
+
+    try {
+      const result = await sendCombatLiveTest(characterName);
+      feedback.textContent = `Combat E2E: ${result?.outcome || "UNKNOWN"} · ${
+        result?.reason || "ohne Reason"
+      }`;
+    } catch (error) {
+      feedback.textContent = error.message;
+      addEvent({
+        timestamp: Date.now(),
+        event: "COMBAT_LIVE_TEST_UI_ERROR",
         character: characterName,
         reason: error.message,
       });
@@ -709,6 +777,15 @@ function updateCharacterCard(card, character) {
   movementLiveTest.className = `character-movement-live-test movement-live-test-${String(
     character.movement_live_test?.outcome ||
       character.movement_live_test?.status ||
+      "idle",
+  ).toLowerCase()}`;
+  const combatLiveTest = card.querySelector(".character-combat-live-test");
+  combatLiveTest.textContent = formatMovementLiveTest(
+    character.combat_live_test,
+  );
+  combatLiveTest.className = `character-combat-live-test movement-live-test-${String(
+    character.combat_live_test?.outcome ||
+      character.combat_live_test?.status ||
       "idle",
   ).toLowerCase()}`;
   card.querySelector(".character-target").textContent = formatTarget(game);
