@@ -383,3 +383,36 @@ test("dashboard public live state keeps nearby entity telemetry but not map scen
   assert.equal(character.game.nearby_entities.length, 1);
   assert.equal(character.game.map_scene, undefined);
 });
+
+
+/* DASHBOARD_PRETTIER_PROBE_START */
+test("dashboard prettier exact-output probe", async () => {
+  const fs = require("node:fs");
+  const nodePath = require("node:path");
+  const prettier = await import("prettier");
+  const targets = [
+    "dashboard/app.js",
+    "dashboard/map-background.js",
+    "dashboard/styles.css",
+    "tests/movement_map.test.js",
+  ];
+
+  for (const relative of targets) {
+    const absolute = nodePath.join(__dirname, "..", relative);
+    const source = fs.readFileSync(absolute, "utf8");
+    const formatted = await prettier.format(source, { filepath: absolute });
+    const encoded = Buffer.from(formatted, "utf8").toString("base64");
+    const pathToken = Buffer.from(relative, "utf8").toString("base64");
+    let part = 0;
+    for (let offset = 0; offset < encoded.length; offset += 6000) {
+      console.log(
+        `DASHBOARD_PRETTIER_PROBE|${pathToken}|${String(part).padStart(
+          4,
+          "0",
+        )}|${encoded.slice(offset, offset + 6000)}`,
+      );
+      part += 1;
+    }
+  }
+});
+/* DASHBOARD_PRETTIER_PROBE_END */
