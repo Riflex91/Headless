@@ -90,10 +90,7 @@ test("farm live runner confirms real selection, WHY projection and observed perf
   assert.equal(result.scope.valueMutationForced, false);
   assert.equal(result.selection.observedPerformanceProjected, true);
   assert.equal(result.cleanup.farmOverrideCleared, true);
-  assert.deepEqual(calls, [
-    ["set", true],
-    ["clear"],
-  ]);
+  assert.deepEqual(calls, [["set", true], ["clear"]]);
 });
 
 test("farm live runner fails safely when no candidates exist and clears override", async () => {
