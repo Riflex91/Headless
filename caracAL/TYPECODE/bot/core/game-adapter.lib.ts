@@ -360,7 +360,7 @@ export class GameAdapter {
     const result: TradeSlotsSnapshot = {};
 
     for (const [slot, item] of Object.entries(slots)) {
-      if (!/^trade\\d+$/.test(slot)) continue;
+      if (!/^trade\d+$/.test(slot)) continue;
       result[slot] =
         item && typeof item === "object"
           ? ((cloneJsonValue(item) as Record<string, unknown>) || null)
