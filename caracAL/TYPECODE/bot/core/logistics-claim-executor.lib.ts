@@ -358,6 +358,8 @@ export class LogisticsClaimExecutor {
       fulfilled:
         action.status === "CONFIRMED" && quantity >= requestedQuantity,
     });
+  }
+
   private transferAllowed(slot: number, name: string): boolean {
     const decision = this.inventoryIntelligence
       .status()
@@ -368,7 +370,5 @@ export class LogisticsClaimExecutor {
     return !["QUEST", "RESERVED", "UNKNOWN"].includes(
       String(decision.disposition || "").toUpperCase(),
     );
-  }
-
   }
 }
