@@ -35,12 +35,21 @@ test("cross-realm clone accepts foreign plain objects, arrays and dates", () => 
 
   assert.equal(vm.runInContext("copied.value", target.context), 7);
   assert.equal(vm.runInContext("copied.nested.ok", target.context), true);
-  assert.equal(vm.runInContext("Array.isArray(copied.list)", target.context), true);
+  assert.equal(
+    vm.runInContext("Array.isArray(copied.list)", target.context),
+    true,
+  );
   assert.equal(vm.runInContext("copied.list.length", target.context), 3);
-  assert.equal(vm.runInContext("copied.when instanceof Date", target.context), true);
+  assert.equal(
+    vm.runInContext("copied.when instanceof Date", target.context),
+    true,
+  );
   assert.equal(vm.runInContext("copied.when.getTime()", target.context), 1234);
   assert.equal(
-    vm.runInContext("Object.getPrototypeOf(copied) === Object.prototype", target.context),
+    vm.runInContext(
+      "Object.getPrototypeOf(copied) === Object.prototype",
+      target.context,
+    ),
     true,
   );
 });
