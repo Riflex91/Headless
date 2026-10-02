@@ -79,26 +79,14 @@ test("snapshot persistence is change-aware and throttled", () => {
     slots: {},
   });
 
-  assert.equal(
-    shouldPersistSnapshot(charBlock, first, 1000),
-    true,
-  );
+  assert.equal(shouldPersistSnapshot(charBlock, first, 1000), true);
 
   beginSnapshotPersist(charBlock, 1000);
-  assert.equal(
-    shouldPersistSnapshot(charBlock, first, 1001),
-    false,
-  );
+  assert.equal(shouldPersistSnapshot(charBlock, first, 1001), false);
 
   completeSnapshotPersist(charBlock, first, 1100);
-  assert.equal(
-    shouldPersistSnapshot(charBlock, first, 2000),
-    false,
-  );
-  assert.equal(
-    shouldPersistSnapshot(charBlock, second, 2000),
-    false,
-  );
+  assert.equal(shouldPersistSnapshot(charBlock, first, 2000), false);
+  assert.equal(shouldPersistSnapshot(charBlock, second, 2000), false);
   assert.equal(
     shouldPersistSnapshot(
       charBlock,
@@ -108,16 +96,10 @@ test("snapshot persistence is change-aware and throttled", () => {
     true,
   );
 
-  beginSnapshotPersist(
-    charBlock,
-    1000 + SNAPSHOT_PERSIST_INTERVAL_MS,
-  );
+  beginSnapshotPersist(charBlock, 1000 + SNAPSHOT_PERSIST_INTERVAL_MS);
   failSnapshotPersist(charBlock);
   assert.equal(charBlock.snapshot_persist_inflight, false);
-  assert.equal(
-    charBlock.last_persisted_snapshot_signature,
-    first,
-  );
+  assert.equal(charBlock.last_persisted_snapshot_signature, first);
 });
 
 test("snapshot signature changes for inventory or equipment changes", () => {
@@ -168,9 +150,7 @@ test("coordinator shutdown preserves persisted desired runtime intent", () => {
     path.join(__dirname, "..", "standalones", "CharacterCoordinator.js"),
     "utf8",
   );
-  const signalStart = coordinator.indexOf(
-    '["SIGINT", "SIGTERM", "SIGQUIT"]',
-  );
+  const signalStart = coordinator.indexOf('["SIGINT", "SIGTERM", "SIGQUIT"]');
   const initializationStart = coordinator.indexOf(
     "Object.entries(character_manage).forEach",
     signalStart,
@@ -179,10 +159,7 @@ test("coordinator shutdown preserves persisted desired runtime intent", () => {
   assert.notEqual(signalStart, -1);
   assert.notEqual(initializationStart, -1);
 
-  const signalBlock = coordinator.slice(
-    signalStart,
-    initializationStart,
-  );
+  const signalBlock = coordinator.slice(signalStart, initializationStart);
 
   assert.doesNotMatch(
     signalBlock,
