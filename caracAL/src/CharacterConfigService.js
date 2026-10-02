@@ -40,8 +40,7 @@ function normalizeCharacterConfig(config) {
 
 function nextCharacterConfigRevision(currentRevision) {
   const current = Number(currentRevision);
-  const normalized =
-    Number.isInteger(current) && current >= 0 ? current : 0;
+  const normalized = Number.isInteger(current) && current >= 0 ? current : 0;
   return normalized + 1;
 }
 
