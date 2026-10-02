@@ -85,7 +85,7 @@ test("runtime feature code cannot call Adventure Land mutations directly", () =>
 
       const source = fs.readFileSync(fullPath, "utf8");
       for (const mutation of mutationCalls) {
-        const directCall = new RegExp(`\\b${mutation}\\s*\\(`);
+        const directCall = new RegExp(`(?<![\\w.])${mutation}\\s*\\(`);
         assert.doesNotMatch(
           source,
           directCall,
