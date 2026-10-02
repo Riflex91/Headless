@@ -778,10 +778,21 @@ export class ActionBoundary {
     }
 
     const after = this.game.character();
-    const distance = Math.hypot(after.x - targetX, after.y - targetY);
+    const distance =
+      typeof after.x === "number" &&
+      Number.isFinite(after.x) &&
+      typeof after.y === "number" &&
+      Number.isFinite(after.y)
+        ? Math.hypot(after.x - targetX, after.y - targetY)
+        : null;
     const sameMap = targetMap === null || after.map === targetMap;
 
-    if (sameMap && distance <= normalizedTolerance && !after.moving) {
+    if (
+      sameMap &&
+      distance !== null &&
+      distance <= normalizedTolerance &&
+      !after.moving
+    ) {
       return this.ledger.confirm(actionId, {
         why: "MOVE_ARRIVED",
         after: {
