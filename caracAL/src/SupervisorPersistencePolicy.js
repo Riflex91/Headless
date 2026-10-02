@@ -1,9 +1,7 @@
 "use strict";
 
 const crypto = require("node:crypto");
-const {
-  DESIRED_RUNTIME_STATES,
-} = require("./CharacterControl");
+const { DESIRED_RUNTIME_STATES } = require("./CharacterControl");
 const { LIFECYCLE_STATES } = require("./CharacterLifecyclePolicy");
 
 const SNAPSHOT_PERSIST_INTERVAL_MS = 15 * 1000;
@@ -27,8 +25,7 @@ function restoreDesiredRuntimeState(charBlock, persistedLifecycle) {
 
   return {
     restored:
-      !!persistedLifecycle &&
-      desired === persistedLifecycle.desired_state,
+      !!persistedLifecycle && desired === persistedLifecycle.desired_state,
     desired_runtime_state: desired,
     actual_runtime_state: LIFECYCLE_STATES.STOPPED,
   };
@@ -37,9 +34,7 @@ function restoreDesiredRuntimeState(charBlock, persistedLifecycle) {
 function snapshotSignature(statBeat) {
   const payload = JSON.stringify([
     Array.isArray(statBeat?.items) ? statBeat.items : [],
-    statBeat?.slots && typeof statBeat.slots === "object"
-      ? statBeat.slots
-      : {},
+    statBeat?.slots && typeof statBeat.slots === "object" ? statBeat.slots : {},
   ]);
   return crypto.createHash("sha256").update(payload).digest("hex");
 }
@@ -83,8 +78,7 @@ function buildCharacterProfile(
     realm: charBlock.realm || null,
     script: charBlock.script || null,
     typescript: charBlock.typescript || null,
-    desired_runtime_state:
-      charBlock.desired_runtime_state || null,
+    desired_runtime_state: charBlock.desired_runtime_state || null,
   };
 }
 
