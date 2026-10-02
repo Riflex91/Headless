@@ -8,6 +8,7 @@ const {
   MAX_CHARACTER_CONFIG_BYTES,
   nextCharacterConfigRevision,
   normalizeCharacterConfig,
+  prepareConfigPush,
 } = require("../src/CharacterConfigService");
 
 test("character config normalization clones JSON and rejects invalid payloads", () => {
@@ -37,6 +38,27 @@ test("character config revisions advance monotonically", () => {
   assert.equal(nextCharacterConfigRevision(-1), 1);
   assert.equal(nextCharacterConfigRevision(0), 1);
   assert.equal(nextCharacterConfigRevision(7), 8);
+});
+
+test("config push validation is monotonic and idempotent", () => {
+  assert.deepEqual(prepareConfigPush(4, 5, { combat: { enabled: true } }), {
+    revision: 5,
+    config: { combat: { enabled: true } },
+    changed: true,
+  });
+  assert.deepEqual(prepareConfigPush(5, 5, { combat: { enabled: true } }), {
+    revision: 5,
+    config: { combat: { enabled: true } },
+    changed: false,
+  });
+  assert.throws(
+    () => prepareConfigPush(5, 4, {}),
+    (error) => error.code === "CHARACTER_CONFIG_REVISION_STALE",
+  );
+  assert.throws(
+    () => prepareConfigPush(5, 5.5, {}),
+    (error) => error.code === "CHARACTER_CONFIG_REVISION_INVALID",
+  );
 });
 
 test("character config service restores persisted config before fallback", () => {
