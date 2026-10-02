@@ -62,6 +62,21 @@ declare global {
       runtime_state: "RUNNING" | "PAUSED" | "STOPPED";
 
       /**
+       * Revision of the exact bot bundle loaded by this CharacterThread.
+       */
+      code_revision: string | null;
+
+      /**
+       * Secret-free configuration fingerprint assigned at runtime start.
+       */
+      config_revision: string | null;
+
+      /**
+       * Local Git source revision, when available.
+       */
+      source_revision: string | null;
+
+      /**
        * Global account mutation safety stop controlled by the local supervisor.
        */
       emergency_stop: boolean;
