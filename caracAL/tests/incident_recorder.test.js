@@ -45,9 +45,7 @@ test("incident trigger classification covers critical runtime failures", () => {
 });
 
 test("incident recorder freezes snapshot and writes sanitized package", async () => {
-  const rootDir = await fs.mkdtemp(
-    path.join(os.tmpdir(), "caracal-incident-"),
-  );
+  const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "caracal-incident-"));
   const diagnosticStore = new DiagnosticEventStore({ maxEvents: 100 });
   let now = Date.parse("2026-10-02T05:00:00.000Z");
   let snapshot = {
