@@ -109,30 +109,82 @@ test("group supervisor diagnostics expose autonomous cleanup", () => {
 
 
 /* PHASE8_PRETTIER_PROBE_START */
-test("phase8 prettier exact-output probe", async () => {
+test("phase8 coordinator prettier diff probe", async () => {
   const fs = require("node:fs");
   const nodePath = require("node:path");
   const prettier = await import("prettier");
-  const targets = ["standalones/CharacterCoordinator.js"];
-
-  for (const relative of targets) {
-    const absolute = nodePath.join(__dirname, "..", relative);
-    const source = fs.readFileSync(absolute, "utf8");
-    const formatted = await prettier.format(source, { filepath: absolute });
-    const encoded = Buffer.from(formatted, "utf8").toString("base64");
-    const pathToken = Buffer.from(relative, "utf8").toString("base64");
-    let part = 0;
-    for (let offset = 0; offset < encoded.length; offset += 800) {
-      console.log(
-        "PHASE8_PRETTIER|" +
-          pathToken +
-          "|" +
-          String(part).padStart(4, "0") +
-          "|" +
-          encoded.slice(offset, offset + 800),
-      );
-      part += 1;
+  const relative = "standalones/CharacterCoordinator.js";
+  const absolute = nodePath.join(__dirname, "..", relative);
+  const original = fs.readFileSync(absolute, "utf8");
+  const formatted = await prettier.format(original, { filepath: absolute });
+  const a = original.replace(/\r\n/g, "\n").split("\n");
+  const b = formatted.replace(/\r\n/g, "\n").split("\n");
+  const hunks = [];
+  let i = 0;
+  let j = 0;
+  const anchorMatch = (ai, bj) => {
+    if (a[ai] !== b[bj]) return false;
+    let matches = 0;
+    for (let k = 0; k < 4 && ai + k < a.length && bj + k < b.length; k += 1) {
+      if (a[ai + k] !== b[bj + k]) break;
+      matches += 1;
     }
+    return matches >= 2 || ai === a.length - 1 || bj === b.length - 1;
+  };
+  while (i < a.length || j < b.length) {
+    if (i < a.length && j < b.length && a[i] === b[j]) {
+      i += 1;
+      j += 1;
+      continue;
+    }
+    let best = null;
+    for (let di = 0; di <= 120 && i + di < a.length; di += 1) {
+      for (let dj = 0; dj <= 120 && j + dj < b.length; dj += 1) {
+        if (di === 0 && dj === 0) continue;
+        if (!anchorMatch(i + di, j + dj)) continue;
+        const score = di + dj;
+        if (!best || score < best.score) {
+          best = { di, dj, score };
+        }
+      }
+    }
+    if (!best) {
+      hunks.push({ start: i, end: a.length, replacement: b.slice(j) });
+      i = a.length;
+      j = b.length;
+      break;
+    }
+    hunks.push({
+      start: i,
+      end: i + best.di,
+      replacement: b.slice(j, j + best.dj),
+    });
+    i += best.di;
+    j += best.dj;
   }
+  const compact = hunks.filter(
+    (hunk) => hunk.start !== hunk.end || hunk.replacement.length > 0,
+  );
+  compact.forEach((hunk, index) => {
+    const encoded = Buffer.from(
+      JSON.stringify({
+        start: hunk.start,
+        end: hunk.end,
+        replacement: hunk.replacement,
+      }),
+      "utf8",
+    ).toString("base64");
+    for (let offset = 0, part = 0; offset < encoded.length; offset += 600, part += 1) {
+      console.log(
+        "PHASE8_HUNK|" +
+          String(index).padStart(3, "0") +
+          "|" +
+          String(part).padStart(3, "0") +
+          "|" +
+          encoded.slice(offset, offset + 600),
+      );
+    }
+  });
+  console.log("PHASE8_HUNK_COUNT|" + compact.length);
 });
 /* PHASE8_PRETTIER_PROBE_END */
