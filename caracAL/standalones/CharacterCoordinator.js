@@ -706,6 +706,7 @@ function migrate_old_storage(path, localStorage) {
     persist_character_runtime_state(plan.start_character, "rotation_target");
 
     emit_supervisor_event("CHARACTER_ROTATION_REQUESTED", null, {
+      why: "EXPLICIT_SLOT_ROTATION",
       stop_character: plan.stop_character,
       start_character: plan.start_character,
       source_desired_state: plan.source_desired_state,
@@ -799,6 +800,7 @@ function migrate_old_storage(path, localStorage) {
           }
           char_block.rotation_source = null;
           emit_supervisor_event("CHARACTER_ROTATION_CANCELLED", char_name, {
+            why: "ROTATION_TARGET_STOPPED",
             stop_character: rotation_source,
             start_character: char_name,
             reason: "TARGET_STOPPED",
@@ -999,6 +1001,7 @@ function migrate_old_storage(path, localStorage) {
           "rotation_slot_released",
         );
         emit_supervisor_event("CHARACTER_ROTATION_SLOT_RELEASED", char_name, {
+          why: "ROTATION_SOURCE_EXITED",
           start_character: rotation_replacement,
         });
         dashboard?.publishSnapshot();
@@ -1019,6 +1022,7 @@ function migrate_old_storage(path, localStorage) {
               "CHARACTER_ROTATION_TARGET_STARTING",
               rotation_replacement,
               {
+                why: "ROTATION_SLOT_AVAILABLE",
                 stop_character: char_name,
               },
             );
@@ -1173,6 +1177,7 @@ function migrate_old_storage(path, localStorage) {
             const rotation_source = char_block.rotation_source;
             char_block.rotation_source = null;
             emit_supervisor_event("CHARACTER_ROTATION_COMPLETED", char_name, {
+              why: "ROTATION_TARGET_CONNECTED",
               stop_character: rotation_source,
               start_character: char_name,
             });
