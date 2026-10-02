@@ -93,5 +93,3 @@ test("config form validates JSON-backed roadmap sections", () => {
     /supply: ungültiges JSON/,
   );
 });
-
-
