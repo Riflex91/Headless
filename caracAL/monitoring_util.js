@@ -1,7 +1,10 @@
 const prettyMilliseconds = require("pretty-ms");
 const { PNG } = require("pngjs");
 const { STAT_BEAT_INTERVAL } = require("./src/CONSTANTS.js");
-const { sendIpcMessage } = require("./src/IpcProtocol");
+const {
+  normalizeIpcMessage,
+  sendIpcMessage,
+} = require("./src/IpcProtocol");
 const { max, min, abs, round, floor } = Math;
 
 function humanize_int(num, digits) {
@@ -175,7 +178,11 @@ function create_monitor_ui(bwi, char_name, child_block, enable_map) {
   let xp_ph = 0;
   let gold_histo = [];
   let last_beat = null;
-  child_block.instance.on("message", (m) => {
+  child_block.instance.on("message", (rawMessage) => {
+    const normalized = normalizeIpcMessage(rawMessage);
+    if (!normalized.ok) return;
+    const m = normalized.message;
+
     if (m.type == "stat_beat") {
       gold_histo.push(m.gold);
       gold_histo = gold_histo.slice(-100);
