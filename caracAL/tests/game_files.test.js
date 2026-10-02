@@ -8,24 +8,44 @@ const test = require("node:test");
 
 const {
   get_game_files,
+  get_game_files_after_html_vars,
+  get_game_files_before_html_vars,
   get_required_files,
   get_runner_files,
   missing_version_files,
 } = require("../game_files");
 
 test("game runtime dependencies follow the current Adventure Land load order", () => {
+  const before = get_game_files_before_html_vars();
+  const after = get_game_files_after_html_vars();
   const files = get_game_files();
 
-  assert.ok(files.indexOf("/js/phrases.js") < files.indexOf("/js/game.js"));
+  assert.ok(before.indexOf("/js/phrases.js") < before.indexOf("/js/game.js"));
   assert.ok(
-    files.indexOf("/js/common_functions.js") <
-      files.indexOf("/js/old_common_functions.js"),
+    before.indexOf("/js/common_functions.js") <
+      before.indexOf("/js/old_common_functions.js"),
   );
   assert.ok(
-    files.indexOf("/js/old_common_functions.js") <
-      files.indexOf("/js/functions.js"),
+    before.indexOf("/js/old_common_functions.js") <
+      before.indexOf("/js/functions.js"),
   );
-  assert.ok(files.indexOf("/js/functions.js") < files.indexOf("/js/game.js"));
+  assert.ok(
+    before.indexOf("/js/functions.js") <
+      before.indexOf("/js/generated_zones.js"),
+  );
+  assert.ok(
+    before.indexOf("/js/generated_zones.js") <
+      before.indexOf("/js/game.js"),
+  );
+  assert.ok(
+    before.indexOf("/js/entity_animations.js") <
+      before.indexOf("/js/game.js"),
+  );
+  assert.deepEqual(after, [
+    "/js/pixel_fonts.js",
+    "/js/npc_obstruction_hint.js",
+  ]);
+  assert.deepEqual(files, before.concat(after));
 });
 
 test("runner loads legacy common helpers before runner functions", () => {
@@ -43,6 +63,11 @@ test("required version files are unique across game and runner sources", () => {
   assert.equal(files.length, new Set(files).size);
   assert.ok(files.includes("/js/phrases.js"));
   assert.ok(files.includes("/js/old_common_functions.js"));
+  assert.ok(files.includes("/js/generated_zones.js"));
+  assert.ok(files.includes("/js/entity_animations.js"));
+  assert.ok(files.includes("/js/progression/runtime.js"));
+  assert.ok(files.includes("/js/tavern_poker.js"));
+  assert.ok(files.includes("/js/npc_obstruction_hint.js"));
 });
 
 test("cached versions report newly required runtime files as missing", async () => {
@@ -58,8 +83,10 @@ test("cached versions report newly required runtime files as missing", async () 
 
     for (const resource of get_required_files()) {
       if (
-        resource === "/js/phrases.js" ||
-        resource === "/js/old_common_functions.js"
+        resource === "/js/generated_zones.js" ||
+        resource === "/js/entity_animations.js" ||
+        resource === "/js/pixel_fonts.js" ||
+        resource === "/js/npc_obstruction_hint.js"
       ) {
         continue;
       }
@@ -71,8 +98,10 @@ test("cached versions report newly required runtime files as missing", async () 
     }
 
     assert.deepEqual(await missing_version_files(version), [
-      "/js/phrases.js",
-      "/js/old_common_functions.js",
+      "/js/generated_zones.js",
+      "/js/entity_animations.js",
+      "/js/pixel_fonts.js",
+      "/js/npc_obstruction_hint.js",
     ]);
   } finally {
     process.chdir(previousCwd);
