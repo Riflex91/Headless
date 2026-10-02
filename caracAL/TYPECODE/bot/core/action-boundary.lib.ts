@@ -716,6 +716,10 @@ export class ActionBoundary {
     }
   }
 
+  directMove(request: MoveRequest): ActionRecord {
+    return this.move(request);
+  }
+
   cancelDirectMove(
     actionId: string,
     reason = "MOVE_CANCELLED",
