@@ -380,12 +380,12 @@ function migrate_old_storage(path, localStorage) {
     return farmer_enabled && merchant_enabled;
   }
 
-  function logistics_live_execution_summary(
-    board = merchant_logistics_board,
-  ) {
+  function logistics_live_execution_summary(board = merchant_logistics_board) {
     const claims = Array.isArray(board?.claims) ? board.claims : [];
     const ready = claims.filter((claim) => claim?.status === "READY");
-    const eligible = ready.filter((claim) => logistics_execution_enabled(claim));
+    const eligible = ready.filter((claim) =>
+      logistics_execution_enabled(claim),
+    );
     const dispatchable = eligible.filter((claim) => {
       const route = logistics_claim_route(claim);
       const source_block = character_manage[route.source];
@@ -3832,7 +3832,9 @@ function migrate_old_storage(path, localStorage) {
       );
     }
     if (
-      ["STARTING", "RUNNING"].includes(char_block.logistics_live_test?.status) ||
+      ["STARTING", "RUNNING"].includes(
+        char_block.logistics_live_test?.status,
+      ) ||
       logistics_live_test_active
     ) {
       throw make_control_error(
@@ -3884,8 +3886,7 @@ function migrate_old_storage(path, localStorage) {
     };
     const started_at = Date.now();
     logistics_live_test_sequence += 1;
-    const request_id =
-      `logistics-live-${started_at}-${logistics_live_test_sequence}`;
+    const request_id = `logistics-live-${started_at}-${logistics_live_test_sequence}`;
 
     char_block.logistics_live_test = {
       request_id,
@@ -3989,9 +3990,7 @@ function migrate_old_storage(path, localStorage) {
         );
       }
 
-      const board = refresh_merchant_logistics(
-        "LOGISTICS_LIVE_TEST_EVIDENCE",
-      );
+      const board = refresh_merchant_logistics("LOGISTICS_LIVE_TEST_EVIDENCE");
       const planner = merchant_logistics_planner.diagnostics();
       const account_blocks = Object.values(character_manage).filter(
         (block) => block?.account_owned === true,
