@@ -22,9 +22,7 @@ function selectCharacter(snapshot, requested) {
     : [];
 
   if (requested) {
-    const exact = characters.find(
-      (character) => character.name === requested,
-    );
+    const exact = characters.find((character) => character.name === requested);
     if (!exact) {
       throw new Error(`Unknown character in dashboard state: ${requested}`);
     }
@@ -73,8 +71,9 @@ async function main() {
   process.stdout.write(`${JSON.stringify(payload.result, null, 2)}\n`);
 
   if (payload.result?.outcome !== "PASS") {
-    process.exitCode =
-      ["UNKNOWN", "TIMEOUT"].includes(payload.result?.outcome) ? 2 : 1;
+    process.exitCode = ["UNKNOWN", "TIMEOUT"].includes(payload.result?.outcome)
+      ? 2
+      : 1;
   }
 }
 
