@@ -109,7 +109,12 @@ test("generated config enables the local dashboard by default", () => {
 test("dashboard static assets are present", () => {
   const dashboardDir = path.join(__dirname, "..", "dashboard");
 
-  for (const file of ["index.html", "app.js", "styles.css"]) {
+  for (const file of [
+    "index.html",
+    "app.js",
+    "movement-map.js",
+    "styles.css",
+  ]) {
     assert.equal(fs.existsSync(path.join(dashboardDir, file)), true);
   }
 });
