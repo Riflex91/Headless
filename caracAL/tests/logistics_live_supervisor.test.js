@@ -273,7 +273,10 @@ test("coordinator, thread, dashboard and launcher expose autonomous logistics li
   assert.match(coordinator, /run_logistics_live_test/);
   assert.match(coordinator, /logistics_live_test_active/);
   assert.match(coordinator, /LOGISTICS_LIVE_TEST_RESULT_RECEIVED/);
-  assert.match(dashboard, /\/headless\/api\/characters\/:name\/tests\/logistics/);
+  assert.match(
+    dashboard,
+    /\/headless\/api\/characters\/:name\/tests\/logistics/,
+  );
   assert.match(thread, /case "logistics_live_test"/);
   assert.match(thread, /runLogisticsLiveTest/);
   assert.match(launcher, /selectLogisticsLiveTestMerchant/);
