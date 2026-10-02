@@ -354,16 +354,8 @@ function renderRotationControls() {
     );
   });
 
-  replaceRotationOptions(
-    rotationStopCharacter,
-    sources,
-    "Auswechseln …",
-  );
-  replaceRotationOptions(
-    rotationStartCharacter,
-    targets,
-    "Einwechseln …",
-  );
+  replaceRotationOptions(rotationStopCharacter, sources, "Auswechseln …");
+  replaceRotationOptions(rotationStartCharacter, targets, "Einwechseln …");
 
   rotateCharacters.disabled =
     !rotationStopCharacter.value || !rotationStartCharacter.value;
@@ -540,8 +532,8 @@ function updateCharacterCard(card, character) {
   const rotationText = character.rotation_source
     ? `Einwechseln für ${character.rotation_source}`
     : character.rotation_replacement
-      ? `Auswechseln → ${character.rotation_replacement}`
-      : "—";
+    ? `Auswechseln → ${character.rotation_replacement}`
+    : "—";
   card.querySelector(".character-rotation").textContent = rotationText;
   card.querySelector(".character-restarts").textContent =
     character.restart_attempts ?? 0;
