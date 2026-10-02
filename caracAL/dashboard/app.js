@@ -535,7 +535,9 @@ function updateCharacterCard(card, character) {
     character.applied_runtime_config_revision ?? "—";
   card.querySelector(".character-config-push-status").textContent =
     character.config_push_error
-      ? `${character.config_push_status || "UNKNOWN"} · ${character.config_push_error}`
+      ? `${character.config_push_status || "UNKNOWN"} · ${
+          character.config_push_error
+        }`
       : character.config_push_status || "UNKNOWN";
   const rotationText = character.rotation_source
     ? `Einwechseln für ${character.rotation_source}`
