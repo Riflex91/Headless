@@ -1006,6 +1006,30 @@ function migrate_old_storage(path, localStorage) {
     );
   }
 
+  async function wait_for_group_live_test_runtime(
+    char_name,
+    timeout_ms = MOVEMENT_LIVE_TEST_RUNTIME_TIMEOUT_MS,
+  ) {
+    const started_at = Date.now();
+    while (Date.now() - started_at < timeout_ms) {
+      const char_block = character_manage[char_name];
+      if (
+        char_block?.instance &&
+        char_block.connected &&
+        Number.isFinite(char_block.bot_runtime_started_at)
+      ) {
+        return char_block;
+      }
+      await sleep(100);
+    }
+
+    throw make_control_error(
+      "GROUP_LIVE_TEST_RUNTIME_TIMEOUT",
+      `Group runtime did not become ready for ${char_name}`,
+      504,
+    );
+  }
+
   async function wait_for_character_connected(
     char_name,
     timeout_ms = MOVEMENT_LIVE_TEST_RUNTIME_TIMEOUT_MS,
@@ -2500,7 +2524,7 @@ function migrate_old_storage(path, localStorage) {
         await control_character(char_name, CONTROL_ACTIONS.START);
       }
 
-      await wait_for_movement_live_test_runtime(char_name);
+      await wait_for_group_live_test_runtime(char_name);
       const ready_block = character_manage[char_name];
       const result_promise = wait_for_group_live_test_result(
         char_name,

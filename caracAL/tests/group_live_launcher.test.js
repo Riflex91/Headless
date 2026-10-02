@@ -3,7 +3,11 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 
-const { selectGroupPair } = require("../scripts/run_group_live_e2e");
+const {
+  runGroupPair,
+  selectGroupPair,
+  waitForGroupTestRunning,
+} = require("../scripts/run_group_live_e2e");
 
 test("group launcher selects two owned non-merchants and prefers idle pair", () => {
   const pair = selectGroupPair({
@@ -56,4 +60,97 @@ test("group launcher respects explicit distinct pair", () => {
 
   assert.equal(pair.leader.name, "B");
   assert.equal(pair.follower.name, "A");
+});
+
+
+test("group launcher waits for leader RUNNING before starting follower", async () => {
+  const calls = [];
+  const pair = {
+    leader: { name: "Leader" },
+    follower: { name: "Follower" },
+  };
+
+  const payloads = await runGroupPair(pair, {
+    runCharacterImpl: async (character, role) => {
+      calls.push("run:" + role + ":" + character.name);
+      return { result: { outcome: "PASS", role } };
+    },
+    waitForRunningImpl: async (characterName) => {
+      calls.push("wait:" + characterName);
+      assert.equal(calls.includes("run:follower:Follower"), false);
+    },
+  });
+
+  assert.deepEqual(calls, [
+    "run:leader:Leader",
+    "wait:Leader",
+    "run:follower:Follower",
+  ]);
+  assert.equal(payloads.length, 2);
+});
+
+test("group launcher observes STARTING until leader reaches RUNNING", async () => {
+  const states = [
+    {
+      characters: [
+        {
+          name: "Leader",
+          group_live_test: { status: "STARTING", reason: null },
+        },
+      ],
+    },
+    {
+      characters: [
+        {
+          name: "Leader",
+          group_live_test: { status: "RUNNING", reason: null },
+        },
+      ],
+    },
+  ];
+  let now = 0;
+  let reads = 0;
+
+  const result = await waitForGroupTestRunning("Leader", {
+    readStateImpl: async () => {
+      const snapshot = states[Math.min(reads, states.length - 1)];
+      reads += 1;
+      return snapshot;
+    },
+    timeoutMs: 5000,
+    pollMs: 100,
+    now: () => now,
+    sleepImpl: async (ms) => {
+      now += ms;
+    },
+  });
+
+  assert.equal(reads, 2);
+  assert.equal(
+    result.characters[0].group_live_test.status,
+    "RUNNING",
+  );
+});
+
+test("group launcher stops bootstrap when leader test becomes terminal", async () => {
+  await assert.rejects(
+    () =>
+      waitForGroupTestRunning("Leader", {
+        readStateImpl: async () => ({
+          characters: [
+            {
+              name: "Leader",
+              group_live_test: {
+                status: "FAILED",
+                reason: "GROUP_LIVE_TEST_RUNTIME_TIMEOUT",
+              },
+            },
+          ],
+        }),
+        timeoutMs: 5000,
+        now: () => 0,
+        sleepImpl: async () => {},
+      }),
+    /GROUP_LIVE_TEST_RUNTIME_TIMEOUT/,
+  );
 });

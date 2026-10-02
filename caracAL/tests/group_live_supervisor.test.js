@@ -1,6 +1,8 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 const test = require("node:test");
 
 const {
@@ -105,4 +107,24 @@ test("group supervisor diagnostics expose autonomous cleanup", () => {
   assert.equal(diagnostics.observed.pair_formed, true);
   assert.equal(diagnostics.observed.initial_party_restored, true);
   assert.equal(diagnostics.result.outcome, "PASS");
+});
+
+
+test("group supervisor uses a group-specific runtime readiness error", () => {
+  const coordinator = fs.readFileSync(
+    path.join(
+      __dirname,
+      "..",
+      "standalones",
+      "CharacterCoordinator.js",
+    ),
+    "utf8",
+  );
+
+  assert.match(coordinator, /function wait_for_group_live_test_runtime/);
+  assert.match(coordinator, /GROUP_LIVE_TEST_RUNTIME_TIMEOUT/);
+  assert.match(
+    coordinator,
+    /run_group_live_test[\s\S]*await wait_for_group_live_test_runtime\(char_name\)/,
+  );
 });
