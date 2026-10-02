@@ -11,6 +11,7 @@ const ipc_storage = require("../ipcStorage");
 const { DESIRED_RUNTIME_STATES } = require("./CharacterControl");
 const { normalizeRuntimeEvent } = require("./RuntimeEventBridge");
 const { normalizeIpcMessage, sendIpcMessage } = require("./IpcProtocol");
+const { prepareConfigPush } = require("./CharacterConfigService");
 
 const LogUtils = require("./LogUtils");
 const { console } = LogUtils;
@@ -188,6 +189,13 @@ async function make_game(proc_args) {
   extensions.code_revision = proc_args.code_revision || null;
   extensions.config_revision = proc_args.config_revision || null;
   extensions.source_revision = proc_args.source_revision || null;
+  const initialConfig = prepareConfigPush(
+    0,
+    proc_args.character_config_revision || 0,
+    proc_args.character_config || {},
+  );
+  extensions.config = initialConfig.config;
+  extensions.runtime_config_revision = initialConfig.revision;
   extensions.emergency_stop = !!proc_args.emergency_stop?.active;
   extensions.emergency_stop_state = proc_args.emergency_stop || {
     active: false,
@@ -292,6 +300,12 @@ async function make_game(proc_args) {
     game_context,
   );
   sendIpcMessage(process, { type: "initialized" });
+  sendIpcMessage(process, {
+    type: "config_applied",
+    revision: extensions.runtime_config_revision,
+    changed: true,
+    source: "process_args",
+  });
   process.on("message", (rawMessage) => {
     const m = acceptedIpcMessage(rawMessage);
     if (!m) return;
@@ -316,6 +330,34 @@ async function make_game(proc_args) {
           sendIpcMessage(process, {
             type: "runtime_state_applied",
             state: extensions.runtime_state,
+          });
+        }
+        break;
+      case "config_push":
+        try {
+          const nextConfig = prepareConfigPush(
+            extensions.runtime_config_revision,
+            m.revision,
+            m.config,
+          );
+          if (nextConfig.changed) {
+            extensions.config = nextConfig.config;
+            extensions.runtime_config_revision = nextConfig.revision;
+          }
+          sendIpcMessage(process, {
+            type: "config_applied",
+            revision: nextConfig.revision,
+            changed: nextConfig.changed,
+            source: "config_push",
+          });
+        } catch (error) {
+          sendIpcMessage(process, {
+            type: "config_rejected",
+            revision: Number.isInteger(Number(m.revision))
+              ? Number(m.revision)
+              : null,
+            reason: error.code || "CHARACTER_CONFIG_REJECTED",
+            message: error.message,
           });
         }
         break;
