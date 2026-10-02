@@ -567,7 +567,6 @@ clearEmergencyStop.addEventListener("click", async () => {
   }
 });
 
-
 for (const control of [
   movementMapSelect,
   movementTrailRange,
