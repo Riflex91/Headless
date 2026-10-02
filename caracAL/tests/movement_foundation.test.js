@@ -266,7 +266,7 @@ test("movement controller gives direct movement an exclusive owner", () => {
     "movement-controller.lib.ts",
   );
   const actions = {
-    move() {
+    directMove() {
       return actionRecord("D-1", "DISPATCHED");
     },
     cancelDirectMove() {
@@ -309,7 +309,7 @@ test("movement controller gives direct movement an exclusive owner", () => {
 test("confirmed cancel releases direct movement ownership", async () => {
   const { MovementController } = coreModule("movement-controller.lib.ts");
   const actions = {
-    move() {
+    directMove() {
       return actionRecord("D-1", "DISPATCHED");
     },
     cancelDirectMove() {
@@ -351,7 +351,7 @@ test("smart movement keeps ownership until settlement then releases it", async (
   );
   const pending = deferred();
   const actions = {
-    move() {
+    directMove() {
       return actionRecord("D-1", "DISPATCHED");
     },
     cancelDirectMove() {
@@ -397,7 +397,7 @@ test("smart movement keeps ownership until settlement then releases it", async (
 test("UNKNOWN smart movement conservatively retains ownership", async () => {
   const { MovementController } = coreModule("movement-controller.lib.ts");
   const actions = {
-    move() {
+    directMove() {
       return actionRecord("D-1", "DISPATCHED");
     },
     cancelDirectMove() {
@@ -428,7 +428,7 @@ test("forced cancel can preempt a different movement owner", async () => {
   const { MovementController } = coreModule("movement-controller.lib.ts");
   const events = [];
   const actions = {
-    move() {
+    directMove() {
       return actionRecord("D-1", "DISPATCHED");
     },
     cancelDirectMove() {
@@ -474,7 +474,7 @@ test("forced cancel can preempt a different movement owner", async () => {
 test("UNKNOWN cancel retains safety ownership instead of allowing a race", async () => {
   const { MovementController } = coreModule("movement-controller.lib.ts");
   const actions = {
-    move() {
+    directMove() {
       return actionRecord("D-1", "DISPATCHED");
     },
     cancelDirectMove() {
@@ -509,7 +509,7 @@ test("UNKNOWN cancel retains safety ownership instead of allowing a race", async
 test("movement controller status is exposed without mutable internal target references", () => {
   const { MovementController } = coreModule("movement-controller.lib.ts");
   const actions = {
-    move() {
+    directMove() {
       return actionRecord("D-1", "DISPATCHED");
     },
     cancelDirectMove() {
@@ -571,7 +571,7 @@ test("movement controller observe retains ownership in flight and releases it on
   const { MovementController } = coreModule("movement-controller.lib.ts");
   let settlement = actionRecord("D-1", "DISPATCHED");
   const actions = {
-    move() {
+    directMove() {
       return actionRecord("D-1", "DISPATCHED");
     },
     cancelDirectMove() {
@@ -617,7 +617,7 @@ test("movement controller observe ignores non-direct commands", async () => {
   const pending = deferred();
   let settlementCalls = 0;
   const actions = {
-    move() {
+    directMove() {
       return actionRecord("D-1", "DISPATCHED");
     },
     cancelDirectMove() {
@@ -653,7 +653,7 @@ test("confirmed movement cancel rejects the superseded direct move", async () =>
   const { MovementController } = coreModule("movement-controller.lib.ts");
   const cancelledDirect = [];
   const actions = {
-    move() {
+    directMove() {
       return actionRecord("D-9", "DISPATCHED");
     },
     cancelDirectMove(actionId, reason) {
