@@ -254,6 +254,7 @@ export class BotRuntimeKernel {
         ...(event.stuckSince !== undefined && {
           stuckSince: event.stuckSince,
         }),
+        movement: this.movement.status(),
       },
     });
   }
