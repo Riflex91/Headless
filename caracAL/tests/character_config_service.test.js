@@ -74,15 +74,12 @@ test("character config service restores persisted config before fallback", () =>
   };
   const service = new CharacterConfigService({ persistence });
 
-  assert.deepEqual(
-    service.load("My_Ranger1", { combat: { enabled: false } }),
-    {
-      revision: 4,
-      config: { combat: { enabled: true } },
-      updated_at: 1234,
-      source: "PERSISTED",
-    },
-  );
+  assert.deepEqual(service.load("My_Ranger1", { combat: { enabled: false } }), {
+    revision: 4,
+    config: { combat: { enabled: true } },
+    updated_at: 1234,
+    source: "PERSISTED",
+  });
 });
 
 test("character config service uses config fallback at revision zero", () => {
