@@ -19,6 +19,53 @@ function isConnectionFailure(error) {
   ].includes(code);
 }
 
+function selectMovementLiveTestCharacter(snapshot, requested = null) {
+  const characters = Array.isArray(snapshot?.characters)
+    ? snapshot.characters
+    : [];
+
+  if (requested) {
+    const exact = characters.find((character) => character.name === requested);
+    if (!exact) {
+      throw new Error(`Unknown character in dashboard state: ${requested}`);
+    }
+    return exact;
+  }
+
+  const combatCharacters = characters.filter(
+    (character) =>
+      character.account_owned === true && character.ctype !== "merchant",
+  );
+
+  return (
+    combatCharacters.find(
+      (character) =>
+        character.connected === true && character.lifecycle_state === "ONLINE",
+    ) ||
+    combatCharacters.find(
+      (character) =>
+        character.enabled === true &&
+        character.desired_runtime_state === "RUNNING",
+    ) ||
+    combatCharacters.find((character) => character.enabled === true) ||
+    combatCharacters.find((character) => character.connected === true) ||
+    combatCharacters[0] ||
+    characters.find(
+      (character) =>
+        character.account_owned === true &&
+        character.connected === true &&
+        character.lifecycle_state === "ONLINE",
+    ) ||
+    characters.find(
+      (character) =>
+        character.account_owned === true && character.enabled === true,
+    ) ||
+    characters.find((character) => character.account_owned === true) ||
+    characters[0] ||
+    null
+  );
+}
+
 function startManagedRuntime({
   cwd = path.resolve(__dirname, ".."),
   spawnImpl = childProcess.spawn,
@@ -166,6 +213,7 @@ async function ensureDashboardAvailable(
 module.exports = {
   ensureDashboardAvailable,
   isConnectionFailure,
+  selectMovementLiveTestCharacter,
   startManagedRuntime,
   stopManagedRuntime,
   waitForDashboard,

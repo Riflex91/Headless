@@ -2,6 +2,7 @@
 
 const {
   ensureDashboardAvailable,
+  selectMovementLiveTestCharacter,
   stopManagedRuntime,
 } = require("../src/MovementLiveTestLauncher");
 
@@ -29,30 +30,6 @@ async function readState() {
   );
 }
 
-function selectCharacter(snapshot, requested) {
-  const characters = Array.isArray(snapshot?.characters)
-    ? snapshot.characters
-    : [];
-
-  if (requested) {
-    const exact = characters.find((character) => character.name === requested);
-    if (!exact) {
-      throw new Error(`Unknown character in dashboard state: ${requested}`);
-    }
-    return exact;
-  }
-
-  return (
-    characters.find(
-      (character) =>
-        character.account_owned === true && character.ctype !== "merchant",
-    ) ||
-    characters.find((character) => character.account_owned === true) ||
-    characters[0] ||
-    null
-  );
-}
-
 async function main() {
   const requested =
     process.argv[2] || process.env.CARACAL_LIVE_TEST_CHARACTER || null;
@@ -70,7 +47,10 @@ async function main() {
       process.stdout.write(`Using existing caracAL runtime at ${baseUrl}\n`);
     }
 
-    const character = selectCharacter(dashboard.state, requested);
+    const character = selectMovementLiveTestCharacter(
+      dashboard.state,
+      requested,
+    );
     if (!character) {
       throw new Error("No character is available for the movement live test");
     }
