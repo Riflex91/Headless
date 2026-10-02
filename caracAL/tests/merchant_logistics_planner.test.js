@@ -145,6 +145,10 @@ test("planner creates all Phase 11 farmer claim types from live account state", 
 
   const gold = board.claims.find((claim) => claim.type === "GOLD_PICKUP");
   assert.equal(gold.amount, 4000);
+  assert.deepEqual(gold.metadata, {
+    keepGold: 1000,
+    pickupAbove: 2000,
+  });
 
   const pressure = board.claims.find(
     (claim) => claim.type === "INVENTORY_PRESSURE",
