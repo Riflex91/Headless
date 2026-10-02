@@ -26,6 +26,7 @@ export interface ModuleRegistryEvent {
   timestamp: number;
   reason?: string;
   error?: string;
+  stack?: string;
 }
 
 export interface ModuleRegistryOptions {
@@ -126,6 +127,8 @@ export class ModuleRegistry {
           timestamp: this.now(),
           reason: "START_FAILED",
           error: message,
+          ...(error instanceof Error && error.stack && { stack: error.stack }),
+          ...(error instanceof Error && error.stack && { stack: error.stack }),
         });
         await this.stopStarted("START_FAILURE_ROLLBACK");
         throw error;
