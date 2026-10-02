@@ -4,6 +4,13 @@ const state = {
   characters: new Map(),
   events: [],
   maxOnlineCharacters: 4,
+  emergencyStop: {
+    active: false,
+    reason: null,
+    activated_at: null,
+    cleared_at: null,
+    revision: 0,
+  },
 };
 
 const cards = new Map();
@@ -30,6 +37,13 @@ const showFacing = document.querySelector("#show-facing");
 const showTargetLine = document.querySelector("#show-target-line");
 const inventoryEquipmentApi = window.HeadlessInventoryEquipment;
 const accountInventoryGrid = document.querySelector("#account-inventory-grid");
+const emergencyStopControl = document.querySelector("#emergency-stop-control");
+const emergencyStopStatus = document.querySelector("#emergency-stop-status");
+const emergencyStopReason = document.querySelector("#emergency-stop-reason");
+const activateEmergencyStop = document.querySelector(
+  "#activate-emergency-stop",
+);
+const clearEmergencyStop = document.querySelector("#clear-emergency-stop");
 
 function formatTimestamp(timestamp) {
   if (!timestamp) return "—";
@@ -132,6 +146,46 @@ async function writeClipboard(text) {
   if (!copied) {
     throw new Error("Zwischenablage konnte nicht beschrieben werden");
   }
+}
+
+async function sendEmergencyStop(action) {
+  const response = await fetch("/headless/api/emergency-stop", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      action,
+      reason:
+        action === "activate"
+          ? "MANUAL_DASHBOARD_EMERGENCY_STOP"
+          : "MANUAL_DASHBOARD_EMERGENCY_CLEAR",
+    }),
+  });
+  const payload = await response.json();
+
+  if (!response.ok) {
+    throw new Error(
+      payload.message || payload.error || "Emergency stop control failed",
+    );
+  }
+
+  if (payload.snapshot) {
+    applySnapshot(payload.snapshot);
+  }
+}
+
+function renderEmergencyStop() {
+  const emergency = state.emergencyStop || { active: false };
+
+  emergencyStopControl.classList.toggle("active", !!emergency.active);
+  emergencyStopStatus.textContent = emergency.active
+    ? "Mutation Safety: EMERGENCY STOP"
+    : "Mutation Safety: READY";
+  emergencyStopReason.textContent = emergency.active
+    ? emergency.reason || "Emergency stop active"
+    : "Keine Sperre aktiv";
+
+  activateEmergencyStop.hidden = !!emergency.active;
+  clearEmergencyStop.hidden = !emergency.active;
 }
 
 async function sendCharacterControl(characterName, action) {
@@ -423,6 +477,13 @@ function renderEvents() {
 
 function applySnapshot(snapshot) {
   state.maxOnlineCharacters = snapshot.max_online_characters || 4;
+  state.emergencyStop = snapshot.emergency_stop || {
+    active: false,
+    reason: null,
+    activated_at: null,
+    cleared_at: null,
+    revision: 0,
+  };
   state.characters.clear();
 
   for (const character of snapshot.characters || []) {
@@ -432,6 +493,7 @@ function applySnapshot(snapshot) {
   renderCharacters();
   renderMovementMap();
   renderInventoryEquipment();
+  renderEmergencyStop();
   lastUpdate.textContent = `Update ${formatTimestamp(snapshot.generated_at)}`;
 }
 
@@ -471,6 +533,38 @@ function connectEvents() {
 clearEvents.addEventListener("click", () => {
   state.events = [];
   renderEvents();
+});
+
+activateEmergencyStop.addEventListener("click", async () => {
+  activateEmergencyStop.disabled = true;
+
+  try {
+    await sendEmergencyStop("activate");
+  } catch (error) {
+    addEvent({
+      timestamp: Date.now(),
+      event: "EMERGENCY_STOP_CONTROL_ERROR",
+      reason: error.message,
+    });
+  } finally {
+    activateEmergencyStop.disabled = false;
+  }
+});
+
+clearEmergencyStop.addEventListener("click", async () => {
+  clearEmergencyStop.disabled = true;
+
+  try {
+    await sendEmergencyStop("clear");
+  } catch (error) {
+    addEvent({
+      timestamp: Date.now(),
+      event: "EMERGENCY_STOP_CONTROL_ERROR",
+      reason: error.message,
+    });
+  } finally {
+    clearEmergencyStop.disabled = false;
+  }
 });
 
 for (const control of [

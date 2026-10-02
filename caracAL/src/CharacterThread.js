@@ -175,6 +175,14 @@ async function make_game(proc_args) {
   extensions.log = LogUtils.log;
   extensions.runtime_state =
     proc_args.runtime_state || DESIRED_RUNTIME_STATES.RUNNING;
+  extensions.emergency_stop = !!proc_args.emergency_stop?.active;
+  extensions.emergency_stop_state = proc_args.emergency_stop || {
+    active: false,
+    reason: null,
+    activated_at: null,
+    cleared_at: null,
+    revision: 0,
+  };
 
   extensions.deploy = function (char_name, realm, script_file, game_version) {
     process.send({
@@ -295,6 +303,20 @@ async function make_game(proc_args) {
             state: extensions.runtime_state,
           });
         }
+        break;
+      case "emergency_stop":
+        extensions.emergency_stop = !!m.state?.active;
+        extensions.emergency_stop_state = m.state || {
+          active: false,
+          reason: null,
+          activated_at: null,
+          cleared_at: null,
+          revision: 0,
+        };
+        process.send({
+          type: "emergency_stop_applied",
+          state: extensions.emergency_stop_state,
+        });
         break;
     }
   });

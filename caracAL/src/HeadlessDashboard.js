@@ -74,7 +74,11 @@ function publicCharacterState(name, charBlock = {}) {
   };
 }
 
-function buildSupervisorSnapshot(characterManage = {}, lifecyclePolicy = {}) {
+function buildSupervisorSnapshot(
+  characterManage = {},
+  lifecyclePolicy = {},
+  emergencyStopState = null,
+) {
   const characters = Object.entries(characterManage)
     .map(([name, charBlock]) => publicCharacterState(name, charBlock))
     .sort((a, b) => a.name.localeCompare(b.name));
@@ -87,6 +91,13 @@ function buildSupervisorSnapshot(characterManage = {}, lifecyclePolicy = {}) {
         character.lifecycle_state,
       ),
     ).length,
+    emergency_stop: emergencyStopState || {
+      active: false,
+      reason: null,
+      activated_at: null,
+      cleared_at: null,
+      revision: 0,
+    },
     characters,
   };
 }
@@ -117,6 +128,8 @@ function attachHeadlessDashboard({
   lifecyclePolicy,
   publicDir,
   controlCharacter,
+  controlEmergencyStop,
+  getEmergencyStopState,
   diagnosticStore,
   assetCache,
 }) {
@@ -127,7 +140,11 @@ function attachHeadlessDashboard({
   const clients = new Set();
   let snapshotPublishTimer = null;
   const getSnapshot = () =>
-    buildSupervisorSnapshot(characterManage, lifecyclePolicy);
+    buildSupervisorSnapshot(
+      characterManage,
+      lifecyclePolicy,
+      getEmergencyStopState?.(),
+    );
 
   router.use("/headless", (req, res, next) => {
     if (!isLoopbackAddress(req.socket?.remoteAddress)) {
@@ -140,6 +157,39 @@ function attachHeadlessDashboard({
   router.get("/headless/api/state", (_req, res) => {
     res.json(getSnapshot());
   });
+
+  router.post(
+    "/headless/api/emergency-stop",
+    express.json({ limit: "8kb" }),
+    async (req, res) => {
+      const action = String(req.body?.action || "").toLowerCase();
+      if (!["activate", "clear"].includes(action)) {
+        res.status(400).json({ error: "INVALID_EMERGENCY_STOP_ACTION" });
+        return;
+      }
+      if (!controlEmergencyStop) {
+        res.status(503).json({ error: "EMERGENCY_STOP_UNAVAILABLE" });
+        return;
+      }
+
+      try {
+        const state = await controlEmergencyStop(
+          action,
+          req.body?.reason || undefined,
+        );
+        res.json({
+          ok: true,
+          emergency_stop: state,
+          snapshot: getSnapshot(),
+        });
+      } catch (error) {
+        res.status(Number(error.statusCode) || 500).json({
+          error: error.code || "EMERGENCY_STOP_FAILED",
+          message: error.message,
+        });
+      }
+    },
+  );
 
   router.get("/headless/api/assets/adventure-land", async (req, res) => {
     if (!assetCache) {

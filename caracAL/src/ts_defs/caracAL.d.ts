@@ -5,6 +5,14 @@ You rock!
 
 export {};
 declare global {
+  interface CaracALEmergencyStopState {
+    active: boolean;
+    reason: string | null;
+    activated_at: number | null;
+    cleared_at: number | null;
+    revision: number;
+  }
+
   interface CaracALRuntimeEvent {
     version: 1;
     id: string;
@@ -52,6 +60,12 @@ declare global {
        * Cooperative bot code must not start new work while PAUSED.
        */
       runtime_state: "RUNNING" | "PAUSED" | "STOPPED";
+
+      /**
+       * Global account mutation safety stop controlled by the local supervisor.
+       */
+      emergency_stop: boolean;
+      emergency_stop_state: CaracALEmergencyStopState;
 
       /**
        * Sends one bounded structured runtime event to the local supervisor.

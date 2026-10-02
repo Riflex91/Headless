@@ -1,3 +1,4 @@
+import { ActionLedger } from "./action-ledger.lib";
 import { EventBus, RuntimeEvent } from "./event-bus.lib";
 import {
   ModuleRegistry,
@@ -39,6 +40,7 @@ export class BotRuntimeKernel {
   readonly eventBus: EventBus;
   readonly scheduler: Scheduler;
   readonly modules: ModuleRegistry;
+  readonly actionLedger: ActionLedger;
 
   private started = false;
   private stopping = false;
@@ -57,6 +59,20 @@ export class BotRuntimeKernel {
       onEvent: (event) => this.handleModuleEvent(event),
     });
 
+    this.actionLedger = new ActionLedger({
+      isEmergencyStopActive: () => !!parent.caracAL?.emergency_stop,
+      emit: (event) => {
+        this.eventBus.emit({
+          module: event.module,
+          type: event.type,
+          why: event.why,
+          actionId: event.actionId,
+          correlationId: event.correlationId,
+          ...(event.data && { data: event.data }),
+        });
+      },
+    });
+
     this.scheduler.register({
       id: STATUS_JOB_ID,
       intervalMs: STATUS_INTERVAL_MS,
@@ -70,8 +86,12 @@ export class BotRuntimeKernel {
           data: {
             ...runtimeIdentity(),
             runtimeState: runtimeState(),
+            emergencyStop: !!parent.caracAL?.emergency_stop,
+            emergencyStopState:
+              parent.caracAL?.emergency_stop_state || null,
             modules: this.modules.list(),
             schedulerJobs: this.scheduler.list(),
+            recentActions: this.actionLedger.list(20),
           },
         });
       },
@@ -145,8 +165,11 @@ export class BotRuntimeKernel {
       started: this.started,
       stopping: this.stopping,
       runtimeState: runtimeState(),
+      emergencyStop: !!parent.caracAL?.emergency_stop,
+      emergencyStopState: parent.caracAL?.emergency_stop_state || null,
       modules: this.modules.list(),
       schedulerJobs: this.scheduler.list(),
+      recentActions: this.actionLedger.list(20),
       ...runtimeIdentity(),
     };
   }
