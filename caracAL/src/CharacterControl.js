@@ -24,6 +24,15 @@ function normalizeControlAction(action) {
   return normalized;
 }
 
+function canRestartCharacter(charBlock = {}) {
+  return (
+    !!charBlock.instance &&
+    !!charBlock.enabled &&
+    charBlock.desired_runtime_state !== DESIRED_RUNTIME_STATES.STOPPED &&
+    charBlock.lifecycle_state !== "STOPPING"
+  );
+}
+
 function desiredStateForAction(action) {
   switch (normalizeControlAction(action)) {
     case CONTROL_ACTIONS.START:
@@ -40,6 +49,7 @@ function desiredStateForAction(action) {
 module.exports = {
   CONTROL_ACTIONS,
   DESIRED_RUNTIME_STATES,
+  canRestartCharacter,
   desiredStateForAction,
   normalizeControlAction,
 };
