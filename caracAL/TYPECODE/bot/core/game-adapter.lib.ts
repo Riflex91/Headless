@@ -361,44 +361,44 @@ export class GameAdapter {
       ? mapDefinition.npcs
       : [];
     const entities = record(this.source.entities());
+    const result: NpcSnapshot[] = [];
 
-    return mapNpcs
-      .map((mapNpcValue) => {
-        const mapNpc = record(mapNpcValue);
-        const id = stringOrNull(mapNpc.id);
-        if (!id) return null;
+    for (const mapNpcValue of mapNpcs) {
+      const mapNpc = record(mapNpcValue);
+      const id = stringOrNull(mapNpc.id);
+      if (!id) continue;
 
-        const definition = record(npcDefinitions[id]);
-        const visibleEntry = Object.entries(entities).find(([, rawEntity]) => {
-          const entity = record(rawEntity);
-          return entity.type === "npc" && entity.npc === id;
-        });
-        const visible = visibleEntry ? record(visibleEntry[1]) : null;
-        const positions = positionsFromMapNpc(mapNpc);
-        const firstPosition = positions[0] || null;
-        const items = Array.isArray(definition.items)
-          ? definition.items.filter(
-              (item): item is string => typeof item === "string",
-            )
-          : [];
+      const definition = record(npcDefinitions[id]);
+      const visibleEntry = Object.entries(entities).find(([, rawEntity]) => {
+        const entity = record(rawEntity);
+        return entity.type === "npc" && entity.npc === id;
+      });
+      const visible = visibleEntry ? record(visibleEntry[1]) : null;
+      const positions = positionsFromMapNpc(mapNpc);
+      const firstPosition = positions[0] || null;
+      const items = Array.isArray(definition.items)
+        ? definition.items.filter(
+            (item): item is string => typeof item === "string",
+          )
+        : [];
 
-        return {
-          id,
-          name:
-            stringOrNull(visible?.name) ||
-            stringOrNull(definition.name) ||
-            stringOrNull(mapNpc.name),
-          role: stringOrNull(visible?.role) || stringOrNull(definition.role),
-          map: mapName,
-          x: numberOrNull(visible?.x) ?? firstPosition?.x ?? null,
-          y: numberOrNull(visible?.y) ?? firstPosition?.y ?? null,
-          visible: !!visible,
-          positions,
-          items,
-        };
-      })
-      .filter((npc): npc is NpcSnapshot => npc !== null)
-      .sort((a, b) => a.id.localeCompare(b.id));
+      result.push({
+        id,
+        name:
+          stringOrNull(visible?.name) ||
+          stringOrNull(definition.name) ||
+          stringOrNull(mapNpc.name),
+        role: stringOrNull(visible?.role) || stringOrNull(definition.role),
+        map: mapName,
+        x: numberOrNull(visible?.x) ?? firstPosition?.x ?? null,
+        y: numberOrNull(visible?.y) ?? firstPosition?.y ?? null,
+        visible: !!visible,
+        positions,
+        items,
+      });
+    }
+
+    return result.sort((a, b) => a.id.localeCompare(b.id));
   }
 
   bank(): BankSnapshot {
