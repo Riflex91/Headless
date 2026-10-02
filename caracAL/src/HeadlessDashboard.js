@@ -118,6 +118,7 @@ function attachHeadlessDashboard({
   publicDir,
   controlCharacter,
   diagnosticStore,
+  assetCache,
 }) {
   if (!router) {
     throw new Error("headless dashboard requires an Express router");
@@ -138,6 +139,27 @@ function attachHeadlessDashboard({
 
   router.get("/headless/api/state", (_req, res) => {
     res.json(getSnapshot());
+  });
+
+  router.get("/headless/api/assets/adventure-land", async (req, res) => {
+    if (!assetCache) {
+      res.status(503).json({ error: "ASSET_CACHE_UNAVAILABLE" });
+      return;
+    }
+
+    try {
+      const asset = await assetCache.ensure(req.query.path);
+      res.set({
+        "Cache-Control": "public, max-age=31536000, immutable",
+        "Content-Type": asset.contentType,
+      });
+      res.sendFile(asset.path);
+    } catch (error) {
+      res.status(Number(error.statusCode) || 502).json({
+        error: error.code || "ASSET_FETCH_FAILED",
+        message: error.message,
+      });
+    }
   });
 
   router.get("/headless/api/diagnostic", (req, res) => {
