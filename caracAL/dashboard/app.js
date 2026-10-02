@@ -607,6 +607,68 @@ function updateControlButtons(card, character) {
   }
 }
 
+function collapseStorageKey(scope, identity) {
+  return `headless.dashboard.collapse.${scope}.${identity}`;
+}
+
+function storedCollapsed(key) {
+  try {
+    return window.localStorage.getItem(key) === "1";
+  } catch (_error) {
+    return false;
+  }
+}
+
+function storeCollapsed(key, collapsed) {
+  try {
+    window.localStorage.setItem(key, collapsed ? "1" : "0");
+  } catch (_error) {
+    // localStorage may be unavailable in privacy-restricted contexts.
+  }
+}
+
+function initializeCollapsible(container, headingSelector, key) {
+  if (!container || container.dataset.collapsibleReady === "true") return;
+
+  const heading = container.querySelector(headingSelector);
+  if (!heading) return;
+
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "collapse-toggle";
+  button.setAttribute("aria-label", "Bereich ein- oder ausklappen");
+
+  const apply = (collapsed, persist = true) => {
+    container.classList.toggle("is-collapsed", collapsed);
+    button.setAttribute("aria-expanded", String(!collapsed));
+    button.textContent = collapsed ? "▸" : "▾";
+    button.title = collapsed ? "Bereich ausklappen" : "Bereich einklappen";
+    if (persist) storeCollapsed(key, collapsed);
+
+    if (!collapsed && container.classList.contains("movement-panel")) {
+      requestAnimationFrame(() => renderMovementMap());
+    }
+  };
+
+  heading.append(button);
+  container.dataset.collapsibleReady = "true";
+  button.addEventListener("click", () => {
+    apply(!container.classList.contains("is-collapsed"));
+  });
+  apply(storedCollapsed(key), false);
+}
+
+function initializeDashboardCollapsibles() {
+  document.querySelectorAll("main > .panel").forEach((panel, index) => {
+    const title = panel.querySelector(".panel-heading h2")?.textContent?.trim();
+    initializeCollapsible(
+      panel,
+      ".panel-heading",
+      collapseStorageKey("panel", title || String(index)),
+    );
+  });
+}
+
 function configureCardInteractions(card) {
   const feedback = card.querySelector(".control-feedback");
 
@@ -739,6 +801,11 @@ function createCharacterCard(characterName) {
   const card = template.content.firstElementChild.cloneNode(true);
   card.dataset.character = characterName;
   card.dataset.controlBusy = "false";
+  initializeCollapsible(
+    card,
+    ".character-header",
+    collapseStorageKey("character", characterName),
+  );
   configureCardInteractions(card);
   cards.set(characterName, card);
   return card;
@@ -775,9 +842,8 @@ function updateCharacterCard(card, character) {
     formatCombatTarget(character.combat_runtime);
   card.querySelector(".character-combat-cooldowns").textContent =
     formatCombatCooldowns(character.combat_runtime);
-  card.querySelector(".character-class-skills").textContent = formatClassSkills(
-    character.class_skill_runtime,
-  );
+  card.querySelector(".character-class-skills").textContent =
+    formatClassSkills(character.class_skill_runtime);
   card.querySelector(".character-class-skill-action").textContent =
     formatClassSkillAction(character.class_skill_runtime);
   card.querySelector(".character-movement").textContent = formatMovement(game);
@@ -1197,6 +1263,7 @@ copyAccountLog.addEventListener("click", async () => {
   }
 });
 
+initializeDashboardCollapsibles();
 setInterval(refreshHeartbeatAges, 1000);
 
 loadInitialState()
