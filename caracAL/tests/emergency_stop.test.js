@@ -1,6 +1,8 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 const test = require("node:test");
 
 const { EmergencyStopState } = require("../src/EmergencyStopState");
@@ -52,4 +54,23 @@ test("repeating identical active state is idempotent", () => {
 test("clearing an already clear stop does not change revision", () => {
   const state = new EmergencyStopState({ now: () => 1000 });
   assert.equal(state.clear("NOOP").revision, 0);
+});
+
+test("emergency stop is propagated through coordinator and CharacterThread", () => {
+  const coordinator = fs.readFileSync(
+    path.join(__dirname, "..", "standalones", "CharacterCoordinator.js"),
+    "utf8",
+  );
+  const thread = fs.readFileSync(
+    path.join(__dirname, "..", "src", "CharacterThread.js"),
+    "utf8",
+  );
+
+  assert.match(coordinator, /EmergencyStopState/);
+  assert.match(coordinator, /type: "emergency_stop"/);
+  assert.match(coordinator, /EMERGENCY_STOP_ACTIVATED/);
+  assert.match(coordinator, /EMERGENCY_STOP_CLEARED/);
+  assert.match(thread, /extensions\.emergency_stop/);
+  assert.match(thread, /case "emergency_stop"/);
+  assert.match(thread, /emergency_stop_applied/);
 });
