@@ -89,6 +89,15 @@ test("supervisor snapshot counts active lifecycle states", () => {
       installed_config_revision: "cfg-account",
       status: "STALE",
     },
+    {
+      status: "HEALTHY",
+      database_path: "data/database/caracal-bot.db",
+      schema_version: 2,
+      current_schema_version: 2,
+      flush_count: 7,
+      closed: false,
+      last_error: null,
+    },
   );
 
   assert.equal(snapshot.max_online_characters, 4);
@@ -104,6 +113,15 @@ test("supervisor snapshot counts active lifecycle states", () => {
     source_revision: "abc123",
     installed_config_revision: "cfg-account",
     status: "STALE",
+  });
+  assert.deepEqual(snapshot.persistence, {
+    status: "HEALTHY",
+    database_path: "data/database/caracal-bot.db",
+    schema_version: 2,
+    current_schema_version: 2,
+    flush_count: 7,
+    closed: false,
+    last_error: null,
   });
   assert.deepEqual(
     snapshot.characters.map((character) => character.name),
@@ -155,6 +173,7 @@ test("dashboard static assets are present", () => {
 
   const index = fs.readFileSync(path.join(dashboardDir, "index.html"), "utf8");
   assert.match(index, /Letzter Incident/);
+  assert.match(index, /Persistence: UNKNOWN/);
 });
 
 test("dashboard module and coordinator remain syntactically valid", () => {
@@ -179,6 +198,11 @@ test("dashboard module and coordinator remain syntactically valid", () => {
   assert.match(coordinator, /FileRevisionCache/);
   assert.match(coordinator, /running_code_revision/);
   assert.match(coordinator, /installed_code_revision/);
+  assert.match(coordinator, /PersistenceService/);
+  assert.match(coordinator, /getPersistenceHealth/);
+  assert.match(coordinator, /restoreDesiredRuntimeState/);
+  assert.match(coordinator, /saveCharacterRuntimeState/);
+  assert.match(coordinator, /saveCharacterSnapshot/);
   assert.match(coordinator, /UNEXPECTED_CHARACTER_EXIT/);
   assert.match(coordinator, /dashboard\?\.publish/);
 });
