@@ -360,7 +360,6 @@ test("missing supervisor telemetry downgrades a runtime PASS to FAIL", () => {
   assert.equal(combined.reason, "SUPERVISOR_MOVEMENT_EVIDENCE_INCOMPLETE");
 });
 
-
 test("supervisor evidence does not fail a fast movement only because trail sampling is sparse", () => {
   const evidence = {
     safePointSet: true,
