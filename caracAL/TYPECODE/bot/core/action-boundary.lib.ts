@@ -369,6 +369,15 @@ function inventoryHasIdentity(
   return inventory.some((entry) => itemIdentity(entry.item) === identity);
 }
 
+function inventoryIdentityCount(
+  inventory: InventorySlotSnapshot[],
+  identity: string | null,
+): number {
+  if (!identity) return 0;
+  return inventory.filter((entry) => itemIdentity(entry.item) === identity)
+    .length;
+}
+
 export const ACTION_BOUNDARY_MUTATION_CAPABILITIES = [
   "MOVE",
   "ATTACK",
@@ -1600,10 +1609,14 @@ export class ActionBoundary {
       const result = await this.driver.equip(request.inventorySlot, slot);
       const afterInventory = this.game.inventory();
       const afterEquipment = this.game.equipment();
-      const equipped =
+      const sourceChanged =
+        itemIdentity(inventoryItem(afterInventory, request.inventorySlot)) !==
+        identity;
+      const destinationMatched =
         slot !== undefined
           ? itemIdentity(equipmentSlot(afterEquipment, slot)) === identity
           : equipmentHasIdentity(afterEquipment, identity);
+      const equipped = sourceChanged && destinationMatched;
 
       if (explicitFailure(result)) {
         return this.ledger.reject(transaction.id, {
@@ -1623,7 +1636,8 @@ export class ActionBoundary {
             equipment: afterEquipment,
           },
           evidence: {
-            equipped,
+            sourceChanged,
+            destinationMatched,
             result: safeResultEvidence(result),
           },
         });
@@ -1690,9 +1704,15 @@ export class ActionBoundary {
       const afterInventory = this.game.inventory();
       const equipmentChanged =
         itemIdentity(equipmentSlot(afterEquipment, slot)) !== identity;
-      const inventoryMatched =
-        !inventoryHasIdentity(beforeInventory, identity) &&
-        inventoryHasIdentity(afterInventory, identity);
+      const beforeInventoryCount = inventoryIdentityCount(
+        beforeInventory,
+        identity,
+      );
+      const afterInventoryCount = inventoryIdentityCount(
+        afterInventory,
+        identity,
+      );
+      const inventoryMatched = afterInventoryCount > beforeInventoryCount;
 
       if (explicitFailure(result)) {
         return this.ledger.reject(transaction.id, {
