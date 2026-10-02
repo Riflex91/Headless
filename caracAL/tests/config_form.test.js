@@ -95,28 +95,3 @@ test("config form validates JSON-backed roadmap sections", () => {
 });
 
 
-/* CONFIG_PRETTIER_PROBE_START */
-test("config form exact prettier output probe", async () => {
-  const fs = require("node:fs");
-  const nodePath = require("node:path");
-  const prettier = await import("prettier");
-  const relative = "dashboard/config-form.js";
-  const absolute = nodePath.join(__dirname, "..", relative);
-  const original = fs.readFileSync(absolute, "utf8");
-  const formatted = await prettier.format(original, { filepath: absolute });
-  const encoded = Buffer.from(formatted, "utf8").toString("base64");
-  for (
-    let offset = 0, part = 0;
-    offset < encoded.length;
-    offset += 600, part += 1
-  ) {
-    console.log(
-      "CONFIG_FORM_PRETTIER|" +
-        String(part).padStart(3, "0") +
-        "|" +
-        encoded.slice(offset, offset + 600),
-    );
-  }
-  console.log("CONFIG_FORM_PRETTIER_LENGTH|" + formatted.length);
-});
-/* CONFIG_PRETTIER_PROBE_END */

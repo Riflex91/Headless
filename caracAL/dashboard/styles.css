@@ -1019,7 +1019,6 @@ dd {
   }
 }
 
-
 .config-dialog {
   width: min(72rem, calc(100vw - 2rem));
   max-height: calc(100vh - 2rem);

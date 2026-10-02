@@ -130,11 +130,7 @@ function sanitizeDashboardConfig(value, path = [], redactedPaths = []) {
       redactedPaths.push([...path, key].join("."));
       continue;
     }
-    result[key] = sanitizeDashboardConfig(
-      entry,
-      [...path, key],
-      redactedPaths,
-    );
+    result[key] = sanitizeDashboardConfig(entry, [...path, key], redactedPaths);
   }
   return result;
 }
@@ -188,7 +184,9 @@ function publicCharacterConfig(name, charBlock = {}) {
     revision: Number.isInteger(charBlock.runtime_config_revision)
       ? charBlock.runtime_config_revision
       : 0,
-    applied_revision: Number.isInteger(charBlock.applied_runtime_config_revision)
+    applied_revision: Number.isInteger(
+      charBlock.applied_runtime_config_revision,
+    )
       ? charBlock.applied_runtime_config_revision
       : null,
     source: charBlock.runtime_config_source || "CONFIG",

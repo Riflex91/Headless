@@ -30,10 +30,32 @@
       title: "Combat",
       description: "Targeting und Basis-Kampfverhalten.",
       fields: [
-        { path: "combat.enabled", label: "Combat aktiv", type: "checkbox", default: false },
-        { path: "combat.autoTarget", label: "Auto Target", type: "checkbox", default: true },
-        { path: "combat.avoidKillSteal", label: "Kill-Steal vermeiden", type: "checkbox", default: true },
-        { path: "combat.targetMaxDistance", label: "Max. Target-Distanz", type: "number", min: 0, step: 10, default: 800 },
+        {
+          path: "combat.enabled",
+          label: "Combat aktiv",
+          type: "checkbox",
+          default: false,
+        },
+        {
+          path: "combat.autoTarget",
+          label: "Auto Target",
+          type: "checkbox",
+          default: true,
+        },
+        {
+          path: "combat.avoidKillSteal",
+          label: "Kill-Steal vermeiden",
+          type: "checkbox",
+          default: true,
+        },
+        {
+          path: "combat.targetMaxDistance",
+          label: "Max. Target-Distanz",
+          type: "number",
+          min: 0,
+          step: 10,
+          default: 800,
+        },
       ],
     },
     {
@@ -41,14 +63,68 @@
       title: "Potions & Safety",
       description: "HP/MP-Schwellen, Retreat und Respawn.",
       fields: [
-        { path: "potionUsage.enabled", label: "Potion-Nutzung aktiv", type: "checkbox", default: false },
-        { path: "potionUsage.hpBelowPercent", label: "HP-Potion unter %", type: "number", min: 0, max: 100, step: 1, default: 50 },
-        { path: "potionUsage.mpBelowPercent", label: "MP-Potion unter %", type: "number", min: 0, max: 100, step: 1, default: 40 },
-        { path: "potionUsage.criticalHpPercent", label: "Kritische HP %", type: "number", min: 0, max: 100, step: 1, default: 30 },
-        { path: "safety.autoRetreat", label: "Auto Retreat", type: "checkbox", default: false },
-        { path: "safety.retreatHpPercent", label: "Retreat unter %", type: "number", min: 0, max: 100, step: 1, default: 35 },
-        { path: "safety.autoRespawn", label: "Auto Respawn", type: "checkbox", default: false },
-        { path: "safety.respawnRetryMs", label: "Respawn Retry ms", type: "number", min: 1000, step: 250, default: 3000 },
+        {
+          path: "potionUsage.enabled",
+          label: "Potion-Nutzung aktiv",
+          type: "checkbox",
+          default: false,
+        },
+        {
+          path: "potionUsage.hpBelowPercent",
+          label: "HP-Potion unter %",
+          type: "number",
+          min: 0,
+          max: 100,
+          step: 1,
+          default: 50,
+        },
+        {
+          path: "potionUsage.mpBelowPercent",
+          label: "MP-Potion unter %",
+          type: "number",
+          min: 0,
+          max: 100,
+          step: 1,
+          default: 40,
+        },
+        {
+          path: "potionUsage.criticalHpPercent",
+          label: "Kritische HP %",
+          type: "number",
+          min: 0,
+          max: 100,
+          step: 1,
+          default: 30,
+        },
+        {
+          path: "safety.autoRetreat",
+          label: "Auto Retreat",
+          type: "checkbox",
+          default: false,
+        },
+        {
+          path: "safety.retreatHpPercent",
+          label: "Retreat unter %",
+          type: "number",
+          min: 0,
+          max: 100,
+          step: 1,
+          default: 35,
+        },
+        {
+          path: "safety.autoRespawn",
+          label: "Auto Respawn",
+          type: "checkbox",
+          default: false,
+        },
+        {
+          path: "safety.respawnRetryMs",
+          label: "Respawn Retry ms",
+          type: "number",
+          min: 1000,
+          step: 250,
+          default: 3000,
+        },
       ],
     },
     {
@@ -56,34 +132,165 @@
       title: "Party & Group Combat",
       description: "Leader/Follower, Tether, Healing, Support und AoE.",
       fields: [
-        { path: "groupCombat.enabled", label: "Group Combat aktiv", type: "checkbox", default: false },
+        {
+          path: "groupCombat.enabled",
+          label: "Group Combat aktiv",
+          type: "checkbox",
+          default: false,
+        },
         {
           path: "groupCombat.role",
           label: "Rolle",
           type: "select",
-          options: [["", "Automatisch"], ["leader", "Leader"], ["follower", "Follower"]],
+          options: [
+            ["", "Automatisch"],
+            ["leader", "Leader"],
+            ["follower", "Follower"],
+          ],
           default: "",
         },
-        { path: "groupCombat.leader", label: "Leader", type: "character", default: "" },
-        { path: "groupCombat.members", label: "Mitglieder", type: "list", default: [], placeholder: "CharA, CharB, CharC" },
-        { path: "groupCombat.focus", label: "Group Focus", type: "checkbox", default: true },
-        { path: "groupCombat.party.enabled", label: "Party Formation", type: "checkbox", default: true },
-        { path: "groupCombat.party.reconcileMs", label: "Party Reconcile ms", type: "number", min: 500, step: 250, default: 2500 },
-        { path: "groupCombat.party.retryMs", label: "Party Retry ms", type: "number", min: 500, step: 250, default: 1500 },
-        { path: "groupCombat.healing.enabled", label: "Party Healing", type: "checkbox", default: false },
-        { path: "groupCombat.healing.belowPercent", label: "Heal unter %", type: "number", min: 0, max: 100, step: 1, default: 70 },
-        { path: "groupCombat.healing.partyHealMinTargets", label: "Party Heal ab Targets", type: "number", min: 2, step: 1, default: 2 },
-        { path: "groupCombat.support.enabled", label: "Support aktiv", type: "checkbox", default: false },
-        { path: "groupCombat.support.absorbAggroCount", label: "Absorb ab Aggro", type: "number", min: 1, step: 1, default: 2 },
-        { path: "groupCombat.aoe.enabled", label: "AoE aktiv", type: "checkbox", default: false },
-        { path: "groupCombat.aoe.minTargets", label: "AoE ab Targets", type: "number", min: 2, step: 1, default: 3 },
-        { path: "groupCombat.tether.enabled", label: "Regroup/Tether aktiv", type: "checkbox", default: true },
-        { path: "groupCombat.tether.soft", label: "Soft Tether", type: "number", min: 0, step: 10, default: 180 },
-        { path: "groupCombat.tether.hard", label: "Hard Tether", type: "number", min: 0, step: 10, default: 420 },
-        { path: "groupCombat.warriorAnchor.enabled", label: "Warrior Anchor", type: "checkbox", default: true },
-        { path: "groupCombat.rangerKiting.enabled", label: "Ranger Kiting", type: "checkbox", default: false },
-        { path: "groupCombat.rangerKiting.minDistance", label: "Kite Min-Distanz", type: "number", min: 0, step: 5, default: 90 },
-        { path: "groupCombat.rangerKiting.step", label: "Kite Schritt", type: "number", min: 10, step: 5, default: 80 },
+        {
+          path: "groupCombat.leader",
+          label: "Leader",
+          type: "character",
+          default: "",
+        },
+        {
+          path: "groupCombat.members",
+          label: "Mitglieder",
+          type: "list",
+          default: [],
+          placeholder: "CharA, CharB, CharC",
+        },
+        {
+          path: "groupCombat.focus",
+          label: "Group Focus",
+          type: "checkbox",
+          default: true,
+        },
+        {
+          path: "groupCombat.party.enabled",
+          label: "Party Formation",
+          type: "checkbox",
+          default: true,
+        },
+        {
+          path: "groupCombat.party.reconcileMs",
+          label: "Party Reconcile ms",
+          type: "number",
+          min: 500,
+          step: 250,
+          default: 2500,
+        },
+        {
+          path: "groupCombat.party.retryMs",
+          label: "Party Retry ms",
+          type: "number",
+          min: 500,
+          step: 250,
+          default: 1500,
+        },
+        {
+          path: "groupCombat.healing.enabled",
+          label: "Party Healing",
+          type: "checkbox",
+          default: false,
+        },
+        {
+          path: "groupCombat.healing.belowPercent",
+          label: "Heal unter %",
+          type: "number",
+          min: 0,
+          max: 100,
+          step: 1,
+          default: 70,
+        },
+        {
+          path: "groupCombat.healing.partyHealMinTargets",
+          label: "Party Heal ab Targets",
+          type: "number",
+          min: 2,
+          step: 1,
+          default: 2,
+        },
+        {
+          path: "groupCombat.support.enabled",
+          label: "Support aktiv",
+          type: "checkbox",
+          default: false,
+        },
+        {
+          path: "groupCombat.support.absorbAggroCount",
+          label: "Absorb ab Aggro",
+          type: "number",
+          min: 1,
+          step: 1,
+          default: 2,
+        },
+        {
+          path: "groupCombat.aoe.enabled",
+          label: "AoE aktiv",
+          type: "checkbox",
+          default: false,
+        },
+        {
+          path: "groupCombat.aoe.minTargets",
+          label: "AoE ab Targets",
+          type: "number",
+          min: 2,
+          step: 1,
+          default: 3,
+        },
+        {
+          path: "groupCombat.tether.enabled",
+          label: "Regroup/Tether aktiv",
+          type: "checkbox",
+          default: true,
+        },
+        {
+          path: "groupCombat.tether.soft",
+          label: "Soft Tether",
+          type: "number",
+          min: 0,
+          step: 10,
+          default: 180,
+        },
+        {
+          path: "groupCombat.tether.hard",
+          label: "Hard Tether",
+          type: "number",
+          min: 0,
+          step: 10,
+          default: 420,
+        },
+        {
+          path: "groupCombat.warriorAnchor.enabled",
+          label: "Warrior Anchor",
+          type: "checkbox",
+          default: true,
+        },
+        {
+          path: "groupCombat.rangerKiting.enabled",
+          label: "Ranger Kiting",
+          type: "checkbox",
+          default: false,
+        },
+        {
+          path: "groupCombat.rangerKiting.minDistance",
+          label: "Kite Min-Distanz",
+          type: "number",
+          min: 0,
+          step: 5,
+          default: 90,
+        },
+        {
+          path: "groupCombat.rangerKiting.step",
+          label: "Kite Schritt",
+          type: "number",
+          min: 10,
+          step: 5,
+          default: 80,
+        },
       ],
     },
   ]);
@@ -93,13 +300,15 @@
       id: "supply",
       title: "Supply",
       path: "supply",
-      description: "JSON-Unterbaum für Supply-/Versorgungsregeln. Wird revisionssicher gespeichert.",
+      description:
+        "JSON-Unterbaum für Supply-/Versorgungsregeln. Wird revisionssicher gespeichert.",
     },
     {
       id: "farming",
       title: "Farming",
       path: "farming",
-      description: "JSON-Unterbaum für Farming-Regeln und spätere Farm Intelligence.",
+      description:
+        "JSON-Unterbaum für Farming-Regeln und spätere Farm Intelligence.",
     },
     {
       id: "inventory",
@@ -172,7 +381,8 @@
     return {
       id: "class-skills",
       title: ctype + " Skills",
-      description: "Skills sind pro Character getrennt aktivierbar und priorisierbar.",
+      description:
+        "Skills sind pro Character getrennt aktivierbar und priorisierbar.",
       fields: [
         {
           path: "classSkills." + ctype + ".enabled",
@@ -209,7 +419,8 @@
         id: "merchant",
         title: "Merchant",
         path: "merchant",
-        description: "Merchant-spezifische Konfiguration für spätere Logistics/Economy-Module.",
+        description:
+          "Merchant-spezifische Konfiguration für spätere Logistics/Economy-Module.",
         json: true,
       });
     }
@@ -232,7 +443,10 @@
       input = doc.createElement("select");
       const options =
         field.type === "character"
-          ? [["", "Nicht gesetzt"], ...characterNames.map((name) => [name, name])]
+          ? [
+              ["", "Nicht gesetzt"],
+              ...characterNames.map((name) => [name, name]),
+            ]
           : field.options || [];
       const current = String(fieldValue(config, field) ?? "");
       if (
@@ -240,7 +454,10 @@
         current &&
         !options.some(([value]) => value === current)
       ) {
-        options.push([current, current + " (nicht im aktuellen Account-Status)"]);
+        options.push([
+          current,
+          current + " (nicht im aktuellen Account-Status)",
+        ]);
       }
       for (const [value, caption] of options) {
         const option = doc.createElement("option");
@@ -257,7 +474,8 @@
       } else if (field.type === "number") {
         input.type = "number";
         const value = fieldValue(config, field);
-        input.value = value === undefined || value === null ? "" : String(value);
+        input.value =
+          value === undefined || value === null ? "" : String(value);
         if (field.min !== undefined) input.min = String(field.min);
         if (field.max !== undefined) input.max = String(field.max);
         if (field.step !== undefined) input.step = String(field.step);
@@ -290,7 +508,11 @@
     textarea.className = "config-json-editor";
     textarea.dataset.configJsonPath = section.path;
     textarea.spellcheck = false;
-    textarea.value = JSON.stringify(getPath(config, section.path) || {}, null, 2);
+    textarea.value = JSON.stringify(
+      getPath(config, section.path) || {},
+      null,
+      2,
+    );
     details.append(summary, description, textarea);
     return details;
   }
@@ -369,20 +591,19 @@
           deletePath(config, path);
         } else {
           const value = Number(input.value);
-          if (!Number.isFinite(value)) throw new Error(path + ": Zahl ungültig");
+          if (!Number.isFinite(value))
+            throw new Error(path + ": Zahl ungültig");
           setPath(config, path, value);
         }
       } else if (kind === "list") {
-        setPath(
-          config,
-          path,
-          [...new Set(
+        setPath(config, path, [
+          ...new Set(
             String(input.value || "")
               .split(",")
               .map((entry) => entry.trim())
               .filter(Boolean),
-          )],
-        );
+          ),
+        ]);
       } else {
         const value = String(input.value || "").trim();
         if (value) setPath(config, path, value);

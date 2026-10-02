@@ -62,9 +62,7 @@ const configDialog = document.querySelector("#config-dialog");
 const configDialogForm = document.querySelector("#config-dialog-form");
 const configDialogTitle = document.querySelector("#config-dialog-title");
 const configDialogMeta = document.querySelector("#config-dialog-meta");
-const configDialogFeedback = document.querySelector(
-  "#config-dialog-feedback",
-);
+const configDialogFeedback = document.querySelector("#config-dialog-feedback");
 const configDialogClose = document.querySelector("#config-dialog-close");
 const configDialogCancel = document.querySelector("#config-dialog-cancel");
 const configDialogReload = document.querySelector("#config-dialog-reload");
