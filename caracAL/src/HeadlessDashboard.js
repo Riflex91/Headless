@@ -63,6 +63,8 @@ function publicCharacterState(name, charBlock = {}) {
     desired_runtime_state:
       charBlock.desired_runtime_state ||
       (charBlock.enabled ? "RUNNING" : "STOPPED"),
+    rotation_source: charBlock.rotation_source || null,
+    rotation_replacement: charBlock.rotation_replacement || null,
     account_owned: charBlock.account_owned === true,
     registration_source: charBlock.registration_source || "CONFIG",
     ctype:
@@ -155,6 +157,7 @@ function attachHeadlessDashboard({
   lifecyclePolicy,
   publicDir,
   controlCharacter,
+  controlRotation,
   controlEmergencyStop,
   getEmergencyStopState,
   getRevisionSummary,
@@ -189,6 +192,34 @@ function attachHeadlessDashboard({
   router.get("/headless/api/state", (_req, res) => {
     res.json(getSnapshot());
   });
+
+  router.post(
+    "/headless/api/rotation",
+    express.json({ limit: "8kb" }),
+    async (req, res) => {
+      if (!controlRotation) {
+        res.status(503).json({ error: "ROTATION_UNAVAILABLE" });
+        return;
+      }
+
+      try {
+        const result = await controlRotation({
+          startCharacter: req.body?.start_character,
+          stopCharacter: req.body?.stop_character,
+        });
+        res.json({
+          ok: true,
+          result,
+          snapshot: getSnapshot(),
+        });
+      } catch (error) {
+        res.status(Number(error.statusCode) || 500).json({
+          error: error.code || "ROTATION_FAILED",
+          message: error.message,
+        });
+      }
+    },
+  );
 
   router.post(
     "/headless/api/emergency-stop",
