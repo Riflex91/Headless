@@ -34,12 +34,10 @@ test("game runtime dependencies follow the current Adventure Land load order", (
       before.indexOf("/js/generated_zones.js"),
   );
   assert.ok(
-    before.indexOf("/js/generated_zones.js") <
-      before.indexOf("/js/game.js"),
+    before.indexOf("/js/generated_zones.js") < before.indexOf("/js/game.js"),
   );
   assert.ok(
-    before.indexOf("/js/entity_animations.js") <
-      before.indexOf("/js/game.js"),
+    before.indexOf("/js/entity_animations.js") < before.indexOf("/js/game.js"),
   );
   assert.deepEqual(after, [
     "/js/pixel_fonts.js",
