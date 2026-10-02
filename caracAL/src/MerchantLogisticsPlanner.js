@@ -357,6 +357,10 @@ class MerchantLogisticsPlanner {
               priority: priorityFor("GOLD_PICKUP", logistics.gold.priority),
               reason: "GOLD_ABOVE_RESERVE",
               direction: merchant ? farmerName + "->" + merchant.name : null,
+              metadata: {
+                keepGold,
+                pickupAbove,
+              },
             }),
           );
         }
