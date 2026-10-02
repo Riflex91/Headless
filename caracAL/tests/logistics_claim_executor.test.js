@@ -96,11 +96,7 @@ function setup({
   };
   return {
     calls,
-    executor: new LogisticsClaimExecutor(
-      actions,
-      game,
-      inventoryIntelligence,
-    ),
+    executor: new LogisticsClaimExecutor(actions, game, inventoryIntelligence),
   };
 }
 
