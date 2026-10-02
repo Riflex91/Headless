@@ -274,10 +274,8 @@ function migrate_old_storage(path, localStorage) {
     void observe_persistence(
       persistence.saveCharacterRuntimeState(char_name, {
         desiredState:
-          char_block.desired_runtime_state ||
-          DESIRED_RUNTIME_STATES.STOPPED,
-        actualState:
-          char_block.lifecycle_state || LIFECYCLE_STATES.STOPPED,
+          char_block.desired_runtime_state || DESIRED_RUNTIME_STATES.STOPPED,
+        actualState: char_block.lifecycle_state || LIFECYCLE_STATES.STOPPED,
         codeRevision: char_block.running_code_revision || null,
         configRevision: char_block.running_config_revision || null,
       }),
@@ -510,14 +508,10 @@ function migrate_old_storage(path, localStorage) {
       : [];
 
     if (persisted_lifecycle) {
-      emit_supervisor_event(
-        "PERSISTED_DESIRED_STATE_RESTORED",
-        char_name,
-        {
-          desired_runtime_state: char_block.desired_runtime_state,
-          persisted_actual_state: persisted_lifecycle.actual_state,
-        },
-      );
+      emit_supervisor_event("PERSISTED_DESIRED_STATE_RESTORED", char_name, {
+        desired_runtime_state: char_block.desired_runtime_state,
+        persisted_actual_state: persisted_lifecycle.actual_state,
+      });
     }
 
     void observe_persistence(
