@@ -126,10 +126,13 @@ function migrate_old_storage(path, localStorage) {
   const sess = process.env.AL_SESSION || cfg.session;
   const my_acc = await account_info(sess);
   const default_realm = my_acc.response.servers[0];
+  const account_characters = Array.isArray(my_acc.response.characters)
+    ? my_acc.response.characters
+    : [];
 
   const character_manage = registerAccountCharacters(
     cfg.characters,
-    my_acc.response.characters,
+    account_characters,
     {
       defaultRealm: default_realm.key,
       enableTypecode: !!cfg.enable_TYPECODE,
@@ -1293,7 +1296,7 @@ function migrate_old_storage(path, localStorage) {
 
   emit_supervisor_event("COORDINATOR_READY", null, {
     registered_character_count: Object.keys(character_manage).length,
-    account_character_count: my_acc.response.characters.length,
+    account_character_count: account_characters.length,
     registered_characters: Object.keys(character_manage).sort(),
     max_online_characters: lifecycle_policy.maxOnlineCharacters,
     heartbeat_interval_ms: lifecycle_policy.heartbeatIntervalMs,
