@@ -57,6 +57,24 @@ const showTargetLine = document.querySelector("#show-target-line");
 const showNearbyMonsters = document.querySelector("#show-nearby-monsters");
 const showNearbyNpcs = document.querySelector("#show-nearby-npcs");
 const inventoryEquipmentApi = window.HeadlessInventoryEquipment;
+const configFormApi = window.HeadlessConfigForm;
+const configDialog = document.querySelector("#config-dialog");
+const configDialogForm = document.querySelector("#config-dialog-form");
+const configDialogTitle = document.querySelector("#config-dialog-title");
+const configDialogMeta = document.querySelector("#config-dialog-meta");
+const configDialogFeedback = document.querySelector(
+  "#config-dialog-feedback",
+);
+const configDialogClose = document.querySelector("#config-dialog-close");
+const configDialogCancel = document.querySelector("#config-dialog-cancel");
+const configDialogReload = document.querySelector("#config-dialog-reload");
+const configDialogSave = document.querySelector("#config-dialog-save");
+const configFormRoot = document.querySelector("#config-form-root");
+const configEditor = {
+  characterName: null,
+  baseConfig: {},
+  revision: null,
+};
 const accountInventoryGrid = document.querySelector("#account-inventory-grid");
 const emergencyStopControl = document.querySelector("#emergency-stop-control");
 const emergencyStopStatus = document.querySelector("#emergency-stop-status");
@@ -583,6 +601,171 @@ async function sendCombatLiveTest(characterName) {
   return payload.result;
 }
 
+async function fetchCharacterConfig(characterName) {
+  const response = await fetch(
+    `/headless/api/characters/${encodeURIComponent(characterName)}/config`,
+    { cache: "no-store" },
+  );
+  const payload = await response.json();
+
+  if (!response.ok) {
+    throw new Error(
+      payload.message || payload.error || "Config konnte nicht geladen werden",
+    );
+  }
+  return payload;
+}
+
+async function sendCharacterConfig(characterName, config) {
+  const response = await fetch(
+    `/headless/api/characters/${encodeURIComponent(characterName)}/config`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ config }),
+    },
+  );
+  const payload = await response.json();
+
+  if (payload.snapshot) applySnapshot(payload.snapshot);
+  if (!response.ok) {
+    throw new Error(
+      payload.message ||
+        payload.error ||
+        "Config konnte nicht gespeichert werden",
+    );
+  }
+  return payload;
+}
+
+function renderConfigDialogMeta(characterName) {
+  const character = state.characters.get(characterName);
+  if (!character) {
+    configDialogMeta.textContent = "Character nicht im Supervisor-Status.";
+    return;
+  }
+
+  const applied = character.applied_runtime_config_revision ?? "—";
+  const status = character.config_push_status || "UNKNOWN";
+  const source = character.runtime_config_source || "CONFIG";
+  const error = character.config_push_error
+    ? ` · ${character.config_push_error}`
+    : "";
+  configDialogMeta.textContent =
+    `Rev ${character.runtime_config_revision ?? 0} · angewendet ${applied} · ` +
+    `${status} · ${source}${error}`;
+}
+
+async function loadConfigEditor(characterName) {
+  if (!configFormApi) {
+    throw new Error("Config Form Engine ist nicht verfügbar");
+  }
+
+  configDialogFeedback.textContent = "Konfiguration wird geladen …";
+  configDialogSave.disabled = true;
+  configDialogReload.disabled = true;
+
+  try {
+    const payload = await fetchCharacterConfig(characterName);
+    const character = state.characters.get(characterName);
+    configEditor.characterName = characterName;
+    configEditor.baseConfig = payload.config || {};
+    configEditor.revision = payload.revision ?? 0;
+    configDialogTitle.textContent = `Konfiguration · ${characterName}`;
+    configFormApi.renderConfigForm({
+      container: configFormRoot,
+      config: configEditor.baseConfig,
+      ctype: character?.ctype || character?.game?.ctype || null,
+      characterNames: [...state.characters.keys()],
+    });
+    renderConfigDialogMeta(characterName);
+    configDialogFeedback.textContent = payload.redacted_paths?.length
+      ? `Geladen · ${payload.redacted_paths.length} sensible Werte werden nicht angezeigt.`
+      : "Konfiguration geladen.";
+  } finally {
+    configDialogSave.disabled = false;
+    configDialogReload.disabled = false;
+  }
+}
+
+async function openCharacterConfig(characterName) {
+  configEditor.characterName = characterName;
+  configDialogTitle.textContent = `Konfiguration · ${characterName}`;
+  configDialogMeta.textContent = "Lade Revision …";
+  configDialogFeedback.textContent = "";
+  configFormRoot.replaceChildren();
+
+  if (typeof configDialog.showModal === "function") {
+    if (!configDialog.open) configDialog.showModal();
+  } else {
+    configDialog.setAttribute("open", "");
+  }
+
+  try {
+    await loadConfigEditor(characterName);
+  } catch (error) {
+    configDialogFeedback.textContent = error.message;
+    addEvent({
+      timestamp: Date.now(),
+      event: "CONFIG_UI_LOAD_ERROR",
+      character: characterName,
+      reason: error.message,
+    });
+  }
+}
+
+function closeConfigDialog() {
+  if (typeof configDialog.close === "function" && configDialog.open) {
+    configDialog.close();
+  } else {
+    configDialog.removeAttribute("open");
+  }
+  configEditor.characterName = null;
+  configEditor.baseConfig = {};
+  configEditor.revision = null;
+}
+
+async function saveOpenCharacterConfig() {
+  const characterName = configEditor.characterName;
+  if (!characterName) return;
+
+  let config;
+  try {
+    config = configFormApi.collectConfig({
+      container: configFormRoot,
+      baseConfig: configEditor.baseConfig,
+    });
+  } catch (error) {
+    configDialogFeedback.textContent = error.message;
+    return;
+  }
+
+  configDialogSave.disabled = true;
+  configDialogReload.disabled = true;
+  configDialogFeedback.textContent = "Speichere und übernehme live …";
+
+  try {
+    const payload = await sendCharacterConfig(characterName, config);
+    configEditor.baseConfig = config;
+    configEditor.revision = payload.result?.revision ?? configEditor.revision;
+    renderConfigDialogMeta(characterName);
+    configDialogFeedback.textContent =
+      `Gespeichert · Rev ${payload.result?.revision ?? "—"} · ` +
+      `${payload.result?.status || "UNKNOWN"}`;
+  } catch (error) {
+    configDialogFeedback.textContent = error.message;
+    addEvent({
+      timestamp: Date.now(),
+      event: "CONFIG_UI_SAVE_ERROR",
+      character: characterName,
+      reason: error.message,
+    });
+  } finally {
+    configDialogSave.disabled = false;
+    configDialogReload.disabled = false;
+  }
+}
+
 async function sendClassSkillLiveTest(characterName) {
   const response = await fetch(
     `/headless/api/characters/${encodeURIComponent(
@@ -634,6 +817,7 @@ function updateControlButtons(card, character) {
     }
   }
 
+  const configButton = card.querySelector("[data-config]");
   const movementLiveTestButton = card.querySelector(
     "[data-movement-live-test]",
   );
@@ -653,6 +837,9 @@ function updateControlButtons(card, character) {
   const anyLiveTestRunning =
     movementTestRunning || combatTestRunning || classSkillTestRunning;
 
+  if (configButton) {
+    configButton.disabled = busy;
+  }
   if (movementLiveTestButton) {
     movementLiveTestButton.disabled = busy || anyLiveTestRunning;
   }
@@ -761,6 +948,12 @@ function configureCardInteractions(card) {
       }
     });
   }
+
+  const configButton = card.querySelector("[data-config]");
+  configButton?.addEventListener("click", async () => {
+    const characterName = card.dataset.character;
+    await openCharacterConfig(characterName);
+  });
 
   const movementLiveTestButton = card.querySelector(
     "[data-movement-live-test]",
@@ -1243,6 +1436,9 @@ function applySnapshot(snapshot) {
   renderEmergencyStop();
   renderRevisionSummary();
   renderPersistenceSummary();
+  if (configEditor.characterName) {
+    renderConfigDialogMeta(configEditor.characterName);
+  }
   lastUpdate.textContent = `Update ${formatTimestamp(snapshot.generated_at)}`;
 }
 
@@ -1378,6 +1574,19 @@ copyAccountLog.addEventListener("click", async () => {
       copyAccountLog.textContent = originalText;
     }, 1200);
   }
+});
+
+configDialogForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  void saveOpenCharacterConfig();
+});
+configDialogClose.addEventListener("click", closeConfigDialog);
+configDialogCancel.addEventListener("click", closeConfigDialog);
+configDialogReload.addEventListener("click", () => {
+  if (!configEditor.characterName) return;
+  void loadConfigEditor(configEditor.characterName).catch((error) => {
+    configDialogFeedback.textContent = error.message;
+  });
 });
 
 initializeDashboardCollapsibles();
