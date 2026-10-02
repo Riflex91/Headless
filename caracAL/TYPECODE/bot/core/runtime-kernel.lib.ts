@@ -98,6 +98,15 @@ export class BotRuntimeKernel {
     this.actions = new ActionBoundary(this.actionLedger, this.game);
     this.movement = new MovementController(this.actions, {
       onEvent: (event) => this.handleMovementEvent(event),
+      position: () => {
+        const snapshot = this.game.character();
+        return {
+          map: snapshot.map,
+          x: snapshot.x,
+          y: snapshot.y,
+          moving: snapshot.moving,
+        };
+      },
     });
 
     this.scheduler.register({
@@ -238,6 +247,12 @@ export class BotRuntimeKernel {
         }),
         ...(event.waypointCount !== undefined && {
           waypointCount: event.waypointCount,
+        }),
+        ...(event.safePoint !== undefined && {
+          safePoint: event.safePoint,
+        }),
+        ...(event.stuckSince !== undefined && {
+          stuckSince: event.stuckSince,
         }),
       },
     });
