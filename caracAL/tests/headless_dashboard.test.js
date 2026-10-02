@@ -214,6 +214,34 @@ test("dashboard static assets are present", () => {
   assert.match(index, /data-movement-live-test/);
 });
 
+test("dashboard visible character views include connected characters only", () => {
+  const dashboardApp = fs.readFileSync(
+    path.join(__dirname, "..", "dashboard", "app.js"),
+    "utf8",
+  );
+
+  assert.match(
+    dashboardApp,
+    /function onlineCharacters\(\)[\s\S]*character\.connected === true/,
+  );
+  assert.match(
+    dashboardApp,
+    /availableMaps\(onlineCharacters\(\)\)/,
+  );
+  assert.match(
+    dashboardApp,
+    /renderMovementMap\([\s\S]*characters: onlineCharacters\(\)/,
+  );
+  assert.match(
+    dashboardApp,
+    /renderAccountInventory\([\s\S]*characters: onlineCharacters\(\)/,
+  );
+  assert.match(
+    dashboardApp,
+    /function renderCharacters\(\)[\s\S]*const characters = onlineCharacters\(\)/,
+  );
+});
+
 test("dashboard module and coordinator remain syntactically valid", () => {
   const dashboard = fs.readFileSync(
     path.join(__dirname, "..", "src", "HeadlessDashboard.js"),
