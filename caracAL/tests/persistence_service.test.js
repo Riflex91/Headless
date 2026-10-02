@@ -74,11 +74,7 @@ test("persistence survives close and reopen with migrations intact", async () =>
       auth_token: "must-not-leak",
     });
     await first.saveLifecycleState("My_Ranger1", "RUNNING", "ONLINE");
-    await first.saveRevisionState(
-      "My_Ranger1",
-      "sha256-code",
-      "cfg-config",
-    );
+    await first.saveRevisionState("My_Ranger1", "sha256-code", "cfg-config");
 
     now = 2000;
     await first.close();
@@ -147,14 +143,11 @@ test("inventory and equipment snapshots preserve latest slot state", async () =>
       equipment: { mainhand: { name: "bow", level: 8 } },
     });
 
-    assert.deepEqual(
-      service.getLatestCharacterSnapshot("My_Ranger1"),
-      {
-        captured_at: 2000,
-        inventory: [{ name: "hpot1", q: 9 }],
-        equipment: { mainhand: { name: "bow", level: 8 } },
-      },
-    );
+    assert.deepEqual(service.getLatestCharacterSnapshot("My_Ranger1"), {
+      captured_at: 2000,
+      inventory: [{ name: "hpot1", q: 9 }],
+      equipment: { mainhand: { name: "bow", level: 8 } },
+    });
   } finally {
     await service?.close();
     await fs.rm(fixture.root, { recursive: true, force: true });
@@ -232,7 +225,10 @@ test("queued writes serialize without losing state", async () => {
 
     assert.deepEqual(service.getMeta("one"), { value: 1 });
     assert.deepEqual(service.getMeta("two"), { value: 2 });
-    assert.equal(service.getLifecycleState("My_Ranger1").actual_state, "ONLINE");
+    assert.equal(
+      service.getLifecycleState("My_Ranger1").actual_state,
+      "ONLINE",
+    );
     assert.equal(service.getRevisionState("My_Ranger1").code_revision, "code");
     assert.equal(service.health().flush_count >= 5, true);
   } finally {
