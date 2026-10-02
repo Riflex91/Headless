@@ -60,8 +60,7 @@ function makeRunner({
     async tick() {
       if (groupConfig?.groupCombat?.enabled) {
         const current = new Set(Object.keys(state.party));
-        const alreadyFormed =
-          current.has("Leader") && current.has("Follower");
+        const alreadyFormed = current.has("Leader") && current.has("Follower");
         if (!alreadyFormed) {
           state.party = {
             Leader: { name: "Leader" },
@@ -166,7 +165,6 @@ test("group live runner refuses unrelated existing party membership", async () =
   assert.equal(result.outcome, "FAIL");
   assert.equal(result.reason, "GROUP_LIVE_E2E_EXISTING_PARTY_CONFLICT");
 });
-
 
 test("coordinated follower does not mistake leader-created pair for original baseline", async () => {
   let leaderCleanupObserved = false;

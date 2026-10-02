@@ -154,7 +154,6 @@ test("group launcher stops bootstrap when leader test becomes terminal", async (
   );
 });
 
-
 test("group launcher captures one shared live pair baseline before bootstrap", () => {
   const pair = {
     leader: { name: "Leader" },

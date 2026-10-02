@@ -101,8 +101,7 @@ function groupLiveTestDiagnostics(
         runtime.preparation?.observedInitialPairFormed === true,
       baseline_pair_override_applied:
         runtime.preparation?.baselinePairOverrideApplied === true,
-      pair_lifecycle_owner:
-        runtime.preparation?.pairLifecycleOwner !== false,
+      pair_lifecycle_owner: runtime.preparation?.pairLifecycleOwner !== false,
       coordinated_peer_pair_observed:
         runtime.preparation?.coordinatedPeerPairObserved === true,
       dissolved_initial_pair:

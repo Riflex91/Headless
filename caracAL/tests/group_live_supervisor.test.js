@@ -123,7 +123,6 @@ test("group supervisor uses a group-specific runtime readiness error", () => {
   );
 });
 
-
 test("group supervisor accepts coordinated peer-created pair without local party action", () => {
   const evidence = {
     groupTestStarted: true,
