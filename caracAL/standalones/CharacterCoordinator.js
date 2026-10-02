@@ -39,6 +39,10 @@ const {
   updateCharacterMovementRuntime,
 } = require("../src/LiveState");
 const { normalizeRuntimeEvent } = require("../src/RuntimeEventBridge");
+const {
+  combineMovementLiveTestResult,
+  movementLiveTestEvidence,
+} = require("../src/MovementLiveTest");
 const { PersistenceService } = require("../src/PersistenceService");
 const { CharacterConfigService } = require("../src/CharacterConfigService");
 const {
@@ -67,6 +71,8 @@ const {
 } = require("../src/CharacterLifecyclePolicy");
 
 const CONFIG_PUSH_TIMEOUT_MS = 30000;
+const MOVEMENT_LIVE_TEST_RUNTIME_TIMEOUT_MS = 45000;
+const MOVEMENT_LIVE_TEST_RESULT_TIMEOUT_MS = 120000;
 
 //TODO check for invalid session
 //TODO improve termination
@@ -178,6 +184,8 @@ function migrate_old_storage(path, localStorage) {
   let bwi_instance = {};
   let dashboard = null;
   let owned_web_server = null;
+  const movement_live_test_requests = new Map();
+  let movement_live_test_sequence = 0;
   const incident_recorder = new IncidentRecorder({
     rootDir: path.join(process.cwd(), "logs", "incidents"),
     diagnosticStore: diagnostic_store,
@@ -214,6 +222,7 @@ function migrate_old_storage(path, localStorage) {
         controlCharacter: control_character,
         updateCharacterConfig: control_character_config,
         controlRotation: control_rotation,
+        runMovementLiveTest: run_movement_live_test,
         controlEmergencyStop: control_emergency_stop,
         getEmergencyStopState: () => emergency_stop.snapshot(),
         getRevisionSummary: revision_summary,
@@ -419,6 +428,20 @@ function migrate_old_storage(path, localStorage) {
     }
 
     const char_block = character_manage[char_name];
+    if (
+      char_block &&
+      normalized.module === "RuntimeKernel" &&
+      normalized.type === "RUNTIME_STARTED"
+    ) {
+      char_block.bot_runtime_started_at = normalized.timestamp;
+    } else if (
+      char_block &&
+      normalized.module === "RuntimeKernel" &&
+      normalized.type === "RUNTIME_STOPPED"
+    ) {
+      char_block.bot_runtime_started_at = null;
+    }
+
     if (char_block && normalized.data?.movement) {
       updateCharacterMovementRuntime(char_block, normalized.data.movement, {
         timestamp: normalized.timestamp,
@@ -581,6 +604,8 @@ function migrate_old_storage(path, localStorage) {
     char_block.last_heartbeat_pid = char_block.last_heartbeat_pid || null;
     char_block.watchdog_recovery_in_progress = false;
     char_block.live_state = char_block.live_state || null;
+    char_block.bot_runtime_started_at = null;
+    char_block.movement_live_test = char_block.movement_live_test || null;
     char_block.running_code_revision = char_block.running_code_revision || null;
     char_block.running_config_revision =
       char_block.running_config_revision || null;
@@ -843,6 +868,242 @@ function migrate_old_storage(path, localStorage) {
     };
   }
 
+  function reject_movement_live_tests_for_character(char_name, reason) {
+    for (const [request_id, pending] of movement_live_test_requests) {
+      if (pending.character !== char_name) continue;
+      clearTimeout(pending.timer);
+      movement_live_test_requests.delete(request_id);
+      pending.reject(new Error(reason));
+    }
+  }
+
+  async function wait_for_movement_live_test_runtime(
+    char_name,
+    timeout_ms = MOVEMENT_LIVE_TEST_RUNTIME_TIMEOUT_MS,
+  ) {
+    const started_at = Date.now();
+    while (Date.now() - started_at < timeout_ms) {
+      const char_block = character_manage[char_name];
+      if (
+        char_block?.instance &&
+        char_block.connected &&
+        Number.isFinite(char_block.bot_runtime_started_at)
+      ) {
+        return char_block;
+      }
+      await sleep(100);
+    }
+
+    throw make_control_error(
+      "MOVEMENT_LIVE_TEST_RUNTIME_TIMEOUT",
+      `Movement runtime did not become ready for ${char_name}`,
+      504,
+    );
+  }
+
+  function wait_for_movement_live_test_result(char_name, request_id) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        movement_live_test_requests.delete(request_id);
+        reject(
+          make_control_error(
+            "MOVEMENT_LIVE_TEST_TIMEOUT",
+            `Movement live test timed out for ${char_name}`,
+            504,
+          ),
+        );
+      }, MOVEMENT_LIVE_TEST_RESULT_TIMEOUT_MS);
+
+      movement_live_test_requests.set(request_id, {
+        character: char_name,
+        resolve,
+        reject,
+        timer,
+      });
+    });
+  }
+
+  async function restore_movement_live_test_state(
+    char_name,
+    desired_runtime_state,
+  ) {
+    const char_block = character_manage[char_name];
+    if (!char_block) return;
+
+    if (desired_runtime_state === DESIRED_RUNTIME_STATES.STOPPED) {
+      await control_character(char_name, CONTROL_ACTIONS.STOP);
+    } else if (desired_runtime_state === DESIRED_RUNTIME_STATES.PAUSED) {
+      if (char_block.instance) {
+        await control_character(char_name, CONTROL_ACTIONS.PAUSE);
+      }
+    } else if (
+      desired_runtime_state === DESIRED_RUNTIME_STATES.RUNNING &&
+      char_block.desired_runtime_state !== DESIRED_RUNTIME_STATES.RUNNING
+    ) {
+      await control_character(char_name, CONTROL_ACTIONS.START);
+    }
+  }
+
+  async function run_movement_live_test(char_name) {
+    const char_block = character_manage[char_name];
+    if (!char_block) {
+      throw make_control_error(
+        "CHARACTER_NOT_FOUND",
+        `Unknown character: ${char_name}`,
+        404,
+      );
+    }
+    if (char_block.movement_live_test?.status === "RUNNING") {
+      throw make_control_error(
+        "MOVEMENT_LIVE_TEST_ALREADY_RUNNING",
+        `Movement live test already running for ${char_name}`,
+        409,
+      );
+    }
+
+    const original_desired_state =
+      char_block.desired_runtime_state ||
+      (char_block.enabled
+        ? DESIRED_RUNTIME_STATES.RUNNING
+        : DESIRED_RUNTIME_STATES.STOPPED);
+    const started_at = Date.now();
+    movement_live_test_sequence += 1;
+    const request_id = `movement-live-${started_at}-${movement_live_test_sequence}`;
+
+    char_block.movement_live_test = {
+      request_id,
+      status: "STARTING",
+      outcome: null,
+      reason: null,
+      started_at,
+      completed_at: null,
+    };
+    emit_supervisor_event("MOVEMENT_LIVE_TEST_REQUESTED", char_name, {
+      request_id,
+      original_desired_state,
+    });
+    dashboard?.publishSnapshot();
+
+    try {
+      if (
+        original_desired_state !== DESIRED_RUNTIME_STATES.RUNNING ||
+        !char_block.instance
+      ) {
+        await control_character(char_name, CONTROL_ACTIONS.START);
+      }
+
+      await wait_for_movement_live_test_runtime(char_name);
+      const ready_block = character_manage[char_name];
+      const result_promise = wait_for_movement_live_test_result(
+        char_name,
+        request_id,
+      );
+
+      ready_block.movement_live_test = {
+        ...ready_block.movement_live_test,
+        status: "RUNNING",
+      };
+      dashboard?.publishSnapshot();
+
+      const sent = safe_send(ready_block.instance, {
+        type: "movement_live_test",
+        request_id,
+      });
+      if (!sent) {
+        const pending = movement_live_test_requests.get(request_id);
+        if (pending) {
+          clearTimeout(pending.timer);
+          movement_live_test_requests.delete(request_id);
+        }
+        throw make_control_error(
+          "MOVEMENT_LIVE_TEST_DISPATCH_FAILED",
+          `Could not dispatch movement live test to ${char_name}`,
+          503,
+        );
+      }
+
+      const child_response = await result_promise;
+      if (child_response.error || !child_response.result) {
+        throw make_control_error(
+          "MOVEMENT_LIVE_TEST_RUNTIME_FAILED",
+          child_response.error || "Movement live test returned no result",
+          500,
+        );
+      }
+
+      const events = diagnostic_store.getEvents({
+        character: char_name,
+        since: started_at,
+      });
+      const evidence = movementLiveTestEvidence(events, ready_block);
+      const combined = combineMovementLiveTestResult(
+        child_response.result,
+        evidence,
+      );
+
+      ready_block.movement_live_test = {
+        ...combined,
+        request_id,
+        status: "COMPLETED",
+        started_at,
+        completed_at: Date.now(),
+      };
+      emit_supervisor_event("MOVEMENT_LIVE_TEST_COMPLETED", char_name, {
+        request_id,
+        outcome: combined.outcome,
+        reason: combined.reason,
+        supervisor: evidence,
+      });
+      dashboard?.publishSnapshot();
+      return ready_block.movement_live_test;
+    } catch (error) {
+      const failed = {
+        request_id,
+        status: "FAILED",
+        outcome:
+          error.code === "MOVEMENT_LIVE_TEST_TIMEOUT" ||
+          error.code === "MOVEMENT_LIVE_TEST_RUNTIME_TIMEOUT"
+            ? "TIMEOUT"
+            : "FAIL",
+        reason: error.code || error.message || "MOVEMENT_LIVE_TEST_FAILED",
+        error: error.message || String(error),
+        started_at,
+        completed_at: Date.now(),
+      };
+      char_block.movement_live_test = failed;
+      emit_supervisor_event("MOVEMENT_LIVE_TEST_FAILED", char_name, failed);
+      dashboard?.publishSnapshot();
+      return failed;
+    } finally {
+      const pending = movement_live_test_requests.get(request_id);
+      if (pending) {
+        clearTimeout(pending.timer);
+        movement_live_test_requests.delete(request_id);
+      }
+
+      try {
+        await restore_movement_live_test_state(
+          char_name,
+          original_desired_state,
+        );
+      } catch (restore_error) {
+        emit_supervisor_event(
+          "MOVEMENT_LIVE_TEST_STATE_RESTORE_FAILED",
+          char_name,
+          {
+            request_id,
+            desired_runtime_state: original_desired_state,
+            error:
+              restore_error instanceof Error
+                ? restore_error.message
+                : String(restore_error),
+          },
+        );
+      }
+      dashboard?.publishSnapshot();
+    }
+  }
+
   async function control_character(char_name, action) {
     const char_block = character_manage[char_name];
     if (!char_block) {
@@ -1084,6 +1345,7 @@ function migrate_old_storage(path, localStorage) {
     result.stdout.pipe(process.stdout);
     result.stderr.pipe(process.stderr);
     char_block.instance = result;
+    char_block.bot_runtime_started_at = null;
     char_block.last_heartbeat_at = Date.now();
     char_block.last_heartbeat_pid = result.pid || null;
     char_block.watchdog_recovery_in_progress = false;
@@ -1102,7 +1364,12 @@ function migrate_old_storage(path, localStorage) {
       char_block.config_push_status = "STORED";
       char_block.applied_runtime_config_revision = null;
       char_block.connected = false;
+      char_block.bot_runtime_started_at = null;
       char_block.watchdog_recovery_in_progress = false;
+      reject_movement_live_tests_for_character(
+        char_name,
+        "CHARACTER_PROCESS_EXITED_DURING_MOVEMENT_LIVE_TEST",
+      );
       emit_supervisor_event("CHARACTER_PROCESS_EXITED", char_name, {
         code,
         signal,
@@ -1249,6 +1516,33 @@ function migrate_old_storage(path, localStorage) {
         case "runtime_event":
           emit_runtime_event(char_name, m.event);
           break;
+        case "movement_live_test_result": {
+          const pending = movement_live_test_requests.get(m.request_id);
+          if (!pending || pending.character !== char_name) {
+            emit_supervisor_event(
+              "MOVEMENT_LIVE_TEST_RESULT_IGNORED",
+              char_name,
+              {
+                why: "UNKNOWN_OR_STALE_REQUEST",
+                request_id: m.request_id || null,
+              },
+            );
+            break;
+          }
+
+          clearTimeout(pending.timer);
+          movement_live_test_requests.delete(m.request_id);
+          pending.resolve({
+            result: m.result || null,
+            error: m.error || null,
+          });
+          emit_supervisor_event("MOVEMENT_LIVE_TEST_RESULT_RECEIVED", char_name, {
+            request_id: m.request_id,
+            outcome: m.result?.outcome || null,
+            error: m.error || null,
+          });
+          break;
+        }
         case "config_applied": {
           const applied_revision = Number(m.revision);
           if (
