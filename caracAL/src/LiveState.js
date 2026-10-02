@@ -180,12 +180,16 @@ function applyMovementRuntimeProjection(liveState, runtime) {
   liveState.movement_command = runtime.active;
   liveState.movement_stuck = runtime.stuck;
   liveState.safe_point = runtime.safePoint;
+  const currentMap = liveState.map || null;
   liveState.runtime_planned_path = runtime.path
-    ? runtime.path.remaining.map((point) => ({ ...point }))
+    ? runtime.path.remaining.map((point) => ({
+        ...point,
+        map: point.map || currentMap,
+      }))
     : [];
   liveState.runtime_planned_destination = runtimeDestination(
     runtime,
-    liveState.map || null,
+    currentMap,
   );
   return liveState;
 }
