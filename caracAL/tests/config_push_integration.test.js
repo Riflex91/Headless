@@ -63,22 +63,16 @@ test("config editor read endpoint keeps live push restart-free", () => {
 
   assert.equal(coordinator.includes("read_character_config"), true);
   assert.equal(
-    dashboard.includes(
-      'router.get("/headless/api/characters/:name/config"',
-    ),
+    dashboard.includes('router.get("/headless/api/characters/:name/config"'),
     true,
   );
 
   const start = coordinator.indexOf(
     "async function control_character_config(char_name, config)",
   );
-  const end = coordinator.indexOf(
-    "async function control_rotation",
-    start,
-  );
+  const end = coordinator.indexOf("async function control_rotation", start);
   const updateBlock = coordinator.slice(start, end);
   assert.equal(updateBlock.includes('type: "config_push"'), true);
   assert.equal(updateBlock.includes("restart_character"), false);
   assert.equal(updateBlock.includes("softkill_block"), false);
 });
-

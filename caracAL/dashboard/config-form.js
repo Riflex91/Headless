@@ -3,7 +3,13 @@
 (function initConfigForm(globalScope) {
   const CLASS_SKILLS = {
     warrior: ["taunt", "hardshell", "warcry"],
-    ranger: ["huntersmark", "supershot", "poisonarrow", "piercingshot", "track"],
+    ranger: [
+      "huntersmark",
+      "supershot",
+      "poisonarrow",
+      "piercingshot",
+      "track",
+    ],
     priest: ["curse", "darkblessing", "phaseout"],
     mage: ["entangle", "light"],
     rogue: ["pcoat", "invis", "mentalburst", "quickpunch", "quickstab"],
@@ -475,7 +481,9 @@
         throw new Error(field.label + " muss eine Zahl sein");
       }
       if (Number.isFinite(field.min) && value < field.min) {
-        throw new Error(field.label + " muss mindestens " + field.min + " sein");
+        throw new Error(
+          field.label + " muss mindestens " + field.min + " sein",
+        );
       }
       if (Number.isFinite(field.max) && value > field.max) {
         throw new Error(field.label + " darf höchstens " + field.max + " sein");
@@ -605,7 +613,11 @@
           apply.addEventListener("click", () => {
             try {
               const parsed = JSON.parse(textarea.value);
-              if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+              if (
+                !parsed ||
+                typeof parsed !== "object" ||
+                Array.isArray(parsed)
+              ) {
                 throw new Error("Config muss ein JSON-Objekt sein");
               }
               state = deepClone(parsed);
@@ -628,10 +640,11 @@
       }
 
       container.append(tabs, panels);
-      const defaultSection =
-        schema.some((section) => section.id === activeSection)
-          ? activeSection
-          : schema[0]?.id;
+      const defaultSection = schema.some(
+        (section) => section.id === activeSection,
+      )
+        ? activeSection
+        : schema[0]?.id;
       if (defaultSection) setActive(defaultSection);
     };
 

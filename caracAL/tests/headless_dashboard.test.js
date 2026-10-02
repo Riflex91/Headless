@@ -438,13 +438,10 @@ test("dashboard character configuration UI reads edits and live-pushes config", 
   assert.equal(app.includes("runtime_config_revision"), true);
   assert.equal(app.includes("applied_runtime_config_revision"), true);
   assert.equal(
-    dashboard.includes(
-      'router.get("/headless/api/characters/:name/config"',
-    ),
+    dashboard.includes('router.get("/headless/api/characters/:name/config"'),
     true,
   );
   assert.equal(dashboard.includes("CONFIG_READ_UNAVAILABLE"), true);
   assert.equal(coordinator.includes("read_character_config"), true);
   assert.equal(coordinator.includes("readCharacterConfig"), true);
 });
-

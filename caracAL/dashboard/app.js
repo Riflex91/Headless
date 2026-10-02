@@ -588,16 +588,13 @@ async function sendCharacterConfig(characterName, config) {
 }
 
 function configStatusText(character, loaded = null) {
-  const revision =
-    character?.runtime_config_revision ?? loaded?.revision ?? 0;
+  const revision = character?.runtime_config_revision ?? loaded?.revision ?? 0;
   const applied =
     character?.applied_runtime_config_revision ??
     loaded?.applied_revision ??
     "—";
-  const status =
-    character?.config_push_status || loaded?.status || "UNKNOWN";
-  const source =
-    character?.runtime_config_source || loaded?.source || "CONFIG";
+  const status = character?.config_push_status || loaded?.status || "UNKNOWN";
+  const source = character?.runtime_config_source || loaded?.source || "CONFIG";
   const error = character?.config_push_error || loaded?.error;
   return `Revision ${revision} · Applied ${applied} · ${status} · ${source}${
     error ? ` · ${error}` : ""
@@ -624,8 +621,9 @@ async function openCharacterConfig(characterName) {
 
   characterConfigFeedback.textContent = "Konfiguration wird geladen …";
   const loaded = await readCharacterConfig(characterName);
-  characterConfigTitle.textContent =
-    `${characterName} · ${character.ctype || "unknown"}`;
+  characterConfigTitle.textContent = `${characterName} · ${
+    character.ctype || "unknown"
+  }`;
   characterConfigSession?.editor?.destroy?.();
   characterConfigSession = {
     characterName,
