@@ -15,6 +15,11 @@ import {
   MovementController,
   MovementControllerEvent,
 } from "./movement-controller.lib";
+import {
+  MovementLiveTestOptions,
+  MovementLiveTestResult,
+  MovementLiveTestRunner,
+} from "./movement-live-test.lib";
 
 const MOVEMENT_SETTLEMENT_JOB_ID = "movement-settlement";
 const MOVEMENT_SETTLEMENT_INTERVAL_MS = 100;
@@ -65,6 +70,7 @@ export class BotRuntimeKernel {
 
   private started = false;
   private stopping = false;
+  private movementLiveTestRunning = false;
 
   constructor() {
     this.eventBus = new EventBus({
@@ -223,6 +229,71 @@ export class BotRuntimeKernel {
       recentActions: this.actionLedger.list(20),
       ...runtimeIdentity(),
     };
+  }
+
+  async runMovementLiveTest(
+    options: MovementLiveTestOptions = {},
+  ): Promise<MovementLiveTestResult> {
+    if (this.movementLiveTestRunning) {
+      throw new Error("movement live test already running");
+    }
+    if (!this.started || this.stopping) {
+      throw new Error("runtime is not ready for movement live test");
+    }
+    if (runtimeState() !== "RUNNING") {
+      throw new Error("runtime must be RUNNING for movement live test");
+    }
+
+    this.movementLiveTestRunning = true;
+    const requestId =
+      options.requestId || `movement-live-${Date.now()}`;
+    this.eventBus.emit({
+      module: "MovementLiveTest",
+      type: "MOVEMENT_LIVE_TEST_STARTED",
+      why: "AUTONOMOUS_MOVEMENT_E2E",
+      correlationId: requestId,
+      data: {
+        requestId,
+        movement: this.movement.status(),
+        ...runtimeIdentity(),
+      },
+    });
+
+    try {
+      const runner = new MovementLiveTestRunner({
+        movement: this.movement,
+        character: () => this.game.character(),
+      });
+      const result = await runner.run({
+        ...options,
+        requestId,
+      });
+      this.eventBus.emit({
+        module: "MovementLiveTest",
+        type: "MOVEMENT_LIVE_TEST_COMPLETED",
+        why: result.reason,
+        correlationId: requestId,
+        data: {
+          result,
+          movement: this.movement.status(),
+        },
+      });
+      return result;
+    } catch (error) {
+      this.eventBus.emit({
+        module: "MovementLiveTest",
+        type: "MOVEMENT_LIVE_TEST_FAILED",
+        why: "MOVEMENT_LIVE_TEST_RUNTIME_ERROR",
+        correlationId: requestId,
+        data: {
+          error: error instanceof Error ? error.message : String(error),
+          movement: this.movement.status(),
+        },
+      });
+      throw error;
+    } finally {
+      this.movementLiveTestRunning = false;
+    }
   }
 
   private handleMovementEvent(event: MovementControllerEvent): void {
