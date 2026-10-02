@@ -62,7 +62,8 @@ function public_item(item, gameData) {
 
   if (itemDefinition?.name) result.display_name = itemDefinition.name;
   if (itemDefinition?.type) result.item_type = itemDefinition.type;
-  result.icon = public_item_icon(item.name, gameData);
+  const icon = public_item_icon(item.name, gameData);
+  if (icon) result.icon = icon;
   return result;
 }
 
