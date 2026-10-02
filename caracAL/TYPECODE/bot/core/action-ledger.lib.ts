@@ -157,7 +157,7 @@ export class ActionLedger {
   block(actionId: string, why: string): ActionRecord {
     const record = this.requireRecord(actionId);
 
-    if (record.status && record.status !== "DISPATCHED") {
+    if (record.status !== null) {
       throw new Error(
         `action ${actionId} cannot block from ${record.status}`,
       );
