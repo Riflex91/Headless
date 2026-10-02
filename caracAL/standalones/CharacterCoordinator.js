@@ -370,10 +370,10 @@ function migrate_old_storage(path, localStorage) {
       statuses.length === 0
         ? "UNKNOWN"
         : statuses.includes("STALE")
-          ? "STALE"
-          : statuses.every((value) => value === "HEALTHY")
-            ? "HEALTHY"
-            : "UNKNOWN";
+        ? "STALE"
+        : statuses.every((value) => value === "HEALTHY")
+        ? "HEALTHY"
+        : "UNKNOWN";
 
     return {
       source_revision,
@@ -805,8 +805,7 @@ function migrate_old_storage(path, localStorage) {
             "process_ready",
           );
           refresh_character_revision(char_block);
-          char_block.running_code_revision =
-            char_block.installed_code_revision;
+          char_block.running_code_revision = char_block.installed_code_revision;
           char_block.running_config_revision =
             char_block.installed_config_revision;
           char_block.revision_status = revisionStatus({
