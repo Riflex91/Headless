@@ -213,13 +213,14 @@ function renderRevisionSummary() {
   };
   const status = summary.status || "UNKNOWN";
 
-  revisionSummary.className =
-    `revision-summary revision-${status.toLowerCase()}`;
+  revisionSummary.className = `revision-summary revision-${status.toLowerCase()}`;
   revisionSummaryStatus.textContent = `Revision: ${status}`;
-  revisionSummarySource.textContent =
-    `Source: ${formatRevision(summary.source_revision)}`;
-  revisionSummaryConfig.textContent =
-    `Config: ${formatRevision(summary.installed_config_revision)}`;
+  revisionSummarySource.textContent = `Source: ${formatRevision(
+    summary.source_revision,
+  )}`;
+  revisionSummaryConfig.textContent = `Config: ${formatRevision(
+    summary.installed_config_revision,
+  )}`;
 }
 
 function renderEmergencyStop() {
@@ -385,21 +386,21 @@ function updateCharacterCard(card, character) {
     formatInventory(game);
   card.querySelector(".character-pid").textContent = character.pid || "—";
   card.querySelector(".character-script").textContent = character.script || "—";
-  card.querySelector(".character-code-revision").textContent =
-    formatRevision(character.code_revision);
+  card.querySelector(".character-code-revision").textContent = formatRevision(
+    character.code_revision,
+  );
   card.querySelector(".character-installed-code-revision").textContent =
     formatRevision(character.installed_code_revision);
-  card.querySelector(".character-config-revision").textContent =
-    formatRevision(character.config_revision);
+  card.querySelector(".character-config-revision").textContent = formatRevision(
+    character.config_revision,
+  );
   card.querySelector(".character-installed-config-revision").textContent =
     formatRevision(character.installed_config_revision);
-  const revisionStatus =
-    card.querySelector(".character-revision-status");
+  const revisionStatus = card.querySelector(".character-revision-status");
   revisionStatus.textContent = character.revision_status || "UNKNOWN";
-  revisionStatus.className =
-    `character-revision-status revision-text-${String(
-      character.revision_status || "UNKNOWN",
-    ).toLowerCase()}`;
+  revisionStatus.className = `character-revision-status revision-text-${String(
+    character.revision_status || "UNKNOWN",
+  ).toLowerCase()}`;
   card.querySelector(".character-restarts").textContent =
     character.restart_attempts ?? 0;
   card.querySelector(".character-heartbeat").textContent = formatHeartbeat(
