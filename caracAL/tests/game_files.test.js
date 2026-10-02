@@ -1,0 +1,81 @@
+"use strict";
+
+const assert = require("node:assert/strict");
+const fs = require("node:fs/promises");
+const os = require("node:os");
+const path = require("node:path");
+const test = require("node:test");
+
+const {
+  get_game_files,
+  get_required_files,
+  get_runner_files,
+  missing_version_files,
+} = require("../game_files");
+
+test("game runtime dependencies follow the current Adventure Land load order", () => {
+  const files = get_game_files();
+
+  assert.ok(files.indexOf("/js/phrases.js") < files.indexOf("/js/game.js"));
+  assert.ok(
+    files.indexOf("/js/common_functions.js") <
+      files.indexOf("/js/old_common_functions.js"),
+  );
+  assert.ok(
+    files.indexOf("/js/old_common_functions.js") <
+      files.indexOf("/js/functions.js"),
+  );
+  assert.ok(files.indexOf("/js/functions.js") < files.indexOf("/js/game.js"));
+});
+
+test("runner loads legacy common helpers before runner functions", () => {
+  const files = get_runner_files();
+
+  assert.deepEqual(files.slice(0, 3), [
+    "/js/common_functions.js",
+    "/js/old_common_functions.js",
+    "/js/runner_functions.js",
+  ]);
+});
+
+test("required version files are unique across game and runner sources", () => {
+  const files = get_required_files();
+  assert.equal(files.length, new Set(files).size);
+  assert.ok(files.includes("/js/phrases.js"));
+  assert.ok(files.includes("/js/old_common_functions.js"));
+});
+
+test("cached versions report newly required runtime files as missing", async () => {
+  const previousCwd = process.cwd();
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "caracal-game-files-"));
+  const version = 17397;
+
+  try {
+    process.chdir(root);
+    await fs.mkdir(path.join("game_files", String(version)), {
+      recursive: true,
+    });
+
+    for (const resource of get_required_files()) {
+      if (
+        resource === "/js/phrases.js" ||
+        resource === "/js/old_common_functions.js"
+      ) {
+        continue;
+      }
+
+      await fs.writeFile(
+        path.join("game_files", String(version), path.posix.basename(resource)),
+        "",
+      );
+    }
+
+    assert.deepEqual(await missing_version_files(version), [
+      "/js/phrases.js",
+      "/js/old_common_functions.js",
+    ]);
+  } finally {
+    process.chdir(previousCwd);
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
