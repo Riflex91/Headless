@@ -131,6 +131,42 @@ async function make_runner(upper, CODE_file, version, is_typescript) {
         //vscode says this is unreachable.
         //with how whack node is better be safe
         break;
+      case "logistics_claim": {
+        const requestId =
+          typeof m.request_id === "string" && m.request_id
+            ? m.request_id
+            : "logistics-claim-" + Date.now();
+        const runtime = runner_context.__caracalBotRuntime;
+        if (!runtime?.executeLogisticsClaim) {
+          sendIpcMessage(process, {
+            type: "logistics_claim_result",
+            request_id: requestId,
+            claim_id: m.claim?.id || null,
+            error: "LOGISTICS_CLAIM_RUNTIME_NOT_READY",
+          });
+          break;
+        }
+
+        void runtime
+          .executeLogisticsClaim(m.claim)
+          .then((result) => {
+            sendIpcMessage(process, {
+              type: "logistics_claim_result",
+              request_id: requestId,
+              claim_id: m.claim?.id || null,
+              result,
+            });
+          })
+          .catch((error) => {
+            sendIpcMessage(process, {
+              type: "logistics_claim_result",
+              request_id: requestId,
+              claim_id: m.claim?.id || null,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          });
+        break;
+      }
       case "inventory_live_test": {
         const requestId =
           typeof m.request_id === "string" && m.request_id
