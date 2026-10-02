@@ -705,6 +705,56 @@ export class ActionBoundary {
     }
   }
 
+  settleMove(actionId: string, tolerance = 5): ActionRecord {
+    const record = this.ledger.get(actionId);
+    if (!record) {
+      throw new Error(`unknown movement action: ${actionId}`);
+    }
+    if (record.action !== "MOVE") {
+      throw new Error(
+        `action ${actionId} is not a direct movement action`,
+      );
+    }
+    if (record.status !== "DISPATCHED") return record;
+
+    const expected = objectRecord(record.expectedEffect);
+    const targetX = Number(expected.x);
+    const targetY = Number(expected.y);
+    const targetMap =
+      typeof expected.map === "string" ? expected.map : null;
+    const normalizedTolerance =
+      Number.isFinite(tolerance) && tolerance > 0 ? tolerance : 5;
+
+    if (!Number.isFinite(targetX) || !Number.isFinite(targetY)) {
+      return this.ledger.unknown(actionId, {
+        why: "MOVE_SETTLEMENT_TARGET_INVALID",
+        after: { ...this.game.map() },
+      });
+    }
+
+    const after = this.game.character();
+    const distance = Math.hypot(after.x - targetX, after.y - targetY);
+    const sameMap = targetMap === null || after.map === targetMap;
+
+    if (sameMap && distance <= normalizedTolerance && !after.moving) {
+      return this.ledger.confirm(actionId, {
+        why: "MOVE_ARRIVED",
+        after: {
+          map: after.map,
+          x: after.x,
+          y: after.y,
+          moving: after.moving,
+        },
+        evidence: {
+          distance,
+          tolerance: normalizedTolerance,
+        },
+      });
+    }
+
+    return record;
+  }
+
   async smartMove(request: SmartMoveRequest): Promise<ActionRecord> {
     const before = this.game.character();
     const transaction = this.ledger.create({
