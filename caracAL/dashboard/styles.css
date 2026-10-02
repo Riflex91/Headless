@@ -506,6 +506,21 @@ dd {
   stroke: none;
 }
 
+.planned-waypoint {
+  fill: #0d1426;
+  stroke: currentColor;
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.safe-point-marker {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 3;
+  stroke-dasharray: 4 3;
+  vector-effect: non-scaling-stroke;
+}
+
 .character-marker circle {
   fill: #11182c;
   stroke: currentColor;
@@ -545,6 +560,12 @@ dd {
   height: 0.65rem;
   border-radius: 50%;
   background: currentColor;
+}
+
+.movement-stuck,
+.movement-stuck-active {
+  color: #ff9aa6;
+  font-weight: 700;
 }
 
 .character-color-0 {
