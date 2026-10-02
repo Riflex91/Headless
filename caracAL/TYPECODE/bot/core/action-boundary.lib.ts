@@ -146,6 +146,24 @@ export interface ExchangeRequest extends BoundaryRequest {
   itemSlot: number;
 }
 
+export interface CraftRequest extends BoundaryRequest {
+  itemName: string;
+}
+
+export interface WishlistRequest extends BoundaryRequest {
+  slot: string | number;
+  itemName: string;
+  price: number;
+  level?: number;
+  quantity?: number;
+}
+
+export interface PontyBuyRequest extends BoundaryRequest {
+  rid: string;
+  itemName: string;
+  price: number;
+}
+
 export interface MutationDriver {
   move(x: number, y: number): unknown;
   resolveEntity(id: string): unknown;
@@ -189,17 +207,49 @@ export interface MutationDriver {
     offeringSlot?: number | null,
   ): Promise<unknown> | unknown;
   exchange(itemSlot: number): Promise<unknown> | unknown;
+  autoCraft(itemName: string): Promise<unknown> | unknown;
+  wishlist(
+    slot: string | number,
+    itemName: string,
+    price: number,
+    level?: number,
+    quantity?: number,
+  ): Promise<unknown> | unknown;
+  pontyBuy(rid: string): Promise<unknown> | unknown;
+}
+
+function runtimeValue(name: string): unknown {
+  const scope = globalThis as unknown as Record<string, unknown>;
+  if (scope[name] !== undefined) return scope[name];
+
+  const parentScope =
+    typeof parent === "undefined"
+      ? null
+      : (parent as unknown as Record<string, unknown>);
+  return parentScope?.[name];
 }
 
 function runtimeFunction(name: string): (...args: unknown[]) => unknown {
-  const scope = globalThis as unknown as Record<string, unknown>;
-  const fn = scope[name];
+  const fn = runtimeValue(name);
 
   if (typeof fn !== "function") {
     throw new Error(`Adventure Land mutation function unavailable: ${name}`);
   }
 
   return fn as (...args: unknown[]) => unknown;
+}
+
+function runtimeSocketEmit(event: string, payload: unknown): unknown {
+  const socket = objectRecord(runtimeValue("socket"));
+  const emit = socket.emit;
+  if (typeof emit !== "function") {
+    throw new Error("Adventure Land socket unavailable");
+  }
+  return (emit as (event: string, payload: unknown) => unknown).call(
+    socket,
+    event,
+    payload,
+  );
 }
 
 export function createRuntimeMutationDriver(): MutationDriver {
@@ -269,6 +319,10 @@ export function createRuntimeMutationDriver(): MutationDriver {
         offeringSlot === undefined ? null : offeringSlot,
       ),
     exchange: (itemSlot) => runtimeFunction("exchange")(itemSlot),
+    autoCraft: (itemName) => runtimeFunction("auto_craft")(itemName),
+    wishlist: (slot, itemName, price, level, quantity) =>
+      runtimeFunction("wishlist")(slot, itemName, price, level, quantity),
+    pontyBuy: (rid) => runtimeSocketEmit("sbuy", { rid }),
   };
 }
 
@@ -343,6 +397,26 @@ function totalItemQuantity(
     if (itemName(entry.item) !== name) return total;
     return total + itemQuantity(entry.item);
   }, 0);
+}
+
+function totalItemQuantityAtLevel(
+  inventory: InventorySlotSnapshot[],
+  name: string,
+  level: number | null,
+): number {
+  return inventory.reduce((total, entry) => {
+    if (itemName(entry.item) !== name) return total;
+    if (level !== null && itemLevel(entry.item) !== level) return total;
+    return total + itemQuantity(entry.item);
+  }, 0);
+}
+
+function normalizedTradeSlot(slot: string | number): string | number | null {
+  if (typeof slot === "number") {
+    return Number.isInteger(slot) && slot >= 1 && slot <= 30 ? slot : null;
+  }
+  const trimmed = slot.trim();
+  return /^trade(?:[1-9]|[12]\d|30)$/.test(trimmed) ? trimmed : null;
 }
 
 function explicitFailure(result: unknown): boolean {
@@ -481,6 +555,9 @@ export const ACTION_BOUNDARY_MUTATION_CAPABILITIES = [
   "UPGRADE",
   "COMPOUND",
   "EXCHANGE",
+  "CRAFT",
+  "WISHLIST",
+  "PONTY_BUY",
 ] as const;
 
 export class ActionBoundary {
@@ -2309,6 +2386,354 @@ export class ActionBoundary {
           item: relevantInventoryState(
             this.game.inventory(),
             request.itemSlot,
+          ),
+        },
+      });
+    }
+  }
+
+
+  async craft(request: CraftRequest): Promise<ActionRecord> {
+    const itemNameValue = request.itemName?.trim();
+    const beforeInventory = this.game.inventory();
+    const beforeCharacter = this.game.character();
+    const gameData = this.game.gameData();
+    const recipe = itemNameValue
+      ? objectRecord(objectRecord(gameData.craft)[itemNameValue])
+      : {};
+    const rawIngredients = Array.isArray(recipe.items) ? recipe.items : [];
+    const ingredients = rawIngredients
+      .map((entry) => {
+        if (!Array.isArray(entry) || entry.length < 2) return null;
+        const quantity = Number(entry[0]);
+        const name = typeof entry[1] === "string" ? entry[1] : null;
+        const level =
+          entry.length >= 3 && Number.isInteger(Number(entry[2]))
+            ? Number(entry[2])
+            : null;
+        if (!Number.isInteger(quantity) || quantity <= 0 || !name) return null;
+        return { quantity, name, level };
+      })
+      .filter(
+        (
+          entry,
+        ): entry is {
+          quantity: number;
+          name: string;
+          level: number | null;
+        } => entry !== null,
+      );
+    const cost =
+      typeof recipe.cost === "number" && Number.isFinite(recipe.cost)
+        ? recipe.cost
+        : null;
+    const transaction = this.ledger.create({
+      module: request.module,
+      action: "CRAFT",
+      why: request.why,
+      correlationId: request.correlationId,
+      expectedCost: {
+        gold: cost,
+        ingredients,
+      },
+      expectedEffect: {
+        itemName: itemNameValue || null,
+        quantity: 1,
+      },
+      before: {
+        gold: beforeCharacter.gold,
+        outputQuantity: itemNameValue
+          ? totalItemQuantity(beforeInventory, itemNameValue)
+          : 0,
+      },
+    });
+
+    if (transaction.status === "BLOCKED") return transaction;
+    if (!itemNameValue) {
+      return this.ledger.block(transaction.id, "CRAFT_ITEM_INVALID");
+    }
+    if (!Object.keys(recipe).length || ingredients.length !== rawIngredients.length) {
+      return this.ledger.block(transaction.id, "CRAFT_RECIPE_UNAVAILABLE");
+    }
+    if (
+      cost !== null &&
+      beforeCharacter.gold !== null &&
+      beforeCharacter.gold < cost
+    ) {
+      return this.ledger.block(transaction.id, "CRAFT_GOLD_INSUFFICIENT");
+    }
+    for (const ingredient of ingredients) {
+      if (
+        totalItemQuantityAtLevel(
+          beforeInventory,
+          ingredient.name,
+          ingredient.level,
+        ) < ingredient.quantity
+      ) {
+        return this.ledger.block(
+          transaction.id,
+          "CRAFT_INGREDIENTS_INSUFFICIENT",
+        );
+      }
+    }
+
+    this.ledger.dispatch(transaction.id, {
+      mutation: "auto_craft",
+      itemName: itemNameValue,
+    });
+
+    try {
+      const result = await this.driver.autoCraft(itemNameValue);
+      const response = objectRecord(result);
+      const afterInventory = this.game.inventory();
+      const beforeQuantity = totalItemQuantity(
+        beforeInventory,
+        itemNameValue,
+      );
+      const afterQuantity = totalItemQuantity(afterInventory, itemNameValue);
+
+      if (explicitFailure(result)) {
+        return this.ledger.reject(transaction.id, {
+          why: "CRAFT_API_REJECTED",
+          after: {
+            outputQuantity: afterQuantity,
+            gold: this.game.character().gold,
+          },
+          evidence: { result: safeResultEvidence(result) },
+        });
+      }
+      if (
+        response.success === true ||
+        response.response === "craft" ||
+        afterQuantity > beforeQuantity
+      ) {
+        return this.ledger.confirm(transaction.id, {
+          why:
+            response.success === true || response.response === "craft"
+              ? "CRAFT_RESULT_CONFIRMED"
+              : "CRAFT_STATE_CONFIRMED",
+          after: {
+            outputQuantity: afterQuantity,
+            gold: this.game.character().gold,
+          },
+          evidence: {
+            outputDelta: afterQuantity - beforeQuantity,
+            result: safeResultEvidence(result),
+          },
+        });
+      }
+
+      return this.ledger.unknown(transaction.id, {
+        why: "CRAFT_OUTCOME_UNVERIFIED",
+        after: {
+          outputQuantity: afterQuantity,
+          gold: this.game.character().gold,
+        },
+        evidence: { result: safeResultEvidence(result) },
+      });
+    } catch (error) {
+      return this.ledger.unknown(transaction.id, {
+        why: "CRAFT_OUTCOME_UNCERTAIN",
+        error: errorMessage(error),
+        after: {
+          outputQuantity: totalItemQuantity(
+            this.game.inventory(),
+            itemNameValue,
+          ),
+          gold: this.game.character().gold,
+        },
+      });
+    }
+  }
+
+  async wishlist(request: WishlistRequest): Promise<ActionRecord> {
+    const slot = normalizedTradeSlot(request.slot);
+    const itemNameValue = request.itemName?.trim();
+    const quantity = positiveInteger(request.quantity);
+    const gameData = this.game.gameData();
+    const itemDefinition = itemNameValue
+      ? gameItemDefinition(gameData, itemNameValue)
+      : {};
+    const transaction = this.ledger.create({
+      module: request.module,
+      action: "WISHLIST",
+      why: request.why,
+      correlationId: request.correlationId,
+      expectedEffect: {
+        slot,
+        itemName: itemNameValue || null,
+        price: request.price,
+        level: request.level ?? null,
+        quantity,
+      },
+      before: {
+        gold: this.game.character().gold,
+      },
+    });
+
+    if (transaction.status === "BLOCKED") return transaction;
+    if (slot === null) {
+      return this.ledger.block(transaction.id, "WISHLIST_SLOT_INVALID");
+    }
+    if (!itemNameValue || !Object.keys(itemDefinition).length) {
+      return this.ledger.block(transaction.id, "WISHLIST_ITEM_INVALID");
+    }
+    if (!Number.isInteger(request.price) || request.price <= 0) {
+      return this.ledger.block(transaction.id, "WISHLIST_PRICE_INVALID");
+    }
+    if (
+      request.level !== undefined &&
+      (!Number.isInteger(request.level) || request.level < 0)
+    ) {
+      return this.ledger.block(transaction.id, "WISHLIST_LEVEL_INVALID");
+    }
+    if (quantity === null) {
+      return this.ledger.block(transaction.id, "WISHLIST_QUANTITY_INVALID");
+    }
+
+    this.ledger.dispatch(transaction.id, {
+      mutation: "wishlist",
+      slot,
+      itemName: itemNameValue,
+      price: request.price,
+      level: request.level ?? null,
+      quantity,
+    });
+
+    try {
+      const result = await this.driver.wishlist(
+        slot,
+        itemNameValue,
+        request.price,
+        request.level,
+        quantity,
+      );
+      if (explicitFailure(result)) {
+        return this.ledger.reject(transaction.id, {
+          why: "WISHLIST_API_REJECTED",
+          evidence: { result: safeResultEvidence(result) },
+        });
+      }
+      const response = objectRecord(result);
+      if (response.success === true) {
+        return this.ledger.confirm(transaction.id, {
+          why: "WISHLIST_API_CONFIRMED",
+          evidence: { result: safeResultEvidence(result) },
+        });
+      }
+      return this.ledger.get(transaction.id)!;
+    } catch (error) {
+      return this.ledger.unknown(transaction.id, {
+        why: "WISHLIST_OUTCOME_UNCERTAIN",
+        error: errorMessage(error),
+      });
+    }
+  }
+
+  async pontyBuy(request: PontyBuyRequest): Promise<ActionRecord> {
+    const rid = request.rid?.trim();
+    const itemNameValue = request.itemName?.trim();
+    const beforeInventory = this.game.inventory();
+    const beforeCharacter = this.game.character();
+    const itemDefinition = itemNameValue
+      ? gameItemDefinition(this.game.gameData(), itemNameValue)
+      : {};
+    const transaction = this.ledger.create({
+      module: request.module,
+      action: "PONTY_BUY",
+      why: request.why,
+      correlationId: request.correlationId,
+      expectedCost: {
+        gold: request.price,
+      },
+      expectedEffect: {
+        rid: rid || null,
+        itemName: itemNameValue || null,
+      },
+      before: {
+        gold: beforeCharacter.gold,
+        itemQuantity: itemNameValue
+          ? totalItemQuantity(beforeInventory, itemNameValue)
+          : 0,
+      },
+    });
+
+    if (transaction.status === "BLOCKED") return transaction;
+    if (!rid) {
+      return this.ledger.block(transaction.id, "PONTY_RID_INVALID");
+    }
+    if (!itemNameValue || !Object.keys(itemDefinition).length) {
+      return this.ledger.block(transaction.id, "PONTY_ITEM_INVALID");
+    }
+    if (!Number.isInteger(request.price) || request.price <= 0) {
+      return this.ledger.block(transaction.id, "PONTY_PRICE_INVALID");
+    }
+    if (
+      beforeCharacter.gold !== null &&
+      request.price > beforeCharacter.gold
+    ) {
+      return this.ledger.block(transaction.id, "INSUFFICIENT_GOLD");
+    }
+
+    this.ledger.dispatch(transaction.id, {
+      mutation: "sbuy",
+      rid,
+      itemName: itemNameValue,
+      price: request.price,
+    });
+
+    try {
+      const result = await this.driver.pontyBuy(rid);
+      const afterInventory = this.game.inventory();
+      const afterCharacter = this.game.character();
+      const beforeQuantity = totalItemQuantity(
+        beforeInventory,
+        itemNameValue,
+      );
+      const afterQuantity = totalItemQuantity(afterInventory, itemNameValue);
+      const goldDelta =
+        beforeCharacter.gold !== null && afterCharacter.gold !== null
+          ? beforeCharacter.gold - afterCharacter.gold
+          : null;
+
+      if (explicitFailure(result)) {
+        return this.ledger.reject(transaction.id, {
+          why: "PONTY_BUY_API_REJECTED",
+          after: {
+            gold: afterCharacter.gold,
+            itemQuantity: afterQuantity,
+          },
+          evidence: { result: safeResultEvidence(result) },
+        });
+      }
+      if (
+        afterQuantity > beforeQuantity ||
+        (goldDelta !== null && goldDelta >= request.price)
+      ) {
+        return this.ledger.confirm(transaction.id, {
+          why: "PONTY_BUY_STATE_CONFIRMED",
+          after: {
+            gold: afterCharacter.gold,
+            itemQuantity: afterQuantity,
+          },
+          evidence: {
+            itemDelta: afterQuantity - beforeQuantity,
+            goldDelta,
+            result: safeResultEvidence(result),
+          },
+        });
+      }
+
+      return this.ledger.get(transaction.id)!;
+    } catch (error) {
+      return this.ledger.unknown(transaction.id, {
+        why: "PONTY_BUY_OUTCOME_UNCERTAIN",
+        error: errorMessage(error),
+        after: {
+          gold: this.game.character().gold,
+          itemQuantity: totalItemQuantity(
+            this.game.inventory(),
+            itemNameValue,
           ),
         },
       });
