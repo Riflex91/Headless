@@ -56,6 +56,7 @@ interface GameReadAdapter {
   inventory(): InventorySlotSnapshot[];
   equipment(): EquipmentSnapshot;
   tradeSlots(): TradeSlotsSnapshot;
+  party(): Record<string, unknown>;
   bank(): BankSnapshot;
   skills(characterOnly?: boolean): SkillSnapshot[];
   map(): MapSnapshot;
@@ -167,6 +168,10 @@ export interface PontyBuyRequest extends BoundaryRequest {
   price: number;
 }
 
+export interface PartyTargetRequest extends BoundaryRequest {
+  name: string;
+}
+
 export interface MutationDriver {
   move(x: number, y: number): unknown;
   resolveEntity(id: string): unknown;
@@ -219,6 +224,12 @@ export interface MutationDriver {
     quantity?: number,
   ): Promise<unknown> | unknown;
   pontyBuy(rid: string): Promise<unknown> | unknown;
+  partyInvite(name: string): Promise<unknown> | unknown;
+  partyRequest(name: string): Promise<unknown> | unknown;
+  partyAcceptInvite(name: string): Promise<unknown> | unknown;
+  partyAcceptRequest(name: string): Promise<unknown> | unknown;
+  partyLeave(): Promise<unknown> | unknown;
+  respawn(): Promise<unknown> | unknown;
 }
 
 function runtimeFunction(name: string): (...args: unknown[]) => unknown {
@@ -323,6 +334,14 @@ export function createRuntimeMutationDriver(): MutationDriver {
     wishlist: (slot, itemName, price, level, quantity) =>
       runtimeFunction("wishlist")(slot, itemName, price, level, quantity),
     pontyBuy: (rid) => runtimeSocketEmit("sbuy", { rid }),
+    partyInvite: (name) => runtimeFunction("send_party_invite")(name),
+    partyRequest: (name) => runtimeFunction("send_party_request")(name),
+    partyAcceptInvite: (name) =>
+      runtimeFunction("accept_party_invite")(name),
+    partyAcceptRequest: (name) =>
+      runtimeFunction("accept_party_request")(name),
+    partyLeave: () => runtimeFunction("leave_party")(),
+    respawn: () => runtimeFunction("respawn")(),
   };
 }
 
@@ -530,6 +549,18 @@ function inventoryIdentityCount(
     .length;
 }
 
+function partyMembers(party: Record<string, unknown>): string[] {
+  return Object.keys(party).sort((a, b) => a.localeCompare(b));
+}
+
+function partyJoined(
+  party: Record<string, unknown>,
+  names: string[],
+): boolean {
+  const members = new Set(Object.keys(party));
+  return names.every((name) => members.has(name));
+}
+
 export const ACTION_BOUNDARY_MUTATION_CAPABILITIES = [
   "MOVE",
   "ATTACK",
@@ -551,6 +582,12 @@ export const ACTION_BOUNDARY_MUTATION_CAPABILITIES = [
   "CRAFT",
   "WISHLIST",
   "PONTY_BUY",
+  "PARTY_INVITE",
+  "PARTY_REQUEST",
+  "PARTY_ACCEPT_INVITE",
+  "PARTY_ACCEPT_REQUEST",
+  "PARTY_LEAVE",
+  "RESPAWN",
 ] as const;
 
 export class ActionBoundary {
@@ -2801,6 +2838,421 @@ export class ActionBoundary {
             this.game.inventory(),
             itemNameValue,
           ),
+        },
+      });
+    }
+  }
+
+
+  partyInvite(request: PartyTargetRequest): ActionRecord {
+    const target = request.name?.trim();
+    const beforeParty = this.game.party();
+    const characterName = this.game.character().name;
+    const transaction = this.ledger.create({
+      module: request.module,
+      action: "PARTY_INVITE",
+      why: request.why,
+      correlationId: request.correlationId,
+      expectedEffect: {
+        target: target || null,
+        effect: "INVITE_TO_PARTY",
+      },
+      before: {
+        members: partyMembers(beforeParty),
+      },
+    });
+
+    if (transaction.status === "BLOCKED") return transaction;
+    if (!target) {
+      return this.ledger.block(transaction.id, "PARTY_TARGET_INVALID");
+    }
+    if (characterName && target === characterName) {
+      return this.ledger.block(transaction.id, "PARTY_TARGET_SELF");
+    }
+    if (Object.prototype.hasOwnProperty.call(beforeParty, target)) {
+      return this.ledger.block(
+        transaction.id,
+        "PARTY_MEMBER_ALREADY_PRESENT",
+      );
+    }
+
+    this.ledger.dispatch(transaction.id, {
+      mutation: "send_party_invite",
+      target,
+    });
+
+    try {
+      const result = this.driver.partyInvite(target);
+      const afterParty = this.game.party();
+
+      if (explicitFailure(result)) {
+        return this.ledger.reject(transaction.id, {
+          why: "PARTY_INVITE_API_REJECTED",
+          after: { members: partyMembers(afterParty) },
+          evidence: { result: safeResultEvidence(result) },
+        });
+      }
+      if (
+        characterName &&
+        partyJoined(afterParty, [characterName, target])
+      ) {
+        return this.ledger.confirm(transaction.id, {
+          why: "PARTY_INVITE_STATE_CONFIRMED",
+          after: { members: partyMembers(afterParty) },
+          evidence: {
+            targetJoined: true,
+            result: safeResultEvidence(result),
+          },
+        });
+      }
+
+      return this.ledger.get(transaction.id)!;
+    } catch (error) {
+      return this.ledger.unknown(transaction.id, {
+        why: "PARTY_INVITE_OUTCOME_UNCERTAIN",
+        error: errorMessage(error),
+        after: { members: partyMembers(this.game.party()) },
+      });
+    }
+  }
+
+  partyRequest(request: PartyTargetRequest): ActionRecord {
+    const target = request.name?.trim();
+    const beforeParty = this.game.party();
+    const characterName = this.game.character().name;
+    const transaction = this.ledger.create({
+      module: request.module,
+      action: "PARTY_REQUEST",
+      why: request.why,
+      correlationId: request.correlationId,
+      expectedEffect: {
+        target: target || null,
+        effect: "REQUEST_PARTY_JOIN",
+      },
+      before: {
+        members: partyMembers(beforeParty),
+      },
+    });
+
+    if (transaction.status === "BLOCKED") return transaction;
+    if (!target) {
+      return this.ledger.block(transaction.id, "PARTY_TARGET_INVALID");
+    }
+    if (characterName && target === characterName) {
+      return this.ledger.block(transaction.id, "PARTY_TARGET_SELF");
+    }
+    if (Object.prototype.hasOwnProperty.call(beforeParty, target)) {
+      return this.ledger.block(
+        transaction.id,
+        "PARTY_MEMBER_ALREADY_PRESENT",
+      );
+    }
+
+    this.ledger.dispatch(transaction.id, {
+      mutation: "send_party_request",
+      target,
+    });
+
+    try {
+      const result = this.driver.partyRequest(target);
+      const afterParty = this.game.party();
+
+      if (explicitFailure(result)) {
+        return this.ledger.reject(transaction.id, {
+          why: "PARTY_REQUEST_API_REJECTED",
+          after: { members: partyMembers(afterParty) },
+          evidence: { result: safeResultEvidence(result) },
+        });
+      }
+      if (
+        characterName &&
+        partyJoined(afterParty, [characterName, target])
+      ) {
+        return this.ledger.confirm(transaction.id, {
+          why: "PARTY_REQUEST_STATE_CONFIRMED",
+          after: { members: partyMembers(afterParty) },
+          evidence: {
+            joined: true,
+            result: safeResultEvidence(result),
+          },
+        });
+      }
+
+      return this.ledger.get(transaction.id)!;
+    } catch (error) {
+      return this.ledger.unknown(transaction.id, {
+        why: "PARTY_REQUEST_OUTCOME_UNCERTAIN",
+        error: errorMessage(error),
+        after: { members: partyMembers(this.game.party()) },
+      });
+    }
+  }
+
+  partyAcceptInvite(request: PartyTargetRequest): ActionRecord {
+    const inviter = request.name?.trim();
+    const characterName = this.game.character().name;
+    const beforeParty = this.game.party();
+    const transaction = this.ledger.create({
+      module: request.module,
+      action: "PARTY_ACCEPT_INVITE",
+      why: request.why,
+      correlationId: request.correlationId,
+      expectedEffect: {
+        inviter: inviter || null,
+        effect: "JOIN_PARTY",
+      },
+      before: {
+        members: partyMembers(beforeParty),
+      },
+    });
+
+    if (transaction.status === "BLOCKED") return transaction;
+    if (!inviter) {
+      return this.ledger.block(transaction.id, "PARTY_TARGET_INVALID");
+    }
+    if (characterName && inviter === characterName) {
+      return this.ledger.block(transaction.id, "PARTY_TARGET_SELF");
+    }
+
+    this.ledger.dispatch(transaction.id, {
+      mutation: "accept_party_invite",
+      inviter,
+    });
+
+    try {
+      const result = this.driver.partyAcceptInvite(inviter);
+      const afterParty = this.game.party();
+
+      if (explicitFailure(result)) {
+        return this.ledger.reject(transaction.id, {
+          why: "PARTY_ACCEPT_INVITE_API_REJECTED",
+          after: { members: partyMembers(afterParty) },
+          evidence: { result: safeResultEvidence(result) },
+        });
+      }
+      if (
+        characterName &&
+        partyJoined(afterParty, [characterName, inviter])
+      ) {
+        return this.ledger.confirm(transaction.id, {
+          why: "PARTY_ACCEPT_INVITE_STATE_CONFIRMED",
+          after: { members: partyMembers(afterParty) },
+          evidence: {
+            joined: true,
+            result: safeResultEvidence(result),
+          },
+        });
+      }
+
+      return this.ledger.get(transaction.id)!;
+    } catch (error) {
+      return this.ledger.unknown(transaction.id, {
+        why: "PARTY_ACCEPT_INVITE_OUTCOME_UNCERTAIN",
+        error: errorMessage(error),
+        after: { members: partyMembers(this.game.party()) },
+      });
+    }
+  }
+
+  partyAcceptRequest(request: PartyTargetRequest): ActionRecord {
+    const requester = request.name?.trim();
+    const characterName = this.game.character().name;
+    const beforeParty = this.game.party();
+    const transaction = this.ledger.create({
+      module: request.module,
+      action: "PARTY_ACCEPT_REQUEST",
+      why: request.why,
+      correlationId: request.correlationId,
+      expectedEffect: {
+        requester: requester || null,
+        effect: "ADD_PARTY_MEMBER",
+      },
+      before: {
+        members: partyMembers(beforeParty),
+      },
+    });
+
+    if (transaction.status === "BLOCKED") return transaction;
+    if (!requester) {
+      return this.ledger.block(transaction.id, "PARTY_TARGET_INVALID");
+    }
+    if (characterName && requester === characterName) {
+      return this.ledger.block(transaction.id, "PARTY_TARGET_SELF");
+    }
+    if (Object.prototype.hasOwnProperty.call(beforeParty, requester)) {
+      return this.ledger.block(
+        transaction.id,
+        "PARTY_MEMBER_ALREADY_PRESENT",
+      );
+    }
+
+    this.ledger.dispatch(transaction.id, {
+      mutation: "accept_party_request",
+      requester,
+    });
+
+    try {
+      const result = this.driver.partyAcceptRequest(requester);
+      const afterParty = this.game.party();
+
+      if (explicitFailure(result)) {
+        return this.ledger.reject(transaction.id, {
+          why: "PARTY_ACCEPT_REQUEST_API_REJECTED",
+          after: { members: partyMembers(afterParty) },
+          evidence: { result: safeResultEvidence(result) },
+        });
+      }
+      if (
+        characterName &&
+        partyJoined(afterParty, [characterName, requester])
+      ) {
+        return this.ledger.confirm(transaction.id, {
+          why: "PARTY_ACCEPT_REQUEST_STATE_CONFIRMED",
+          after: { members: partyMembers(afterParty) },
+          evidence: {
+            joined: true,
+            result: safeResultEvidence(result),
+          },
+        });
+      }
+
+      return this.ledger.get(transaction.id)!;
+    } catch (error) {
+      return this.ledger.unknown(transaction.id, {
+        why: "PARTY_ACCEPT_REQUEST_OUTCOME_UNCERTAIN",
+        error: errorMessage(error),
+        after: { members: partyMembers(this.game.party()) },
+      });
+    }
+  }
+
+  async partyLeave(request: BoundaryRequest): Promise<ActionRecord> {
+    const beforeParty = this.game.party();
+    const characterName = this.game.character().name;
+    const transaction = this.ledger.create({
+      module: request.module,
+      action: "PARTY_LEAVE",
+      why: request.why,
+      correlationId: request.correlationId,
+      expectedEffect: {
+        effect: "LEAVE_PARTY",
+      },
+      before: {
+        members: partyMembers(beforeParty),
+      },
+    });
+
+    if (transaction.status === "BLOCKED") return transaction;
+    if (!partyMembers(beforeParty).length) {
+      return this.ledger.block(transaction.id, "PARTY_NOT_JOINED");
+    }
+
+    this.ledger.dispatch(transaction.id, {
+      mutation: "leave_party",
+    });
+
+    try {
+      const result = await this.driver.partyLeave();
+      const afterParty = this.game.party();
+      const left =
+        !characterName ||
+        !Object.prototype.hasOwnProperty.call(afterParty, characterName) ||
+        partyMembers(afterParty).length === 0;
+
+      if (explicitFailure(result)) {
+        return this.ledger.reject(transaction.id, {
+          why: "PARTY_LEAVE_API_REJECTED",
+          after: { members: partyMembers(afterParty) },
+          evidence: { result: safeResultEvidence(result) },
+        });
+      }
+
+      return this.ledger.confirm(transaction.id, {
+        why: left
+          ? "PARTY_LEAVE_STATE_CONFIRMED"
+          : "PARTY_LEAVE_API_CONFIRMED",
+        after: { members: partyMembers(afterParty) },
+        evidence: {
+          apiResolved: true,
+          left,
+          result: safeResultEvidence(result),
+        },
+      });
+    } catch (error) {
+      return this.ledger.unknown(transaction.id, {
+        why: "PARTY_LEAVE_OUTCOME_UNCERTAIN",
+        error: errorMessage(error),
+        after: { members: partyMembers(this.game.party()) },
+      });
+    }
+  }
+
+  respawn(request: BoundaryRequest): ActionRecord {
+    const before = this.game.character();
+    const transaction = this.ledger.create({
+      module: request.module,
+      action: "RESPAWN",
+      why: request.why,
+      correlationId: request.correlationId,
+      expectedEffect: {
+        rip: false,
+      },
+      before: {
+        rip: before.rip,
+        map: before.map,
+        x: before.x,
+        y: before.y,
+      },
+    });
+
+    if (transaction.status === "BLOCKED") return transaction;
+    if (!before.rip) {
+      return this.ledger.block(transaction.id, "CHARACTER_NOT_DEAD");
+    }
+
+    this.ledger.dispatch(transaction.id, {
+      mutation: "respawn",
+    });
+
+    try {
+      const result = this.driver.respawn();
+      const after = this.game.character();
+
+      if (explicitFailure(result)) {
+        return this.ledger.reject(transaction.id, {
+          why: "RESPAWN_API_REJECTED",
+          after: {
+            rip: after.rip,
+            map: after.map,
+            x: after.x,
+            y: after.y,
+          },
+          evidence: { result: safeResultEvidence(result) },
+        });
+      }
+      if (!after.rip) {
+        return this.ledger.confirm(transaction.id, {
+          why: "RESPAWN_STATE_CONFIRMED",
+          after: {
+            rip: after.rip,
+            map: after.map,
+            x: after.x,
+            y: after.y,
+          },
+          evidence: {
+            respawned: true,
+            result: safeResultEvidence(result),
+          },
+        });
+      }
+
+      return this.ledger.get(transaction.id)!;
+    } catch (error) {
+      return this.ledger.unknown(transaction.id, {
+        why: "RESPAWN_OUTCOME_UNCERTAIN",
+        error: errorMessage(error),
+        after: {
+          rip: this.game.character().rip,
         },
       });
     }
