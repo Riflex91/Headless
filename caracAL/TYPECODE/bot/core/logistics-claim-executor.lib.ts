@@ -26,6 +26,7 @@ export interface LogisticsClaim {
   amount?: number | null;
   inventorySlot?: number | null;
   reason?: string | null;
+  metadata?: Record<string, unknown>;
 }
 
 export interface LogisticsExecutionResult {
@@ -56,7 +57,19 @@ interface ActionBoundaryLike {
 
 interface GameAdapterLike {
   character: GameAdapter["character"];
+  entities: GameAdapter["entities"];
   inventory: GameAdapter["inventory"];
+}
+
+interface InventoryIntelligenceLike {
+  status(): {
+    entries: Array<{
+      slot: number;
+      name: string | null;
+      protected: boolean;
+      disposition: string;
+    }>;
+  };
 }
 
 function text(value: unknown): string | null {
@@ -154,6 +167,7 @@ export class LogisticsClaimExecutor {
   constructor(
     private readonly actions: ActionBoundaryLike,
     private readonly game: GameAdapterLike,
+    private readonly inventoryIntelligence: InventoryIntelligenceLike,
   ) {}
 
   async execute(claim: LogisticsClaim): Promise<LogisticsExecutionResult> {
@@ -192,9 +206,22 @@ export class LogisticsClaimExecutor {
     source: string,
     target: string,
   ): Promise<LogisticsExecutionResult> {
+    const targetEntity = this.game
+      .entities()
+      .find(
+        (entity) =>
+          entity.type === "character" &&
+          entity.name === target &&
+          !entity.dead &&
+          !entity.rip,
+      );
+    if (!targetEntity) {
+      return blocked(claim, source, target, "CLAIM_TARGET_NOT_VISIBLE");
+    }
+
     const action = await this.actions.useSkill({
       skill: "mluck",
-      targetId: target,
+      targetId: targetEntity.id,
       module: "MerchantLogistics",
       why: claim.reason || "MLUCK_CLAIM",
       correlationId: claim.id,
@@ -217,7 +244,12 @@ export class LogisticsClaimExecutor {
 
     const candidates = this.game
       .inventory()
-      .filter((slot) => itemName(slot) === name && !!slot.item)
+      .filter(
+        (slot) =>
+          itemName(slot) === name &&
+          !!slot.item &&
+          this.transferAllowed(slot.slot, name),
+      )
       .sort((a, b) => itemQuantity(b) - itemQuantity(a));
     const slot = candidates[0];
     if (!slot) {
@@ -252,9 +284,23 @@ export class LogisticsClaimExecutor {
     source: string,
     target: string,
   ): Promise<LogisticsExecutionResult> {
-    const amount = positiveInteger(claim.amount);
-    if (!amount) {
+    const requestedAmount = positiveInteger(claim.amount);
+    if (!requestedAmount) {
       return blocked(claim, source, target, "CLAIM_GOLD_AMOUNT_INVALID");
+    }
+
+    const currentGold = this.game.character().gold;
+    const keepGold = Math.max(
+      0,
+      Number(claim.metadata?.keepGold) || 0,
+    );
+    if (currentGold === null) {
+      return blocked(claim, source, target, "CLAIM_GOLD_STATE_UNAVAILABLE");
+    }
+    const available = Math.max(0, Math.floor(currentGold - keepGold));
+    const amount = Math.min(requestedAmount, available);
+    if (amount <= 0) {
+      return blocked(claim, source, target, "CLAIM_GOLD_RESERVE_REACHED");
     }
 
     const action = await this.actions.sendGold({
@@ -266,7 +312,8 @@ export class LogisticsClaimExecutor {
     });
     return resultFromAction(claim, source, target, action, {
       amount,
-      fulfilled: action.status === "CONFIRMED",
+      fulfilled:
+        action.status === "CONFIRMED" && amount >= requestedAmount,
     });
   }
 
@@ -291,6 +338,9 @@ export class LogisticsClaimExecutor {
     if (!slot?.item || itemName(slot) !== name) {
       return blocked(claim, source, target, "CLAIM_ITEM_REVALIDATION_FAILED");
     }
+    if (!this.transferAllowed(inventorySlot, name)) {
+      return blocked(claim, source, target, "CLAIM_ITEM_PROTECTED");
+    }
 
     const quantity = Math.min(requestedQuantity, itemQuantity(slot));
     const action = await this.actions.sendItem({
@@ -308,5 +358,17 @@ export class LogisticsClaimExecutor {
       fulfilled:
         action.status === "CONFIRMED" && quantity >= requestedQuantity,
     });
+  private transferAllowed(slot: number, name: string): boolean {
+    const decision = this.inventoryIntelligence
+      .status()
+      .entries.find(
+        (entry) => entry.slot === slot && entry.name === name,
+      );
+    if (!decision || decision.protected === true) return false;
+    return !["QUEST", "RESERVED", "UNKNOWN"].includes(
+      String(decision.disposition || "").toUpperCase(),
+    );
+  }
+
   }
 }
