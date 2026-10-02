@@ -12,6 +12,10 @@ const { normalizeRuntimeEvent } = require("./RuntimeEventBridge");
 const { normalizeIpcMessage, sendIpcMessage } = require("./IpcProtocol");
 const { prepareConfigPush } = require("./CharacterConfigService");
 const { createIsolatedBrowserContext } = require("./BrowserVmContext");
+const {
+  installCrossRealmClone,
+  setAdventureLandAuthCookie,
+} = require("./AdventureLandVmCompat");
 
 const LogUtils = require("./LogUtils");
 const { console } = LogUtils;
@@ -66,6 +70,12 @@ async function ev_files(locations, context) {
   for (let location of locations) {
     let text = await fs.readFile(location, "utf8");
     vm.runInContext(text + "\n//# sourceURL=file://" + location, context);
+    if (
+      location.endsWith("/old_common_functions.js") ||
+      location.endsWith("\\old_common_functions.js")
+    ) {
+      installCrossRealmClone(context);
+    }
   }
 }
 
@@ -209,6 +219,7 @@ async function make_game(proc_args) {
   console.log("constructing game instance");
   console.debug("source files:\n%s", game_sources);
   const game_context = make_context();
+  setAdventureLandAuthCookie(game_context, proc_args.sess);
   const serverAddress = proc_args.realm_address || proc_args.realm_addr;
   const serverPath = proc_args.realm_path || "/socket.io";
   game_context.io = io;
