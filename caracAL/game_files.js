@@ -122,10 +122,7 @@ async function download_version_files(version, resources) {
 
   await Promise.all(
     resources.map((resource) =>
-      download_file(
-        base_url + resource,
-        locate_game_file(resource, version),
-      ),
+      download_file(base_url + resource, locate_game_file(resource, version)),
     ),
   );
 }
