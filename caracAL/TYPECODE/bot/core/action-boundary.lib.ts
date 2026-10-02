@@ -100,6 +100,7 @@ export interface AttackRequest extends BoundaryRequest {
 
 export interface SkillRequest extends BoundaryRequest {
   skill: string;
+  targetId?: string;
   args?: unknown[];
 }
 
@@ -1088,6 +1089,9 @@ export class ActionBoundary {
       .skills(false)
       .find((candidate) => candidate.key === request.skill);
     const before = this.game.character();
+    const targetSnapshot = request.targetId
+      ? this.game.entity(request.targetId)
+      : null;
     const args = Array.isArray(request.args) ? request.args : [];
     const transaction = this.ledger.create({
       module: request.module,
@@ -1099,14 +1103,17 @@ export class ActionBoundary {
       },
       expectedEffect: {
         skill: request.skill,
+        targetId: request.targetId || null,
       },
       before: {
         hp: before.hp,
         mp: before.mp,
         target: before.target,
+        targetSnapshot,
       },
       metadata: {
         skill: request.skill,
+        targetId: request.targetId || null,
         argCount: args.length,
       },
     });
@@ -1115,8 +1122,16 @@ export class ActionBoundary {
     if (!skill) {
       return this.ledger.block(transaction.id, "UNKNOWN_SKILL");
     }
-    if (args.length > 4) {
+    if (args.length > 3) {
       return this.ledger.block(transaction.id, "SKILL_ARGUMENTS_INVALID");
+    }
+
+    let resolvedTarget: unknown = null;
+    if (request.targetId) {
+      resolvedTarget = this.driver.resolveEntity(request.targetId);
+      if (!resolvedTarget) {
+        return this.ledger.block(transaction.id, "SKILL_TARGET_NOT_FOUND");
+      }
     }
 
     let canUse = false;
@@ -1129,18 +1144,23 @@ export class ActionBoundary {
       return this.ledger.block(transaction.id, "SKILL_NOT_USABLE");
     }
 
+    const callArgs = resolvedTarget ? [resolvedTarget, ...args] : args;
     this.ledger.dispatch(transaction.id, {
       mutation: "use_skill",
       skill: request.skill,
-      argCount: args.length,
+      targetId: request.targetId || null,
+      argCount: callArgs.length,
     });
 
     try {
-      const result = await this.driver.useSkill(request.skill, ...args);
+      const result = await this.driver.useSkill(request.skill, ...callArgs);
       return this.ledger.confirm(transaction.id, {
         why: "SKILL_API_CONFIRMED",
         after: {
           character: this.game.character(),
+          target: request.targetId
+            ? this.game.entity(request.targetId)
+            : null,
         },
         evidence: {
           apiResolved: true,
@@ -1153,6 +1173,9 @@ export class ActionBoundary {
         error: errorMessage(error),
         after: {
           character: this.game.character(),
+          target: request.targetId
+            ? this.game.entity(request.targetId)
+            : null,
         },
       });
     }

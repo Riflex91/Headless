@@ -194,6 +194,32 @@ function formatMovementLiveTest(liveTest) {
   return `${outcome}${reason}${completed}`;
 }
 
+function formatClassSkills(runtime) {
+  if (!runtime) return "—";
+  const className = runtime.className || "unknown";
+  const state = runtime.state || "UNKNOWN";
+  const reason = runtime.reason ? ` · ${runtime.reason}` : "";
+  const configured =
+    Array.isArray(runtime.configuredSkills) && runtime.configuredSkills.length
+      ? ` · ${runtime.configuredSkills.join(", ")}`
+      : "";
+  return `${className} · ${state}${reason}${configured}`;
+}
+
+function formatClassSkillAction(runtime) {
+  if (!runtime) return "—";
+  const action = runtime.lastAction;
+  if (!action) {
+    return runtime.selectedSkill
+      ? `${runtime.selectedSkill} · bereit`
+      : "—";
+  }
+  const target = runtime.targetId ? ` · Target ${runtime.targetId}` : "";
+  return `${action.skill || runtime.selectedSkill || "Skill"} · ${
+    action.status || "UNKNOWN"
+  }${target}`;
+}
+
 function formatCombat(combat) {
   if (!combat) return "—";
   const reason = combat.reason ? ` · ${combat.reason}` : "";
@@ -751,6 +777,10 @@ function updateCharacterCard(card, character) {
     formatCombatTarget(character.combat_runtime);
   card.querySelector(".character-combat-cooldowns").textContent =
     formatCombatCooldowns(character.combat_runtime);
+  card.querySelector(".character-class-skills").textContent =
+    formatClassSkills(character.class_skill_runtime);
+  card.querySelector(".character-class-skill-action").textContent =
+    formatClassSkillAction(character.class_skill_runtime);
   card.querySelector(".character-movement").textContent = formatMovement(game);
   card.querySelector(".character-movement-owner").textContent =
     formatMovementOwner(game);

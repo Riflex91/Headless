@@ -102,6 +102,7 @@ function publicCharacterState(name, charBlock = {}) {
     movement_live_test: charBlock.movement_live_test || null,
     combat_live_test: charBlock.combat_live_test || null,
     combat_runtime: charBlock.combat_runtime || null,
+    class_skill_runtime: charBlock.class_skill_runtime || null,
     game: publicLiveState(charBlock.live_state),
     movement_trail: Array.isArray(charBlock.movement_trail)
       ? charBlock.movement_trail
