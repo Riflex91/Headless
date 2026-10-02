@@ -268,9 +268,9 @@ function formatFarmIntelligence(runtime) {
   const selected = runtime.selected;
   if (!selected) return runtime.reason || runtime.state || "NO_CANDIDATES";
   const observed = selected.observed
-    ? ` · Obs XP/h ${Math.round(selected.observed.xpPerHour || 0)} · Gold/h ${Math.round(
-        selected.observed.goldPerHour || 0,
-      )}`
+    ? ` · Obs XP/h ${Math.round(
+        selected.observed.xpPerHour || 0,
+      )} · Gold/h ${Math.round(selected.observed.goldPerHour || 0)}`
     : "";
   return `${selected.monster} · ${selected.map} · Score ${selected.score}${observed}`;
 }
