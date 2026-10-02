@@ -130,6 +130,7 @@ export class BotRuntimeKernel {
         why: "CORE_START_FAILURE",
         data: {
           error: error instanceof Error ? error.message : String(error),
+          ...(error instanceof Error && error.stack && { stack: error.stack }),
         },
       });
       throw error;
@@ -185,6 +186,7 @@ export class BotRuntimeKernel {
           durationMs: event.durationMs,
         }),
         ...(event.error && { error: event.error }),
+        ...(event.stack && { stack: event.stack }),
       },
     });
   }
@@ -197,6 +199,7 @@ export class BotRuntimeKernel {
       data: {
         moduleId: event.moduleId,
         ...(event.error && { error: event.error }),
+        ...(event.stack && { stack: event.stack }),
       },
     });
   }
