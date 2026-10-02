@@ -256,7 +256,7 @@ test("failed queued mutation rolls back partial SQLite changes", async () => {
       service.enqueueMutation(() => {
         service.db.run(
           "INSERT INTO runtime_meta(key, value_json, updated_at) VALUES (?, ?, ?)",
-          ["partial", "{\"value\":1}", 6000],
+          ["partial", '{"value":1}', 6000],
         );
         throw new Error("forced failure");
       }),
