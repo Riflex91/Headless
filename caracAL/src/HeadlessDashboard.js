@@ -67,6 +67,11 @@ function publicCharacterState(name, charBlock = {}) {
     last_heartbeat_at: charBlock.last_heartbeat_at || null,
     restart_attempts: charBlock.restart_attempts || 0,
     script: charBlock.typescript || charBlock.script || null,
+    code_revision: charBlock.running_code_revision || null,
+    installed_code_revision: charBlock.installed_code_revision || null,
+    config_revision: charBlock.running_config_revision || null,
+    installed_config_revision: charBlock.installed_config_revision || null,
+    revision_status: charBlock.revision_status || "UNKNOWN",
     game: publicLiveState(charBlock.live_state),
     movement_trail: Array.isArray(charBlock.movement_trail)
       ? charBlock.movement_trail
@@ -78,6 +83,7 @@ function buildSupervisorSnapshot(
   characterManage = {},
   lifecyclePolicy = {},
   emergencyStopState = null,
+  revisionSummary = null,
 ) {
   const characters = Object.entries(characterManage)
     .map(([name, charBlock]) => publicCharacterState(name, charBlock))
@@ -97,6 +103,11 @@ function buildSupervisorSnapshot(
       activated_at: null,
       cleared_at: null,
       revision: 0,
+    },
+    revision_summary: revisionSummary || {
+      source_revision: null,
+      installed_config_revision: null,
+      status: "UNKNOWN",
     },
     characters,
   };
@@ -130,6 +141,7 @@ function attachHeadlessDashboard({
   controlCharacter,
   controlEmergencyStop,
   getEmergencyStopState,
+  getRevisionSummary,
   diagnosticStore,
   incidentRecorder,
   assetCache,
@@ -145,6 +157,7 @@ function attachHeadlessDashboard({
       characterManage,
       lifecyclePolicy,
       getEmergencyStopState?.(),
+      getRevisionSummary?.(),
     );
 
   router.use("/headless", (req, res, next) => {
