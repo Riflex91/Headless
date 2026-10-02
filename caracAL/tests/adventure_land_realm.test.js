@@ -5,21 +5,38 @@ const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
 
-const { normalizeRealmConnection } = require("../src/AdventureLandRealm");
+const {
+  normalizeRealmConnection,
+  secureSocketAddress,
+} = require("../src/AdventureLandRealm");
 
-test("current Adventure Land realm fields are preferred", () => {
+test("current Adventure Land host/path fields become an absolute secure Node socket URL", () => {
   assert.deepEqual(
     normalizeRealmConnection({
       key: "SR_EUII",
-      address: "https://eu2.adventure.land",
-      path: "/socket.io",
+      address: "de.adventure.land",
+      path: "/ws2/",
     }),
     {
-      address: "https://eu2.adventure.land",
-      path: "/socket.io",
-      legacyAddr: "https://eu2.adventure.land",
+      address: "https://de.adventure.land",
+      path: "/ws2/",
+      legacyAddr: "de.adventure.land",
       legacyPort: null,
     },
+  );
+});
+
+test("already absolute current Adventure Land socket URLs are preserved", () => {
+  assert.equal(
+    secureSocketAddress("https://cloudflare.adventure.land"),
+    "https://cloudflare.adventure.land",
+  );
+});
+
+test("legacy host-only realms also receive an https scheme", () => {
+  assert.equal(
+    normalizeRealmConnection({ addr: "de.adventure.land" }).address,
+    "https://de.adventure.land",
   );
 });
 
