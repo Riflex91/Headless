@@ -118,7 +118,8 @@ export class ActionLedger {
 
     if (
       this.isEmergencyStopActive() &&
-      !record.allowDuringEmergencyStop
+      !record.allowDuringEmergencyStop &&
+      !this.allowDuringEmergencyStop(record.action)
     ) {
       return this.block(record.id, "EMERGENCY_STOP_ACTIVE");
     }
@@ -134,7 +135,8 @@ export class ActionLedger {
 
     if (
       this.isEmergencyStopActive() &&
-      !record.allowDuringEmergencyStop
+      !record.allowDuringEmergencyStop &&
+      !this.allowDuringEmergencyStop(record.action)
     ) {
       return this.block(actionId, "EMERGENCY_STOP_ACTIVE");
     }
