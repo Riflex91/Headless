@@ -40,6 +40,16 @@
           <span id="persistence-summary-schema">Schema: —</span>
           <span id="persistence-summary-flushes">Flushes: —</span>
         </div>
+        <div class="rotation-actions">
+          <select id="rotation-stop-character" aria-label="Character auswechseln">
+            <option value="">Auswechseln …</option>
+          </select>
+          <span aria-hidden="true">→</span>
+          <select id="rotation-start-character" aria-label="Character einwechseln">
+            <option value="">Einwechseln …</option>
+          </select>
+          <button id="rotate-characters" type="button">Rotieren</button>
+        </div>
         <span id="active-count">0 / 4 aktiv</span>
         <span id="last-update">Noch keine Daten</span>
         <div class="account-log-actions">
@@ -236,6 +246,10 @@
           <div>
             <dt>Revision Status</dt>
             <dd class="character-revision-status"></dd>
+          </div>
+          <div>
+            <dt>Rotation</dt>
+            <dd class="character-rotation"></dd>
           </div>
           <div>
             <dt>Restart-Versuche</dt>
