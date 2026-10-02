@@ -251,12 +251,27 @@ function relevantInventoryState(
   };
 }
 
+export const ACTION_BOUNDARY_MUTATION_CAPABILITIES = [
+  "MOVE",
+  "ATTACK",
+  "SKILL",
+  "LOOT",
+  "BUY",
+  "SELL",
+  "SEND_ITEM",
+  "SEND_GOLD",
+] as const;
+
 export class ActionBoundary {
   constructor(
     private readonly ledger: ActionLedgerLike,
     private readonly game: GameReadAdapter,
     private readonly driver: MutationDriver = createRuntimeMutationDriver(),
   ) {}
+
+  capabilities(): readonly string[] {
+    return ACTION_BOUNDARY_MUTATION_CAPABILITIES;
+  }
 
   move(request: MoveRequest): ActionRecord {
     const before = this.game.character();
