@@ -1,7 +1,9 @@
 import type { ActionRecord } from "./action-ledger.lib";
 import type {
+  BankSnapshot,
   CharacterSnapshot,
   EntitySnapshot,
+  EquipmentSnapshot,
   InventorySlotSnapshot,
   MapSnapshot,
   SkillSnapshot,
@@ -51,6 +53,8 @@ interface GameReadAdapter {
   character(): CharacterSnapshot;
   entity(id: string): EntitySnapshot | null;
   inventory(): InventorySlotSnapshot[];
+  equipment(): EquipmentSnapshot;
+  bank(): BankSnapshot;
   skills(characterOnly?: boolean): SkillSnapshot[];
   map(): MapSnapshot;
   gameData(): Record<string, unknown>;
@@ -101,6 +105,31 @@ export interface SendGoldRequest extends BoundaryRequest {
   amount: number;
 }
 
+export interface BankStoreRequest extends BoundaryRequest {
+  inventorySlot: number;
+  pack?: string;
+  packSlot?: number;
+}
+
+export interface BankRetrieveRequest extends BoundaryRequest {
+  pack: string;
+  packSlot: number;
+  inventorySlot?: number;
+}
+
+export interface BankGoldRequest extends BoundaryRequest {
+  amount: number;
+}
+
+export interface EquipRequest extends BoundaryRequest {
+  inventorySlot: number;
+  slot?: string;
+}
+
+export interface UnequipRequest extends BoundaryRequest {
+  slot: string;
+}
+
 export interface MutationDriver {
   move(x: number, y: number): unknown;
   resolveEntity(id: string): unknown;
@@ -117,6 +146,20 @@ export interface MutationDriver {
     quantity?: number,
   ): Promise<unknown> | unknown;
   sendGold(recipient: string, amount: number): Promise<unknown> | unknown;
+  bankStore(
+    inventorySlot: number,
+    pack?: string,
+    packSlot?: number,
+  ): Promise<unknown> | unknown;
+  bankRetrieve(
+    pack: string,
+    packSlot: number,
+    inventorySlot?: number,
+  ): Promise<unknown> | unknown;
+  bankDeposit(amount: number): Promise<unknown> | unknown;
+  bankWithdraw(amount: number): Promise<unknown> | unknown;
+  equip(inventorySlot: number, slot?: string): Promise<unknown> | unknown;
+  unequip(slot: string): Promise<unknown> | unknown;
 }
 
 function runtimeFunction(name: string): (...args: unknown[]) => unknown {
@@ -156,6 +199,26 @@ export function createRuntimeMutationDriver(): MutationDriver {
         : runtimeFunction("send_item")(recipient, inventorySlot, quantity),
     sendGold: (recipient, amount) =>
       runtimeFunction("send_gold")(recipient, amount),
+    bankStore: (inventorySlot, pack, packSlot) => {
+      if (pack === undefined) {
+        return runtimeFunction("bank_store")(inventorySlot);
+      }
+      if (packSlot === undefined) {
+        return runtimeFunction("bank_store")(inventorySlot, pack);
+      }
+      return runtimeFunction("bank_store")(inventorySlot, pack, packSlot);
+    },
+    bankRetrieve: (pack, packSlot, inventorySlot) =>
+      inventorySlot === undefined
+        ? runtimeFunction("bank_retrieve")(pack, packSlot)
+        : runtimeFunction("bank_retrieve")(pack, packSlot, inventorySlot),
+    bankDeposit: (amount) => runtimeFunction("bank_deposit")(amount),
+    bankWithdraw: (amount) => runtimeFunction("bank_withdraw")(amount),
+    equip: (inventorySlot, slot) =>
+      slot === undefined
+        ? runtimeFunction("equip")(inventorySlot)
+        : runtimeFunction("equip")(inventorySlot, slot),
+    unequip: (slot) => runtimeFunction("unequip")(slot),
   };
 }
 
@@ -251,6 +314,61 @@ function relevantInventoryState(
   };
 }
 
+function bankPack(
+  bank: BankSnapshot,
+  packName: string,
+): InventorySlotSnapshot[] | null {
+  return bank.packs.find((pack) => pack.name === packName)?.items || null;
+}
+
+function bankItem(
+  bank: BankSnapshot,
+  packName: string,
+  slot: number,
+): Record<string, unknown> | null {
+  const pack = bankPack(bank, packName);
+  return pack ? inventoryItem(pack, slot) : null;
+}
+
+function itemIdentity(item: Record<string, unknown> | null): string | null {
+  if (!item) return null;
+  const name = itemName(item);
+  if (!name) return null;
+
+  return JSON.stringify({
+    name,
+    level: Number.isFinite(Number(item.level)) ? Number(item.level) : 0,
+    p: typeof item.p === "string" ? item.p : null,
+    stat_type: typeof item.stat_type === "string" ? item.stat_type : null,
+  });
+}
+
+function equipmentSlot(
+  equipment: EquipmentSnapshot,
+  slot: string,
+): Record<string, unknown> | null {
+  const item = equipment[slot];
+  return item && typeof item === "object" ? item : null;
+}
+
+function equipmentHasIdentity(
+  equipment: EquipmentSnapshot,
+  identity: string | null,
+): boolean {
+  if (!identity) return false;
+  return Object.values(equipment).some(
+    (item) => itemIdentity(item) === identity,
+  );
+}
+
+function inventoryHasIdentity(
+  inventory: InventorySlotSnapshot[],
+  identity: string | null,
+): boolean {
+  if (!identity) return false;
+  return inventory.some((entry) => itemIdentity(entry.item) === identity);
+}
+
 export const ACTION_BOUNDARY_MUTATION_CAPABILITIES = [
   "MOVE",
   "ATTACK",
@@ -260,6 +378,12 @@ export const ACTION_BOUNDARY_MUTATION_CAPABILITIES = [
   "SELL",
   "SEND_ITEM",
   "SEND_GOLD",
+  "BANK_STORE",
+  "BANK_RETRIEVE",
+  "BANK_DEPOSIT_GOLD",
+  "BANK_WITHDRAW_GOLD",
+  "EQUIP",
+  "UNEQUIP",
 ] as const;
 
 export class ActionBoundary {
