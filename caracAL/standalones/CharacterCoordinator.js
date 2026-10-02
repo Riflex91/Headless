@@ -190,6 +190,7 @@ function migrate_old_storage(path, localStorage) {
   let bwi_instance = {};
   let dashboard = null;
   let owned_web_server = null;
+  const dashboard_map_scenes = new Map();
   const movement_live_test_requests = new Map();
   let movement_live_test_sequence = 0;
   const incident_recorder = new IncidentRecorder({
@@ -233,6 +234,7 @@ function migrate_old_storage(path, localStorage) {
         getEmergencyStopState: () => emergency_stop.snapshot(),
         getRevisionSummary: revision_summary,
         getPersistenceHealth: () => persistence.health(),
+        getMapScene: (mapName) => dashboard_map_scenes.get(mapName) || null,
         diagnosticStore: diagnostic_store,
         incidentRecorder: incident_recorder,
         assetCache: asset_cache,
@@ -1881,6 +1883,10 @@ function migrate_old_storage(path, localStorage) {
           char_block.last_heartbeat_pid = m.pid || result.pid || null;
           break;
         case "stat_beat":
+          if (m.map_scene?.map) {
+            dashboard_map_scenes.set(m.map_scene.map, m.map_scene);
+            delete m.map_scene;
+          }
           updateCharacterLiveState(char_block, m);
           maybe_persist_character_snapshot(char_name, char_block, m);
           dashboard?.publishSnapshot();
