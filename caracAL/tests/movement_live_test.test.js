@@ -8,6 +8,7 @@ const { loadTypeScriptModule } = require("./load_typescript_module");
 const {
   combineMovementLiveTestResult,
   evidenceComplete,
+  movementLiveTestDiagnostics,
   movementLiveTestEvidence,
 } = require("../src/MovementLiveTest");
 
@@ -357,4 +358,119 @@ test("missing supervisor telemetry downgrades a runtime PASS to FAIL", () => {
   assert.equal(evidenceComplete(evidence), false);
   assert.equal(combined.outcome, "FAIL");
   assert.equal(combined.reason, "SUPERVISOR_MOVEMENT_EVIDENCE_INCOMPLETE");
+});
+
+test("supervisor evidence does not fail a fast movement only because trail sampling is sparse", () => {
+  const evidence = {
+    safePointSet: true,
+    pathStarted: true,
+    waypointSettlements: 2,
+    pathCompleted: true,
+    returnStarted: true,
+    movementTestCompleted: true,
+    movementProjectionVisible: true,
+    finalIdle: true,
+    trailPoints: 1,
+    trailVisible: false,
+  };
+
+  assert.equal(evidenceComplete(evidence), true);
+  assert.equal(
+    combineMovementLiveTestResult(
+      { outcome: "PASS", reason: "MOVEMENT_LIVE_E2E_CONFIRMED" },
+      evidence,
+    ).outcome,
+    "PASS",
+  );
+});
+
+test("movement live diagnostics include roadmap-required test fields", () => {
+  const diagnostics = movementLiveTestDiagnostics(
+    {
+      requestId: "LIVE-DIAG",
+      character: "My_Ranger1",
+      outcome: "FAIL",
+      reason: "RETURN_POSITION_NOT_CONFIRMED",
+      durationMs: 1234,
+      start: { map: "main", x: 10, y: 20 },
+      path: {
+        attempt: 2,
+        waypoints: [
+          { map: "main", x: 30, y: 20 },
+          { map: "main", x: 30, y: 40 },
+        ],
+        firstActionStatus: "DISPATCHED",
+        completed: true,
+      },
+      returned: {
+        actionStatus: "CONFIRMED",
+        confirmed: false,
+      },
+      evidence: {
+        safePointCaptured: true,
+        finalIdle: true,
+      },
+      cleanup: {
+        cancelStatus: null,
+        safePointCleared: true,
+      },
+    },
+    {
+      character: "My_Ranger1",
+      originalDesiredState: "PAUSED",
+      startState: {
+        lifecycle_state: "PAUSED",
+        desired_runtime_state: "PAUSED",
+        map: "main",
+        x: 10,
+        y: 20,
+      },
+      evidence: {
+        waypointSettlements: 2,
+        finalIdle: true,
+        movementProjectionVisible: true,
+        trailPoints: 1,
+      },
+      incidentId: "incident-1",
+    },
+  );
+
+  assert.equal(diagnostics.test_id, "LIVE-DIAG");
+  assert.equal(diagnostics.character, "My_Ranger1");
+  assert.equal(diagnostics.start_state.lifecycle_state, "PAUSED");
+  assert.equal(diagnostics.preparation.safe_point_captured, true);
+  assert.equal(diagnostics.navigation.path_completed, true);
+  assert.equal(diagnostics.actions.return_action_status, "CONFIRMED");
+  assert.equal(diagnostics.expected.return_confirmed, true);
+  assert.equal(diagnostics.observed.return_confirmed, false);
+  assert.equal(diagnostics.result, "FAIL");
+  assert.equal(diagnostics.duration_ms, 1234);
+  assert.equal(diagnostics.incident_id, "incident-1");
+});
+
+test("movement live evidence can scope trail samples to the test start", () => {
+  const evidence = movementLiveTestEvidence(
+    [
+      {
+        source: "bot_runtime",
+        type: "MOVEMENT_SAFE_POINT_SET",
+      },
+    ],
+    {
+      live_state: {
+        movement_mode: "IDLE",
+        movement_owner: null,
+        movement_command: null,
+        movement_stuck: { stuck: false },
+      },
+      movement_trail: [
+        { timestamp: 100, map: "main", x: 1, y: 1 },
+        { timestamp: 1000, map: "main", x: 2, y: 2 },
+      ],
+    },
+    { startedAt: 500 },
+  );
+
+  assert.equal(evidence.trailPoints, 1);
+  assert.equal(evidence.trailVisible, false);
 });

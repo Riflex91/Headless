@@ -41,6 +41,7 @@ const {
 const { normalizeRuntimeEvent } = require("../src/RuntimeEventBridge");
 const {
   combineMovementLiveTestResult,
+  movementLiveTestDiagnostics,
   movementLiveTestEvidence,
 } = require("../src/MovementLiveTest");
 const { PersistenceService } = require("../src/PersistenceService");
@@ -944,6 +945,39 @@ function migrate_old_storage(path, localStorage) {
     }
   }
 
+  function capture_movement_live_test_incident(char_name, test_result) {
+    const incident = incident_recorder.capture({
+      reason: test_result.reason || "MOVEMENT_LIVE_TEST_FAILED",
+      severity:
+        test_result.outcome === "UNKNOWN" || test_result.outcome === "TIMEOUT"
+          ? "HIGH"
+          : "ERROR",
+      character: char_name,
+      event: {
+        type: "movement_live_test",
+        event: "MOVEMENT_LIVE_TEST_FAILED",
+        character: char_name,
+        timestamp: Date.now(),
+        request_id: test_result.request_id || test_result.requestId || null,
+        outcome: test_result.outcome || "FAIL",
+        reason: test_result.reason || "MOVEMENT_LIVE_TEST_FAILED",
+      },
+      extra: {
+        test: test_result,
+      },
+    });
+
+    void observe_persistence(
+      persistence.indexIncident(
+        incident,
+        path.join("logs", "incidents", incident.incident_id),
+      ),
+      "movement_live_test_incident",
+      char_name,
+    );
+    return incident.incident_id;
+  }
+
   async function run_movement_live_test(char_name) {
     const char_block = character_manage[char_name];
     if (!char_block) {
@@ -966,6 +1000,19 @@ function migrate_old_storage(path, localStorage) {
       (char_block.enabled
         ? DESIRED_RUNTIME_STATES.RUNNING
         : DESIRED_RUNTIME_STATES.STOPPED);
+    const start_state = {
+      lifecycle_state: char_block.lifecycle_state || null,
+      desired_runtime_state: original_desired_state,
+      enabled: !!char_block.enabled,
+      connected: !!char_block.connected,
+      map: char_block.live_state?.map || null,
+      x: Number.isFinite(char_block.live_state?.x)
+        ? char_block.live_state.x
+        : null,
+      y: Number.isFinite(char_block.live_state?.y)
+        ? char_block.live_state.y
+        : null,
+    };
     const started_at = Date.now();
     movement_live_test_sequence += 1;
     const request_id = `movement-live-${started_at}-${movement_live_test_sequence}`;
@@ -1035,11 +1082,27 @@ function migrate_old_storage(path, localStorage) {
         character: char_name,
         since: started_at,
       });
-      const evidence = movementLiveTestEvidence(events, ready_block);
+      const evidence = movementLiveTestEvidence(events, ready_block, {
+        startedAt: started_at,
+      });
       const combined = combineMovementLiveTestResult(
         child_response.result,
         evidence,
       );
+      const incident_id =
+        combined.outcome === "PASS"
+          ? null
+          : capture_movement_live_test_incident(char_name, {
+              ...combined,
+              request_id,
+            });
+      const diagnostics = movementLiveTestDiagnostics(combined, {
+        character: char_name,
+        originalDesiredState: original_desired_state,
+        startState: start_state,
+        evidence,
+        incidentId: incident_id,
+      });
 
       ready_block.movement_live_test = {
         ...combined,
@@ -1047,19 +1110,21 @@ function migrate_old_storage(path, localStorage) {
         status: "COMPLETED",
         started_at,
         completed_at: Date.now(),
+        incident_id,
+        diagnostics,
       };
       emit_supervisor_event("MOVEMENT_LIVE_TEST_COMPLETED", char_name, {
         request_id,
         outcome: combined.outcome,
         reason: combined.reason,
+        incident_id,
         supervisor: evidence,
       });
       dashboard?.publishSnapshot();
       return ready_block.movement_live_test;
     } catch (error) {
-      const failed = {
+      const failed_result = {
         request_id,
-        status: "FAILED",
         outcome:
           error.code === "MOVEMENT_LIVE_TEST_TIMEOUT" ||
           error.code === "MOVEMENT_LIVE_TEST_RUNTIME_TIMEOUT"
@@ -1069,6 +1134,32 @@ function migrate_old_storage(path, localStorage) {
         error: error.message || String(error),
         started_at,
         completed_at: Date.now(),
+        durationMs: Date.now() - started_at,
+      };
+      const failure_events = diagnostic_store.getEvents({
+        character: char_name,
+        since: started_at,
+      });
+      const failure_evidence = movementLiveTestEvidence(
+        failure_events,
+        char_block,
+        { startedAt: started_at },
+      );
+      const incident_id = capture_movement_live_test_incident(
+        char_name,
+        failed_result,
+      );
+      const failed = {
+        ...failed_result,
+        status: "FAILED",
+        incident_id,
+        diagnostics: movementLiveTestDiagnostics(failed_result, {
+          character: char_name,
+          originalDesiredState: original_desired_state,
+          startState: start_state,
+          evidence: failure_evidence,
+          incidentId: incident_id,
+        }),
       };
       char_block.movement_live_test = failed;
       emit_supervisor_event("MOVEMENT_LIVE_TEST_FAILED", char_name, failed);
