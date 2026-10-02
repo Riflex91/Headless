@@ -86,10 +86,7 @@ test("asset cache downloads once and serves the local copy afterwards", async ()
     assert.equal(first.cacheHit, false);
     assert.equal(second.cacheHit, true);
     assert.equal(fetchCount, 1);
-    assert.equal(
-      await fs.readFile(first.path, "utf8"),
-      "fake-png",
-    );
+    assert.equal(await fs.readFile(first.path, "utf8"), "fake-png");
   } finally {
     await fs.rm(cacheDir, { recursive: true, force: true });
   }
