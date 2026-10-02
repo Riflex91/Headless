@@ -678,10 +678,7 @@ function migrate_old_storage(path, localStorage) {
     return state;
   }
 
-  async function control_rotation({
-    startCharacter,
-    stopCharacter,
-  } = {}) {
+  async function control_rotation({ startCharacter, stopCharacter } = {}) {
     const plan = createRotationPlan(character_manage, {
       startCharacter,
       stopCharacter,
