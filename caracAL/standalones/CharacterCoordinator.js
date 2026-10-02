@@ -22,6 +22,7 @@ const { AdventureLandAssetCache } = require("../src/AdventureLandAssetCache");
 const { DiagnosticEventStore } = require("../src/DiagnosticStore");
 const { attachHeadlessDashboard } = require("../src/HeadlessDashboard");
 const { updateCharacterLiveState } = require("../src/LiveState");
+const { normalizeRuntimeEvent } = require("../src/RuntimeEventBridge");
 const {
   LIFECYCLE_STATES,
   computeRestartDelay,
@@ -239,6 +240,28 @@ function migrate_old_storage(path, localStorage) {
     log.info(
       sanitized_payload,
       char_name ? `supervisor ${event}: ${char_name}` : `supervisor ${event}`,
+    );
+    dashboard?.publish(sanitized_payload);
+  }
+
+  function emit_runtime_event(char_name, event) {
+    const normalized = normalizeRuntimeEvent(event);
+    if (!normalized) {
+      emit_supervisor_event("RUNTIME_EVENT_REJECTED", char_name, {
+        reason: "INVALID_RUNTIME_EVENT",
+      });
+      return;
+    }
+
+    const payload = {
+      ...normalized,
+      character: char_name,
+      source: "bot_runtime",
+    };
+    const sanitized_payload = diagnostic_store.append(payload);
+    log.info(
+      sanitized_payload,
+      `${char_name} runtime ${normalized.module}:${normalized.type}`,
     );
     dashboard?.publish(sanitized_payload);
   }
@@ -666,6 +689,9 @@ function migrate_old_storage(path, localStorage) {
           emit_supervisor_event("CHARACTER_INITIALIZED", char_name, {
             pid: result.pid || null,
           });
+          break;
+        case "runtime_event":
+          emit_runtime_event(char_name, m.event);
           break;
         case "runtime_state_applied":
           if (m.state === DESIRED_RUNTIME_STATES.PAUSED) {

@@ -5,6 +5,18 @@ You rock!
 
 export {};
 declare global {
+  interface CaracALRuntimeEvent {
+    version: 1;
+    id: string;
+    timestamp: number;
+    module: string;
+    type: string;
+    why?: string;
+    correlationId?: string;
+    actionId?: string;
+    data?: Record<string, unknown>;
+  }
+
   /** When you access parent via game code, this is what you have access to. */
   interface Window {
     /**
@@ -40,6 +52,12 @@ declare global {
        * Cooperative bot code must not start new work while PAUSED.
        */
       runtime_state: "RUNNING" | "PAUSED" | "STOPPED";
+
+      /**
+       * Sends one bounded structured runtime event to the local supervisor.
+       * Returns false when the event is invalid or IPC is unavailable.
+       */
+      emit_event(event: CaracALRuntimeEvent): boolean;
 
       /**
        * All the characters running in our current caracAL instance
