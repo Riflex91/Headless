@@ -10,6 +10,7 @@ const CONTROL_ACTIONS = Object.freeze({
   START: "start",
   PAUSE: "pause",
   STOP: "stop",
+  RESTART: "restart",
 });
 
 function normalizeControlAction(action) {
@@ -21,6 +22,15 @@ function normalizeControlAction(action) {
     return null;
   }
   return normalized;
+}
+
+function canRestartCharacter(charBlock = {}) {
+  return (
+    !!charBlock.instance &&
+    !!charBlock.enabled &&
+    charBlock.desired_runtime_state !== DESIRED_RUNTIME_STATES.STOPPED &&
+    charBlock.lifecycle_state !== "STOPPING"
+  );
 }
 
 function desiredStateForAction(action) {
@@ -39,6 +49,7 @@ function desiredStateForAction(action) {
 module.exports = {
   CONTROL_ACTIONS,
   DESIRED_RUNTIME_STATES,
+  canRestartCharacter,
   desiredStateForAction,
   normalizeControlAction,
 };
