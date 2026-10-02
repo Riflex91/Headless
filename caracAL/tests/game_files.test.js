@@ -65,11 +65,7 @@ test("cached versions report newly required runtime files as missing", async () 
       }
 
       await fs.writeFile(
-        path.join(
-          "game_files",
-          String(version),
-          path.posix.basename(resource),
-        ),
+        path.join("game_files", String(version), path.posix.basename(resource)),
         "",
       );
     }
