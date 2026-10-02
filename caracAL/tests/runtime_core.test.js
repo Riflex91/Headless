@@ -8,14 +8,7 @@ const { loadTypeScriptModule } = require("./load_typescript_module");
 
 function coreModule(fileName) {
   return loadTypeScriptModule(
-    path.join(
-      __dirname,
-      "..",
-      "TYPECODE",
-      "bot",
-      "core",
-      fileName,
-    ),
+    path.join(__dirname, "..", "TYPECODE", "bot", "core", fileName),
   );
 }
 
@@ -137,8 +130,7 @@ test("Scheduler respects pause state and priority", async () => {
 
   const pauseSkips = events.filter(
     (event) =>
-      event.type === "JOB_SKIPPED" &&
-      event.reason === "RUNTIME_PAUSED",
+      event.type === "JOB_SKIPPED" && event.reason === "RUNTIME_PAUSED",
   );
   assert.equal(pauseSkips.length, 2);
 });
@@ -185,8 +177,7 @@ test("Scheduler continues after job failure", async () => {
   );
   assert.equal(
     events.some(
-      (event) =>
-        event.type === "JOB_COMPLETED" && event.jobId === "good",
+      (event) => event.type === "JOB_COMPLETED" && event.jobId === "good",
     ),
     true,
   );
