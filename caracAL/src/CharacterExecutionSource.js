@@ -6,7 +6,10 @@ function nonEmptyString(value) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
-function resolveCharacterExecutionSource(charBlock = {}, enableTypecode = false) {
+function resolveCharacterExecutionSource(
+  charBlock = {},
+  enableTypecode = false,
+) {
   const override = nonEmptyString(
     charBlock.movement_live_test_typescript_override,
   );
