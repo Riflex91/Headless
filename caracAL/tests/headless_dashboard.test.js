@@ -427,7 +427,7 @@ test("dashboard module and coordinator remain syntactically valid", () => {
   assert.match(characterThread, /class_skill_live_test_result/);
   assert.match(characterThread, /farm_intelligence_live_test/);
   assert.match(characterThread, /farm_intelligence_live_test_result/);
-  assert.match(dashboardSource, /tests\/farm-intelligence/);
+  assert.match(dashboard, /tests\/farm-intelligence/);
 });
 
 test("dashboard public live state keeps nearby entity telemetry but not map scene blobs", () => {
