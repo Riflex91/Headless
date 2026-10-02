@@ -842,8 +842,9 @@ function updateCharacterCard(card, character) {
     formatCombatTarget(character.combat_runtime);
   card.querySelector(".character-combat-cooldowns").textContent =
     formatCombatCooldowns(character.combat_runtime);
-  card.querySelector(".character-class-skills").textContent =
-    formatClassSkills(character.class_skill_runtime);
+  card.querySelector(".character-class-skills").textContent = formatClassSkills(
+    character.class_skill_runtime,
+  );
   card.querySelector(".character-class-skill-action").textContent =
     formatClassSkillAction(character.class_skill_runtime);
   card.querySelector(".character-movement").textContent = formatMovement(game);

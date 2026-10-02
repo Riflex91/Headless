@@ -390,7 +390,9 @@ dd {
   display: none !important;
 }
 
-.panel.is-collapsed > .panel-heading > :not(:first-child):not(.collapse-toggle) {
+.panel.is-collapsed
+  > .panel-heading
+  > :not(:first-child):not(.collapse-toggle) {
   display: none !important;
 }
 

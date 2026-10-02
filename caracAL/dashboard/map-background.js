@@ -203,14 +203,7 @@
 
     context.setTransform(1, 0, 0, 1, 0, 0);
     context.clearRect(0, 0, size.pixelWidth, size.pixelHeight);
-    context.setTransform(
-      size.pixelRatio,
-      0,
-      0,
-      size.pixelRatio,
-      0,
-      0,
-    );
+    context.setTransform(size.pixelRatio, 0, 0, size.pixelRatio, 0, 0);
     context.fillStyle = "#080b0d";
     context.fillRect(0, 0, size.cssWidth, size.cssHeight);
 

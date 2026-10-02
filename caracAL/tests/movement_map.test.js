@@ -310,7 +310,6 @@ test("map telemetry projects original tiles, static NPCs and nearby live monster
   assert.equal(entities[0].name, "Green Goo");
 });
 
-
 test("dynamic map animations are excluded from the static dashboard background", () => {
   const scene = {
     tiles: [{ file: "/tiles.png", width: 32, height: 32 }],
