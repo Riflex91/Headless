@@ -44,10 +44,7 @@ test("character thread exposes both current and legacy socket globals", () => {
     "utf8",
   );
 
-  assert.match(
-    source,
-    /game_context\.server_address = serverAddress;/,
-  );
+  assert.match(source, /game_context\.server_address = serverAddress;/);
   assert.match(source, /game_context\.server_path = serverPath;/);
   assert.match(
     source,
@@ -65,9 +62,6 @@ test("coordinator passes current Adventure Land address/path fields", () => {
     "utf8",
   );
 
-  assert.match(
-    source,
-    /realm_address: realm_connection\.address/,
-  );
+  assert.match(source, /realm_address: realm_connection\.address/);
   assert.match(source, /realm_path: realm_connection\.path/);
 });
