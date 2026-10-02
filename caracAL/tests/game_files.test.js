@@ -48,6 +48,27 @@ test("game runtime dependencies follow the current Adventure Land load order", (
   assert.deepEqual(files, before.concat(after));
 });
 
+test("character thread loads html vars between official pre/post scripts", () => {
+  const source = require("node:fs").readFileSync(
+    path.join(__dirname, "..", "src", "CharacterThread.js"),
+    "utf8",
+  );
+
+  const before = source.indexOf(
+    "await ev_files(game_sources_before_html_vars, game_context);",
+  );
+  const htmlVars = source.indexOf(
+    'await ev_files(["./html_vars.js"], game_context);',
+  );
+  const after = source.indexOf(
+    "await ev_files(game_sources_after_html_vars, game_context);",
+  );
+
+  assert.ok(before >= 0);
+  assert.ok(before < htmlVars);
+  assert.ok(htmlVars < after);
+});
+
 test("runner loads legacy common helpers before runner functions", () => {
   const files = get_runner_files();
 
