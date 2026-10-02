@@ -64,6 +64,12 @@ test("config form edits known fields while preserving unknown config", () => {
     '[data-config-path="classSkills.ranger.skills.track.enabled"]',
   ).checked = true;
   root.querySelector('[data-config-path="groupCombat.leader"]').value = "Alpha";
+  root.querySelector('[data-config-path="farming.enabled"]').checked = true;
+  root.querySelector('[data-config-path="farming.goalMonster"]').value = "goo";
+  root.querySelector('[data-config-path="farming.preferredMonsters"]').value =
+    "goo, bee";
+  root.querySelector('[data-config-path="farming.weights.observed"]').value =
+    "2";
 
   const config = collectConfig({ container: root, baseConfig: base });
   assert.equal(getPath(config, "combat.enabled"), true);
@@ -73,6 +79,10 @@ test("config form edits known fields while preserving unknown config", () => {
     true,
   );
   assert.equal(getPath(config, "groupCombat.leader"), "Alpha");
+  assert.equal(getPath(config, "farming.enabled"), true);
+  assert.equal(getPath(config, "farming.goalMonster"), "goo");
+  assert.deepEqual(getPath(config, "farming.preferredMonsters"), ["goo", "bee"]);
+  assert.equal(getPath(config, "farming.weights.observed"), 2);
   assert.deepEqual(config.customFutureBlock, { preserve: true });
 });
 
