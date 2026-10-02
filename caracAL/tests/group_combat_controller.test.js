@@ -514,6 +514,391 @@ test("ranger kiting moves away from a too-close focused target", async () => {
   assert.equal(setup.movementCalls[0][1] < 0, true);
 });
 
+test("soft tether regroups to leader when movement is free", async () => {
+  const setup = makeSetup({
+    config: {
+      groupCombat: {
+        enabled: true,
+        role: "follower",
+        leader: "Leader",
+        party: { enabled: false },
+        tether: { soft: 50, hard: 300 },
+      },
+    },
+    party: { Leader: {}, Follower: {} },
+    entities: [
+      {
+        id: "leader-id",
+        type: "character",
+        name: "Leader",
+        map: "main",
+        x: 100,
+        y: 0,
+        hp: 1000,
+        maxHp: 1000,
+        target: null,
+        dead: false,
+        rip: false,
+      },
+    ],
+  });
+
+  const status = await setup.controller.tick();
+  assert.equal(status.state, "REGROUPING");
+  assert.equal(status.reason, "SOFT_TETHER_EXCEEDED");
+  assert.equal(setup.movementCalls[0][0], "smart");
+});
+
+test("priest party heal triggers when enough party members are low", async () => {
+  const setup = makeSetup({
+    ctype: "priest",
+    name: "Priest",
+    config: {
+      groupCombat: {
+        enabled: true,
+        role: "follower",
+        leader: "Leader",
+        party: { enabled: false },
+        healing: {
+          enabled: true,
+          belowPercent: 70,
+          partyHealMinTargets: 2,
+        },
+      },
+    },
+    party: { Leader: {}, Priest: {} },
+    entities: [
+      {
+        id: "leader-id",
+        type: "character",
+        name: "Leader",
+        map: "main",
+        x: 40,
+        y: 0,
+        hp: 400,
+        maxHp: 1000,
+        target: null,
+        dead: false,
+        rip: false,
+      },
+    ],
+    skills: [
+      {
+        key: "partyheal",
+        name: "Party Heal",
+        classes: ["priest"],
+        mp: 200,
+        cooldown: null,
+        range: null,
+        hostile: false,
+        party: true,
+        passive: false,
+      },
+    ],
+  });
+  setup.state.character.hp = 500;
+
+  const status = await setup.controller.tick();
+  assert.equal(status.state, "HEALING");
+  assert.equal(status.reason, "PARTY_HEAL_DISPATCHED");
+  assert.deepEqual(
+    setup.calls.find((call) => call[0] === "skill").slice(0, 2),
+    ["skill", "partyheal"],
+  );
+});
+
+test("priest support absorbs aggro pressure from party member", async () => {
+  const setup = makeSetup({
+    ctype: "priest",
+    name: "Priest",
+    config: {
+      groupCombat: {
+        enabled: true,
+        role: "follower",
+        leader: "Leader",
+        party: { enabled: false },
+        support: { enabled: true, absorbAggroCount: 2 },
+      },
+    },
+    party: { Leader: {}, Priest: {} },
+    entities: [
+      {
+        id: "leader-id",
+        type: "character",
+        name: "Leader",
+        map: "main",
+        x: 40,
+        y: 0,
+        hp: 1000,
+        maxHp: 1000,
+        target: null,
+        dead: false,
+        rip: false,
+      },
+      ...Array.from({ length: 2 }, (_, index) => ({
+        id: `m-${index}`,
+        type: "monster",
+        name: null,
+        mtype: "goo",
+        map: "main",
+        x: 60 + index * 5,
+        y: 0,
+        hp: 100,
+        maxHp: 100,
+        target: "Leader",
+        dead: false,
+        rip: false,
+      })),
+    ],
+    skills: [
+      {
+        key: "absorb",
+        name: "Absorb",
+        classes: ["priest"],
+        mp: 200,
+        cooldown: null,
+        range: 320,
+        hostile: false,
+        party: false,
+        passive: false,
+      },
+    ],
+  });
+
+  const status = await setup.controller.tick();
+  assert.equal(status.state, "SUPPORTING");
+  assert.equal(status.support.lastSkill, "absorb");
+  assert.equal(status.support.lastTargetId, "leader-id");
+});
+
+test("mage support reflects configured group leader", async () => {
+  const setup = makeSetup({
+    ctype: "mage",
+    name: "Mage",
+    config: {
+      groupCombat: {
+        enabled: true,
+        role: "follower",
+        leader: "Leader",
+        party: { enabled: false },
+        support: { enabled: true },
+      },
+    },
+    party: { Leader: {}, Mage: {} },
+    entities: [
+      {
+        id: "leader-id",
+        type: "character",
+        name: "Leader",
+        map: "main",
+        x: 40,
+        y: 0,
+        hp: 1000,
+        maxHp: 1000,
+        target: null,
+        dead: false,
+        rip: false,
+      },
+    ],
+    skills: [
+      {
+        key: "reflection",
+        name: "Reflection",
+        classes: ["mage"],
+        mp: 200,
+        cooldown: null,
+        range: 320,
+        hostile: false,
+        party: false,
+        passive: false,
+      },
+    ],
+  });
+
+  const status = await setup.controller.tick();
+  assert.equal(status.state, "SUPPORTING");
+  assert.equal(status.support.lastSkill, "reflection");
+  assert.equal(status.support.lastTargetId, "leader-id");
+});
+
+test("warrior AoE uses agitate for party aggro pressure", async () => {
+  const setup = makeSetup({
+    ctype: "warrior",
+    name: "Warrior",
+    config: {
+      groupCombat: {
+        enabled: true,
+        role: "leader",
+        leader: "Warrior",
+        party: { enabled: false },
+        aoe: { enabled: true, minTargets: 2 },
+      },
+    },
+    party: { Warrior: {}, Follower: {} },
+    entities: Array.from({ length: 2 }, (_, index) => ({
+      id: `m-${index}`,
+      type: "monster",
+      name: null,
+      mtype: "goo",
+      map: "main",
+      x: 40 + index * 5,
+      y: 0,
+      hp: 100,
+      maxHp: 100,
+      target: "Follower",
+      dead: false,
+      rip: false,
+    })),
+    skills: [
+      {
+        key: "agitate",
+        name: "Agitate",
+        classes: ["warrior"],
+        mp: 200,
+        cooldown: null,
+        range: 320,
+        hostile: true,
+        party: false,
+        passive: false,
+      },
+    ],
+  });
+
+  const status = await setup.controller.tick();
+  assert.equal(status.state, "AOE");
+  assert.equal(status.aoe.lastSkill, "agitate");
+});
+
+test("warrior AoE uses cleave for enough nearby targets", async () => {
+  const setup = makeSetup({
+    ctype: "warrior",
+    name: "Warrior",
+    config: {
+      groupCombat: {
+        enabled: true,
+        role: "leader",
+        leader: "Warrior",
+        party: { enabled: false },
+        aoe: { enabled: true, minTargets: 2 },
+      },
+    },
+    party: { Warrior: {}, Follower: {} },
+    entities: Array.from({ length: 2 }, (_, index) => ({
+      id: `m-${index}`,
+      type: "monster",
+      name: null,
+      mtype: "goo",
+      map: "main",
+      x: 40 + index * 5,
+      y: 0,
+      hp: 100,
+      maxHp: 100,
+      target: "Warrior",
+      dead: false,
+      rip: false,
+    })),
+    skills: [
+      {
+        key: "cleave",
+        name: "Cleave",
+        classes: ["warrior"],
+        mp: 200,
+        cooldown: null,
+        range: 160,
+        hostile: true,
+        party: false,
+        passive: false,
+      },
+    ],
+  });
+
+  const status = await setup.controller.tick();
+  assert.equal(status.state, "AOE");
+  assert.equal(status.aoe.lastSkill, "cleave");
+});
+
+test("ranger AoE excludes monsters outside skill range", async () => {
+  const monsters = [
+    ...Array.from({ length: 3 }, (_, index) => ({
+      id: `near-${index}`,
+      type: "monster",
+      name: null,
+      mtype: "goo",
+      map: "main",
+      x: 40 + index * 10,
+      y: 0,
+      hp: 100,
+      maxHp: 100,
+      target: "Follower",
+      dead: false,
+      rip: false,
+    })),
+    ...Array.from({ length: 2 }, (_, index) => ({
+      id: `far-${index}`,
+      type: "monster",
+      name: null,
+      mtype: "goo",
+      map: "main",
+      x: 300 + index * 50,
+      y: 0,
+      hp: 100,
+      maxHp: 100,
+      target: "Follower",
+      dead: false,
+      rip: false,
+    })),
+  ];
+  const setup = makeSetup({
+    config: {
+      groupCombat: {
+        enabled: true,
+        role: "leader",
+        leader: "Follower",
+        party: { enabled: false },
+        aoe: { enabled: true, minTargets: 3 },
+      },
+    },
+    entities: monsters,
+    skills: rangerAoeSkills,
+  });
+
+  const status = await setup.controller.tick();
+  assert.equal(status.state, "AOE");
+  assert.equal(status.aoe.lastSkill, "3shot");
+  const skillCall = setup.calls.find((call) => call[0] === "skill");
+  assert.deepEqual(skillCall[3], ["near-0", "near-1", "near-2"]);
+});
+
+test("warrior anchor keeps its original point and returns after drift", async () => {
+  const setup = makeSetup({
+    ctype: "warrior",
+    name: "Warrior",
+    config: {
+      groupCombat: {
+        enabled: true,
+        role: "leader",
+        leader: "Warrior",
+        party: { enabled: false },
+      },
+    },
+  });
+
+  let status = await setup.controller.tick();
+  assert.equal(status.state, "ANCHORING");
+  assert.equal(status.anchor.x, 0);
+  assert.equal(status.anchor.y, 0);
+
+  setup.state.character.x = 80;
+  setup.state.character.y = 20;
+  status = await setup.controller.tick();
+
+  assert.equal(status.state, "ANCHORING");
+  assert.equal(status.reason, "WARRIOR_ANCHOR_RETURN_DISPATCHED");
+  assert.equal(status.anchor.x, 0);
+  assert.equal(status.anchor.y, 0);
+  assert.deepEqual(setup.movementCalls.at(-1), ["direct", 0, 0]);
+});
+
 test("UNKNOWN group skill blocks blind retry until evidence appears", async () => {
   let uses = 0;
   const setup = makeSetup({

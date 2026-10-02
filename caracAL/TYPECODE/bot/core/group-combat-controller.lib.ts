@@ -17,6 +17,7 @@ import type {
 
 const MODULE = "GroupCombatController";
 const MOVEMENT_OWNER = "GroupCombatController";
+const WARRIOR_ANCHOR_TOLERANCE = 18;
 
 export type GroupRole = "NONE" | "LEADER" | "FOLLOWER";
 export type GroupCombatState =
@@ -369,6 +370,7 @@ export class GroupCombatController {
   private nearbyTargets = 0;
   private kitingActive = false;
   private kiteTargetDistance: number | null = null;
+  private warriorAnchor: { map: string; x: number; y: number } | null = null;
   private busy = false;
 
   constructor(
@@ -404,11 +406,16 @@ export class GroupCombatController {
         ? entityDistance(character, leaderEntity)
         : null;
     const movement = this.movement.status();
-    const anchorActive =
-      config.enabled &&
-      config.warriorAnchorEnabled &&
-      config.role === "LEADER" &&
-      character.ctype === "warrior";
+    const anchorActive = this.warriorAnchorEnabled(config, character);
+    const anchorPoint =
+      anchorActive && this.warriorAnchor
+        ? this.warriorAnchor
+        : anchorActive &&
+            character.map &&
+            character.x !== null &&
+            character.y !== null
+          ? { map: character.map, x: character.x, y: character.y }
+          : null;
 
     return {
       timestamp: this.lastStatusTimestamp || this.now(),
@@ -437,9 +444,9 @@ export class GroupCombatController {
       },
       anchor: {
         active: anchorActive,
-        map: anchorActive ? character.map : null,
-        x: anchorActive ? character.x : null,
-        y: anchorActive ? character.y : null,
+        map: anchorPoint?.map || null,
+        x: anchorPoint?.x ?? null,
+        y: anchorPoint?.y ?? null,
       },
       healing: {
         enabled: config.healingEnabled,
@@ -489,15 +496,19 @@ export class GroupCombatController {
         this.combat.setPreferredTargetId(null);
         this.focusTargetId = null;
         this.pendingPartyAction = null;
+        this.warriorAnchor = null;
         this.setState("DISABLED", "GROUP_COMBAT_DISABLED");
         return this.status();
       }
 
       if (config.role === "NONE") {
         this.combat.setPreferredTargetId(null);
+        this.warriorAnchor = null;
         this.setState("BLOCKED", "GROUP_ROLE_UNRESOLVED");
         return this.status();
       }
+
+      this.prepareWarriorAnchor(config, character);
 
       if (this.unknownSkill && !this.reconcileUnknownSkill()) {
         this.setState("BLOCKED", "GROUP_SKILL_OUTCOME_UNKNOWN");
@@ -524,6 +535,9 @@ export class GroupCombatController {
       const tether = await this.reconcileTether(config, character);
       if (tether) return tether;
 
+      const anchor = this.reconcileWarriorAnchor(config, character);
+      if (anchor) return anchor;
+
       const healing = await this.tryHealing(config, character);
       if (healing) return healing;
 
@@ -536,11 +550,7 @@ export class GroupCombatController {
       const kiting = await this.tryRangerKiting(config, character);
       if (kiting) return kiting;
 
-      if (
-        config.warriorAnchorEnabled &&
-        config.role === "LEADER" &&
-        character.ctype === "warrior"
-      ) {
+      if (this.warriorAnchor) {
         this.setState("ANCHORING", "WARRIOR_ANCHOR_ACTIVE");
         return this.status();
       }
@@ -806,6 +816,107 @@ export class GroupCombatController {
     return this.status();
   }
 
+  private warriorAnchorEnabled(
+    config: NormalizedGroupConfig,
+    character: CharacterSnapshot,
+  ): boolean {
+    return (
+      config.enabled &&
+      config.warriorAnchorEnabled &&
+      config.role === "LEADER" &&
+      character.ctype === "warrior"
+    );
+  }
+
+  private prepareWarriorAnchor(
+    config: NormalizedGroupConfig,
+    character: CharacterSnapshot,
+  ): void {
+    if (
+      !this.warriorAnchorEnabled(config, character) ||
+      !character.map ||
+      character.x === null ||
+      character.y === null
+    ) {
+      this.warriorAnchor = null;
+      return;
+    }
+
+    if (!this.warriorAnchor || this.warriorAnchor.map !== character.map) {
+      this.warriorAnchor = {
+        map: character.map,
+        x: character.x,
+        y: character.y,
+      };
+    }
+  }
+
+  private reconcileWarriorAnchor(
+    config: NormalizedGroupConfig,
+    character: CharacterSnapshot,
+  ): GroupCombatStatus | null {
+    const anchor = this.warriorAnchor;
+    if (
+      !anchor ||
+      !this.warriorAnchorEnabled(config, character) ||
+      character.map !== anchor.map ||
+      character.x === null ||
+      character.y === null
+    ) {
+      return null;
+    }
+
+    const distance = Math.hypot(
+      character.x - anchor.x,
+      character.y - anchor.y,
+    );
+    const movement = this.movement.status();
+
+    if (distance <= WARRIOR_ANCHOR_TOLERANCE) {
+      if (movement.owner === MOVEMENT_OWNER && movement.active === null) {
+        this.movement.release(MOVEMENT_OWNER, "WARRIOR_ANCHOR_RESTORED");
+      }
+      return null;
+    }
+
+    if (movement.owner === MOVEMENT_OWNER || movement.active?.owner === MOVEMENT_OWNER) {
+      this.setState(
+        movement.mode === "UNKNOWN" ? "BLOCKED" : "ANCHORING",
+        movement.mode === "UNKNOWN"
+          ? "WARRIOR_ANCHOR_RETURN_UNKNOWN"
+          : "WARRIOR_ANCHOR_RETURN_IN_PROGRESS",
+      );
+      return this.status();
+    }
+
+    if (movement.owner || movement.active) {
+      this.setState("ANCHORING", "WARRIOR_ANCHOR_WAITING_FOR_MOVEMENT");
+      return this.status();
+    }
+
+    const action = this.movement.direct({
+      owner: MOVEMENT_OWNER,
+      module: MODULE,
+      why: "WARRIOR_ANCHOR_RETURN",
+      x: anchor.x,
+      y: anchor.y,
+    });
+    this.recordAction("WARRIOR_ANCHOR_RETURN", action);
+    this.setState(
+      action.status === "BLOCKED" ||
+        action.status === "REJECTED" ||
+        action.status === "UNKNOWN"
+        ? "BLOCKED"
+        : "ANCHORING",
+      action.status === "UNKNOWN"
+        ? "WARRIOR_ANCHOR_RETURN_UNKNOWN"
+        : action.status === "BLOCKED" || action.status === "REJECTED"
+          ? "WARRIOR_ANCHOR_RETURN_FAILED"
+          : "WARRIOR_ANCHOR_RETURN_DISPATCHED",
+    );
+    return this.status();
+  }
+
   private async tryHealing(
     config: NormalizedGroupConfig,
     character: CharacterSnapshot,
@@ -968,12 +1079,26 @@ export class GroupCombatController {
     this.nearbyTargets = monsters.length;
 
     if (character.ctype === "ranger") {
-      if (monsters.length >= 5) {
+      const skills = this.game.skills(false);
+      const fiveShotRange =
+        skills.find((skill) => skill.key === "5shot")?.range ?? character.range;
+      const threeShotRange =
+        skills.find((skill) => skill.key === "3shot")?.range ?? character.range;
+      const fiveShotTargets =
+        fiveShotRange === null
+          ? []
+          : monsters.filter((entry) => entry.distance <= fiveShotRange);
+      const threeShotTargets =
+        threeShotRange === null
+          ? []
+          : monsters.filter((entry) => entry.distance <= threeShotRange);
+
+      if (fiveShotTargets.length >= 5) {
         const action = await this.useGroupSkill(
           "5shot",
           "AOE_TARGET_THRESHOLD",
           undefined,
-          monsters.slice(0, 5).map((entry) => entry.entity.id),
+          fiveShotTargets.slice(0, 5).map((entry) => entry.entity.id),
           "attack",
         );
         if (action) {
@@ -982,12 +1107,14 @@ export class GroupCombatController {
           return this.status();
         }
       }
-      if (monsters.length >= Math.max(3, config.aoeMinTargets)) {
+      if (
+        threeShotTargets.length >= Math.max(3, config.aoeMinTargets)
+      ) {
         const action = await this.useGroupSkill(
           "3shot",
           "AOE_TARGET_THRESHOLD",
           undefined,
-          monsters.slice(0, 3).map((entry) => entry.entity.id),
+          threeShotTargets.slice(0, 3).map((entry) => entry.entity.id),
           "attack",
         );
         if (action) {
