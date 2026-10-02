@@ -133,10 +133,7 @@ test("dashboard static assets are present", () => {
     assert.equal(fs.existsSync(path.join(dashboardDir, file)), true);
   }
 
-  const index = fs.readFileSync(
-    path.join(dashboardDir, "index.html"),
-    "utf8",
-  );
+  const index = fs.readFileSync(path.join(dashboardDir, "index.html"), "utf8");
   assert.match(index, /Letzter Incident/);
 });
 
