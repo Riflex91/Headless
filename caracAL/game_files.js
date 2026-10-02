@@ -18,7 +18,7 @@ function get_runner_files() {
   ];
 }
 
-function get_game_files() {
+function get_game_files_before_html_vars() {
   return [
     "/js/phrases.js",
     "/js/pixi/fake/pixi.min.js",
@@ -28,12 +28,33 @@ function get_game_files() {
     "/js/common_functions.js",
     "/js/old_common_functions.js",
     "/js/functions.js",
+    "/js/generated_zones.js",
+    "/js/entity_animations.js",
     "/js/game.js",
     "/js/html.js",
+    "/js/progression/sources.js",
+    "/js/progression/stats.js",
+    "/js/progression/engine.js",
+    "/js/progression/runtime.js",
+    "/js/progression/ui.js",
+    "/js/merrit_stand_notice.js",
+    "/js/tavern_wheel.js",
+    "/js/tavern_slots.js",
+    "/js/tavern_poker.js",
     "/js/payments.js",
     "/js/keyboard.js",
     "/data.js",
   ];
+}
+
+function get_game_files_after_html_vars() {
+  return ["/js/pixel_fonts.js", "/js/npc_obstruction_hint.js"];
+}
+
+function get_game_files() {
+  return get_game_files_before_html_vars().concat(
+    get_game_files_after_html_vars(),
+  );
 }
 
 function get_required_files() {
@@ -163,5 +184,7 @@ exports.ensure_latest = ensure_latest;
 exports.locate_game_file = locate_game_file;
 exports.get_runner_files = get_runner_files;
 exports.get_game_files = get_game_files;
+exports.get_game_files_before_html_vars = get_game_files_before_html_vars;
+exports.get_game_files_after_html_vars = get_game_files_after_html_vars;
 exports.get_required_files = get_required_files;
 exports.missing_version_files = missing_version_files;
