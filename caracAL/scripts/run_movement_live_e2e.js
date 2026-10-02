@@ -1,5 +1,10 @@
 "use strict";
 
+const {
+  ensureDashboardAvailable,
+  stopManagedRuntime,
+} = require("../src/MovementLiveTestLauncher");
+
 const baseUrl = String(
   process.env.CARACAL_HEADLESS_URL || "http://127.0.0.1:924",
 ).replace(/\/$/, "");
@@ -14,6 +19,14 @@ async function readJson(response) {
     );
   }
   return payload;
+}
+
+async function readState() {
+  return readJson(
+    await fetch(`${baseUrl}/headless/api/state`, {
+      cache: "no-store",
+    }),
+  );
 }
 
 function selectCharacter(snapshot, requested) {
@@ -43,37 +56,54 @@ function selectCharacter(snapshot, requested) {
 async function main() {
   const requested =
     process.argv[2] || process.env.CARACAL_LIVE_TEST_CHARACTER || null;
-  const state = await readJson(
-    await fetch(`${baseUrl}/headless/api/state`, {
-      cache: "no-store",
-    }),
-  );
-  const character = selectCharacter(state, requested);
-  if (!character) {
-    throw new Error("No character is available for the movement live test");
-  }
+  let managedRuntime = null;
 
-  process.stdout.write(
-    `Running autonomous movement E2E for ${character.name} via ${baseUrl}\n`,
-  );
+  try {
+    const dashboard = await ensureDashboardAvailable(readState);
+    managedRuntime = dashboard.runtime;
 
-  const payload = await readJson(
-    await fetch(
-      `${baseUrl}/headless/api/characters/${encodeURIComponent(
-        character.name,
-      )}/tests/movement`,
-      {
-        method: "POST",
-      },
-    ),
-  );
+    if (dashboard.startedRuntime) {
+      process.stdout.write(
+        `Temporary caracAL runtime is ready at ${baseUrl}\n`,
+      );
+    } else {
+      process.stdout.write(`Using existing caracAL runtime at ${baseUrl}\n`);
+    }
 
-  process.stdout.write(`${JSON.stringify(payload.result, null, 2)}\n`);
+    const character = selectCharacter(dashboard.state, requested);
+    if (!character) {
+      throw new Error("No character is available for the movement live test");
+    }
 
-  if (payload.result?.outcome !== "PASS") {
-    process.exitCode = ["UNKNOWN", "TIMEOUT"].includes(payload.result?.outcome)
-      ? 2
-      : 1;
+    process.stdout.write(
+      `Running autonomous movement E2E for ${character.name} via ${baseUrl}\n`,
+    );
+
+    const payload = await readJson(
+      await fetch(
+        `${baseUrl}/headless/api/characters/${encodeURIComponent(
+          character.name,
+        )}/tests/movement`,
+        {
+          method: "POST",
+        },
+      ),
+    );
+
+    process.stdout.write(`${JSON.stringify(payload.result, null, 2)}\n`);
+
+    if (payload.result?.outcome !== "PASS") {
+      process.exitCode = ["UNKNOWN", "TIMEOUT"].includes(
+        payload.result?.outcome,
+      )
+        ? 2
+        : 1;
+    }
+  } finally {
+    if (managedRuntime) {
+      process.stdout.write("Stopping temporary caracAL runtime\n");
+      await stopManagedRuntime(managedRuntime);
+    }
   }
 }
 
