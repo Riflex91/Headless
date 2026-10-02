@@ -25,6 +25,8 @@ const state = {
     closed: true,
     last_error: null,
   },
+  mapScenes: new Map(),
+  mapSceneRequests: new Map(),
 };
 
 const cards = new Map();
@@ -40,6 +42,9 @@ const accountDiagnosticRange = document.querySelector(
   "#account-diagnostic-range",
 );
 const movementMapApi = window.HeadlessMovementMap;
+const movementMapBackground = document.querySelector(
+  "#movement-map-background",
+);
 const movementMapSvg = document.querySelector("#movement-map");
 const movementMapEmpty = document.querySelector("#movement-map-empty");
 const movementLegend = document.querySelector("#movement-legend");
@@ -49,6 +54,8 @@ const showMovementTrail = document.querySelector("#show-movement-trail");
 const showPlannedPath = document.querySelector("#show-planned-path");
 const showFacing = document.querySelector("#show-facing");
 const showTargetLine = document.querySelector("#show-target-line");
+const showNearbyMonsters = document.querySelector("#show-nearby-monsters");
+const showNearbyNpcs = document.querySelector("#show-nearby-npcs");
 const inventoryEquipmentApi = window.HeadlessInventoryEquipment;
 const accountInventoryGrid = document.querySelector("#account-inventory-grid");
 const emergencyStopControl = document.querySelector("#emergency-stop-control");
@@ -733,21 +740,63 @@ function synchronizeMovementMapOptions() {
   }
 }
 
+async function ensureMovementMapScene(mapName) {
+  if (!mapName || state.mapScenes.has(mapName)) {
+    return state.mapScenes.get(mapName) || null;
+  }
+  if (state.mapSceneRequests.has(mapName)) {
+    return state.mapSceneRequests.get(mapName);
+  }
+
+  const request = fetch(
+    `/headless/api/maps/${encodeURIComponent(mapName)}/scene`,
+    { cache: "no-store" },
+  )
+    .then(async (response) => {
+      if (response.status === 404) return null;
+      if (!response.ok) {
+        throw new Error(`Map scene request failed: ${response.status}`);
+      }
+      const scene = await response.json();
+      state.mapScenes.set(mapName, scene);
+      return scene;
+    })
+    .catch(() => null)
+    .finally(() => {
+      state.mapSceneRequests.delete(mapName);
+    });
+
+  state.mapSceneRequests.set(mapName, request);
+  return request;
+}
+
 function renderMovementMap() {
   if (!movementMapApi) return;
 
   synchronizeMovementMapOptions();
+  const mapName = movementMapSelect.value;
+  const mapScene = state.mapScenes.get(mapName) || null;
+  if (mapName && !mapScene && !state.mapSceneRequests.has(mapName)) {
+    void ensureMovementMapScene(mapName).then(() => {
+      if (movementMapSelect.value === mapName) renderMovementMap();
+    });
+  }
+
   movementMapApi.renderMovementMap({
     svg: movementMapSvg,
+    backgroundCanvas: movementMapBackground,
     legend: movementLegend,
     emptyState: movementMapEmpty,
     characters: onlineCharacters(),
-    mapName: movementMapSelect.value,
+    mapName,
+    mapScene,
     trailMs: Number(movementTrailRange.value) || 120000,
     showTrail: showMovementTrail.checked,
     showPlan: showPlannedPath.checked,
     showFacing: showFacing.checked,
     showTarget: showTargetLine.checked,
+    showMonsters: showNearbyMonsters.checked,
+    showNpcs: showNearbyNpcs.checked,
   });
 }
 
@@ -974,6 +1023,8 @@ for (const control of [
   showPlannedPath,
   showFacing,
   showTargetLine,
+  showNearbyMonsters,
+  showNearbyNpcs,
 ]) {
   control.addEventListener("change", renderMovementMap);
 }
