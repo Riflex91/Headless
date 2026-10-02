@@ -2,6 +2,10 @@ const prettyMilliseconds = require("pretty-ms");
 const { PNG } = require("pngjs");
 const { STAT_BEAT_INTERVAL } = require("./src/CONSTANTS.js");
 const { normalizeIpcMessage, sendIpcMessage } = require("./src/IpcProtocol");
+const {
+  publicMapScene,
+  publicNearbyEntities,
+} = require("./src/DashboardMapTelemetry");
 const { max, min, abs, round, floor } = Math;
 
 function humanize_int(num, digits) {
@@ -154,6 +158,14 @@ function build_stat_beat(g_con) {
         target: targeting.target || null,
       }
     : null;
+
+  result.nearby_entities = publicNearbyEntities(g_con);
+  if (g_con.caracAL?.dashboard_map_scene_map !== result.map) {
+    result.map_scene = publicMapScene(g_con);
+    if (g_con.caracAL) {
+      g_con.caracAL.dashboard_map_scene_map = result.map;
+    }
+  }
 
   result.current_status = g_con.current_status;
   if (g_con.caracAL.map_enabled()) {
