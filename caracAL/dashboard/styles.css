@@ -906,6 +906,34 @@ dd {
   font-size: 0.65rem;
 }
 
+.item-disposition-badge {
+  position: absolute;
+  top: 0.12rem;
+  left: 50%;
+  z-index: 2;
+  max-width: calc(100% - 2.2rem);
+  padding: 0.08rem 0.2rem;
+  overflow: hidden;
+  transform: translateX(-50%);
+  border-radius: 0.2rem;
+  background: rgba(5, 9, 18, 0.88);
+  color: #dbe6f7;
+  font-size: 0.46rem;
+  font-weight: 800;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.item-protection-badge {
+  position: absolute;
+  left: 0.12rem;
+  top: 0.82rem;
+  z-index: 2;
+  font-size: 0.58rem;
+  line-height: 1;
+}
+
 .live-item-slot.item-changed {
   animation: item-changed-pulse 1.2s ease-out;
 }
