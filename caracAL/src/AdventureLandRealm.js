@@ -4,6 +4,13 @@ function nonEmptyString(value) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+function secureSocketAddress(value, port = null) {
+  const address = nonEmptyString(value);
+  if (!address) return null;
+  if (/^[a-z]+:\/\//i.test(address)) return address;
+  return "https://" + address + (port ? ":" + port : "");
+}
+
 function normalizeRealmConnection(realm = {}) {
   const currentAddress = nonEmptyString(realm.address);
   const currentPath = nonEmptyString(realm.path);
@@ -12,14 +19,9 @@ function normalizeRealmConnection(realm = {}) {
     ? Number(realm.port)
     : null;
 
-  let address = currentAddress;
-  if (!address && legacyAddr) {
-    if (/^[a-z]+:\/\//i.test(legacyAddr) || !legacyPort) {
-      address = legacyAddr;
-    } else {
-      address = `https://${legacyAddr}:${legacyPort}`;
-    }
-  }
+  const address = currentAddress
+    ? secureSocketAddress(currentAddress)
+    : secureSocketAddress(legacyAddr, legacyPort);
 
   return {
     address,
@@ -31,4 +33,5 @@ function normalizeRealmConnection(realm = {}) {
 
 module.exports = {
   normalizeRealmConnection,
+  secureSocketAddress,
 };
