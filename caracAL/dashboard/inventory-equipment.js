@@ -42,7 +42,7 @@
     ]);
   }
 
-  function itemTitle(item) {
+  function itemTitle(item, intelligence = null) {
     if (!item) return "Leer";
 
     const parts = [item.display_name || item.name || "Unbekannt"];
@@ -50,6 +50,16 @@
     if (Number.isFinite(item.q) && item.q > 1) parts.push(`x${item.q}`);
     if (item.locked) parts.push("LOCKED");
     if (item.stat_type) parts.push(item.stat_type);
+    if (intelligence?.disposition) {
+      parts.push(`Disposition ${intelligence.disposition}`);
+    }
+    if (
+      Array.isArray(intelligence?.protections) &&
+      intelligence.protections.length
+    ) {
+      parts.push(`Protected ${intelligence.protections.join(", ")}`);
+    }
+    if (intelligence?.why) parts.push(intelligence.why);
     return parts.join(" · ");
   }
 
@@ -100,11 +110,15 @@
     slotName,
     item,
     slotLabel,
+    intelligence = null,
     displaySize = 40,
   }) {
     const slot = document.createElement("div");
     slot.className = "live-item-slot";
-    slot.title = itemTitle(item);
+    slot.title = itemTitle(item, intelligence);
+    if (intelligence?.disposition) {
+      slot.dataset.disposition = intelligence.disposition;
+    }
 
     const key = `${characterName}:${location}:${slotName}`;
     const signature = itemSignature(item);
@@ -157,6 +171,28 @@
         locked.textContent = "🔒";
         locked.setAttribute("aria-label", "Locked");
         slot.append(locked);
+      }
+
+      if (intelligence?.disposition) {
+        const disposition = document.createElement("span");
+        disposition.className = "item-disposition-badge";
+        disposition.textContent = intelligence.disposition;
+        slot.append(disposition);
+      }
+
+      if (
+        Array.isArray(intelligence?.protections) &&
+        intelligence.protections.length > 0
+      ) {
+        const protection = document.createElement("span");
+        protection.className = "item-protection-badge";
+        protection.textContent = "🛡";
+        protection.title = intelligence.protections.join(", ");
+        protection.setAttribute(
+          "aria-label",
+          `Protected: ${intelligence.protections.join(", ")}`,
+        );
+        slot.append(protection);
       }
     } else {
       slot.classList.add("item-empty");
@@ -214,6 +250,16 @@
   function createInventory(character) {
     const game = character.game || {};
     const items = Array.isArray(game.items) ? game.items : [];
+    const intelligenceEntries = Array.isArray(
+      character.inventory_intelligence_runtime?.entries,
+    )
+      ? character.inventory_intelligence_runtime.entries
+      : [];
+    const intelligenceBySlot = new Map(
+      intelligenceEntries
+        .filter((entry) => Number.isInteger(entry?.slot))
+        .map((entry) => [entry.slot, entry]),
+    );
     const section = document.createElement("section");
     section.className = "inventory-section";
 
@@ -242,6 +288,7 @@
           slotName: index,
           item: items[index] || null,
           slotLabel: index,
+          intelligence: intelligenceBySlot.get(index) || null,
         }),
       );
     }
