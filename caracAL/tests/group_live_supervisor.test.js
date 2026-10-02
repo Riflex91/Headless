@@ -106,3 +106,41 @@ test("group supervisor diagnostics expose autonomous cleanup", () => {
   assert.equal(diagnostics.observed.initial_party_restored, true);
   assert.equal(diagnostics.result.outcome, "PASS");
 });
+
+
+/* PHASE8_PRETTIER_PROBE_START */
+test("phase8 prettier exact-output probe", async () => {
+  const fs = require("node:fs");
+  const nodePath = require("node:path");
+  const prettier = await import("prettier");
+  const targets = [
+    "dashboard/app.js",
+    "scripts/run_group_live_e2e.js",
+    "src/GroupLiveTest.js",
+    "standalones/CharacterCoordinator.js",
+    "tests/group_combat_controller.test.js",
+    "tests/group_live_test.test.js",
+    "tests/headless_dashboard.test.js",
+  ];
+
+  for (const relative of targets) {
+    const absolute = nodePath.join(__dirname, "..", relative);
+    const source = fs.readFileSync(absolute, "utf8");
+    const formatted = await prettier.format(source, { filepath: absolute });
+    const encoded = Buffer.from(formatted, "utf8").toString("base64");
+    const pathToken = Buffer.from(relative, "utf8").toString("base64");
+    let part = 0;
+    for (let offset = 0; offset < encoded.length; offset += 6000) {
+      console.log(
+        "PHASE8_PRETTIER|" +
+          pathToken +
+          "|" +
+          String(part).padStart(4, "0") +
+          "|" +
+          encoded.slice(offset, offset + 6000),
+      );
+      part += 1;
+    }
+  }
+});
+/* PHASE8_PRETTIER_PROBE_END */
