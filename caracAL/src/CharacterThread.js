@@ -131,6 +131,42 @@ async function make_runner(upper, CODE_file, version, is_typescript) {
         //vscode says this is unreachable.
         //with how whack node is better be safe
         break;
+      case "farm_intelligence_live_test": {
+        const requestId =
+          typeof m.request_id === "string" && m.request_id
+            ? m.request_id
+            : `farm-intelligence-live-${Date.now()}`;
+        const runtime = runner_context.__caracalBotRuntime;
+        if (!runtime?.runFarmIntelligenceLiveTest) {
+          sendIpcMessage(process, {
+            type: "farm_intelligence_live_test_result",
+            request_id: requestId,
+            error: "FARM_INTELLIGENCE_LIVE_TEST_RUNTIME_NOT_READY",
+          });
+          break;
+        }
+
+        void runtime
+          .runFarmIntelligenceLiveTest({
+            requestId,
+            sampleMs: Number(m.sample_ms) || undefined,
+          })
+          .then((result) => {
+            sendIpcMessage(process, {
+              type: "farm_intelligence_live_test_result",
+              request_id: requestId,
+              result,
+            });
+          })
+          .catch((error) => {
+            sendIpcMessage(process, {
+              type: "farm_intelligence_live_test_result",
+              request_id: requestId,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          });
+        break;
+      }
       case "group_live_test": {
         const requestId =
           typeof m.request_id === "string" && m.request_id

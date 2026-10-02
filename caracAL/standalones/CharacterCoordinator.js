@@ -64,6 +64,11 @@ const {
   groupLiveTestDiagnostics,
   groupLiveTestEvidence,
 } = require("../src/GroupLiveTest");
+const {
+  combineFarmIntelligenceLiveTestResult,
+  farmIntelligenceLiveTestDiagnostics,
+  farmIntelligenceLiveTestEvidence,
+} = require("../src/FarmIntelligenceLiveTest");
 const { PersistenceService } = require("../src/PersistenceService");
 const { CharacterConfigService } = require("../src/CharacterConfigService");
 const {
@@ -97,6 +102,7 @@ const MOVEMENT_LIVE_TEST_RESULT_TIMEOUT_MS = 120000;
 const COMBAT_LIVE_TEST_RESULT_TIMEOUT_MS = 120000;
 const CLASS_SKILL_LIVE_TEST_RESULT_TIMEOUT_MS = 120000;
 const GROUP_LIVE_TEST_RESULT_TIMEOUT_MS = 120000;
+const FARM_INTELLIGENCE_LIVE_TEST_RESULT_TIMEOUT_MS = 120000;
 
 //TODO check for invalid session
 //TODO improve termination
@@ -217,6 +223,8 @@ function migrate_old_storage(path, localStorage) {
   let class_skill_live_test_sequence = 0;
   const group_live_test_requests = new Map();
   let group_live_test_sequence = 0;
+  const farm_intelligence_live_test_requests = new Map();
+  let farm_intelligence_live_test_sequence = 0;
   const incident_recorder = new IncidentRecorder({
     rootDir: path.join(process.cwd(), "logs", "incidents"),
     diagnosticStore: diagnostic_store,
@@ -257,6 +265,7 @@ function migrate_old_storage(path, localStorage) {
         runCombatLiveTest: run_combat_live_test,
         runClassSkillLiveTest: run_class_skill_live_test,
         runGroupLiveTest: run_group_live_test,
+        runFarmIntelligenceLiveTest: run_farm_intelligence_live_test,
         controlEmergencyStop: control_emergency_stop,
         getEmergencyStopState: () => emergency_stop.snapshot(),
         getRevisionSummary: revision_summary,
@@ -716,6 +725,8 @@ function migrate_old_storage(path, localStorage) {
     char_block.combat_live_test = char_block.combat_live_test || null;
     char_block.class_skill_live_test = char_block.class_skill_live_test || null;
     char_block.group_live_test = char_block.group_live_test || null;
+    char_block.farm_intelligence_live_test =
+      char_block.farm_intelligence_live_test || null;
     char_block.combat_runtime = char_block.combat_runtime || null;
     char_block.class_skill_runtime = char_block.class_skill_runtime || null;
     char_block.group_combat_runtime = char_block.group_combat_runtime || null;
@@ -1018,6 +1029,18 @@ function migrate_old_storage(path, localStorage) {
     }
   }
 
+  function reject_farm_intelligence_live_tests_for_character(
+    char_name,
+    reason,
+  ) {
+    for (const [request_id, pending] of farm_intelligence_live_test_requests) {
+      if (pending.character !== char_name) continue;
+      clearTimeout(pending.timer);
+      farm_intelligence_live_test_requests.delete(request_id);
+      pending.reject(new Error(reason));
+    }
+  }
+
   async function wait_for_movement_live_test_runtime(
     char_name,
     timeout_ms = MOVEMENT_LIVE_TEST_RUNTIME_TIMEOUT_MS,
@@ -1230,6 +1253,31 @@ function migrate_old_storage(path, localStorage) {
       }, GROUP_LIVE_TEST_RESULT_TIMEOUT_MS);
 
       group_live_test_requests.set(request_id, {
+        character: char_name,
+        resolve,
+        reject,
+        timer,
+      });
+    });
+  }
+
+  function wait_for_farm_intelligence_live_test_result(
+    char_name,
+    request_id,
+  ) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        farm_intelligence_live_test_requests.delete(request_id);
+        reject(
+          make_control_error(
+            "FARM_INTELLIGENCE_LIVE_TEST_TIMEOUT",
+            `Farm intelligence live test timed out for ${char_name}`,
+            504,
+          ),
+        );
+      }, FARM_INTELLIGENCE_LIVE_TEST_RESULT_TIMEOUT_MS);
+
+      farm_intelligence_live_test_requests.set(request_id, {
         character: char_name,
         resolve,
         reject,
@@ -1526,6 +1574,330 @@ function migrate_old_storage(path, localStorage) {
       char_name,
     );
     return incident.incident_id;
+  }
+
+  function capture_farm_intelligence_live_test_incident(
+    char_name,
+    test_result,
+  ) {
+    const incident = incident_recorder.capture({
+      reason:
+        test_result.reason || "FARM_INTELLIGENCE_LIVE_TEST_FAILED",
+      severity:
+        test_result.outcome === "UNKNOWN" || test_result.outcome === "TIMEOUT"
+          ? "HIGH"
+          : "ERROR",
+      character: char_name,
+      event: {
+        type: "farm_intelligence_live_test",
+        event: "FARM_INTELLIGENCE_LIVE_TEST_FAILED",
+        character: char_name,
+        timestamp: Date.now(),
+        request_id: test_result.request_id || test_result.requestId || null,
+        outcome: test_result.outcome || "FAIL",
+        reason:
+          test_result.reason || "FARM_INTELLIGENCE_LIVE_TEST_FAILED",
+      },
+      extra: {
+        test: test_result,
+      },
+    });
+
+    void observe_persistence(
+      persistence.indexIncident(
+        incident,
+        path.join("logs", "incidents", incident.incident_id),
+      ),
+      "farm_intelligence_live_test_incident",
+      char_name,
+    );
+    return incident.incident_id;
+  }
+
+  async function run_farm_intelligence_live_test(char_name) {
+    const char_block = character_manage[char_name];
+    if (!char_block) {
+      throw make_control_error(
+        "CHARACTER_NOT_FOUND",
+        `Unknown character: ${char_name}`,
+        404,
+      );
+    }
+    if (
+      ["STARTING", "RUNNING"].includes(
+        char_block.farm_intelligence_live_test?.status,
+      )
+    ) {
+      throw make_control_error(
+        "FARM_INTELLIGENCE_LIVE_TEST_ALREADY_RUNNING",
+        `Farm intelligence live test already running for ${char_name}`,
+        409,
+      );
+    }
+    for (const [state, code, label] of [
+      [char_block.movement_live_test, "MOVEMENT_LIVE_TEST_ALREADY_RUNNING", "Movement"],
+      [char_block.combat_live_test, "COMBAT_LIVE_TEST_ALREADY_RUNNING", "Combat"],
+      [char_block.class_skill_live_test, "CLASS_SKILL_LIVE_TEST_ALREADY_RUNNING", "Class skill"],
+      [char_block.group_live_test, "GROUP_LIVE_TEST_ALREADY_RUNNING", "Group"],
+    ]) {
+      if (["STARTING", "RUNNING"].includes(state?.status)) {
+        throw make_control_error(
+          code,
+          `${label} live test already running for ${char_name}`,
+          409,
+        );
+      }
+    }
+
+    const original_desired_state =
+      char_block.desired_runtime_state ||
+      (char_block.enabled
+        ? DESIRED_RUNTIME_STATES.RUNNING
+        : DESIRED_RUNTIME_STATES.STOPPED);
+    const start_state = {
+      lifecycle_state: char_block.lifecycle_state || null,
+      desired_runtime_state: original_desired_state,
+      enabled: !!char_block.enabled,
+      connected: !!char_block.connected,
+      map: char_block.live_state?.map || null,
+      x: Number.isFinite(char_block.live_state?.x)
+        ? char_block.live_state.x
+        : null,
+      y: Number.isFinite(char_block.live_state?.y)
+        ? char_block.live_state.y
+        : null,
+      xp: Number.isFinite(char_block.live_state?.xp)
+        ? char_block.live_state.xp
+        : null,
+      gold: Number.isFinite(char_block.live_state?.gold)
+        ? char_block.live_state.gold
+        : null,
+    };
+    const started_at = Date.now();
+    farm_intelligence_live_test_sequence += 1;
+    const request_id =
+      `farm-intelligence-live-${started_at}-${farm_intelligence_live_test_sequence}`;
+
+    char_block.farm_intelligence_live_test = {
+      request_id,
+      status: "STARTING",
+      outcome: null,
+      reason: null,
+      started_at,
+      completed_at: null,
+    };
+    emit_supervisor_event(
+      "FARM_INTELLIGENCE_LIVE_TEST_REQUESTED",
+      char_name,
+      {
+        request_id,
+        original_desired_state,
+      },
+    );
+    dashboard?.publishSnapshot();
+
+    let runtime_override_applied = false;
+    try {
+      const runtime_ready =
+        !!char_block.instance &&
+        char_block.connected &&
+        Number.isFinite(char_block.bot_runtime_started_at);
+
+      if (!runtime_ready) {
+        const bundle_path = path.join(
+          process.cwd(),
+          "TYPECODE.out",
+          MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE,
+        );
+        if (!fs_regular.existsSync(bundle_path)) {
+          throw make_control_error(
+            "FARM_INTELLIGENCE_LIVE_TEST_RUNTIME_BUNDLE_MISSING",
+            `Farm intelligence runtime bundle is missing: ${bundle_path}`,
+            503,
+          );
+        }
+        char_block.movement_live_test_typescript_override =
+          MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE;
+        runtime_override_applied = true;
+      }
+
+      if (original_desired_state !== DESIRED_RUNTIME_STATES.RUNNING) {
+        char_block.enabled = true;
+        char_block.desired_runtime_state = DESIRED_RUNTIME_STATES.RUNNING;
+      }
+
+      if (runtime_override_applied) {
+        await restart_character_for_movement_runtime(char_name, char_block);
+      } else if (!char_block.instance) {
+        await control_character(char_name, CONTROL_ACTIONS.START);
+      }
+
+      await wait_for_movement_live_test_runtime(char_name);
+      const ready_block = character_manage[char_name];
+      const result_promise = wait_for_farm_intelligence_live_test_result(
+        char_name,
+        request_id,
+      );
+
+      ready_block.farm_intelligence_live_test = {
+        ...ready_block.farm_intelligence_live_test,
+        status: "RUNNING",
+      };
+      dashboard?.publishSnapshot();
+
+      const sent = safe_send(ready_block.instance, {
+        type: "farm_intelligence_live_test",
+        request_id,
+        sample_ms: 1200,
+      });
+      if (!sent) {
+        throw make_control_error(
+          "FARM_INTELLIGENCE_LIVE_TEST_DISPATCH_FAILED",
+          `Could not dispatch farm intelligence live test to ${char_name}`,
+          503,
+        );
+      }
+
+      const child_response = await result_promise;
+      if (child_response.error || !child_response.result) {
+        throw make_control_error(
+          "FARM_INTELLIGENCE_LIVE_TEST_RUNTIME_FAILED",
+          child_response.error ||
+            "Farm intelligence live test returned no result",
+          500,
+        );
+      }
+
+      const events = diagnostic_store.getEvents({
+        character: char_name,
+        since: started_at,
+      });
+      const evidence = farmIntelligenceLiveTestEvidence(events, ready_block);
+      const combined = combineFarmIntelligenceLiveTestResult(
+        child_response.result,
+        evidence,
+      );
+      const incident_id =
+        combined.outcome === "PASS"
+          ? null
+          : capture_farm_intelligence_live_test_incident(char_name, {
+              ...combined,
+              request_id,
+            });
+      const diagnostics = farmIntelligenceLiveTestDiagnostics(combined, {
+        character: char_name,
+        originalDesiredState: original_desired_state,
+        startState: start_state,
+        evidence,
+        incidentId: incident_id,
+      });
+
+      ready_block.farm_intelligence_live_test = {
+        ...combined,
+        request_id,
+        status: "COMPLETED",
+        started_at,
+        completed_at: Date.now(),
+        incident_id,
+        diagnostics,
+      };
+      emit_supervisor_event(
+        "FARM_INTELLIGENCE_LIVE_TEST_COMPLETED",
+        char_name,
+        {
+          request_id,
+          outcome: combined.outcome,
+          reason: combined.reason,
+          incident_id,
+          supervisor: evidence,
+        },
+      );
+      dashboard?.publishSnapshot();
+      return ready_block.farm_intelligence_live_test;
+    } catch (error) {
+      const failed_result = {
+        request_id,
+        outcome:
+          error.code === "FARM_INTELLIGENCE_LIVE_TEST_TIMEOUT" ||
+          error.code === "MOVEMENT_LIVE_TEST_RUNTIME_TIMEOUT"
+            ? "TIMEOUT"
+            : "FAIL",
+        reason:
+          error.code ||
+          error.message ||
+          "FARM_INTELLIGENCE_LIVE_TEST_FAILED",
+        error: error.message || String(error),
+        started_at,
+        completed_at: Date.now(),
+        durationMs: Date.now() - started_at,
+      };
+      const failure_events = diagnostic_store.getEvents({
+        character: char_name,
+        since: started_at,
+      });
+      const failure_evidence = farmIntelligenceLiveTestEvidence(
+        failure_events,
+        char_block,
+      );
+      const incident_id = capture_farm_intelligence_live_test_incident(
+        char_name,
+        failed_result,
+      );
+      const failed = {
+        ...failed_result,
+        status: "FAILED",
+        incident_id,
+        diagnostics: farmIntelligenceLiveTestDiagnostics(failed_result, {
+          character: char_name,
+          originalDesiredState: original_desired_state,
+          startState: start_state,
+          evidence: failure_evidence,
+          incidentId: incident_id,
+        }),
+      };
+      char_block.farm_intelligence_live_test = failed;
+      emit_supervisor_event(
+        "FARM_INTELLIGENCE_LIVE_TEST_FAILED",
+        char_name,
+        failed,
+      );
+      dashboard?.publishSnapshot();
+      return failed;
+    } finally {
+      const pending = farm_intelligence_live_test_requests.get(request_id);
+      if (pending) {
+        clearTimeout(pending.timer);
+        farm_intelligence_live_test_requests.delete(request_id);
+      }
+
+      try {
+        if (runtime_override_applied) {
+          await restore_movement_live_test_execution_source(
+            char_name,
+            original_desired_state,
+          );
+        } else {
+          await restore_movement_live_test_state(
+            char_name,
+            original_desired_state,
+          );
+        }
+      } catch (restore_error) {
+        emit_supervisor_event(
+          "FARM_INTELLIGENCE_LIVE_TEST_STATE_RESTORE_FAILED",
+          char_name,
+          {
+            request_id,
+            desired_runtime_state: original_desired_state,
+            error:
+              restore_error instanceof Error
+                ? restore_error.message
+                : String(restore_error),
+          },
+        );
+      }
+      dashboard?.publishSnapshot();
+    }
   }
 
   async function run_movement_live_test(char_name) {
@@ -3026,6 +3398,10 @@ function migrate_old_storage(path, localStorage) {
         char_name,
         "CHARACTER_PROCESS_EXITED_DURING_GROUP_LIVE_TEST",
       );
+      reject_farm_intelligence_live_tests_for_character(
+        char_name,
+        "CHARACTER_PROCESS_EXITED_DURING_FARM_INTELLIGENCE_LIVE_TEST",
+      );
       emit_supervisor_event("CHARACTER_PROCESS_EXITED", char_name, {
         code,
         signal,
@@ -3252,6 +3628,39 @@ function migrate_old_storage(path, localStorage) {
           });
           emit_supervisor_event(
             "CLASS_SKILL_LIVE_TEST_RESULT_RECEIVED",
+            char_name,
+            {
+              request_id: m.request_id,
+              outcome: m.result?.outcome || null,
+              error: m.error || null,
+            },
+          );
+          break;
+        }
+        case "farm_intelligence_live_test_result": {
+          const pending = farm_intelligence_live_test_requests.get(
+            m.request_id,
+          );
+          if (!pending || pending.character !== char_name) {
+            emit_supervisor_event(
+              "FARM_INTELLIGENCE_LIVE_TEST_RESULT_IGNORED",
+              char_name,
+              {
+                why: "UNKNOWN_OR_STALE_REQUEST",
+                request_id: m.request_id || null,
+              },
+            );
+            break;
+          }
+
+          clearTimeout(pending.timer);
+          farm_intelligence_live_test_requests.delete(m.request_id);
+          pending.resolve({
+            result: m.result || null,
+            error: m.error || null,
+          });
+          emit_supervisor_event(
+            "FARM_INTELLIGENCE_LIVE_TEST_RESULT_RECEIVED",
             char_name,
             {
               request_id: m.request_id,

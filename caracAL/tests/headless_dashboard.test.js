@@ -77,6 +77,7 @@ test("public character state exposes only dashboard-safe fields", () => {
     combat_live_test: null,
     class_skill_live_test: null,
     group_live_test: null,
+    farm_intelligence_live_test: null,
     combat_runtime: null,
     class_skill_runtime: null,
     group_combat_runtime: null,
@@ -399,6 +400,8 @@ test("dashboard module and coordinator remain syntactically valid", () => {
   assert.match(coordinator, /class_skill_live_test_result/);
   assert.match(coordinator, /run_group_live_test/);
   assert.match(coordinator, /group_live_test_result/);
+  assert.match(coordinator, /run_farm_intelligence_live_test/);
+  assert.match(coordinator, /farm_intelligence_live_test_result/);
   assert.match(runtimeKernel, /movement:\s*this\.movement\.status\(\)/);
   assert.match(runtimeKernel, /combat:\s*this\.combat\.status\(\)/);
   assert.match(coordinator, /combat_runtime/);
@@ -415,12 +418,16 @@ test("dashboard module and coordinator remain syntactically valid", () => {
   assert.match(runtimeKernel, /runMovementLiveTest/);
   assert.match(runtimeKernel, /runCombatLiveTest/);
   assert.match(runtimeKernel, /runClassSkillLiveTest/);
+  assert.match(runtimeKernel, /runFarmIntelligenceLiveTest/);
   assert.match(characterThread, /movement_live_test/);
   assert.match(characterThread, /movement_live_test_result/);
   assert.match(characterThread, /combat_live_test/);
   assert.match(characterThread, /combat_live_test_result/);
   assert.match(characterThread, /class_skill_live_test/);
   assert.match(characterThread, /class_skill_live_test_result/);
+  assert.match(characterThread, /farm_intelligence_live_test/);
+  assert.match(characterThread, /farm_intelligence_live_test_result/);
+  assert.match(dashboard, /tests\/farm-intelligence/);
 });
 
 test("dashboard public live state keeps nearby entity telemetry but not map scene blobs", () => {
