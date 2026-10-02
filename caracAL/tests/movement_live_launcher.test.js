@@ -13,15 +13,12 @@ test("movement live launcher reuses an existing dashboard", async () => {
   let starts = 0;
   const state = { characters: [{ name: "My_Ranger1" }] };
 
-  const result = await ensureDashboardAvailable(
-    async () => state,
-    {
-      startRuntime() {
-        starts += 1;
-        throw new Error("should not start");
-      },
+  const result = await ensureDashboardAvailable(async () => state, {
+    startRuntime() {
+      starts += 1;
+      throw new Error("should not start");
     },
-  );
+  });
 
   assert.equal(starts, 0);
   assert.equal(result.startedRuntime, false);
