@@ -143,7 +143,7 @@ test("Scheduler respects pause state and priority", async () => {
   assert.equal(pauseSkips.length, 2);
 });
 
-test("Scheduler catches job failures and continues with later jobs", async () => {
+test("Scheduler continues after job failure", async () => {
   const { Scheduler } = coreModule("scheduler.lib.ts");
   const events = [];
   const order = [];
@@ -192,7 +192,7 @@ test("Scheduler catches job failures and continues with later jobs", async () =>
   );
 });
 
-test("ModuleRegistry starts dependencies first and stops in reverse order", async () => {
+test("ModuleRegistry respects dependency start and stop order", async () => {
   const { ModuleRegistry } = coreModule("module-registry.lib.ts");
   const calls = [];
 
@@ -229,7 +229,7 @@ test("ModuleRegistry starts dependencies first and stops in reverse order", asyn
   );
 });
 
-test("ModuleRegistry rolls back already-started modules on failure", async () => {
+test("ModuleRegistry rolls back on start failure", async () => {
   const { ModuleRegistry } = coreModule("module-registry.lib.ts");
   const calls = [];
   const registry = new ModuleRegistry();
