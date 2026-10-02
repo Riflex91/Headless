@@ -30,6 +30,11 @@ import {
   InventoryIntelligenceEvent,
 } from "./inventory-intelligence-controller.lib";
 import {
+  InventoryLiveTestOptions,
+  InventoryLiveTestResult,
+  InventoryLiveTestRunner,
+} from "./inventory-live-test.lib";
+import {
   FarmLiveTestOptions,
   FarmLiveTestResult,
   FarmLiveTestRunner,
@@ -128,6 +133,7 @@ export class BotRuntimeKernel {
   private classSkillLiveTestRunning = false;
   private groupLiveTestRunning = false;
   private farmLiveTestRunning = false;
+  private inventoryLiveTestRunning = false;
 
   constructor() {
     this.eventBus = new EventBus({
@@ -401,6 +407,9 @@ export class BotRuntimeKernel {
     if (this.farmLiveTestRunning) {
       throw new Error("farm live test already running");
     }
+    if (this.inventoryLiveTestRunning) {
+      throw new Error("inventory live test already running");
+    }
     if (!this.started || this.stopping) {
       throw new Error("runtime is not ready for movement live test");
     }
@@ -477,6 +486,9 @@ export class BotRuntimeKernel {
     }
     if (this.farmLiveTestRunning) {
       throw new Error("farm live test already running");
+    }
+    if (this.inventoryLiveTestRunning) {
+      throw new Error("inventory live test already running");
     }
     if (!this.started || this.stopping) {
       throw new Error("runtime is not ready for combat live test");
@@ -563,6 +575,9 @@ export class BotRuntimeKernel {
     if (this.farmLiveTestRunning) {
       throw new Error("farm live test already running");
     }
+    if (this.inventoryLiveTestRunning) {
+      throw new Error("inventory live test already running");
+    }
     if (!this.started || this.stopping) {
       throw new Error("runtime is not ready for class skill live test");
     }
@@ -646,6 +661,9 @@ export class BotRuntimeKernel {
     if (this.farmLiveTestRunning) {
       throw new Error("farm live test already running");
     }
+    if (this.inventoryLiveTestRunning) {
+      throw new Error("inventory live test already running");
+    }
     if (!this.started || this.stopping) {
       throw new Error("runtime is not ready for group live test");
     }
@@ -717,6 +735,9 @@ export class BotRuntimeKernel {
     if (this.farmLiveTestRunning) {
       throw new Error("farm live test already running");
     }
+    if (this.inventoryLiveTestRunning) {
+      throw new Error("inventory live test already running");
+    }
     if (this.movementLiveTestRunning) {
       throw new Error("movement live test already running");
     }
@@ -728,6 +749,9 @@ export class BotRuntimeKernel {
     }
     if (this.groupLiveTestRunning) {
       throw new Error("group live test already running");
+    }
+    if (this.inventoryLiveTestRunning) {
+      throw new Error("inventory live test already running");
     }
     if (!this.started || this.stopping) {
       throw new Error("runtime is not ready for farm live test");
@@ -784,6 +808,85 @@ export class BotRuntimeKernel {
       throw error;
     } finally {
       this.farmLiveTestRunning = false;
+    }
+  }
+
+  runInventoryIntelligenceLiveTest(
+    options: InventoryLiveTestOptions = {},
+  ): InventoryLiveTestResult {
+    if (this.inventoryLiveTestRunning) {
+      throw new Error("inventory live test already running");
+    }
+    if (this.movementLiveTestRunning) {
+      throw new Error("movement live test already running");
+    }
+    if (this.combatLiveTestRunning) {
+      throw new Error("combat live test already running");
+    }
+    if (this.classSkillLiveTestRunning) {
+      throw new Error("class skill live test already running");
+    }
+    if (this.groupLiveTestRunning) {
+      throw new Error("group live test already running");
+    }
+    if (this.farmLiveTestRunning) {
+      throw new Error("farm live test already running");
+    }
+    if (!this.started || this.stopping) {
+      throw new Error("runtime is not ready for inventory live test");
+    }
+    if (runtimeState() !== "RUNNING") {
+      throw new Error("runtime must be RUNNING for inventory live test");
+    }
+
+    this.inventoryLiveTestRunning = true;
+    const requestId = options.requestId || `inventory-live-${Date.now()}`;
+    this.eventBus.emit({
+      module: "InventoryLiveTest",
+      type: "INVENTORY_LIVE_TEST_STARTED",
+      why: "AUTONOMOUS_INVENTORY_INTELLIGENCE_E2E",
+      correlationId: requestId,
+      data: {
+        requestId,
+        inventoryIntelligence: this.inventoryIntelligence.status(),
+        ...runtimeIdentity(),
+      },
+    });
+
+    try {
+      const runner = new InventoryLiveTestRunner({
+        inventoryIntelligence: this.inventoryIntelligence,
+        inventory: () => this.game.inventory(),
+      });
+      const result = runner.run({
+        ...options,
+        requestId,
+      });
+      this.eventBus.emit({
+        module: "InventoryLiveTest",
+        type: "INVENTORY_LIVE_TEST_COMPLETED",
+        why: result.reason,
+        correlationId: requestId,
+        data: {
+          result,
+          inventoryIntelligence: this.inventoryIntelligence.status(),
+        },
+      });
+      return result;
+    } catch (error) {
+      this.eventBus.emit({
+        module: "InventoryLiveTest",
+        type: "INVENTORY_LIVE_TEST_FAILED",
+        why: "INVENTORY_LIVE_TEST_RUNTIME_ERROR",
+        correlationId: requestId,
+        data: {
+          error: error instanceof Error ? error.message : String(error),
+          inventoryIntelligence: this.inventoryIntelligence.status(),
+        },
+      });
+      throw error;
+    } finally {
+      this.inventoryLiveTestRunning = false;
     }
   }
 
