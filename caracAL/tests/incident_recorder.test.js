@@ -45,10 +45,7 @@ test("incident trigger classification covers critical runtime failures", () => {
   assert.equal(incidentTriggerReason({ event: "CHARACTER_STDERR" }), null);
 
   assert.equal(incidentSeverity({ type: "ACTION_UNKNOWN" }), "HIGH");
-  assert.equal(
-    incidentSeverity({ event: "PERSISTENCE_WRITE_FAILED" }),
-    "HIGH",
-  );
+  assert.equal(incidentSeverity({ event: "PERSISTENCE_WRITE_FAILED" }), "HIGH");
   assert.equal(incidentSeverity({ type: "MODULE_FAILED" }), "ERROR");
 });
 
