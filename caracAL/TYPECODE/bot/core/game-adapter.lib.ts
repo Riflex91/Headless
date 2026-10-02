@@ -80,7 +80,13 @@ function cloneJsonValue(
   }
   if (depth >= 8) return "[max-depth]";
   if (Array.isArray(value)) {
-    return value.map((item) => cloneJsonValue(item, depth + 1, seen));
+    if (seen.has(value)) return "[circular]";
+    seen.add(value);
+    const result = value.map((item) =>
+      cloneJsonValue(item, depth + 1, seen),
+    );
+    seen.delete(value);
+    return result;
   }
   if (typeof value !== "object") return undefined;
 
@@ -170,7 +176,7 @@ export class GameAdapter {
   }
 
   party(): Record<string, unknown> {
-    return (cloneJsonValue(this.source.party()) as Record<string, unknown>) || {};
+    return record(cloneJsonValue(this.source.party()));
   }
 
   inventory(): InventorySlotSnapshot[] {
@@ -210,8 +216,6 @@ export class GameAdapter {
   }
 
   gameData(): Record<string, unknown> {
-    return (
-      (cloneJsonValue(this.source.gameData()) as Record<string, unknown>) || {}
-    );
+    return record(cloneJsonValue(this.source.gameData()));
   }
 }
