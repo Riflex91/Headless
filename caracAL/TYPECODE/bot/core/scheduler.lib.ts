@@ -26,6 +26,7 @@ export interface SchedulerEvent {
   reason?: string;
   durationMs?: number;
   error?: string;
+  stack?: string;
 }
 
 export interface SchedulerOptions {
@@ -201,6 +202,7 @@ export class Scheduler {
         timestamp: this.now(),
         durationMs: Math.max(0, this.now() - startedAt),
         error: error instanceof Error ? error.message : String(error),
+        ...(error instanceof Error && error.stack && { stack: error.stack }),
       });
     } finally {
       state.running = false;
