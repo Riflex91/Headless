@@ -327,7 +327,6 @@ test("dashboard live-state projection rejects unrelated fields", () => {
   assert.equal(JSON.stringify(live).includes("must-not-leak"), false);
 });
 
-
 test("runtime movement telemetry survives stat beats and exposes controller plan", () => {
   const block = {};
 
@@ -401,10 +400,7 @@ test("runtime movement telemetry survives stat beats and exposes controller plan
 
   assert.equal(block.live_state.movement_mode, "PATH");
   assert.equal(block.live_state.movement_owner, "Farm");
-  assert.equal(
-    block.live_state.movement_reason,
-    "PATROL_ROUTE:WAYPOINT_2",
-  );
+  assert.equal(block.live_state.movement_reason, "PATROL_ROUTE:WAYPOINT_2");
   assert.equal(block.live_state.movement_command.actionId, "A-7");
   assert.equal(block.live_state.movement_stuck.stuck, true);
   assert.equal(block.live_state.safe_point.source, "CURRENT_POSITION");
