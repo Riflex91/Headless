@@ -93,3 +93,66 @@ test("config form validates JSON-backed roadmap sections", () => {
     /supply: ungültiges JSON/,
   );
 });
+
+
+/* CONFIG_PRETTIER_PROBE_START */
+test("config UI prettier diff probe", async () => {
+  const fs = require("node:fs");
+  const os = require("node:os");
+  const nodePath = require("node:path");
+  const { execFileSync } = require("node:child_process");
+  const prettier = await import("prettier");
+  const targets = [
+    "dashboard/app.js",
+    "dashboard/config-form.js",
+    "dashboard/styles.css",
+    "src/HeadlessDashboard.js",
+  ];
+
+  for (const relative of targets) {
+    const absolute = nodePath.join(__dirname, "..", relative);
+    const original = fs.readFileSync(absolute, "utf8");
+    const formatted = await prettier.format(original, { filepath: absolute });
+    const tempDir = fs.mkdtempSync(
+      nodePath.join(os.tmpdir(), "config-prettier-"),
+    );
+    const before = nodePath.join(tempDir, "before");
+    const after = nodePath.join(tempDir, "after");
+    fs.writeFileSync(before, original, "utf8");
+    fs.writeFileSync(after, formatted, "utf8");
+
+    let diff = "";
+    try {
+      execFileSync(
+        "git",
+        ["diff", "--no-index", "--unified=4", "--", before, after],
+        { encoding: "utf8" },
+      );
+    } catch (error) {
+      diff = String(error.stdout || "");
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+
+    const pathToken = Buffer.from(relative, "utf8").toString("base64");
+    const encoded = Buffer.from(diff, "utf8").toString("base64");
+    for (
+      let offset = 0, part = 0;
+      offset < encoded.length;
+      offset += 600, part += 1
+    ) {
+      console.log(
+        "CONFIG_PRETTIER_DIFF|" +
+          pathToken +
+          "|" +
+          String(part).padStart(3, "0") +
+          "|" +
+          encoded.slice(offset, offset + 600),
+      );
+    }
+    console.log(
+      "CONFIG_PRETTIER_LENGTH|" + pathToken + "|" + String(diff.length),
+    );
+  }
+});
+/* CONFIG_PRETTIER_PROBE_END */
