@@ -32,6 +32,7 @@ const { DiagnosticEventStore } = require("../src/DiagnosticStore");
 const { EmergencyStopState } = require("../src/EmergencyStopState");
 const { attachHeadlessDashboard } = require("../src/HeadlessDashboard");
 const { IncidentRecorder } = require("../src/IncidentRecorder");
+const { createRotationPlan } = require("../src/CharacterRotation");
 const { StructuredLogger } = require("../src/StructuredLogger");
 const { updateCharacterLiveState } = require("../src/LiveState");
 const { normalizeRuntimeEvent } = require("../src/RuntimeEventBridge");
@@ -204,6 +205,7 @@ function migrate_old_storage(path, localStorage) {
         characterManage: character_manage,
         lifecyclePolicy: lifecycle_policy,
         controlCharacter: control_character,
+        controlRotation: control_rotation,
         controlEmergencyStop: control_emergency_stop,
         getEmergencyStopState: () => emergency_stop.snapshot(),
         getRevisionSummary: revision_summary,
@@ -507,6 +509,8 @@ function migrate_old_storage(path, localStorage) {
     char_block.restart_timer = char_block.restart_timer || null;
     char_block.stable_timer = char_block.stable_timer || null;
     char_block.controlled_restart = false;
+    char_block.rotation_replacement = null;
+    char_block.rotation_source = null;
     char_block.last_heartbeat_at = char_block.last_heartbeat_at || 0;
     char_block.last_heartbeat_pid = char_block.last_heartbeat_pid || null;
     char_block.watchdog_recovery_in_progress = false;
@@ -674,6 +678,47 @@ function migrate_old_storage(path, localStorage) {
     return state;
   }
 
+  async function control_rotation({ startCharacter, stopCharacter } = {}) {
+    const plan = createRotationPlan(character_manage, {
+      startCharacter,
+      stopCharacter,
+    });
+    const source = character_manage[plan.stop_character];
+    const target = character_manage[plan.start_character];
+
+    clear_restart_timer(source);
+    clear_stable_timer(source);
+    clear_restart_timer(target);
+    clear_stable_timer(target);
+
+    source.enabled = false;
+    source.desired_runtime_state = DESIRED_RUNTIME_STATES.STOPPED;
+    source.rotation_replacement = plan.start_character;
+
+    target.enabled = true;
+    target.desired_runtime_state = DESIRED_RUNTIME_STATES.RUNNING;
+    target.rotation_source = plan.stop_character;
+
+    persist_character_runtime_state(plan.stop_character, "rotation_source");
+    persist_character_runtime_state(plan.start_character, "rotation_target");
+
+    emit_supervisor_event("CHARACTER_ROTATION_REQUESTED", null, {
+      why: "EXPLICIT_SLOT_ROTATION",
+      stop_character: plan.stop_character,
+      start_character: plan.start_character,
+      source_desired_state: plan.source_desired_state,
+      target_desired_state: plan.target_desired_state,
+    });
+    dashboard?.publishSnapshot();
+
+    await softkill_block(source);
+
+    return {
+      ...plan,
+      status: "REQUESTED",
+    };
+  }
+
   async function control_character(char_name, action) {
     const char_block = character_manage[char_name];
     if (!char_block) {
@@ -744,6 +789,20 @@ function migrate_old_storage(path, localStorage) {
       case CONTROL_ACTIONS.STOP:
         char_block.enabled = false;
         char_block.desired_runtime_state = DESIRED_RUNTIME_STATES.STOPPED;
+        if (char_block.rotation_source) {
+          const rotation_source = char_block.rotation_source;
+          const source = character_manage[rotation_source];
+          if (source?.rotation_replacement === char_name) {
+            source.rotation_replacement = null;
+          }
+          char_block.rotation_source = null;
+          emit_supervisor_event("CHARACTER_ROTATION_CANCELLED", char_name, {
+            why: "ROTATION_TARGET_STOPPED",
+            stop_character: rotation_source,
+            start_character: char_name,
+            reason: "TARGET_STOPPED",
+          });
+        }
         clear_restart_timer(char_block);
         clear_stable_timer(char_block);
         persist_character_runtime_state(char_name, "manual_stop");
@@ -926,8 +985,50 @@ function migrate_old_storage(path, localStorage) {
         char_block.instance = null;
       }
 
+      const rotation_replacement = char_block.rotation_replacement;
+      char_block.rotation_replacement = null;
       const controlled_restart = char_block.controlled_restart;
       char_block.controlled_restart = false;
+
+      if (rotation_replacement && !coordinator_shutting_down) {
+        char_block.restart_attempts = 0;
+        set_lifecycle_state(
+          char_name,
+          LIFECYCLE_STATES.STOPPED,
+          "rotation_slot_released",
+        );
+        emit_supervisor_event("CHARACTER_ROTATION_SLOT_RELEASED", char_name, {
+          why: "ROTATION_SOURCE_EXITED",
+          start_character: rotation_replacement,
+        });
+        dashboard?.publishSnapshot();
+
+        setTimeout(() => {
+          const target = character_manage[rotation_replacement];
+          if (
+            !target ||
+            !target.enabled ||
+            target.desired_runtime_state !== DESIRED_RUNTIME_STATES.RUNNING
+          ) {
+            return;
+          }
+
+          const started = start_char(rotation_replacement);
+          if (started) {
+            emit_supervisor_event(
+              "CHARACTER_ROTATION_TARGET_STARTING",
+              rotation_replacement,
+              {
+                why: "ROTATION_SLOT_AVAILABLE",
+                stop_character: char_name,
+              },
+            );
+          } else if (target.enabled) {
+            schedule_restart(rotation_replacement, "rotation_slot_unavailable");
+          }
+        }, lifecycle_policy.startupStaggerMs);
+        return;
+      }
 
       if (
         controlled_restart &&
@@ -1069,6 +1170,16 @@ function migrate_old_storage(path, localStorage) {
           emit_supervisor_event("CHARACTER_CONNECTED", char_name, {
             pid: result.pid || null,
           });
+          if (char_block.rotation_source) {
+            const rotation_source = char_block.rotation_source;
+            char_block.rotation_source = null;
+            emit_supervisor_event("CHARACTER_ROTATION_COMPLETED", char_name, {
+              why: "ROTATION_TARGET_CONNECTED",
+              stop_character: rotation_source,
+              start_character: char_name,
+            });
+            dashboard?.publishSnapshot();
+          }
           clear_stable_timer(char_block);
           char_block.stable_timer = setTimeout(() => {
             char_block.restart_attempts = 0;

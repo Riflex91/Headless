@@ -21,6 +21,8 @@ test("public character state exposes only dashboard-safe fields", () => {
     connected: true,
     lifecycle_state: "ONLINE",
     desired_runtime_state: "PAUSED",
+    rotation_source: "My_Warrior",
+    rotation_replacement: null,
     account_owned: true,
     registration_source: "CONFIG",
     account_character_type: "ranger",
@@ -44,6 +46,8 @@ test("public character state exposes only dashboard-safe fields", () => {
     connected: true,
     lifecycle_state: "ONLINE",
     desired_runtime_state: "PAUSED",
+    rotation_source: "My_Warrior",
+    rotation_replacement: null,
     account_owned: true,
     registration_source: "CONFIG",
     ctype: "ranger",
@@ -183,6 +187,9 @@ test("dashboard static assets are present", () => {
   assert.match(index, /Letzter Incident/);
   assert.match(index, /Persistence: UNKNOWN/);
   assert.match(index, /data-control="restart"/);
+  assert.match(index, /id="rotation-stop-character"/);
+  assert.match(index, /id="rotation-start-character"/);
+  assert.match(index, /id="rotate-characters"/);
 });
 
 test("dashboard module and coordinator remain syntactically valid", () => {
@@ -212,6 +219,10 @@ test("dashboard module and coordinator remain syntactically valid", () => {
   assert.match(coordinator, /normalizeIpcMessage/);
   assert.match(coordinator, /registerAccountCharacters/);
   assert.match(coordinator, /registered_character_count/);
+  assert.match(coordinator, /control_rotation/);
+  assert.match(coordinator, /CHARACTER_ROTATION_REQUESTED/);
+  assert.match(coordinator, /CHARACTER_ROTATION_COMPLETED/);
+  assert.match(dashboard, /\/headless\/api\/rotation/);
   assert.match(coordinator, /getPersistenceHealth/);
   assert.match(coordinator, /restoreDesiredRuntimeState/);
   assert.match(coordinator, /saveCharacterRuntimeState/);

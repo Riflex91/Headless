@@ -78,6 +78,13 @@ const persistenceSummarySchema = document.querySelector(
 const persistenceSummaryFlushes = document.querySelector(
   "#persistence-summary-flushes",
 );
+const rotationStopCharacter = document.querySelector(
+  "#rotation-stop-character",
+);
+const rotationStartCharacter = document.querySelector(
+  "#rotation-start-character",
+);
+const rotateCharacters = document.querySelector("#rotate-characters");
 
 function formatTimestamp(timestamp) {
   if (!timestamp) return "—";
@@ -277,6 +284,83 @@ function renderEmergencyStop() {
   clearEmergencyStop.hidden = !emergency.active;
 }
 
+async function sendCharacterRotation(stopCharacter, startCharacter) {
+  const response = await fetch("/headless/api/rotation", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      stop_character: stopCharacter,
+      start_character: startCharacter,
+    }),
+  });
+  const payload = await response.json();
+
+  if (!response.ok) {
+    throw new Error(payload.message || payload.error || "Rotation failed");
+  }
+
+  if (payload.snapshot) {
+    applySnapshot(payload.snapshot);
+  }
+}
+
+function replaceRotationOptions(select, characters, placeholder) {
+  const previous = select.value;
+  select.replaceChildren();
+
+  const empty = document.createElement("option");
+  empty.value = "";
+  empty.textContent = placeholder;
+  select.append(empty);
+
+  for (const character of characters) {
+    const option = document.createElement("option");
+    option.value = character.name;
+    option.textContent = character.name;
+    select.append(option);
+  }
+
+  if (characters.some((character) => character.name === previous)) {
+    select.value = previous;
+  }
+}
+
+function renderRotationControls() {
+  const characters = [...state.characters.values()].sort((a, b) =>
+    a.name.localeCompare(b.name),
+  );
+
+  const sources = characters.filter((character) => {
+    const desired =
+      character.desired_runtime_state ||
+      (character.enabled ? "RUNNING" : "STOPPED");
+    return (
+      !!character.pid &&
+      desired !== "STOPPED" &&
+      character.lifecycle_state !== "STOPPING" &&
+      !character.rotation_replacement
+    );
+  });
+
+  const targets = characters.filter((character) => {
+    const desired =
+      character.desired_runtime_state ||
+      (character.enabled ? "RUNNING" : "STOPPED");
+    return (
+      character.account_owned === true &&
+      !character.pid &&
+      desired === "STOPPED" &&
+      !character.rotation_source
+    );
+  });
+
+  replaceRotationOptions(rotationStopCharacter, sources, "Auswechseln …");
+  replaceRotationOptions(rotationStartCharacter, targets, "Einwechseln …");
+
+  rotateCharacters.disabled =
+    !rotationStopCharacter.value || !rotationStartCharacter.value;
+}
+
 async function sendCharacterControl(characterName, action) {
   const response = await fetch(
     `/headless/api/characters/${encodeURIComponent(characterName)}/control`,
@@ -445,6 +529,12 @@ function updateCharacterCard(card, character) {
   revisionStatus.className = `character-revision-status revision-text-${String(
     character.revision_status || "UNKNOWN",
   ).toLowerCase()}`;
+  const rotationText = character.rotation_source
+    ? `Einwechseln für ${character.rotation_source}`
+    : character.rotation_replacement
+    ? `Auswechseln → ${character.rotation_replacement}`
+    : "—";
+  card.querySelector(".character-rotation").textContent = rotationText;
   card.querySelector(".character-restarts").textContent =
     character.restart_attempts ?? 0;
   card.querySelector(".character-heartbeat").textContent = formatHeartbeat(
@@ -614,6 +704,7 @@ function applySnapshot(snapshot) {
   }
 
   renderCharacters();
+  renderRotationControls();
   renderMovementMap();
   renderInventoryEquipment();
   renderEmergencyStop();
@@ -658,6 +749,30 @@ function connectEvents() {
 clearEvents.addEventListener("click", () => {
   state.events = [];
   renderEvents();
+});
+
+for (const select of [rotationStopCharacter, rotationStartCharacter]) {
+  select.addEventListener("change", renderRotationControls);
+}
+
+rotateCharacters.addEventListener("click", async () => {
+  const stopCharacter = rotationStopCharacter.value;
+  const startCharacter = rotationStartCharacter.value;
+  if (!stopCharacter || !startCharacter) return;
+
+  rotateCharacters.disabled = true;
+  try {
+    await sendCharacterRotation(stopCharacter, startCharacter);
+  } catch (error) {
+    addEvent({
+      timestamp: Date.now(),
+      event: "ROTATION_ERROR",
+      reason: error.message,
+    });
+    await loadInitialState().catch(() => {});
+  } finally {
+    renderRotationControls();
+  }
 });
 
 activateEmergencyStop.addEventListener("click", async () => {
