@@ -5,11 +5,17 @@ import type {
   SmartMoveDestination,
   SmartMoveRequest,
 } from "./action-boundary.lib";
+import {
+  MovementPathPlanner,
+  MovementPathStatus,
+  MovementWaypoint,
+} from "./movement-path.lib";
 
 export type MovementMode =
   | "IDLE"
   | "DIRECT"
   | "SMART"
+  | "PATH"
   | "CANCELLING"
   | "UNKNOWN";
 
@@ -22,7 +28,13 @@ export interface MovementControllerEvent {
     | "MOVEMENT_OWNER_PREEMPTED"
     | "MOVEMENT_COMMAND_STARTED"
     | "MOVEMENT_COMMAND_SETTLED"
-    | "MOVEMENT_COMMAND_UNKNOWN";
+    | "MOVEMENT_COMMAND_UNKNOWN"
+    | "MOVEMENT_PATH_STARTED"
+    | "MOVEMENT_WAYPOINT_STARTED"
+    | "MOVEMENT_WAYPOINT_SETTLED"
+    | "MOVEMENT_PATH_COMPLETED"
+    | "MOVEMENT_PATH_FAILED"
+    | "MOVEMENT_PATH_CANCELLED";
   timestamp: number;
   owner: string | null;
   previousOwner?: string | null;
@@ -31,12 +43,16 @@ export interface MovementControllerEvent {
   actionId?: string;
   status?: string | null;
   reason?: string;
+  pathId?: number;
+  waypointIndex?: number;
+  waypointCount?: number;
 }
 
 export interface MovementControllerOptions {
   now?: () => number;
   onEvent?: (event: MovementControllerEvent) => void;
   directSettlementTolerance?: number;
+  antiPingPongDistance?: number;
 }
 
 export interface MovementRequestBase {
@@ -59,6 +75,11 @@ export interface CancelMovementRequest extends MovementRequestBase {
   force?: boolean;
 }
 
+export interface PathMovementRequest extends MovementRequestBase {
+  waypoints: MovementWaypoint[];
+  allowBacktrack?: boolean;
+}
+
 export interface MovementActionBoundary {
   directMove(request: MoveRequest): ActionRecord;
   cancelDirectMove(actionId: string, reason?: string): ActionRecord;
@@ -76,9 +97,17 @@ interface ActiveMovementCommand {
   target: Record<string, unknown> | null;
 }
 
+interface MovementPathContext {
+  pathId: number;
+  module: string;
+  why: string;
+  correlationId?: string;
+}
+
 export interface MovementControllerStatus {
   owner: string | null;
   mode: MovementMode;
+  path: MovementPathStatus | null;
   active: {
     id: number;
     type: MovementCommandType;
@@ -132,9 +161,11 @@ export class MovementController {
   private readonly now: () => number;
   private readonly onEvent?: (event: MovementControllerEvent) => void;
   private readonly directSettlementTolerance: number;
+  private readonly paths: MovementPathPlanner;
   private owner: string | null = null;
   private mode: MovementMode = "IDLE";
   private active: ActiveMovementCommand | null = null;
+  private pathContext: MovementPathContext | null = null;
   private commandSequence = 0;
 
   constructor(
@@ -148,12 +179,17 @@ export class MovementController {
       (options.directSettlementTolerance || 0) > 0
         ? Number(options.directSettlementTolerance)
         : 5;
+    this.paths = new MovementPathPlanner({
+      now: this.now,
+      antiPingPongDistance: options.antiPingPongDistance,
+    });
   }
 
   status(): MovementControllerStatus {
     return {
       owner: this.owner,
       mode: this.mode,
+      path: this.paths.status(),
       active: this.active
         ? {
             ...this.active,
@@ -226,6 +262,48 @@ export class MovementController {
     return record;
   }
 
+  path(request: PathMovementRequest): ActionRecord {
+    if (this.active) {
+      throw new Error(
+        `movement command already active: ${this.active.type}#${this.active.id}`,
+      );
+    }
+
+    const previousOwner = this.owner;
+    const owner = this.requireOwner(request.owner);
+
+    let pathStatus: MovementPathStatus;
+    try {
+      pathStatus = this.paths.start({
+        owner,
+        waypoints: request.waypoints,
+        allowBacktrack: request.allowBacktrack,
+      });
+    } catch (error) {
+      if (previousOwner === null && this.owner === owner) {
+        this.release(owner, "MOVEMENT_PATH_REJECTED");
+      }
+      throw error;
+    }
+
+    this.pathContext = {
+      pathId: pathStatus.id,
+      module: request.module,
+      why: request.why,
+      correlationId: request.correlationId,
+    };
+    this.mode = "PATH";
+    this.emit({
+      type: "MOVEMENT_PATH_STARTED",
+      owner,
+      pathId: pathStatus.id,
+      waypointIndex: 0,
+      waypointCount: pathStatus.total,
+    });
+
+    return this.dispatchPathWaypoint();
+  }
+
   async smart(request: SmartMovementRequest): Promise<ActionRecord> {
     const owner = this.requireOwner(request.owner);
     const command = this.startCommand(
@@ -269,13 +347,68 @@ export class MovementController {
       return null;
     }
 
+    const pathBeforeSettlement = this.paths.status();
+    const settlementTolerance =
+      pathBeforeSettlement?.current?.tolerance ??
+      this.directSettlementTolerance;
     const record = this.actions.settleMove(
       command.actionId,
-      this.directSettlementTolerance,
+      settlementTolerance,
     );
     if (!this.isCurrent(command.id)) return record;
 
-    if (
+    const pathStatus = this.paths.status();
+    const isPathWaypoint =
+      pathStatus !== null &&
+      pathStatus.owner === command.owner &&
+      this.pathContext?.pathId === pathStatus.id;
+
+    if (record.status === "CONFIRMED" && isPathWaypoint) {
+      this.settleCurrent(record, false);
+      const progress = this.paths.settleCurrent();
+      this.emit({
+        type: "MOVEMENT_WAYPOINT_SETTLED",
+        owner: command.owner,
+        pathId: progress.pathId,
+        waypointIndex: progress.waypointIndex,
+        waypointCount: progress.waypointCount,
+        actionId: record.id,
+        status: record.status,
+      });
+
+      if (progress.completed) {
+        const completedPathId = progress.pathId;
+        const owner = command.owner;
+        this.pathContext = null;
+        this.mode = "IDLE";
+        this.release(owner, "MOVEMENT_PATH_COMPLETED");
+        this.emit({
+          type: "MOVEMENT_PATH_COMPLETED",
+          owner: null,
+          previousOwner: owner,
+          pathId: completedPathId,
+          waypointIndex: progress.waypointCount,
+          waypointCount: progress.waypointCount,
+          actionId: record.id,
+          status: record.status,
+        });
+      } else {
+        this.mode = "PATH";
+        this.dispatchPathWaypoint();
+      }
+    } else if (
+      (record.status === "REJECTED" ||
+        record.status === "BLOCKED") &&
+      isPathWaypoint
+    ) {
+      this.settleCurrent(record, false);
+      this.failPath(
+        record.status === "BLOCKED"
+          ? "MOVEMENT_WAYPOINT_BLOCKED"
+          : "MOVEMENT_WAYPOINT_REJECTED",
+        record,
+      );
+    } else if (
       record.status === "CONFIRMED" ||
       record.status === "REJECTED" ||
       record.status === "BLOCKED"
@@ -340,7 +473,23 @@ export class MovementController {
           "MOVE_CANCELLED",
         );
       }
+
+      const cancelledPath = this.paths.cancel();
+      this.pathContext = null;
       this.settleCurrent(record, true);
+      if (cancelledPath) {
+        this.emit({
+          type: "MOVEMENT_PATH_CANCELLED",
+          owner: null,
+          previousOwner: cancelledPath.owner,
+          pathId: cancelledPath.id,
+          waypointIndex: cancelledPath.index,
+          waypointCount: cancelledPath.total,
+          actionId: record.id,
+          status: record.status,
+          reason: request.why,
+        });
+      }
       return record;
     }
 
@@ -363,6 +512,78 @@ export class MovementController {
       reason: "CANCEL_NOT_CONFIRMED",
     });
     return record;
+  }
+
+  private dispatchPathWaypoint(): ActionRecord {
+    const path = this.paths.status();
+    const context = this.pathContext;
+    const waypoint = this.paths.current();
+    if (!path || !context || !waypoint || context.pathId !== path.id) {
+      throw new Error("movement path state is not dispatchable");
+    }
+
+    this.emit({
+      type: "MOVEMENT_WAYPOINT_STARTED",
+      owner: path.owner,
+      pathId: path.id,
+      waypointIndex: path.index,
+      waypointCount: path.total,
+    });
+
+    const record = this.direct({
+      owner: path.owner,
+      module: context.module,
+      why: `${context.why}:WAYPOINT_${path.index + 1}`,
+      correlationId: context.correlationId,
+      x: waypoint.x,
+      y: waypoint.y,
+    });
+
+    if (
+      record.status === "DISPATCHED" &&
+      this.paths.status()?.id === path.id
+    ) {
+      this.mode = "PATH";
+    }
+
+    if (
+      record.status === "BLOCKED" ||
+      record.status === "REJECTED"
+    ) {
+      this.failPath(
+        record.status === "BLOCKED"
+          ? "MOVEMENT_WAYPOINT_BLOCKED"
+          : "MOVEMENT_WAYPOINT_REJECTED",
+        record,
+      );
+    }
+    return record;
+  }
+
+  private failPath(reason: string, record: ActionRecord): void {
+    const path = this.paths.cancel();
+    this.pathContext = null;
+    if (!path) return;
+
+    const owner = path.owner;
+    if (this.active) {
+      this.active = null;
+    }
+    this.mode = "IDLE";
+    if (this.owner === owner) {
+      this.release(owner, "MOVEMENT_PATH_FAILED");
+    }
+    this.emit({
+      type: "MOVEMENT_PATH_FAILED",
+      owner: this.owner,
+      previousOwner: owner,
+      pathId: path.id,
+      waypointIndex: path.index,
+      waypointCount: path.total,
+      actionId: record.id,
+      status: record.status,
+      reason,
+    });
   }
 
   private requireOwner(owner: string): string {

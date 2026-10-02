@@ -341,6 +341,7 @@ test("confirmed cancel releases direct movement ownership", async () => {
   assert.deepEqual(movement.status(), {
     owner: null,
     mode: "IDLE",
+    path: null,
     active: null,
   });
 });
@@ -608,6 +609,7 @@ test("movement controller observe retains ownership in flight and releases it on
   assert.deepEqual(movement.status(), {
     owner: null,
     mode: "IDLE",
+    path: null,
     active: null,
   });
 });

@@ -232,6 +232,13 @@ export class BotRuntimeKernel {
         }),
         ...(event.actionId && { actionId: event.actionId }),
         ...(event.status !== undefined && { status: event.status }),
+        ...(event.pathId !== undefined && { pathId: event.pathId }),
+        ...(event.waypointIndex !== undefined && {
+          waypointIndex: event.waypointIndex,
+        }),
+        ...(event.waypointCount !== undefined && {
+          waypointCount: event.waypointCount,
+        }),
       },
     });
   }
