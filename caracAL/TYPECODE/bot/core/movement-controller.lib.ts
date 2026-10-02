@@ -182,7 +182,24 @@ function targetForSmart(
   request: SmartMovementRequest,
 ): Record<string, unknown> {
   return {
-    destination: request.destination,
+    destination:
+      request.destination && typeof request.destination === "object"
+        ? { ...request.destination }
+        : request.destination,
+  };
+}
+
+function cloneMovementTarget(
+  target: Record<string, unknown> | null,
+): Record<string, unknown> | null {
+  if (!target) return null;
+
+  const destination = target.destination;
+  return {
+    ...target,
+    ...(destination && typeof destination === "object"
+      ? { destination: { ...destination } }
+      : {}),
   };
 }
 
@@ -235,9 +252,7 @@ export class MovementController {
       active: this.active
         ? {
             ...this.active,
-            target: this.active.target
-              ? { ...this.active.target }
-              : null,
+            target: cloneMovementTarget(this.active.target),
           }
         : null,
     };
@@ -558,9 +573,7 @@ export class MovementController {
     const previousActive = this.active
       ? {
           ...this.active,
-          target: this.active.target
-            ? { ...this.active.target }
-            : null,
+          target: cloneMovementTarget(this.active.target),
         }
       : null;
 
