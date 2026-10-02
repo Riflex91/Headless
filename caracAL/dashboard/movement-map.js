@@ -26,29 +26,58 @@
     );
   }
 
+  function samePoint(left, right) {
+    return (
+      finitePoint(left) &&
+      finitePoint(right) &&
+      Math.hypot(left.x - right.x, left.y - right.y) < 0.01
+    );
+  }
+
   function plannedPath(character, mapName) {
     const game = character?.game;
     if (!game) return [];
 
-    const points = (game.planned_path || []).filter(
-      (point) => finitePoint(point) && point.map === mapName,
-    );
+    const runtimePlan = Array.isArray(game.runtime_planned_path)
+      ? game.runtime_planned_path
+      : [];
+    const source =
+      runtimePlan.length > 0 ? runtimePlan : game.planned_path || [];
+    const points = source
+      .filter(
+        (point) =>
+          finitePoint(point) && (!point.map || point.map === mapName),
+      )
+      .map((point) => ({
+        ...point,
+        map: point.map || mapName,
+      }));
 
     if (game.map === mapName && finitePoint(game)) {
-      points.unshift({
+      const current = {
         map: mapName,
         x: game.x,
         y: game.y,
-      });
+      };
+      if (!samePoint(current, points[0])) {
+        points.unshift(current);
+      }
     }
 
-    const destination = game.planned_destination;
+    const destination =
+      game.runtime_planned_destination || game.planned_destination;
     if (
       destination &&
-      destination.map === mapName &&
+      (!destination.map || destination.map === mapName) &&
       finitePoint(destination)
     ) {
-      points.push(destination);
+      const normalized = {
+        ...destination,
+        map: destination.map || mapName,
+      };
+      if (!samePoint(points[points.length - 1], normalized)) {
+        points.push(normalized);
+      }
     }
 
     return points;
@@ -66,6 +95,11 @@
       current && finitePoint(game?.target)
         ? { x: game.target.x, y: game.target.y }
         : null;
+    const safePoint =
+      finitePoint(game?.safe_point) &&
+      (!game.safe_point.map || game.safe_point.map === mapName)
+        ? { x: game.safe_point.x, y: game.safe_point.y }
+        : null;
 
     return {
       character,
@@ -73,6 +107,7 @@
       trail,
       plan,
       target,
+      safePoint,
       heading: Number.isFinite(game?.heading) ? game.heading : null,
     };
   }
@@ -83,6 +118,7 @@
     for (const geometry of geometries || []) {
       if (geometry.current) points.push(geometry.current);
       if (geometry.target) points.push(geometry.target);
+      if (geometry.safePoint) points.push(geometry.safePoint);
       points.push(...geometry.trail, ...geometry.plan);
     }
 
@@ -266,6 +302,16 @@
       }
       if (showPlan) {
         appendPolyline(svg, geometry.plan, `${className} planned-path`);
+        for (const waypoint of geometry.plan.slice(1)) {
+          svg.append(
+            createSvgElement("circle", {
+              class: `${className} planned-waypoint`,
+              cx: waypoint.x,
+              cy: waypoint.y,
+              r: markerLength * 0.11,
+            }),
+          );
+        }
       }
       if (showTarget && geometry.current && geometry.target) {
         appendPolyline(
@@ -281,6 +327,17 @@
           geometry.heading,
           className,
           markerLength,
+        );
+      }
+
+      if (geometry.safePoint) {
+        svg.append(
+          createSvgElement("circle", {
+            class: `${className} safe-point-marker`,
+            cx: geometry.safePoint.x,
+            cy: geometry.safePoint.y,
+            r: markerLength * 0.18,
+          }),
         );
       }
 
@@ -305,14 +362,21 @@
       }
 
       const row = document.createElement("div");
-      row.className = "movement-legend-row";
+      const game = character.game || {};
+      row.className = `movement-legend-row${
+        game.movement_stuck?.stuck ? " movement-stuck" : ""
+      }`;
       const dot = document.createElement("span");
       dot.className = `movement-legend-dot ${className}`;
       const text = document.createElement("span");
-      const game = character.game || {};
-      text.textContent = `${character.name} · ${
-        game.movement_state || "IDLE"
-      } · ${Math.round(game.x ?? 0)}, ${Math.round(game.y ?? 0)}`;
+      const mode = game.movement_mode || game.movement_state || "IDLE";
+      const owner = game.movement_owner ? ` · ${game.movement_owner}` : "";
+      const reason = game.movement_reason
+        ? ` · ${game.movement_reason}`
+        : "";
+      text.textContent = `${character.name} · ${mode}${owner} · ${Math.round(
+        game.x ?? 0,
+      )}, ${Math.round(game.y ?? 0)}${reason}`;
       row.append(dot, text);
       legend.append(row);
     });
