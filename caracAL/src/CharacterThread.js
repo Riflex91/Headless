@@ -9,6 +9,7 @@ const fetch = (...args) =>
 const monitoring_util = require("../monitoring_util");
 const ipc_storage = require("../ipcStorage");
 const { DESIRED_RUNTIME_STATES } = require("./CharacterControl");
+const { normalizeRuntimeEvent } = require("./RuntimeEventBridge");
 
 const LogUtils = require("./LogUtils");
 const { console } = LogUtils;
@@ -192,6 +193,16 @@ async function make_game(proc_args) {
   };
   extensions.map_enabled = function () {
     return proc_args.enable_map;
+  };
+  extensions.emit_event = function (event) {
+    const normalized = normalizeRuntimeEvent(event);
+    if (!normalized || !process.connected) return false;
+
+    process.send({
+      type: "runtime_event",
+      event: normalized,
+    });
+    return true;
   };
 
   game_context.caracAL = extensions;
