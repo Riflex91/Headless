@@ -232,14 +232,18 @@ h2 {
   border-color: #596781;
 }
 
-.account-log-actions {
+.account-log-actions,
+.rotation-actions {
   display: flex;
+  align-items: center;
   gap: 0.4rem;
   margin-top: 0.35rem;
 }
 
 .account-log-actions select,
 .account-log-actions button,
+.rotation-actions select,
+.rotation-actions button,
 .diagnostic-range {
   padding: 0.42rem 0.55rem;
   border: 1px solid #374665;
