@@ -360,8 +360,11 @@ function spawnPoint(spawn: Record<string, unknown>): { x: number; y: number } | 
   }
 
   const boundaries = Array.isArray(spawn.boundaries) ? spawn.boundaries : [];
-  const points = boundaries
-    .flatMap((entry) => (Array.isArray(entry) ? entry : []))
+  const boundaryEntries: unknown[] = [];
+  for (const entry of boundaries) {
+    if (Array.isArray(entry)) boundaryEntries.push(...entry);
+  }
+  const points = boundaryEntries
     .map((entry) => pointFrom(entry))
     .filter((entry): entry is { x: number; y: number } => entry !== null);
   if (points.length) {
