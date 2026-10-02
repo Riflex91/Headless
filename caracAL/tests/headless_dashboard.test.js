@@ -10,6 +10,7 @@ const {
   diagnosticSinceFromQuery,
   encodeSseEvent,
   isLoopbackAddress,
+  publicCharacterConfig,
   publicCharacterState,
 } = require("../src/HeadlessDashboard");
 const { make_cfg_string } = require("../src/ConfigUtil");
@@ -88,6 +89,31 @@ test("public character state exposes only dashboard-safe fields", () => {
   assert.equal(serialized.includes("SECRET_AUTH"), false);
   assert.equal(serialized.includes("do-not-export"), false);
   assert.equal(serialized.includes("DO_NOT_EXPORT_CONFIG"), false);
+});
+
+test("character config payload redacts auth-shaped keys", () => {
+  const payload = publicCharacterConfig("My_Ranger1", {
+    runtime_config_revision: 7,
+    applied_runtime_config_revision: 6,
+    runtime_config_source: "PERSISTED",
+    config_push_status: "APPLIED",
+    runtime_config: {
+      combat: { enabled: true },
+      session: "DO_NOT_EXPORT",
+      nested: { auth: "DO_NOT_EXPORT_EITHER", keep: 42 },
+    },
+    session: "ACCOUNT_SECRET",
+  });
+
+  assert.equal(payload.revision, 7);
+  assert.equal(payload.applied_revision, 6);
+  assert.deepEqual(payload.config, {
+    combat: { enabled: true },
+    nested: { keep: 42 },
+  });
+  assert.deepEqual(payload.redacted_paths.sort(), ["nested.auth", "session"]);
+  assert.equal(JSON.stringify(payload).includes("DO_NOT_EXPORT"), false);
+  assert.equal(JSON.stringify(payload).includes("ACCOUNT_SECRET"), false);
 });
 
 test("dashboard access accepts loopback addresses only", () => {
@@ -195,6 +221,7 @@ test("dashboard static assets are present", () => {
   for (const file of [
     "index.html",
     "app.js",
+    "config-form.js",
     "inventory-equipment.js",
     "map-background.js",
     "movement-map.js",
@@ -207,6 +234,9 @@ test("dashboard static assets are present", () => {
   assert.match(index, /Letzter Incident/);
   assert.match(index, /Persistence: UNKNOWN/);
   assert.match(index, /data-control="restart"/);
+  assert.match(index, /data-config/);
+  assert.match(index, /id="config-dialog"/);
+  assert.match(index, /config-form\.js/);
   assert.match(index, /id="rotation-stop-character"/);
   assert.match(index, /id="rotation-start-character"/);
   assert.match(index, /id="rotate-characters"/);
@@ -328,7 +358,12 @@ test("dashboard module and coordinator remain syntactically valid", () => {
   assert.match(coordinator, /CHARACTER_ROTATION_REQUESTED/);
   assert.match(coordinator, /CHARACTER_ROTATION_COMPLETED/);
   assert.match(dashboard, /\/headless\/api\/rotation/);
+  assert.match(
+    dashboard,
+    /router\.get\("\/headless\/api\/characters\/:name\/config"/,
+  );
   assert.match(dashboard, /\/headless\/api\/characters\/:name\/config/);
+  assert.match(dashboard, /SENSITIVE_CONFIG_KEY_NOT_ALLOWED/);
   assert.match(
     dashboard,
     /\/headless\/api\/characters\/:name\/tests\/movement/,

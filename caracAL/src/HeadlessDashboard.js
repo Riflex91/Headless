@@ -113,6 +113,90 @@ function publicCharacterState(name, charBlock = {}) {
   };
 }
 
+const SENSITIVE_CONFIG_KEY =
+  /^(?:session|auth|user_auth|password|token|secret|api[_-]?key)$/i;
+
+function sanitizeDashboardConfig(value, path = [], redactedPaths = []) {
+  if (Array.isArray(value)) {
+    return value.map((entry, index) =>
+      sanitizeDashboardConfig(entry, [...path, String(index)], redactedPaths),
+    );
+  }
+  if (!value || typeof value !== "object") return value;
+
+  const result = {};
+  for (const [key, entry] of Object.entries(value)) {
+    if (SENSITIVE_CONFIG_KEY.test(key)) {
+      redactedPaths.push([...path, key].join("."));
+      continue;
+    }
+    result[key] = sanitizeDashboardConfig(entry, [...path, key], redactedPaths);
+  }
+  return result;
+}
+
+function hasSensitiveConfigKey(value) {
+  if (Array.isArray(value)) return value.some(hasSensitiveConfigKey);
+  if (!value || typeof value !== "object") return false;
+  return Object.entries(value).some(
+    ([key, entry]) =>
+      SENSITIVE_CONFIG_KEY.test(key) || hasSensitiveConfigKey(entry),
+  );
+}
+
+function mergePreservedSensitiveConfig(existing, incoming) {
+  if (!existing || typeof existing !== "object" || Array.isArray(existing)) {
+    return incoming;
+  }
+  if (!incoming || typeof incoming !== "object" || Array.isArray(incoming)) {
+    return incoming;
+  }
+
+  const result = JSON.parse(JSON.stringify(incoming));
+  for (const [key, value] of Object.entries(existing)) {
+    if (SENSITIVE_CONFIG_KEY.test(key)) {
+      result[key] = value;
+      continue;
+    }
+    if (
+      value &&
+      typeof value === "object" &&
+      !Array.isArray(value) &&
+      result[key] &&
+      typeof result[key] === "object" &&
+      !Array.isArray(result[key])
+    ) {
+      result[key] = mergePreservedSensitiveConfig(value, result[key]);
+    }
+  }
+  return result;
+}
+
+function publicCharacterConfig(name, charBlock = {}) {
+  const redactedPaths = [];
+  const config = sanitizeDashboardConfig(
+    charBlock.runtime_config || {},
+    [],
+    redactedPaths,
+  );
+  return {
+    character: name,
+    revision: Number.isInteger(charBlock.runtime_config_revision)
+      ? charBlock.runtime_config_revision
+      : 0,
+    applied_revision: Number.isInteger(
+      charBlock.applied_runtime_config_revision,
+    )
+      ? charBlock.applied_runtime_config_revision
+      : null,
+    source: charBlock.runtime_config_source || "CONFIG",
+    status: charBlock.config_push_status || "UNKNOWN",
+    error: charBlock.config_push_error || null,
+    redacted_paths: redactedPaths,
+    config,
+  };
+}
+
 function buildSupervisorSnapshot(
   characterManage = {},
   lifecyclePolicy = {},
@@ -226,6 +310,20 @@ function attachHeadlessDashboard({
     res.json(getSnapshot());
   });
 
+  router.get("/headless/api/characters/:name/config", (req, res) => {
+    const charBlock = characterManage?.[req.params.name];
+    if (!charBlock) {
+      res.status(404).json({ error: "CHARACTER_NOT_FOUND" });
+      return;
+    }
+
+    res.set("Cache-Control", "no-store");
+    res.json({
+      ok: true,
+      ...publicCharacterConfig(req.params.name, charBlock),
+    });
+  });
+
   router.put(
     "/headless/api/characters/:name/config",
     express.json({ limit: "96kb" }),
@@ -236,9 +334,27 @@ function attachHeadlessDashboard({
       }
 
       try {
+        const charBlock = characterManage?.[req.params.name];
+        if (!charBlock) {
+          res.status(404).json({ error: "CHARACTER_NOT_FOUND" });
+          return;
+        }
+        const incomingConfig = req.body?.config;
+        if (hasSensitiveConfigKey(incomingConfig)) {
+          res.status(400).json({
+            error: "SENSITIVE_CONFIG_KEY_NOT_ALLOWED",
+            message:
+              "Sensitive auth/session fields cannot be edited in the dashboard",
+          });
+          return;
+        }
+        const mergedConfig = mergePreservedSensitiveConfig(
+          charBlock.runtime_config || {},
+          incomingConfig,
+        );
         const result = await updateCharacterConfig(
           req.params.name,
-          req.body?.config,
+          mergedConfig,
         );
         res.json({
           ok: true,
@@ -649,7 +765,11 @@ module.exports = {
   buildSupervisorSnapshot,
   diagnosticSinceFromQuery,
   encodeSseEvent,
+  hasSensitiveConfigKey,
   isLoopbackAddress,
+  mergePreservedSensitiveConfig,
+  publicCharacterConfig,
   publicCharacterState,
   publicLiveState,
+  sanitizeDashboardConfig,
 };
