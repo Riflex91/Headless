@@ -316,7 +316,6 @@ test("dashboard module and coordinator remain syntactically valid", () => {
   assert.match(characterThread, /movement_live_test_result/);
 });
 
-
 test("dashboard public live state keeps nearby entity telemetry but not map scene blobs", () => {
   const character = publicCharacterState("My_Ranger1", {
     connected: true,
