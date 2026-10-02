@@ -242,6 +242,61 @@ test("incident index is persistent and character filterable", async () => {
   }
 });
 
+test("failed queued mutation rolls back partial SQLite changes", async () => {
+  const fixture = await tempDatabase();
+  let service;
+
+  try {
+    service = await PersistenceService.open({
+      databasePath: fixture.databasePath,
+      now: () => 6000,
+    });
+
+    await assert.rejects(
+      service.enqueueMutation(() => {
+        service.db.run(
+          "INSERT INTO runtime_meta(key, value_json, updated_at) VALUES (?, ?, ?)",
+          ["partial", "{\"value\":1}", 6000],
+        );
+        throw new Error("forced failure");
+      }),
+      /forced failure/,
+    );
+
+    assert.equal(service.getMeta("partial"), null);
+    assert.equal(service.health().status, "ERROR");
+
+    await service.setMeta("recovered", { value: 2 });
+    assert.deepEqual(service.getMeta("recovered"), { value: 2 });
+    assert.equal(service.health().status, "HEALTHY");
+  } finally {
+    await service?.close();
+    await fs.rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("persistence health remains readable after close", async () => {
+  const fixture = await tempDatabase();
+  let service;
+
+  try {
+    service = await PersistenceService.open({
+      databasePath: fixture.databasePath,
+      now: () => 7000,
+    });
+    await service.close();
+
+    const health = service.health();
+    assert.equal(health.status, "CLOSED");
+    assert.equal(health.closed, true);
+    assert.equal(health.schema_version, CURRENT_SCHEMA_VERSION);
+    service = null;
+  } finally {
+    await service?.close();
+    await fs.rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
 test("queued writes serialize without losing state", async () => {
   const fixture = await tempDatabase();
   let service;
