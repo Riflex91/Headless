@@ -519,6 +519,15 @@ function migrate_old_storage(path, localStorage) {
     }
 
     if (
+      char_block &&
+      normalized.data?.inventoryIntelligence &&
+      typeof normalized.data.inventoryIntelligence === "object"
+    ) {
+      char_block.inventory_intelligence_runtime =
+        normalized.data.inventoryIntelligence;
+    }
+
+    if (
       normalized.module === "FarmIntelligenceController" &&
       normalized.type === "FARM_INTELLIGENCE_SAMPLE" &&
       normalized.data?.sample &&
@@ -568,7 +577,8 @@ function migrate_old_storage(path, localStorage) {
         normalized.data?.combat ||
         normalized.data?.classSkills ||
         normalized.data?.groupCombat ||
-        normalized.data?.farmIntelligence)
+        normalized.data?.farmIntelligence ||
+        normalized.data?.inventoryIntelligence)
     ) {
       dashboard?.publishSnapshot();
     }
@@ -731,6 +741,8 @@ function migrate_old_storage(path, localStorage) {
     char_block.group_combat_runtime = char_block.group_combat_runtime || null;
     char_block.farm_intelligence_runtime =
       char_block.farm_intelligence_runtime || null;
+    char_block.inventory_intelligence_runtime =
+      char_block.inventory_intelligence_runtime || null;
     char_block.movement_live_test_typescript_override = null;
     char_block.running_code_revision = char_block.running_code_revision || null;
     char_block.running_config_revision =
