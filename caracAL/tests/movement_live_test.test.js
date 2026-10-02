@@ -177,9 +177,7 @@ function successfulHarness({ rejectFirstRoute = false } = {}) {
 }
 
 test("movement live runner autonomously paths and returns to captured safe point", async () => {
-  const { MovementLiveTestRunner } = coreModule(
-    "movement-live-test.lib.ts",
-  );
+  const { MovementLiveTestRunner } = coreModule("movement-live-test.lib.ts");
   const harness = successfulHarness();
   const runner = new MovementLiveTestRunner({
     movement: harness.movement,
@@ -317,10 +315,9 @@ test("supervisor evidence validates runtime IPC dashboard and trail chain", () =
     "MOVEMENT_LIVE_TEST_COMPLETED",
   ].map((type, index) => ({
     source: "bot_runtime",
-    module:
-      type.startsWith("MOVEMENT_LIVE_TEST")
-        ? "MovementLiveTest"
-        : "MovementController",
+    module: type.startsWith("MOVEMENT_LIVE_TEST")
+      ? "MovementLiveTest"
+      : "MovementController",
     type,
     timestamp: index + 1,
   }));
@@ -363,8 +360,5 @@ test("missing supervisor telemetry downgrades a runtime PASS to FAIL", () => {
 
   assert.equal(evidenceComplete(evidence), false);
   assert.equal(combined.outcome, "FAIL");
-  assert.equal(
-    combined.reason,
-    "SUPERVISOR_MOVEMENT_EVIDENCE_INCOMPLETE",
-  );
+  assert.equal(combined.reason, "SUPERVISOR_MOVEMENT_EVIDENCE_INCOMPLETE");
 });
