@@ -111,7 +111,55 @@
     };
   }
 
-  function computeBounds(geometries) {
+  function nearbyEntities(characters, mapName) {
+    const entities = new Map();
+
+    for (const character of characters || []) {
+      if (character?.game?.map !== mapName) continue;
+      for (const entity of character.game.nearby_entities || []) {
+        if (!finitePoint(entity)) continue;
+        if (!["monster", "npc"].includes(entity.kind)) continue;
+        const key = [
+          entity.kind,
+          entity.id || entity.mtype || entity.npc || entity.name,
+          Math.round(entity.x),
+          Math.round(entity.y),
+        ].join("|");
+        const previous = entities.get(key);
+        if (
+          !previous ||
+          (entity.distance ?? Infinity) < (previous.distance ?? Infinity)
+        ) {
+          entities.set(key, entity);
+        }
+      }
+    }
+
+    return [...entities.values()].sort(
+      (left, right) =>
+        (left.distance ?? Infinity) - (right.distance ?? Infinity),
+    );
+  }
+
+  function sceneNpcs(mapScene) {
+    return (mapScene?.npcs || []).filter(finitePoint).map((npc) => ({
+      ...npc,
+      kind: "npc",
+    }));
+  }
+
+  function pointInBounds(point, bounds) {
+    return (
+      finitePoint(point) &&
+      !!bounds &&
+      point.x >= bounds.minX &&
+      point.x <= bounds.minX + bounds.width &&
+      point.y >= bounds.minY &&
+      point.y <= bounds.minY + bounds.height
+    );
+  }
+
+  function computeBounds(geometries, extraPoints = []) {
     const points = [];
 
     for (const geometry of geometries || []) {
@@ -120,6 +168,8 @@
       if (geometry.safePoint) points.push(geometry.safePoint);
       points.push(...geometry.trail, ...geometry.plan);
     }
+
+    points.push(...(extraPoints || []).filter(finitePoint));
 
     if (points.length === 0) {
       return null;
@@ -218,8 +268,78 @@
     );
   }
 
+  function appendEntityMarker(svg, entity, markerLength) {
+    const marker = createSvgElement("g", {
+      class:
+        entity.kind === "monster"
+          ? `map-entity-marker monster-marker${
+              entity.engaged ? " engaged" : ""
+            }`
+          : "map-entity-marker npc-marker",
+    });
+
+    if (entity.kind === "monster") {
+      marker.append(
+        createSvgElement("circle", {
+          cx: entity.x,
+          cy: entity.y,
+          r: markerLength * 0.15,
+        }),
+      );
+    } else {
+      const radius = markerLength * 0.17;
+      marker.append(
+        createSvgElement("polygon", {
+          points: [
+            `${entity.x},${entity.y - radius}`,
+            `${entity.x + radius},${entity.y}`,
+            `${entity.x},${entity.y + radius}`,
+            `${entity.x - radius},${entity.y}`,
+          ].join(" "),
+        }),
+      );
+    }
+
+    const label = createSvgElement("text", {
+      x: entity.x + markerLength * 0.24,
+      y: entity.y - markerLength * 0.2,
+    });
+    label.textContent =
+      entity.name || entity.mtype || entity.npc || entity.id || entity.kind;
+    marker.append(label);
+
+    const title = createSvgElement("title");
+    const health =
+      Number.isFinite(entity.hp) && Number.isFinite(entity.max_hp)
+        ? ` · HP ${entity.hp}/${entity.max_hp}`
+        : "";
+    title.textContent =
+      `${label.textContent}${health}` +
+      (Number.isFinite(entity.distance) ? ` · ${entity.distance}px` : "");
+    marker.append(title);
+
+    svg.append(marker);
+  }
+
+  function appendEntityLegend(legend, monsters, npcs) {
+    const row = document.createElement("div");
+    row.className = "movement-entity-summary";
+
+    const monsterCount = document.createElement("span");
+    monsterCount.className = "monster-summary";
+    monsterCount.textContent = `Monster: ${monsters.length}`;
+
+    const npcCount = document.createElement("span");
+    npcCount.className = "npc-summary";
+    npcCount.textContent = `NPCs: ${npcs.length}`;
+
+    row.append(monsterCount, npcCount);
+    legend.append(row);
+  }
+
   function renderMovementMap({
     svg,
+    backgroundCanvas,
     legend,
     emptyState,
     characters,
@@ -229,6 +349,9 @@
     showPlan,
     showFacing,
     showTarget,
+    showMonsters,
+    showNpcs,
+    mapScene,
     now = Date.now(),
   }) {
     if (!svg || !legend || !emptyState) return;
@@ -242,13 +365,23 @@
           geometry.trail.length > 0 ||
           geometry.plan.length > 0,
       );
-    const bounds = computeBounds(geometries);
+    const liveEntities = nearbyEntities(characters, mapName);
+    const bounds = computeBounds(geometries, liveEntities);
 
     svg.replaceChildren();
     legend.replaceChildren();
 
     if (!bounds) {
       emptyState.hidden = false;
+      if (backgroundCanvas) {
+        const context = backgroundCanvas.getContext?.("2d");
+        context?.clearRect(
+          0,
+          0,
+          backgroundCanvas.width,
+          backgroundCanvas.height,
+        );
+      }
       return;
     }
 
@@ -257,6 +390,15 @@
       "viewBox",
       `${bounds.minX} ${bounds.minY} ${bounds.width} ${bounds.height}`,
     );
+
+    const backgroundApi = globalScope?.HeadlessOriginalMapBackground;
+    if (backgroundCanvas && backgroundApi?.renderOriginalMapBackground) {
+      void backgroundApi.renderOriginalMapBackground({
+        canvas: backgroundCanvas,
+        scene: mapScene,
+        bounds,
+      });
+    }
 
     const gridSize = 100;
     const gridGroup = createSvgElement("g", { class: "map-grid" });
@@ -291,6 +433,37 @@
       28,
       Math.min(bounds.width, bounds.height) * 0.05,
     );
+
+    const visibleEntities = liveEntities.filter((entity) =>
+      pointInBounds(entity, bounds),
+    );
+    const monsters = visibleEntities.filter(
+      (entity) => entity.kind === "monster",
+    );
+    const npcMap = new Map();
+    for (const npc of sceneNpcs(mapScene).concat(
+      visibleEntities.filter((entity) => entity.kind === "npc"),
+    )) {
+      if (!pointInBounds(npc, bounds)) continue;
+      const key = [
+        npc.id || npc.npc || npc.name,
+        Math.round(npc.x),
+        Math.round(npc.y),
+      ].join("|");
+      npcMap.set(key, npc);
+    }
+    const npcs = [...npcMap.values()];
+
+    if (showMonsters) {
+      for (const monster of monsters) {
+        appendEntityMarker(svg, monster, markerLength);
+      }
+    }
+    if (showNpcs) {
+      for (const npc of npcs) {
+        appendEntityMarker(svg, npc, markerLength);
+      }
+    }
 
     geometries.forEach((geometry, index) => {
       const character = geometry.character;
@@ -377,6 +550,12 @@
       row.append(dot, text);
       legend.append(row);
     });
+
+    appendEntityLegend(
+      legend,
+      showMonsters ? monsters : [],
+      showNpcs ? npcs : [],
+    );
   }
 
   const api = {
@@ -385,8 +564,11 @@
     computeBounds,
     filterTrail,
     finitePoint,
+    nearbyEntities,
     plannedPath,
+    pointInBounds,
     renderMovementMap,
+    sceneNpcs,
   };
 
   if (typeof module !== "undefined" && module.exports) {

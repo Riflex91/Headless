@@ -190,6 +190,7 @@ test("dashboard static assets are present", () => {
     "index.html",
     "app.js",
     "inventory-equipment.js",
+    "map-background.js",
     "movement-map.js",
     "styles.css",
   ]) {
@@ -212,6 +213,10 @@ test("dashboard static assets are present", () => {
   assert.match(index, /character-stuck-state/);
   assert.match(index, /character-movement-live-test/);
   assert.match(index, /data-movement-live-test/);
+  assert.match(index, /id="movement-map-background"/);
+  assert.match(index, /id="show-nearby-monsters"/);
+  assert.match(index, /id="show-nearby-npcs"/);
+  assert.match(index, /map-background\.js/);
 });
 
 test("dashboard visible character views include connected characters only", () => {
@@ -290,6 +295,8 @@ test("dashboard module and coordinator remain syntactically valid", () => {
     dashboard,
     /\/headless\/api\/characters\/:name\/tests\/movement/,
   );
+  assert.match(dashboard, /\/headless\/api\/maps\/:name\/scene/);
+  assert.match(dashboard, /nearby_entities/);
   assert.match(coordinator, /control_character_config/);
   assert.match(coordinator, /CHARACTER_CONFIG_PUSH_REQUESTED/);
   assert.match(coordinator, /CHARACTER_CONFIG_APPLIED/);
@@ -307,4 +314,31 @@ test("dashboard module and coordinator remain syntactically valid", () => {
   assert.match(runtimeKernel, /runMovementLiveTest/);
   assert.match(characterThread, /movement_live_test/);
   assert.match(characterThread, /movement_live_test_result/);
+});
+
+test("dashboard public live state keeps nearby entity telemetry but not map scene blobs", () => {
+  const character = publicCharacterState("My_Ranger1", {
+    connected: true,
+    live_state: {
+      map: "main",
+      x: 10,
+      y: 20,
+      nearby_entities: [
+        {
+          id: "goo-1",
+          kind: "monster",
+          name: "Green Goo",
+          x: 25,
+          y: 30,
+        },
+      ],
+      map_scene: {
+        map: "main",
+        placements: new Array(1000).fill([0, 0, 0]),
+      },
+    },
+  });
+
+  assert.equal(character.game.nearby_entities.length, 1);
+  assert.equal(character.game.map_scene, undefined);
 });

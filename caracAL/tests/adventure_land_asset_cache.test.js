@@ -13,7 +13,7 @@ const {
   validateAdventureLandAssetPath,
 } = require("../src/AdventureLandAssetCache");
 
-test("Adventure Land asset validation accepts item sprites only", () => {
+test("Adventure Land asset validation accepts dashboard tileset sprites only", () => {
   assert.equal(
     validateAdventureLandAssetPath("/images/tiles/items/pack_20vt8.png"),
     "/images/tiles/items/pack_20vt8.png",
@@ -22,11 +22,19 @@ test("Adventure Land asset validation accepts item sprites only", () => {
     validateAdventureLandAssetPath("/images/tiles/items/custom.png?v=12"),
     "/images/tiles/items/custom.png?v=12",
   );
+  assert.equal(
+    validateAdventureLandAssetPath("/images/tiles/map/custom.png?v=17"),
+    "/images/tiles/map/custom.png?v=17",
+  );
+  assert.equal(
+    validateAdventureLandAssetPath("/images/tiles/monsters/monster_lich.png"),
+    "/images/tiles/monsters/monster_lich.png",
+  );
 
   for (const invalid of [
     "https://evil.example/items.png",
     "//evil.example/items.png",
-    "/images/tiles/map/custom.png",
+    "/images/characters/main.png",
     "/images/tiles/items/../../secrets.png",
     "../images/tiles/items/pack.png",
     "/images/tiles/items/not-an-image.js",

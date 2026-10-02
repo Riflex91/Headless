@@ -441,16 +441,26 @@ dd {
   min-height: 34rem;
   overflow: hidden;
   border-right: 1px solid #26314b;
-  background: linear-gradient(rgba(78, 94, 126, 0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(78, 94, 126, 0.05) 1px, transparent 1px),
-    #0d1426;
-  background-size: 2rem 2rem;
+  background: #0d1426;
 }
 
+.movement-map-background,
 .movement-map {
   display: block;
   width: 100%;
   height: 34rem;
+}
+
+.movement-map-background {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  image-rendering: pixelated;
+}
+
+.movement-map {
+  position: relative;
+  z-index: 1;
 }
 
 .movement-map-empty {
@@ -537,6 +547,66 @@ dd {
   font-size: 18px;
   font-weight: 700;
   pointer-events: none;
+}
+
+.map-entity-marker {
+  pointer-events: none;
+}
+
+.map-entity-marker circle,
+.map-entity-marker polygon {
+  vector-effect: non-scaling-stroke;
+  stroke: #0a0f1a;
+  stroke-width: 2.5;
+}
+
+.monster-marker circle {
+  fill: rgba(232, 83, 94, 0.92);
+}
+
+.monster-marker.engaged circle {
+  fill: #ff3348;
+  stroke: #fff0f2;
+  stroke-width: 3.5;
+}
+
+.npc-marker polygon {
+  fill: rgba(98, 214, 156, 0.95);
+}
+
+.map-entity-marker text {
+  fill: #f4f7fb;
+  paint-order: stroke;
+  stroke: rgba(6, 10, 18, 0.95);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.movement-entity-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.35rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid #26314b;
+  font-size: 0.74rem;
+}
+
+.monster-summary,
+.npc-summary {
+  padding: 0.2rem 0.42rem;
+  border-radius: 999px;
+  background: #0b1120;
+}
+
+.monster-summary {
+  color: #ff8e99;
+}
+
+.npc-summary {
+  color: #78dda8;
 }
 
 .movement-legend {
