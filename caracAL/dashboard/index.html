@@ -12,6 +12,20 @@
         <h1>caracAL Headless Control Center</h1>
         <p id="connection-status">Verbinde mit Supervisor …</p>
       </div>
+      <div id="emergency-stop-control" class="emergency-stop-control">
+        <div>
+          <strong id="emergency-stop-status">Mutation Safety: READY</strong>
+          <span id="emergency-stop-reason">Keine Sperre aktiv</span>
+        </div>
+        <div class="emergency-stop-actions">
+          <button id="activate-emergency-stop" type="button">
+            EMERGENCY STOP
+          </button>
+          <button id="clear-emergency-stop" type="button" hidden>
+            Sperre freigeben
+          </button>
+        </div>
+      </div>
       <div class="summary">
         <span id="active-count">0 / 4 aktiv</span>
         <span id="last-update">Noch keine Daten</span>
