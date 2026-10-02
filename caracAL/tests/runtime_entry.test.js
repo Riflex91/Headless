@@ -64,9 +64,12 @@ test("runtime feature code cannot call Adventure Land mutations directly", () =>
     "exchange",
     "craft",
     "wishlist",
-    "party_invite",
-    "party_accept",
-    "party_leave",
+    "send_party_invite",
+    "send_party_request",
+    "accept_party_invite",
+    "accept_party_request",
+    "leave_party",
+    "respawn",
   ];
 
   const visit = (directory) => {
