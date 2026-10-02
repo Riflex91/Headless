@@ -28,6 +28,8 @@ const showMovementTrail = document.querySelector("#show-movement-trail");
 const showPlannedPath = document.querySelector("#show-planned-path");
 const showFacing = document.querySelector("#show-facing");
 const showTargetLine = document.querySelector("#show-target-line");
+const inventoryEquipmentApi = window.HeadlessInventoryEquipment;
+const accountInventoryGrid = document.querySelector("#account-inventory-grid");
 
 function formatTimestamp(timestamp) {
   if (!timestamp) return "—";
@@ -330,6 +332,15 @@ function renderMovementMap() {
   });
 }
 
+function renderInventoryEquipment() {
+  if (!inventoryEquipmentApi) return;
+
+  inventoryEquipmentApi.renderAccountInventory({
+    container: accountInventoryGrid,
+    characters: [...state.characters.values()],
+  });
+}
+
 function renderCharacters() {
   const characters = [...state.characters.values()].sort((a, b) =>
     a.name.localeCompare(b.name),
@@ -418,6 +429,7 @@ function applySnapshot(snapshot) {
 
   renderCharacters();
   renderMovementMap();
+  renderInventoryEquipment();
   lastUpdate.textContent = `Update ${formatTimestamp(snapshot.generated_at)}`;
 }
 

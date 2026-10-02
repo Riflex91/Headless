@@ -424,6 +424,222 @@ dd {
   color: #e98fd6;
 }
 
+.account-inventory-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr));
+  gap: 0.8rem;
+  padding: 0.8rem;
+  align-items: start;
+}
+
+.inventory-character-card {
+  min-width: 0;
+  border: 1px solid #2a3550;
+  border-radius: 0.8rem;
+  background: #10182b;
+  overflow: hidden;
+}
+
+.inventory-character-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.7rem;
+  padding: 0.75rem 0.85rem;
+  border-bottom: 1px solid #26314b;
+}
+
+.inventory-character-header h3,
+.inventory-character-header p {
+  margin: 0;
+}
+
+.inventory-character-header p {
+  margin-top: 0.15rem;
+  color: #96a3bb;
+  font-size: 0.75rem;
+}
+
+.inventory-live-badge {
+  padding: 0.2rem 0.45rem;
+  border: 1px solid #2f8052;
+  border-radius: 99px;
+  background: rgba(47, 128, 82, 0.16);
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.equipment-section,
+.inventory-section {
+  padding: 0.75rem 0.85rem;
+}
+
+.equipment-section {
+  border-bottom: 1px solid #202b43;
+}
+
+.equipment-section h4,
+.inventory-section h4 {
+  margin: 0 0 0.55rem;
+  font-size: 0.82rem;
+}
+
+.equipment-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(4.4rem, 1fr));
+  gap: 0.45rem;
+}
+
+.equipment-slot-wrap {
+  min-width: 0;
+}
+
+.equipment-slot-name {
+  display: block;
+  min-height: 1rem;
+  margin-bottom: 0.2rem;
+  overflow: hidden;
+  color: #8996af;
+  font-size: 0.62rem;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inventory-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.7rem;
+  margin-bottom: 0.55rem;
+}
+
+.inventory-section-heading h4 {
+  margin: 0;
+}
+
+.inventory-section-heading span {
+  color: #98a5bd;
+  font-size: 0.7rem;
+}
+
+.inventory-slot-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.35rem;
+}
+
+.live-item-slot {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  aspect-ratio: 1;
+  border: 1px solid #34415e;
+  border-radius: 0.45rem;
+  background: #0b1120;
+  overflow: hidden;
+}
+
+.live-item-slot.item-empty {
+  opacity: 0.42;
+}
+
+.live-item-sprite {
+  background-repeat: no-repeat;
+  image-rendering: pixelated;
+}
+
+.item-icon-fallback {
+  display: grid;
+  place-items: center;
+  color: #7f8aa1;
+  font-size: 0.58rem;
+  font-weight: 700;
+}
+
+.item-slot-label {
+  position: absolute;
+  top: 0.15rem;
+  left: 0.2rem;
+  color: #697791;
+  font-size: 0.52rem;
+  line-height: 1;
+}
+
+.item-short-name {
+  position: absolute;
+  right: 0.12rem;
+  bottom: 0.08rem;
+  left: 0.12rem;
+  overflow: hidden;
+  color: #c9d3e7;
+  font-size: 0.5rem;
+  line-height: 1;
+  text-align: center;
+  text-overflow: ellipsis;
+  text-shadow: 0 1px 2px #000;
+  white-space: nowrap;
+}
+
+.item-quantity,
+.item-level,
+.item-locked {
+  position: absolute;
+  z-index: 2;
+  padding: 0.08rem 0.18rem;
+  border-radius: 0.2rem;
+  background: rgba(5, 9, 18, 0.88);
+  font-size: 0.55rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.item-quantity {
+  right: 0.12rem;
+  top: 0.12rem;
+}
+
+.item-level {
+  right: 0.12rem;
+  bottom: 0.72rem;
+  color: #f2cf70;
+}
+
+.item-locked {
+  left: 0.12rem;
+  bottom: 0.72rem;
+  padding: 0;
+  background: transparent;
+  font-size: 0.65rem;
+}
+
+.live-item-slot.item-changed {
+  animation: item-changed-pulse 1.2s ease-out;
+}
+
+.inventory-empty {
+  margin: 0;
+  color: #8996af;
+  font-size: 0.75rem;
+}
+
+.account-inventory-empty {
+  padding: 1rem;
+}
+
+@keyframes item-changed-pulse {
+  0% {
+    border-color: #f3ce64;
+    box-shadow: 0 0 0 2px rgba(243, 206, 100, 0.42);
+  }
+
+  100% {
+    border-color: #34415e;
+    box-shadow: none;
+  }
+}
+
 .event-list {
   max-height: 24rem;
   overflow: auto;
@@ -472,6 +688,16 @@ dd {
 
   .movement-legend {
     grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  }
+}
+
+@media (max-width: 520px) {
+  .account-inventory-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .inventory-slot-grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
   }
 }
 

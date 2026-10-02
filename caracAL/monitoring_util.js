@@ -21,9 +21,31 @@ function humanize_int(num, digits) {
     : num.toExponential(digits);
 }
 
-function public_item(item) {
+function public_item_icon(itemName, gameData) {
+  const itemDefinition = gameData?.items?.[itemName];
+  const skin = itemDefinition?.skin || itemName;
+  const position = gameData?.positions?.[skin];
+  if (!Array.isArray(position)) return null;
+
+  const imageSetName = position[0] || "pack_20";
+  const imageSet = gameData?.imagesets?.[imageSetName];
+  if (!imageSet?.file) return null;
+
+  return {
+    skin,
+    file: imageSet.file,
+    x: Number(position[1]) || 0,
+    y: Number(position[2]) || 0,
+    size: Number(imageSet.size) || 20,
+    rows: Number(imageSet.rows) || null,
+    columns: Number(imageSet.columns) || null,
+  };
+}
+
+function public_item(item, gameData) {
   if (!item) return null;
 
+  const itemDefinition = gameData?.items?.[item.name] || null;
   const result = {};
   [
     "name",
@@ -37,6 +59,11 @@ function public_item(item) {
   ].forEach((key) => {
     if (item[key] !== undefined) result[key] = item[key];
   });
+
+  if (itemDefinition?.name) result.display_name = itemDefinition.name;
+  if (itemDefinition?.type) result.item_type = itemDefinition.type;
+  const icon = public_item_icon(item.name, gameData);
+  if (icon) result.icon = icon;
   return result;
 }
 
@@ -101,12 +128,12 @@ function build_stat_beat(g_con) {
       : null;
 
   result.items = Array.isArray(character.items)
-    ? character.items.map(public_item)
+    ? character.items.map((item) => public_item(item, g_con.G))
     : [];
   result.slots = Object.fromEntries(
     Object.entries(character.slots || {}).map(([slot, item]) => [
       slot,
-      public_item(item),
+      public_item(item, g_con.G),
     ]),
   );
 
@@ -450,5 +477,6 @@ function generate_minimap(game_context) {
 exports.build_stat_beat = build_stat_beat;
 exports.create_monitor_ui = create_monitor_ui;
 exports.public_item = public_item;
+exports.public_item_icon = public_item_icon;
 exports.public_smart_plot = public_smart_plot;
 exports.register_stat_beat = register_stat_beat;
