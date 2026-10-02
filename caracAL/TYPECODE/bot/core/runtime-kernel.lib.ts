@@ -11,7 +11,13 @@ import {
   SchedulerEvent,
 } from "./scheduler.lib";
 import { GameAdapter } from "./game-adapter.lib";
+import {
+  MovementController,
+  MovementControllerEvent,
+} from "./movement-controller.lib";
 
+const MOVEMENT_SETTLEMENT_JOB_ID = "movement-settlement";
+const MOVEMENT_SETTLEMENT_INTERVAL_MS = 100;
 const STATUS_JOB_ID = "runtime-status";
 const STATUS_INTERVAL_MS = 5000;
 
@@ -55,6 +61,7 @@ export class BotRuntimeKernel {
   readonly actionLedger: ActionLedger;
   readonly game: GameAdapter;
   readonly actions: ActionBoundary;
+  readonly movement: MovementController;
 
   private started = false;
   private stopping = false;
@@ -89,6 +96,19 @@ export class BotRuntimeKernel {
 
     this.game = new GameAdapter();
     this.actions = new ActionBoundary(this.actionLedger, this.game);
+    this.movement = new MovementController(this.actions, {
+      onEvent: (event) => this.handleMovementEvent(event),
+    });
+
+    this.scheduler.register({
+      id: MOVEMENT_SETTLEMENT_JOB_ID,
+      intervalMs: MOVEMENT_SETTLEMENT_INTERVAL_MS,
+      priority: 100,
+      runWhenPaused: true,
+      tick: () => {
+        this.movement.observe();
+      },
+    });
 
     this.scheduler.register({
       id: STATUS_JOB_ID,
@@ -110,6 +130,7 @@ export class BotRuntimeKernel {
             schedulerJobs: this.scheduler.list(),
             gameAdapterReads: this.game.capabilities(),
             actionBoundaryMutations: this.actions.capabilities(),
+            movement: this.movement.status(),
             recentActions: this.actionLedger.list(20),
           },
         });
@@ -189,9 +210,30 @@ export class BotRuntimeKernel {
       emergencyStopState: parent.caracAL?.emergency_stop_state || null,
       modules: this.modules.list(),
       schedulerJobs: this.scheduler.list(),
+      movement: this.movement.status(),
       recentActions: this.actionLedger.list(20),
       ...runtimeIdentity(),
     };
+  }
+
+  private handleMovementEvent(event: MovementControllerEvent): void {
+    this.eventBus.emit({
+      module: "MovementController",
+      type: event.type,
+      ...(event.reason && { why: event.reason }),
+      data: {
+        owner: event.owner,
+        ...(event.previousOwner !== undefined && {
+          previousOwner: event.previousOwner,
+        }),
+        ...(event.commandType && { commandType: event.commandType }),
+        ...(event.commandId !== undefined && {
+          commandId: event.commandId,
+        }),
+        ...(event.actionId && { actionId: event.actionId }),
+        ...(event.status !== undefined && { status: event.status }),
+      },
+    });
   }
 
   private handleSchedulerEvent(event: SchedulerEvent): void {

@@ -88,6 +88,27 @@ test("emergency stop blocks new action before dispatch", () => {
   assert.equal(events.at(-1).why, "EMERGENCY_STOP_ACTIVE");
 });
 
+test("emergency stop can allow an explicit safety action", () => {
+  const { ActionLedger } = loadLedgerModule();
+  const ledger = new ActionLedger({
+    now: () => 1000,
+    nextActionId: () => "A-cancel",
+    nextCorrelationId: () => "C-cancel",
+    isEmergencyStopActive: () => true,
+    allowDuringEmergencyStop: (action) => action === "MOVEMENT_CANCEL",
+  });
+
+  const action = ledger.create({
+    module: "Movement",
+    action: "MOVEMENT_CANCEL",
+    why: "EMERGENCY_STOP",
+  });
+
+  assert.equal(action.status, null);
+  const dispatched = ledger.dispatch(action.id);
+  assert.equal(dispatched.status, "DISPATCHED");
+});
+
 test("emergency stop can block pending action at dispatch time", () => {
   const { ActionLedger } = loadLedgerModule();
   let stopped = false;

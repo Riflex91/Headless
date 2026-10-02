@@ -15,6 +15,7 @@ interface ActionIntentInput {
   action: string;
   why: string;
   correlationId?: string;
+  allowDuringEmergencyStop?: boolean;
   expectedCost?: Record<string, unknown>;
   expectedEffect?: Record<string, unknown>;
   before?: Record<string, unknown>;
@@ -72,6 +73,25 @@ export interface BoundaryRequest {
 export interface MoveRequest extends BoundaryRequest {
   x: number;
   y: number;
+}
+
+export type SmartMoveTarget =
+  | string
+  | {
+      x: number;
+      y: number;
+      map?: string;
+    };
+
+export type SmartMoveDestination =
+  | SmartMoveTarget
+  | {
+      to: SmartMoveTarget;
+      return?: boolean;
+    };
+
+export interface SmartMoveRequest extends BoundaryRequest {
+  destination: SmartMoveDestination;
 }
 
 export interface AttackRequest extends BoundaryRequest {
@@ -174,6 +194,10 @@ export interface PartyTargetRequest extends BoundaryRequest {
 
 export interface MutationDriver {
   move(x: number, y: number): unknown;
+  smartMove(
+    destination: SmartMoveDestination,
+  ): Promise<unknown> | unknown;
+  cancelMovement(): Promise<unknown> | unknown;
   resolveEntity(id: string): unknown;
   canAttack(entity: unknown): boolean;
   attack(entity: unknown): Promise<unknown> | unknown;
@@ -266,6 +290,9 @@ function runtimeSocketEmit(event: string, payload: unknown): unknown {
 export function createRuntimeMutationDriver(): MutationDriver {
   return {
     move: (x, y) => runtimeFunction("move")(x, y),
+    smartMove: (destination) =>
+      runtimeFunction("smart_move")(destination),
+    cancelMovement: () => runtimeFunction("stop")("move"),
     resolveEntity: (id) => runtimeFunction("get_entity")(id),
     canAttack: (entity) => Boolean(runtimeFunction("can_attack")(entity)),
     attack: (entity) => runtimeFunction("attack")(entity),
@@ -347,6 +374,48 @@ export function createRuntimeMutationDriver(): MutationDriver {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function structuredReason(value: unknown): string | null {
+  const recordValue = objectRecord(value);
+  return typeof recordValue.reason === "string" &&
+    recordValue.reason.trim().length > 0
+    ? recordValue.reason
+    : null;
+}
+
+function validSmartMoveTarget(target: SmartMoveTarget): boolean {
+  if (typeof target === "string") {
+    return target.trim().length > 0;
+  }
+
+  return (
+    !!target &&
+    typeof target === "object" &&
+    Number.isFinite(target.x) &&
+    Number.isFinite(target.y) &&
+    (target.map === undefined ||
+      (typeof target.map === "string" && target.map.trim().length > 0))
+  );
+}
+
+function validSmartMoveDestination(
+  destination: SmartMoveDestination,
+): boolean {
+  if (typeof destination === "string") {
+    return validSmartMoveTarget(destination);
+  }
+
+  if (!destination || typeof destination !== "object") return false;
+  if ("to" in destination) {
+    return (
+      validSmartMoveTarget(destination.to) &&
+      (destination.return === undefined ||
+        typeof destination.return === "boolean")
+    );
+  }
+
+  return validSmartMoveTarget(destination);
 }
 
 function objectRecord(value: unknown): Record<string, unknown> {
@@ -563,6 +632,8 @@ function partyJoined(
 
 export const ACTION_BOUNDARY_MUTATION_CAPABILITIES = [
   "MOVE",
+  "SMART_MOVE",
+  "MOVEMENT_CANCEL",
   "ATTACK",
   "SKILL",
   "LOOT",
@@ -641,6 +712,304 @@ export class ActionBoundary {
         why: "MOVE_DISPATCH_UNCERTAIN",
         error: errorMessage(error),
         after: { ...this.game.map() },
+      });
+    }
+  }
+
+  directMove(request: MoveRequest): ActionRecord {
+    return this.move(request);
+  }
+
+  cancelDirectMove(
+    actionId: string,
+    reason = "MOVE_CANCELLED",
+  ): ActionRecord {
+    const record = this.ledger.get(actionId);
+    if (!record) {
+      throw new Error(`unknown movement action: ${actionId}`);
+    }
+    if (record.action !== "MOVE") {
+      throw new Error(
+        `action ${actionId} is not a direct movement action`,
+      );
+    }
+    if (record.status !== "DISPATCHED") return record;
+
+    const after = this.game.character();
+    return this.ledger.reject(actionId, {
+      why: reason,
+      after: {
+        map: after.map,
+        x: after.x,
+        y: after.y,
+        moving: after.moving,
+      },
+      evidence: {
+        cancelled: true,
+      },
+    });
+  }
+
+  settleMove(actionId: string, tolerance = 5): ActionRecord {
+    const record = this.ledger.get(actionId);
+    if (!record) {
+      throw new Error(`unknown movement action: ${actionId}`);
+    }
+    if (record.action !== "MOVE") {
+      throw new Error(
+        `action ${actionId} is not a direct movement action`,
+      );
+    }
+    if (record.status !== "DISPATCHED") return record;
+
+    const expected = objectRecord(record.expectedEffect);
+    const targetX = Number(expected.x);
+    const targetY = Number(expected.y);
+    const targetMap =
+      typeof expected.map === "string" ? expected.map : null;
+    const normalizedTolerance =
+      Number.isFinite(tolerance) && tolerance > 0 ? tolerance : 5;
+
+    if (!Number.isFinite(targetX) || !Number.isFinite(targetY)) {
+      return this.ledger.unknown(actionId, {
+        why: "MOVE_SETTLEMENT_TARGET_INVALID",
+        after: { ...this.game.map() },
+      });
+    }
+
+    const after = this.game.character();
+    const distance =
+      typeof after.x === "number" &&
+      Number.isFinite(after.x) &&
+      typeof after.y === "number" &&
+      Number.isFinite(after.y)
+        ? Math.hypot(after.x - targetX, after.y - targetY)
+        : null;
+    const sameMap = targetMap === null || after.map === targetMap;
+
+    if (
+      sameMap &&
+      distance !== null &&
+      distance <= normalizedTolerance &&
+      !after.moving
+    ) {
+      return this.ledger.confirm(actionId, {
+        why: "MOVE_ARRIVED",
+        after: {
+          map: after.map,
+          x: after.x,
+          y: after.y,
+          moving: after.moving,
+        },
+        evidence: {
+          distance,
+          tolerance: normalizedTolerance,
+        },
+      });
+    }
+
+    return record;
+  }
+
+  async smartMove(request: SmartMoveRequest): Promise<ActionRecord> {
+    const before = this.game.character();
+    const transaction = this.ledger.create({
+      module: request.module,
+      action: "SMART_MOVE",
+      why: request.why,
+      correlationId: request.correlationId,
+      expectedEffect: {
+        destination: request.destination,
+      },
+      before: {
+        map: before.map,
+        x: before.x,
+        y: before.y,
+        moving: before.moving,
+      },
+    });
+
+    if (transaction.status === "BLOCKED") return transaction;
+    if (!validSmartMoveDestination(request.destination)) {
+      return this.ledger.block(
+        transaction.id,
+        "INVALID_SMART_MOVE_DESTINATION",
+      );
+    }
+
+    this.ledger.dispatch(transaction.id, {
+      mutation: "smart_move",
+      destination: request.destination,
+    });
+
+    try {
+      const result = await this.driver.smartMove(request.destination);
+      const response = objectRecord(result);
+      const reason = structuredReason(result);
+      const after = this.game.character();
+
+      if (response.success === false || reason) {
+        return this.ledger.reject(transaction.id, {
+          why: "SMART_MOVE_REJECTED",
+          after: {
+            map: after.map,
+            x: after.x,
+            y: after.y,
+            moving: after.moving,
+          },
+          evidence: {
+            reason,
+            result: safeResultEvidence(result),
+          },
+        });
+      }
+      if (response.success === true) {
+        return this.ledger.confirm(transaction.id, {
+          why: "SMART_MOVE_ARRIVED",
+          after: {
+            map: after.map,
+            x: after.x,
+            y: after.y,
+            moving: after.moving,
+          },
+          evidence: {
+            apiResolved: true,
+            result: safeResultEvidence(result),
+          },
+        });
+      }
+
+      return this.ledger.unknown(transaction.id, {
+        why: "SMART_MOVE_RESULT_UNVERIFIED",
+        after: {
+          map: after.map,
+          x: after.x,
+          y: after.y,
+          moving: after.moving,
+        },
+        evidence: {
+          result: safeResultEvidence(result),
+        },
+      });
+    } catch (error) {
+      const reason = structuredReason(error);
+      const after = this.game.character();
+
+      if (reason) {
+        return this.ledger.reject(transaction.id, {
+          why:
+            reason === "interrupted"
+              ? "SMART_MOVE_INTERRUPTED"
+              : "SMART_MOVE_REJECTED",
+          after: {
+            map: after.map,
+            x: after.x,
+            y: after.y,
+            moving: after.moving,
+          },
+          evidence: { reason },
+        });
+      }
+
+      return this.ledger.unknown(transaction.id, {
+        why: "SMART_MOVE_OUTCOME_UNCERTAIN",
+        error: errorMessage(error),
+        after: {
+          map: after.map,
+          x: after.x,
+          y: after.y,
+          moving: after.moving,
+        },
+      });
+    }
+  }
+
+  async cancelMovement(request: BoundaryRequest): Promise<ActionRecord> {
+    const before = this.game.character();
+    const transaction = this.ledger.create({
+      module: request.module,
+      action: "MOVEMENT_CANCEL",
+      why: request.why,
+      correlationId: request.correlationId,
+      allowDuringEmergencyStop: true,
+      expectedEffect: {
+        movement: "STOPPED",
+      },
+      before: {
+        map: before.map,
+        x: before.x,
+        y: before.y,
+        moving: before.moving,
+      },
+    });
+
+    if (transaction.status === "BLOCKED") return transaction;
+
+    this.ledger.dispatch(transaction.id, {
+      mutation: "stop",
+      action: "move",
+    });
+
+    try {
+      const result = await this.driver.cancelMovement();
+      const after = this.game.character();
+      const reason = structuredReason(result);
+
+      if (explicitFailure(result) || reason) {
+        return this.ledger.reject(transaction.id, {
+          why: "MOVEMENT_CANCEL_REJECTED",
+          after: {
+            map: after.map,
+            x: after.x,
+            y: after.y,
+            moving: after.moving,
+          },
+          evidence: {
+            reason,
+            result: safeResultEvidence(result),
+          },
+        });
+      }
+
+      return this.ledger.confirm(transaction.id, {
+        why: "MOVEMENT_CANCEL_API_CONFIRMED",
+        after: {
+          map: after.map,
+          x: after.x,
+          y: after.y,
+          moving: after.moving,
+        },
+        evidence: {
+          apiResolved: true,
+          result: safeResultEvidence(result),
+        },
+      });
+    } catch (error) {
+      const reason = structuredReason(error);
+      const after = this.game.character();
+
+      if (reason) {
+        return this.ledger.reject(transaction.id, {
+          why: "MOVEMENT_CANCEL_REJECTED",
+          after: {
+            map: after.map,
+            x: after.x,
+            y: after.y,
+            moving: after.moving,
+          },
+          evidence: { reason },
+        });
+      }
+
+      return this.ledger.unknown(transaction.id, {
+        why: "MOVEMENT_CANCEL_OUTCOME_UNCERTAIN",
+        error: errorMessage(error),
+        after: {
+          map: after.map,
+          x: after.x,
+          y: after.y,
+          moving: after.moving,
+        },
       });
     }
   }
