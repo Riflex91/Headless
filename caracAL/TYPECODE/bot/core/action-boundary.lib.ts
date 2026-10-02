@@ -101,6 +101,7 @@ export interface AttackRequest extends BoundaryRequest {
 export interface SkillRequest extends BoundaryRequest {
   skill: string;
   targetId?: string;
+  targetIds?: string[];
   args?: unknown[];
 }
 
@@ -1089,9 +1090,13 @@ export class ActionBoundary {
       .skills(false)
       .find((candidate) => candidate.key === request.skill);
     const before = this.game.character();
+    const targetIds = Array.isArray(request.targetIds)
+      ? [...new Set(request.targetIds.map((id) => id.trim()).filter(Boolean))]
+      : [];
     const targetSnapshot = request.targetId
       ? this.game.entity(request.targetId)
       : null;
+    const targetSnapshots = targetIds.map((id) => this.game.entity(id));
     const args = Array.isArray(request.args) ? request.args : [];
     const transaction = this.ledger.create({
       module: request.module,
@@ -1104,16 +1109,19 @@ export class ActionBoundary {
       expectedEffect: {
         skill: request.skill,
         targetId: request.targetId || null,
+        targetIds,
       },
       before: {
         hp: before.hp,
         mp: before.mp,
         target: before.target,
         targetSnapshot,
+        targetSnapshots,
       },
       metadata: {
         skill: request.skill,
         targetId: request.targetId || null,
+        targetIds,
         argCount: args.length,
       },
     });
@@ -1121,6 +1129,12 @@ export class ActionBoundary {
     if (transaction.status === "BLOCKED") return transaction;
     if (!skill) {
       return this.ledger.block(transaction.id, "UNKNOWN_SKILL");
+    }
+    if (request.targetId && targetIds.length) {
+      return this.ledger.block(transaction.id, "SKILL_TARGET_MODE_CONFLICT");
+    }
+    if (targetIds.length > 5) {
+      return this.ledger.block(transaction.id, "SKILL_TARGETS_INVALID");
     }
     if (args.length > 3) {
       return this.ledger.block(transaction.id, "SKILL_ARGUMENTS_INVALID");
@@ -1134,6 +1148,15 @@ export class ActionBoundary {
       }
     }
 
+    const resolvedTargets: unknown[] = [];
+    for (const targetId of targetIds) {
+      const resolved = this.driver.resolveEntity(targetId);
+      if (!resolved) {
+        return this.ledger.block(transaction.id, "SKILL_TARGET_NOT_FOUND");
+      }
+      resolvedTargets.push(resolved);
+    }
+
     let canUse = false;
     try {
       canUse = this.driver.canUseSkill(request.skill);
@@ -1144,11 +1167,16 @@ export class ActionBoundary {
       return this.ledger.block(transaction.id, "SKILL_NOT_USABLE");
     }
 
-    const callArgs = resolvedTarget ? [resolvedTarget, ...args] : args;
+    const callArgs = resolvedTargets.length
+      ? [resolvedTargets, ...args]
+      : resolvedTarget
+        ? [resolvedTarget, ...args]
+        : args;
     this.ledger.dispatch(transaction.id, {
       mutation: "use_skill",
       skill: request.skill,
       targetId: request.targetId || null,
+      targetIds,
       argCount: callArgs.length,
     });
 
@@ -1161,6 +1189,7 @@ export class ActionBoundary {
           target: request.targetId
             ? this.game.entity(request.targetId)
             : null,
+          targets: targetIds.map((id) => this.game.entity(id)),
         },
         evidence: {
           apiResolved: true,
@@ -1176,6 +1205,7 @@ export class ActionBoundary {
           target: request.targetId
             ? this.game.entity(request.targetId)
             : null,
+          targets: targetIds.map((id) => this.game.entity(id)),
         },
       });
     }

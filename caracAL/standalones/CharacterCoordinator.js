@@ -484,6 +484,14 @@ function migrate_old_storage(path, localStorage) {
       char_block.class_skill_runtime = normalized.data.classSkills;
     }
 
+    if (
+      char_block &&
+      normalized.data?.groupCombat &&
+      typeof normalized.data.groupCombat === "object"
+    ) {
+      char_block.group_combat_runtime = normalized.data.groupCombat;
+    }
+
     if (char_block && normalized.data?.movement) {
       updateCharacterMovementRuntime(char_block, normalized.data.movement, {
         timestamp: normalized.timestamp,
@@ -507,7 +515,8 @@ function migrate_old_storage(path, localStorage) {
       char_block &&
       (normalized.data?.movement ||
         normalized.data?.combat ||
-        normalized.data?.classSkills)
+        normalized.data?.classSkills ||
+        normalized.data?.groupCombat)
     ) {
       dashboard?.publishSnapshot();
     }
@@ -665,6 +674,7 @@ function migrate_old_storage(path, localStorage) {
     char_block.class_skill_live_test = char_block.class_skill_live_test || null;
     char_block.combat_runtime = char_block.combat_runtime || null;
     char_block.class_skill_runtime = char_block.class_skill_runtime || null;
+    char_block.group_combat_runtime = char_block.group_combat_runtime || null;
     char_block.movement_live_test_typescript_override = null;
     char_block.running_code_revision = char_block.running_code_revision || null;
     char_block.running_config_revision =
