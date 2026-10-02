@@ -330,6 +330,22 @@ function attachHeadlessDashboard({
     },
   );
 
+  router.get("/headless/api/maps/:name/scene", (req, res) => {
+    if (!getMapScene) {
+      res.status(503).json({ error: "MAP_SCENE_UNAVAILABLE" });
+      return;
+    }
+
+    const scene = getMapScene(req.params.name);
+    if (!scene) {
+      res.status(404).json({ error: "MAP_SCENE_NOT_FOUND" });
+      return;
+    }
+
+    res.set("Cache-Control", "no-store");
+    res.json(scene);
+  });
+
   router.get("/headless/api/assets/adventure-land", async (req, res) => {
     if (!assetCache) {
       res.status(503).json({ error: "ASSET_CACHE_UNAVAILABLE" });
