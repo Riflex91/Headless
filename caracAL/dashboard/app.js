@@ -412,7 +412,12 @@ function renderEvents() {
 
     const reason = document.createElement("span");
     reason.className = "event-reason";
-    reason.textContent = event.reason || "";
+    reason.textContent = [
+      event.module || "",
+      event.why || event.reason || "",
+    ]
+      .filter(Boolean)
+      .join(" · ");
 
     row.append(time, type, character, reason);
     eventList.append(row);
