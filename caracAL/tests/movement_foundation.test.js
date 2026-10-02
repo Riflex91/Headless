@@ -708,3 +708,29 @@ test("ActionBoundary cancelDirectMove closes a dispatched move as REJECTED", () 
   assert.equal(cancelled.evidence.cancelled, true);
   assert.equal(setup.ledger.canRetry(cancelled.id), true);
 });
+
+
+test("smart move accepts wrapped position destinations supported by Adventure Land", async () => {
+  const calls = [];
+  const { boundary } = makeBoundary({
+    driver: {
+      async smartMove(destination) {
+        calls.push(destination);
+        return { success: true };
+      },
+    },
+  });
+
+  const destination = {
+    to: { map: "main", x: 123, y: 456 },
+    return: true,
+  };
+  const result = await boundary.smartMove({
+    destination,
+    module: "Movement",
+    why: "SMART_RETURN_ROUTE",
+  });
+
+  assert.equal(result.status, "CONFIRMED");
+  assert.deepEqual(calls, [destination]);
+});
