@@ -8,7 +8,9 @@ const test = require("node:test");
 
 const {
   CURRENT_SCHEMA_VERSION,
+  MIGRATIONS,
   PersistenceService,
+  loadSqlJs,
 } = require("../src/PersistenceService");
 
 async function tempDatabase() {
@@ -325,6 +327,268 @@ test("queued writes serialize without losing state", async () => {
     assert.equal(service.health().flush_count >= 5, true);
   } finally {
     await service?.close();
+    await fs.rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+
+test("version 2 databases migrate forward and backfill config revisions", async () => {
+  const fixture = await tempDatabase();
+  let service;
+  let legacyDb;
+
+  try {
+    const SQL = await loadSqlJs();
+    legacyDb = new SQL.Database();
+    legacyDb.run(`
+      CREATE TABLE schema_migrations (
+        version INTEGER PRIMARY KEY,
+        name TEXT NOT NULL,
+        applied_at INTEGER NOT NULL
+      )
+    `);
+
+    for (const migration of MIGRATIONS.filter(
+      (candidate) => candidate.version <= 2,
+    )) {
+      legacyDb.run(migration.sql);
+      legacyDb.run(
+        "INSERT INTO schema_migrations(version, name, applied_at) VALUES (?, ?, ?)",
+        [migration.version, migration.name, 1000 + migration.version],
+      );
+      legacyDb.run(`PRAGMA user_version = ${migration.version}`);
+    }
+
+    legacyDb.run(
+      `
+        INSERT INTO character_configs(
+          character_name,
+          revision,
+          config_json,
+          updated_at
+        )
+        VALUES (?, ?, ?, ?)
+      `,
+      ["My_Ranger1", 7, '{"combat":{"enabled":true}}', 2000],
+    );
+
+    await fs.mkdir(path.dirname(fixture.databasePath), { recursive: true });
+    await fs.writeFile(fixture.databasePath, Buffer.from(legacyDb.export()));
+    legacyDb.close();
+    legacyDb = null;
+
+    service = await PersistenceService.open({
+      databasePath: fixture.databasePath,
+      now: () => 3000,
+    });
+
+    assert.equal(service.schemaVersion(), CURRENT_SCHEMA_VERSION);
+    assert.deepEqual(service.listCharacterConfigRevisions("My_Ranger1"), [
+      {
+        revision: 7,
+        config: { combat: { enabled: true } },
+        created_at: 2000,
+      },
+    ]);
+  } finally {
+    legacyDb?.close();
+    await service?.close();
+    await fs.rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("character config storage keeps immutable revision history", async () => {
+  const fixture = await tempDatabase();
+  let service;
+
+  try {
+    let now = 1000;
+    service = await PersistenceService.open({
+      databasePath: fixture.databasePath,
+      now: () => now,
+    });
+
+    await service.saveCharacterConfig("My_Ranger1", 1, {
+      combat: { enabled: false },
+    });
+    now = 2000;
+    await service.saveCharacterConfig("My_Ranger1", 2, {
+      combat: { enabled: true },
+    });
+    now = 3000;
+    await service.saveCharacterConfig("My_Ranger1", 2, {
+      combat: { enabled: false },
+    });
+
+    assert.deepEqual(service.getCharacterConfig("My_Ranger1"), {
+      revision: 2,
+      config: { combat: { enabled: false } },
+      updated_at: 3000,
+    });
+    assert.deepEqual(service.listCharacterConfigRevisions("My_Ranger1"), [
+      {
+        revision: 2,
+        config: { combat: { enabled: true } },
+        created_at: 2000,
+      },
+      {
+        revision: 1,
+        config: { combat: { enabled: false } },
+        created_at: 1000,
+      },
+    ]);
+  } finally {
+    await service?.close();
+    await fs.rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("structured persistence domains survive a restart", async () => {
+  const fixture = await tempDatabase();
+  let first;
+  let reopened;
+
+  try {
+    first = await PersistenceService.open({
+      databasePath: fixture.databasePath,
+      now: () => 5000,
+    });
+
+    await first.saveStructuredState("account", "rotation", {
+      next: "My_Mage",
+    });
+    await first.saveGoal("goal-1", {
+      characterName: "My_Ranger1",
+      status: "ACTIVE",
+      goal: { type: "FARM_ITEM", item: "gem0" },
+    });
+    await first.saveCooldown("My_Merchant", "merrit", {
+      readyAt: 9000,
+      state: { phase: "COOLDOWN" },
+    });
+    await first.saveEconomyState("account", {
+      gold_reserve: 1000000,
+    });
+    await first.appendMarketObservation({
+      itemName: "hpot1",
+      level: 0,
+      price: 42,
+      quantity: 10,
+      server: "EU I",
+      seller: "Vendor",
+      source: "LIVE_VISIBLE",
+      observedAt: 6000,
+      metadata: { slot: 3 },
+    });
+    await first.appendPontyObservation({
+      itemName: "scroll0",
+      price: 12500,
+      quantity: 1,
+      server: "EU I",
+      observedAt: 6100,
+    });
+    await first.appendFarmStatistic("My_Ranger1", "goo", {
+      startedAt: 1000,
+      endedAt: 7000,
+      stats: { xp: 1234, gold: 567 },
+    });
+    await first.appendEncounter({
+      encounterKey: "goo",
+      characterName: "My_Ranger1",
+      startedAt: 7100,
+      endedAt: 7200,
+      result: "VICTORY",
+      data: { kills: 1 },
+    });
+    await first.saveTestResult("run-1", {
+      testId: "restart-state",
+      characterName: "My_Ranger1",
+      result: "PASS",
+      startedAt: 7300,
+      endedAt: 7400,
+      data: { observed: true },
+    });
+    await first.recordCodeRevision("sha256-bundle", {
+      source_revision: "git-sha",
+    });
+
+    await first.close();
+    first = null;
+
+    reopened = await PersistenceService.open({
+      databasePath: fixture.databasePath,
+      now: () => 8000,
+    });
+
+    assert.deepEqual(reopened.getStructuredState("account", "rotation"), {
+      value: { next: "My_Mage" },
+      updated_at: 5000,
+    });
+    assert.deepEqual(reopened.getGoal("goal-1"), {
+      character_name: "My_Ranger1",
+      status: "ACTIVE",
+      goal: { item: "gem0", type: "FARM_ITEM" },
+      updated_at: 5000,
+    });
+    assert.deepEqual(reopened.getCooldown("My_Merchant", "merrit"), {
+      ready_at: 9000,
+      state: { phase: "COOLDOWN" },
+      updated_at: 5000,
+    });
+    assert.deepEqual(reopened.getEconomyState("account"), {
+      value: { gold_reserve: 1000000 },
+      updated_at: 5000,
+    });
+    assert.deepEqual(reopened.listMarketHistory({ itemName: "hpot1" }), [
+      {
+        item_name: "hpot1",
+        level: 0,
+        price: 42,
+        quantity: 10,
+        server: "EU I",
+        seller: "Vendor",
+        source: "LIVE_VISIBLE",
+        observed_at: 6000,
+        metadata: { slot: 3 },
+      },
+    ]);
+    assert.equal(
+      reopened.listPontyHistory({ itemName: "scroll0" })[0].price,
+      12500,
+    );
+    assert.deepEqual(reopened.listFarmStatistics("My_Ranger1")[0], {
+      farm_key: "goo",
+      sample_started_at: 1000,
+      sample_ended_at: 7000,
+      stats: { gold: 567, xp: 1234 },
+    });
+    assert.deepEqual(reopened.listEncounterHistory({ encounterKey: "goo" })[0], {
+      encounter_key: "goo",
+      character_name: "My_Ranger1",
+      started_at: 7100,
+      ended_at: 7200,
+      result: "VICTORY",
+      encounter: { kills: 1 },
+    });
+    assert.deepEqual(reopened.getTestResult("run-1"), {
+      run_id: "run-1",
+      test_id: "restart-state",
+      character_name: "My_Ranger1",
+      result: "PASS",
+      started_at: 7300,
+      ended_at: 7400,
+      data: { observed: true },
+    });
+    assert.deepEqual(reopened.listCodeRevisions(), [
+      {
+        revision: "sha256-bundle",
+        installed_at: 5000,
+        metadata: { source_revision: "git-sha" },
+      },
+    ]);
+  } finally {
+    await first?.close();
+    await reopened?.close();
     await fs.rm(fixture.root, { recursive: true, force: true });
   }
 });
