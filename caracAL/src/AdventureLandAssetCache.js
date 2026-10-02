@@ -38,8 +38,9 @@ function assetCacheFilename(assetPath) {
   const parsed = new URL(safePath, AL_BASE_URL);
   const extension = path.extname(parsed.pathname).toLowerCase() || ".bin";
   const baseName =
-    path.basename(parsed.pathname, extension).replace(/[^A-Za-z0-9._-]/g, "_") ||
-    "asset";
+    path
+      .basename(parsed.pathname, extension)
+      .replace(/[^A-Za-z0-9._-]/g, "_") || "asset";
   const digest = crypto
     .createHash("sha256")
     .update(safePath)
@@ -58,11 +59,7 @@ function contentTypeForAsset(assetPath) {
 }
 
 class AdventureLandAssetCache {
-  constructor({
-    cacheDir,
-    fetchImpl,
-    baseUrl = AL_BASE_URL,
-  } = {}) {
+  constructor({ cacheDir, fetchImpl, baseUrl = AL_BASE_URL } = {}) {
     if (!cacheDir) {
       throw new Error("AdventureLandAssetCache requires cacheDir");
     }
