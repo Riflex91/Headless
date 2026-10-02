@@ -131,6 +131,7 @@ function attachHeadlessDashboard({
   controlEmergencyStop,
   getEmergencyStopState,
   diagnosticStore,
+  incidentRecorder,
   assetCache,
 }) {
   if (!router) {
@@ -221,6 +222,70 @@ function attachHeadlessDashboard({
     const since = diagnosticSinceFromQuery(req.query);
     const events = diagnosticStore.getEvents({ since });
     res.type("text/plain").send(formatAccountDiagnostic(getSnapshot(), events));
+  });
+
+  router.get("/headless/api/incidents", async (req, res) => {
+    if (!incidentRecorder) {
+      res.status(503).json({ error: "INCIDENTS_UNAVAILABLE" });
+      return;
+    }
+
+    try {
+      const incidents = await incidentRecorder.list({
+        limit: Math.min(100, Math.max(1, Number(req.query.limit) || 20)),
+        character: req.query.character || undefined,
+      });
+      res.json({ incidents });
+    } catch (error) {
+      res.status(500).json({
+        error: "INCIDENT_LIST_FAILED",
+        message: error.message,
+      });
+    }
+  });
+
+  router.get("/headless/api/incidents/latest", async (req, res) => {
+    if (!incidentRecorder) {
+      res.status(503).json({ error: "INCIDENTS_UNAVAILABLE" });
+      return;
+    }
+
+    try {
+      const incident = await incidentRecorder.latest({
+        character: req.query.character || undefined,
+      });
+      if (!incident) {
+        res.status(404).json({ error: "INCIDENT_NOT_FOUND" });
+        return;
+      }
+
+      res
+        .type("text/plain")
+        .send(await incidentRecorder.readText(incident.incident_id));
+    } catch (error) {
+      res.status(Number(error.statusCode) || 500).json({
+        error: error.code || "INCIDENT_READ_FAILED",
+        message: error.message,
+      });
+    }
+  });
+
+  router.get("/headless/api/incidents/:id", async (req, res) => {
+    if (!incidentRecorder) {
+      res.status(503).json({ error: "INCIDENTS_UNAVAILABLE" });
+      return;
+    }
+
+    try {
+      res
+        .type("text/plain")
+        .send(await incidentRecorder.readText(req.params.id));
+    } catch (error) {
+      res.status(Number(error.statusCode) || 404).json({
+        error: error.code || "INCIDENT_NOT_FOUND",
+        message: error.message,
+      });
+    }
   });
 
   router.get("/headless/api/characters/:name/diagnostic", (req, res) => {

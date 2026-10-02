@@ -105,9 +105,22 @@ function badgeClass(lifecycleState) {
   return `state-${String(lifecycleState || "STOPPED").toLowerCase()}`;
 }
 
-function diagnosticUrl(path, minutes) {
-  if (!minutes) return path;
-  return `${path}?minutes=${encodeURIComponent(minutes)}`;
+function diagnosticUrl(path, range) {
+  if (range === "incident") {
+    if (path === "/headless/api/diagnostic") {
+      return "/headless/api/incidents/latest";
+    }
+
+    const characterMatch = path.match(
+      /^\/headless\/api\/characters\/([^/]+)\/diagnostic$/,
+    );
+    if (characterMatch) {
+      return `/headless/api/incidents/latest?character=${characterMatch[1]}`;
+    }
+  }
+
+  if (!range) return path;
+  return `${path}?minutes=${encodeURIComponent(range)}`;
 }
 
 async function fetchDiagnostic(path, minutes) {

@@ -132,6 +132,9 @@ test("dashboard static assets are present", () => {
   ]) {
     assert.equal(fs.existsSync(path.join(dashboardDir, file)), true);
   }
+
+  const index = fs.readFileSync(path.join(dashboardDir, "index.html"), "utf8");
+  assert.match(index, /Letzter Incident/);
 });
 
 test("dashboard module and coordinator remain syntactically valid", () => {
@@ -146,8 +149,13 @@ test("dashboard module and coordinator remain syntactically valid", () => {
 
   assert.doesNotThrow(() => new Function(dashboard));
   assert.doesNotThrow(() => new Function(coordinator));
+  assert.match(dashboard, /\/headless\/api\/incidents/);
+  assert.match(dashboard, /incidents\/latest/);
   assert.match(coordinator, /attachHeadlessDashboard/);
   assert.match(coordinator, /control_emergency_stop/);
   assert.match(coordinator, /emergency_stop_applied/);
+  assert.match(coordinator, /StructuredLogger/);
+  assert.match(coordinator, /IncidentRecorder/);
+  assert.match(coordinator, /UNEXPECTED_CHARACTER_EXIT/);
   assert.match(coordinator, /dashboard\?\.publish/);
 });
