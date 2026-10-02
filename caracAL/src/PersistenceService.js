@@ -209,10 +209,10 @@ class PersistenceService {
     const status = this.closed
       ? "CLOSED"
       : this.lastError
-        ? "ERROR"
-        : schemaVersion === CURRENT_SCHEMA_VERSION
-          ? "HEALTHY"
-          : "SCHEMA_MISMATCH";
+      ? "ERROR"
+      : schemaVersion === CURRENT_SCHEMA_VERSION
+      ? "HEALTHY"
+      : "SCHEMA_MISMATCH";
 
     return {
       status,
@@ -410,12 +410,7 @@ class PersistenceService {
 
   async saveCharacterRuntimeState(
     characterName,
-    {
-      desiredState,
-      actualState,
-      codeRevision,
-      configRevision,
-    } = {},
+    { desiredState, actualState, codeRevision, configRevision } = {},
   ) {
     return this.enqueueMutation(() => {
       const updatedAt = this.now();
@@ -620,8 +615,7 @@ class PersistenceService {
       await this.flush();
     });
     const observed = operation.catch((error) => {
-      this.lastError =
-        error instanceof Error ? error.message : String(error);
+      this.lastError = error instanceof Error ? error.message : String(error);
       throw error;
     });
     this.queue = observed.catch(() => {});
