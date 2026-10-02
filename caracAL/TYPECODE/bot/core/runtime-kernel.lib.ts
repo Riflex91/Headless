@@ -10,7 +10,7 @@ import {
   Scheduler,
   SchedulerEvent,
 } from "./scheduler.lib";
-import { GameAdapter } from "./game-adapter.lib";
+import { GameAdapter } from "./game-adapter.lib";\nimport { CombatController, CombatControllerEvent } from "./combat-controller.lib";
 import {
   MovementController,
   MovementControllerEvent,
@@ -21,7 +21,7 @@ import {
   MovementLiveTestRunner,
 } from "./movement-live-test.lib";
 
-const MOVEMENT_SETTLEMENT_JOB_ID = "movement-settlement";
+const COMBAT_JOB_ID = "combat-loop";\nconst COMBAT_INTERVAL_MS = 250;\nconst MOVEMENT_SETTLEMENT_JOB_ID = "movement-settlement";
 const MOVEMENT_SETTLEMENT_INTERVAL_MS = 100;
 const STATUS_JOB_ID = "runtime-status";
 const STATUS_INTERVAL_MS = 5000;
@@ -294,6 +294,21 @@ export class BotRuntimeKernel {
     } finally {
       this.movementLiveTestRunning = false;
     }
+  }
+
+  private handleCombatEvent(event: CombatControllerEvent): void {
+    this.eventBus.emit({
+      module: "CombatController",
+      type: event.type,
+      why: event.reason,
+      ...(event.actionId && { actionId: event.actionId }),
+      data: {
+        state: event.state,
+        targetId: event.targetId ?? null,
+        actionStatus: event.actionStatus ?? null,
+        combat: event.status,
+      },
+    });
   }
 
   private handleMovementEvent(event: MovementControllerEvent): void {
