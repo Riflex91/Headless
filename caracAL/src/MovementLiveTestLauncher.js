@@ -40,8 +40,7 @@ function selectMovementLiveTestCharacter(snapshot, requested = null) {
   return (
     combatCharacters.find(
       (character) =>
-        character.connected === true &&
-        character.lifecycle_state === "ONLINE",
+        character.connected === true && character.lifecycle_state === "ONLINE",
     ) ||
     combatCharacters.find(
       (character) =>
