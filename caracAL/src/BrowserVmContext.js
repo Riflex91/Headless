@@ -2,10 +2,7 @@
 
 const { JSDOM } = require("jsdom");
 
-function createIsolatedBrowserContext(
-  html,
-  url = "https://adventure.land/",
-) {
+function createIsolatedBrowserContext(html, url = "https://adventure.land/") {
   const dom = new JSDOM(html, {
     url,
     runScripts: "outside-only",
