@@ -21,7 +21,13 @@ function groupLiveTestEvidence(events = [], charBlock = {}) {
         ["LEADER", "FOLLOWER"].includes(projection.role) &&
         typeof projection.leader === "string",
     );
-  const projection = charBlock.group_combat_runtime || historicalProjection || null;
+  const liveProjection = charBlock.group_combat_runtime || null;
+  const projection =
+    liveProjection &&
+    ["LEADER", "FOLLOWER"].includes(liveProjection.role) &&
+    typeof liveProjection.leader === "string"
+      ? liveProjection
+      : historicalProjection || liveProjection || null;
 
   return {
     groupTestStarted: types.includes("GROUP_LIVE_TEST_STARTED"),

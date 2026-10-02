@@ -987,6 +987,13 @@ function updateCharacterCard(card, character) {
       character.class_skill_live_test?.status ||
       "idle",
   ).toLowerCase()}`;
+  const groupLiveTest = card.querySelector(".character-group-live-test");
+  groupLiveTest.textContent = formatMovementLiveTest(character.group_live_test);
+  groupLiveTest.className = `character-group-live-test movement-live-test-${String(
+    character.group_live_test?.outcome ||
+      character.group_live_test?.status ||
+      "idle",
+  ).toLowerCase()}`;
   card.querySelector(".character-target").textContent = formatTarget(game);
   card.querySelector(".character-inventory-summary").textContent =
     formatInventory(game);
