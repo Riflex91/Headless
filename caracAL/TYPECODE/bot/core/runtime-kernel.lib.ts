@@ -22,12 +22,19 @@ function runtimeState(): RuntimeState {
 }
 
 function runtimeIdentity(): Record<string, unknown> {
+  const runtimeConfigRevision = (
+    parent.caracAL as typeof parent.caracAL & {
+      runtime_config_revision?: number;
+    }
+  )?.runtime_config_revision;
+
   return {
     character: character.name,
     ctype: character.ctype,
     map: character.map,
     codeRevision: parent.caracAL?.code_revision || null,
     configRevision: parent.caracAL?.config_revision || null,
+    runtimeConfigRevision: runtimeConfigRevision ?? 0,
     sourceRevision: parent.caracAL?.source_revision || null,
   };
 }

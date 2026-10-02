@@ -529,6 +529,16 @@ function updateCharacterCard(card, character) {
   revisionStatus.className = `character-revision-status revision-text-${String(
     character.revision_status || "UNKNOWN",
   ).toLowerCase()}`;
+  card.querySelector(".character-runtime-config-revision").textContent =
+    character.runtime_config_revision ?? 0;
+  card.querySelector(".character-applied-runtime-config-revision").textContent =
+    character.applied_runtime_config_revision ?? "—";
+  card.querySelector(".character-config-push-status").textContent =
+    character.config_push_error
+      ? `${character.config_push_status || "UNKNOWN"} · ${
+          character.config_push_error
+        }`
+      : character.config_push_status || "UNKNOWN";
   const rotationText = character.rotation_source
     ? `Einwechseln für ${character.rotation_source}`
     : character.rotation_replacement
