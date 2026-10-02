@@ -420,15 +420,11 @@ function migrate_old_storage(path, localStorage) {
 
     const char_block = character_manage[char_name];
     if (char_block && normalized.data?.movement) {
-      updateCharacterMovementRuntime(
-        char_block,
-        normalized.data.movement,
-        {
-          timestamp: normalized.timestamp,
-          eventType: normalized.type,
-          eventReason: normalized.why || null,
-        },
-      );
+      updateCharacterMovementRuntime(char_block, normalized.data.movement, {
+        timestamp: normalized.timestamp,
+        eventType: normalized.type,
+        eventReason: normalized.why || null,
+      });
     }
 
     const payload = {
