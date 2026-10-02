@@ -138,7 +138,7 @@ export class ActionBoundary {
       return this.ledger.unknown(transaction.id, {
         why: "MOVE_DISPATCH_UNCERTAIN",
         error: errorMessage(error),
-        after: this.game.map(),
+        after: { ...this.game.map() },
       });
     }
   }
