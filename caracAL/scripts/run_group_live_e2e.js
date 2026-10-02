@@ -29,6 +29,64 @@ async function readState() {
   );
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForGroupTestRunning(
+  characterName,
+  {
+    readStateImpl = readState,
+    timeoutMs = Number(
+      process.env.CARACAL_GROUP_LIVE_BOOTSTRAP_TIMEOUT_MS || 60000,
+    ),
+    pollMs = Number(process.env.CARACAL_GROUP_LIVE_BOOTSTRAP_POLL_MS || 250),
+    now = Date.now,
+    sleepImpl = sleep,
+  } = {},
+) {
+  const deadline = now() + Math.max(1000, timeoutMs);
+  let lastStatus = null;
+  let lastReason = null;
+
+  while (now() < deadline) {
+    const snapshot = await readStateImpl();
+    const character = (snapshot.characters || []).find(
+      (entry) => entry.name === characterName,
+    );
+    if (!character) {
+      throw new Error(
+        "Group live bootstrap character disappeared: " + characterName,
+      );
+    }
+
+    const testState = character.group_live_test || null;
+    lastStatus = testState?.status || null;
+    lastReason = testState?.reason || null;
+
+    if (lastStatus === "RUNNING") {
+      return snapshot;
+    }
+    if (["FAILED", "COMPLETED"].includes(lastStatus)) {
+      throw new Error(
+        "Group live bootstrap became " +
+          lastStatus +
+          " for " +
+          characterName +
+          (lastReason ? " (" + lastReason + ")" : ""),
+      );
+    }
+
+    await sleepImpl(Math.max(25, pollMs));
+  }
+
+  throw new Error(
+    "Timed out waiting for Group live runtime bootstrap for " +
+      characterName +
+      (lastStatus ? " (last status " + lastStatus + ")" : ""),
+  );
+}
+
 function pairScore(character) {
   const partyMembers = character.group_combat_runtime?.partyMembers;
   const partyPenalty =
@@ -108,6 +166,33 @@ async function runCharacter(character, role, leader, peer) {
   );
 }
 
+async function runGroupPair(
+  pair,
+  {
+    runCharacterImpl = runCharacter,
+    waitForRunningImpl = waitForGroupTestRunning,
+  } = {},
+) {
+  const leaderPromise = runCharacterImpl(
+    pair.leader,
+    "leader",
+    pair.leader.name,
+    pair.follower.name,
+  );
+  leaderPromise.catch(() => {});
+
+  await waitForRunningImpl(pair.leader.name);
+
+  const followerPromise = runCharacterImpl(
+    pair.follower,
+    "follower",
+    pair.leader.name,
+    pair.follower.name,
+  );
+
+  return Promise.all([leaderPromise, followerPromise]);
+}
+
 async function main() {
   const requestedLeader = process.argv[2] || null;
   const requestedFollower = process.argv[3] || null;
@@ -140,15 +225,11 @@ async function main() {
         "\n",
     );
 
-    const [leaderPayload, followerPayload] = await Promise.all([
-      runCharacter(pair.leader, "leader", pair.leader.name, pair.follower.name),
-      runCharacter(
-        pair.follower,
-        "follower",
-        pair.leader.name,
-        pair.follower.name,
-      ),
-    ]);
+    const [leaderPayload, followerPayload] = await runGroupPair(pair);
+
+    process.stdout.write(
+      "Leader runtime reached RUNNING before follower bootstrap\n",
+    );
 
     const leaderResult = leaderPayload.result;
     const followerResult = followerPayload.result;
@@ -194,4 +275,8 @@ if (require.main === module) {
   });
 }
 
-module.exports = { selectGroupPair };
+module.exports = {
+  runGroupPair,
+  selectGroupPair,
+  waitForGroupTestRunning,
+};
