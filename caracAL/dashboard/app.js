@@ -94,7 +94,7 @@ const rotationStartCharacter = document.querySelector(
 const rotateCharacters = document.querySelector("#rotate-characters");
 
 function formatTimestamp(timestamp) {
-  if (!timestamp) return "—";
+  if (!timestamp) return "â";
   return new Date(timestamp).toLocaleTimeString("de-DE");
 }
 
@@ -105,23 +105,23 @@ function formatHeartbeat(timestamp) {
 }
 
 function formatCoordinate(value) {
-  return Number.isFinite(value) ? Math.round(value) : "—";
+  return Number.isFinite(value) ? Math.round(value) : "â";
 }
 
 function formatHeading(value, direction) {
-  if (Number.isFinite(value)) return `${Math.round(value)}°`;
-  return direction || "—";
+  if (Number.isFinite(value)) return `${Math.round(value)}Â°`;
+  return direction || "â";
 }
 
 function formatResources(game) {
-  if (!game) return "—";
-  return `HP ${game.hp ?? "—"}/${game.max_hp ?? "—"} · MP ${game.mp ?? "—"}/${
-    game.max_mp ?? "—"
+  if (!game) return "â";
+  return `HP ${game.hp ?? "â"}/${game.max_hp ?? "â"} Â· MP ${game.mp ?? "â"}/${
+    game.max_mp ?? "â"
   }`;
 }
 
 function formatMovement(game) {
-  if (!game) return "—";
+  if (!game) return "â";
   const physicalState =
     game.movement_state || (game.moving ? "MOVING" : "IDLE");
   const movementMode = game.movement_mode || null;
@@ -136,42 +136,42 @@ function formatMovement(game) {
     game.movement_destination;
   if (!destination) return movementState;
 
-  const map = destination.map ? `${destination.map} · ` : "";
-  return `${movementState} → ${map}${formatCoordinate(
+  const map = destination.map ? `${destination.map} Â· ` : "";
+  return `${movementState} â ${map}${formatCoordinate(
     destination.x,
   )}, ${formatCoordinate(destination.y)}`;
 }
 
 function formatMovementOwner(game) {
-  return game?.movement_owner || "—";
+  return game?.movement_owner || "â";
 }
 
 function formatMovementCommand(game) {
   const command = game?.movement_command;
-  if (!command) return "—";
+  if (!command) return "â";
 
   const id = Number.isInteger(command.id) ? `#${command.id}` : "";
-  const action = command.actionId ? ` · ${command.actionId}` : "";
+  const action = command.actionId ? ` Â· ${command.actionId}` : "";
   return `${command.type || "COMMAND"}${id}${action}`;
 }
 
 function formatMovementReason(game) {
-  return game?.movement_reason || game?.movement_command?.reason || "—";
+  return game?.movement_reason || game?.movement_command?.reason || "â";
 }
 
 function formatSafePoint(game) {
   const point = game?.safe_point;
-  if (!point) return "—";
-  const map = point.map ? `${point.map} · ` : "";
+  if (!point) return "â";
+  const map = point.map ? `${point.map} Â· ` : "";
   return `${map}${formatCoordinate(point.x)}, ${formatCoordinate(point.y)}`;
 }
 
 function formatMovementStuck(game) {
   const stuck = game?.movement_stuck;
-  if (!stuck) return "—";
+  if (!stuck) return "â";
   if (!stuck.stuck) {
     return stuck.lastProgressAt
-      ? `OK · Progress ${formatTimestamp(stuck.lastProgressAt)}`
+      ? `OK Â· Progress ${formatTimestamp(stuck.lastProgressAt)}`
       : "OK";
   }
 
@@ -181,91 +181,89 @@ function formatMovementStuck(game) {
 }
 
 function formatMovementLiveTest(liveTest) {
-  if (!liveTest) return "noch nicht ausgeführt";
+  if (!liveTest) return "noch nicht ausgefÃ¼hrt";
   if (liveTest.status === "STARTING" || liveTest.status === "RUNNING") {
-    return `${liveTest.status} · ${liveTest.request_id || "—"}`;
+    return `${liveTest.status} Â· ${liveTest.request_id || "â"}`;
   }
 
   const outcome = liveTest.outcome || liveTest.status || "UNKNOWN";
-  const reason = liveTest.reason ? ` · ${liveTest.reason}` : "";
+  const reason = liveTest.reason ? ` Â· ${liveTest.reason}` : "";
   const completed = liveTest.completed_at
-    ? ` · ${formatTimestamp(liveTest.completed_at)}`
+    ? ` Â· ${formatTimestamp(liveTest.completed_at)}`
     : "";
   return `${outcome}${reason}${completed}`;
 }
 
 function formatClassSkills(runtime) {
-  if (!runtime) return "—";
+  if (!runtime) return "â";
   const className = runtime.className || "unknown";
   const state = runtime.state || "UNKNOWN";
-  const reason = runtime.reason ? ` · ${runtime.reason}` : "";
+  const reason = runtime.reason ? ` Â· ${runtime.reason}` : "";
   const configured =
     Array.isArray(runtime.configuredSkills) && runtime.configuredSkills.length
-      ? ` · ${runtime.configuredSkills.join(", ")}`
+      ? ` Â· ${runtime.configuredSkills.join(", ")}`
       : "";
-  return `${className} · ${state}${reason}${configured}`;
+  return `${className} Â· ${state}${reason}${configured}`;
 }
 
 function formatClassSkillAction(runtime) {
-  if (!runtime) return "—";
+  if (!runtime) return "â";
   const action = runtime.lastAction;
   if (!action) {
-    return runtime.selectedSkill
-      ? `${runtime.selectedSkill} · bereit`
-      : "—";
+    return runtime.selectedSkill ? `${runtime.selectedSkill} Â· bereit` : "â";
   }
-  const target = runtime.targetId ? ` · Target ${runtime.targetId}` : "";
-  return `${action.skill || runtime.selectedSkill || "Skill"} · ${
+  const target = runtime.targetId ? ` Â· Target ${runtime.targetId}` : "";
+  return `${action.skill || runtime.selectedSkill || "Skill"} Â· ${
     action.status || "UNKNOWN"
   }${target}`;
 }
 
 function formatCombat(combat) {
-  if (!combat) return "—";
-  const reason = combat.reason ? ` · ${combat.reason}` : "";
+  if (!combat) return "â";
+  const reason = combat.reason ? ` Â· ${combat.reason}` : "";
   return `${combat.state || "UNKNOWN"}${reason}`;
 }
 
 function formatCombatTarget(combat) {
   const target = combat?.target;
-  if (!target) return "—";
+  if (!target) return "â";
   const label = target.name || target.mtype || target.id || "Target";
   const distance = Number.isFinite(target.distance)
-    ? ` · Dist ${Math.round(target.distance)}`
+    ? ` Â· Dist ${Math.round(target.distance)}`
     : "";
   const range = Number.isFinite(target.attackRange)
     ? ` / Range ${Math.round(target.attackRange)}`
     : "";
   const inRange =
     target.inRange === true
-      ? " · IN RANGE"
+      ? " Â· IN RANGE"
       : target.inRange === false
-      ? " · OUT"
+      ? " Â· OUT"
       : "";
   return `${label}${distance}${range}${inRange}`;
 }
 
 function formatCombatCooldowns(combat) {
-  if (!combat?.cooldowns) return "—";
-  return `Attack ${combat.cooldowns.attackRemainingMs || 0}ms · HP Pot ${
+  if (!combat?.cooldowns) return "â";
+  return `Attack ${combat.cooldowns.attackRemainingMs || 0}ms Â· HP Pot ${
     combat.cooldowns.hpPotionRemainingMs || 0
-  }ms · MP Pot ${combat.cooldowns.mpPotionRemainingMs || 0}ms`;
+  }ms Â· MP Pot ${combat.cooldowns.mpPotionRemainingMs || 0}ms`;
 }
 
 function formatTarget(game) {
-  if (!game) return "—";
+  if (!game) return "â";
   const target = game.target;
   if (target) {
     return target.name || target.mtype || target.id || "Target";
   }
-  return game.t_name || game.t_mtype || "—";
+  return game.t_name || game.t_mtype || "â";
 }
 
 function formatInventory(game) {
-  if (!game || !Number.isFinite(game.isize)) return "—";
+  if (!game || !Number.isFinite(game.isize)) return "â";
   const free = Number.isFinite(game.esize) ? game.esize : 0;
   const used = Math.max(0, game.isize - free);
-  return `${used}/${game.isize} belegt · ${free} frei`;
+  return `${used}/${game.isize} belegt Â· ${free} frei`;
 }
 
 function badgeClass(lifecycleState) {
@@ -354,7 +352,7 @@ async function sendEmergencyStop(action) {
 }
 
 function formatRevision(value) {
-  return value || "—";
+  return value || "â";
 }
 
 function renderRevisionSummary() {
@@ -388,8 +386,8 @@ function renderPersistenceSummary() {
   persistenceSummary.className = `persistence-summary persistence-${status.toLowerCase()}`;
   persistenceSummaryStatus.textContent = `Persistence: ${status}`;
   persistenceSummarySchema.textContent = `Schema: ${
-    persistence.schema_version ?? "—"
-  }/${persistence.current_schema_version ?? "—"}`;
+    persistence.schema_version ?? "â"
+  }/${persistence.current_schema_version ?? "â"}`;
   persistenceSummaryFlushes.textContent = persistence.last_error
     ? `Fehler: ${persistence.last_error}`
     : `Flushes: ${persistence.flush_count ?? 0}`;
@@ -486,8 +484,8 @@ function renderRotationControls() {
     );
   });
 
-  replaceRotationOptions(rotationStopCharacter, sources, "Auswechseln …");
-  replaceRotationOptions(rotationStartCharacter, targets, "Einwechseln …");
+  replaceRotationOptions(rotationStopCharacter, sources, "Auswechseln â¦");
+  replaceRotationOptions(rotationStartCharacter, targets, "Einwechseln â¦");
 
   rotateCharacters.disabled =
     !rotationStopCharacter.value || !rotationStartCharacter.value;
@@ -621,11 +619,11 @@ function configureCardInteractions(card) {
       const action = button.dataset.control;
       card.dataset.controlBusy = "true";
       updateControlButtons(card, character);
-      feedback.textContent = `${action.toUpperCase()} wird ausgeführt …`;
+      feedback.textContent = `${action.toUpperCase()} wird ausgefÃ¼hrt â¦`;
 
       try {
         await sendCharacterControl(characterName, action);
-        feedback.textContent = `${action.toUpperCase()} angefordert ✓`;
+        feedback.textContent = `${action.toUpperCase()} angefordert â`;
       } catch (error) {
         feedback.textContent = error.message;
         addEvent({
@@ -653,11 +651,11 @@ function configureCardInteractions(card) {
 
     card.dataset.controlBusy = "true";
     updateControlButtons(card, character);
-    feedback.textContent = "Autonomer Movement-E2E-Test läuft …";
+    feedback.textContent = "Autonomer Movement-E2E-Test lÃ¤uft â¦";
 
     try {
       const result = await sendMovementLiveTest(characterName);
-      feedback.textContent = `Movement E2E: ${result?.outcome || "UNKNOWN"} · ${
+      feedback.textContent = `Movement E2E: ${result?.outcome || "UNKNOWN"} Â· ${
         result?.reason || "ohne Reason"
       }`;
     } catch (error) {
@@ -684,11 +682,11 @@ function configureCardInteractions(card) {
 
     card.dataset.controlBusy = "true";
     updateControlButtons(card, character);
-    feedback.textContent = "Autonomer Combat-E2E-Test läuft …";
+    feedback.textContent = "Autonomer Combat-E2E-Test lÃ¤uft â¦";
 
     try {
       const result = await sendCombatLiveTest(characterName);
-      feedback.textContent = `Combat E2E: ${result?.outcome || "UNKNOWN"} · ${
+      feedback.textContent = `Combat E2E: ${result?.outcome || "UNKNOWN"} Â· ${
         result?.reason || "ohne Reason"
       }`;
     } catch (error) {
@@ -712,7 +710,7 @@ function configureCardInteractions(card) {
   copyButton.addEventListener("click", async () => {
     const characterName = card.dataset.character;
     copyButton.disabled = true;
-    feedback.textContent = "Diagnose wird erstellt …";
+    feedback.textContent = "Diagnose wird erstellt â¦";
 
     try {
       const diagnostic = await fetchDiagnostic(
@@ -722,7 +720,7 @@ function configureCardInteractions(card) {
         range.value,
       );
       await writeClipboard(diagnostic);
-      feedback.textContent = "Log in Zwischenablage kopiert ✓";
+      feedback.textContent = "Log in Zwischenablage kopiert â";
     } catch (error) {
       feedback.textContent = error.message;
       addEvent({
@@ -759,11 +757,11 @@ function updateCharacterCard(card, character) {
   card.querySelector(".character-desired-state").textContent =
     character.desired_runtime_state ||
     (character.enabled ? "RUNNING" : "STOPPED");
-  card.querySelector(".character-class").textContent = game?.ctype || "—";
-  card.querySelector(".character-map").textContent = game?.map || "—";
+  card.querySelector(".character-class").textContent = game?.ctype || "â";
+  card.querySelector(".character-map").textContent = game?.map || "â";
   card.querySelector(".character-position").textContent = game
     ? `${formatCoordinate(game.x)}, ${formatCoordinate(game.y)}`
-    : "—";
+    : "â";
   card.querySelector(".character-heading").textContent = formatHeading(
     game?.heading,
     game?.direction,
@@ -777,8 +775,9 @@ function updateCharacterCard(card, character) {
     formatCombatTarget(character.combat_runtime);
   card.querySelector(".character-combat-cooldowns").textContent =
     formatCombatCooldowns(character.combat_runtime);
-  card.querySelector(".character-class-skills").textContent =
-    formatClassSkills(character.class_skill_runtime);
+  card.querySelector(".character-class-skills").textContent = formatClassSkills(
+    character.class_skill_runtime,
+  );
   card.querySelector(".character-class-skill-action").textContent =
     formatClassSkillAction(character.class_skill_runtime);
   card.querySelector(".character-movement").textContent = formatMovement(game);
@@ -817,8 +816,8 @@ function updateCharacterCard(card, character) {
   card.querySelector(".character-target").textContent = formatTarget(game);
   card.querySelector(".character-inventory-summary").textContent =
     formatInventory(game);
-  card.querySelector(".character-pid").textContent = character.pid || "—";
-  card.querySelector(".character-script").textContent = character.script || "—";
+  card.querySelector(".character-pid").textContent = character.pid || "â";
+  card.querySelector(".character-script").textContent = character.script || "â";
   card.querySelector(".character-code-revision").textContent = formatRevision(
     character.code_revision,
   );
@@ -837,18 +836,18 @@ function updateCharacterCard(card, character) {
   card.querySelector(".character-runtime-config-revision").textContent =
     character.runtime_config_revision ?? 0;
   card.querySelector(".character-applied-runtime-config-revision").textContent =
-    character.applied_runtime_config_revision ?? "—";
+    character.applied_runtime_config_revision ?? "â";
   card.querySelector(".character-config-push-status").textContent =
     character.config_push_error
-      ? `${character.config_push_status || "UNKNOWN"} · ${
+      ? `${character.config_push_status || "UNKNOWN"} Â· ${
           character.config_push_error
         }`
       : character.config_push_status || "UNKNOWN";
   const rotationText = character.rotation_source
-    ? `Einwechseln für ${character.rotation_source}`
+    ? `Einwechseln fÃ¼r ${character.rotation_source}`
     : character.rotation_replacement
-    ? `Auswechseln → ${character.rotation_replacement}`
-    : "—";
+    ? `Auswechseln â ${character.rotation_replacement}`
+    : "â";
   card.querySelector(".character-rotation").textContent = rotationText;
   card.querySelector(".character-restarts").textContent =
     character.restart_attempts ?? 0;
@@ -1018,7 +1017,7 @@ function renderEvents() {
     reason.className = "event-reason";
     reason.textContent = [event.module || "", event.why || event.reason || ""]
       .filter(Boolean)
-      .join(" · ");
+      .join(" Â· ");
 
     row.append(time, type, character, reason);
     eventList.append(row);
@@ -1092,7 +1091,7 @@ function connectEvents() {
 
   source.addEventListener("error", () => {
     connectionStatus.textContent =
-      "Supervisor-Verbindung wird wiederhergestellt …";
+      "Supervisor-Verbindung wird wiederhergestellt â¦";
     connectionStatus.className = "disconnected";
   });
 }
@@ -1174,7 +1173,7 @@ for (const control of [
 copyAccountLog.addEventListener("click", async () => {
   const originalText = copyAccountLog.textContent;
   copyAccountLog.disabled = true;
-  copyAccountLog.textContent = "Kopiere …";
+  copyAccountLog.textContent = "Kopiere â¦";
 
   try {
     const diagnostic = await fetchDiagnostic(
@@ -1182,7 +1181,7 @@ copyAccountLog.addEventListener("click", async () => {
       accountDiagnosticRange.value,
     );
     await writeClipboard(diagnostic);
-    copyAccountLog.textContent = "Kopiert ✓";
+    copyAccountLog.textContent = "Kopiert â";
   } catch (error) {
     copyAccountLog.textContent = "Fehler";
     addEvent({

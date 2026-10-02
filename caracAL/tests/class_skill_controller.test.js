@@ -53,7 +53,9 @@ function stateFor(ctype = "ranger") {
 }
 
 function makeController(ctype = "ranger", config = {}, options = {}) {
-  const { createClassSkillController } = coreModule("class-skill-factory.lib.ts");
+  const { createClassSkillController } = coreModule(
+    "class-skill-factory.lib.ts",
+  );
   const state = options.state || stateFor(ctype);
   const calls = [];
   const skills = options.skills || [
@@ -97,21 +99,17 @@ function makeController(ctype = "ranger", config = {}, options = {}) {
     status: () => ({ target: { id: state.target.id } }),
   };
   const events = [];
-  const controller = createClassSkillController(
-    ctype,
-    game,
-    actions,
-    combat,
-    {
-      config: () => config,
-      onEvent: (event) => events.push(event),
-    },
-  );
+  const controller = createClassSkillController(ctype, game, actions, combat, {
+    config: () => config,
+    onEvent: (event) => events.push(event),
+  });
   return { controller, state, calls, events };
 }
 
 test("factory creates all six Phase 7 class controllers", () => {
-  const { createClassSkillController } = coreModule("class-skill-factory.lib.ts");
+  const { createClassSkillController } = coreModule(
+    "class-skill-factory.lib.ts",
+  );
   const fake = {
     character: () => stateFor("ranger").character,
     entity: () => null,
@@ -131,12 +129,7 @@ test("factory creates all six Phase 7 class controllers", () => {
   };
 
   for (const [ctype, module] of Object.entries(expected)) {
-    const controller = createClassSkillController(
-      ctype,
-      fake,
-      actions,
-      combat,
-    );
+    const controller = createClassSkillController(ctype, fake, actions, combat);
     assert.ok(controller);
     assert.equal(controller.status().module, module);
   }
@@ -276,40 +269,3 @@ test("Phase 8 AoE skills are not exposed by Phase 7 ranger controller", () => {
   const status = setup.controller.status();
   assert.deepEqual(status.configuredSkills, []);
 });
-
-
-/* PRETTIER_PROBE_START */
-test("prettier exact-output probe", async () => {
-  const fs = require("node:fs");
-  const nodePath = require("node:path");
-  const prettier = await import("prettier");
-  const targets = [
-    "dashboard/app.js",
-    "tests/class_skill_controller.test.js",
-  ];
-
-  for (const relative of targets) {
-    const absolute = nodePath.join(__dirname, "..", relative);
-    let source = fs.readFileSync(absolute, "utf8");
-    if (relative === "tests/class_skill_controller.test.js") {
-      source = source.replace(
-        /\n\/\* PRETTIER_PROBE_START \*\/[\s\S]*\/\* PRETTIER_PROBE_END \*\/\n?$/,
-        "\n",
-      );
-    }
-    const formatted = await prettier.format(source, { filepath: absolute });
-    const encoded = Buffer.from(formatted).toString("base64");
-    const pathToken = Buffer.from(relative).toString("base64");
-    let part = 0;
-    for (let offset = 0; offset < encoded.length; offset += 6000) {
-      console.log(
-        `PRETTIER_PROBE|${pathToken}|${String(part).padStart(4, "0")}|${encoded.slice(
-          offset,
-          offset + 6000,
-        )}`,
-      );
-      part += 1;
-    }
-  }
-});
-/* PRETTIER_PROBE_END */
