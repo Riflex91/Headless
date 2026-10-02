@@ -2,13 +2,22 @@
 
 const { JSDOM } = require("jsdom");
 
-function createIsolatedBrowserWindow(html, url = "https://adventure.land/") {
-  return new JSDOM(html, {
+function createIsolatedBrowserContext(
+  html,
+  url = "https://adventure.land/",
+) {
+  const dom = new JSDOM(html, {
     url,
     runScripts: "outside-only",
-  }).window;
+  });
+
+  return {
+    dom,
+    window: dom.window,
+    context: dom.getInternalVMContext(),
+  };
 }
 
 module.exports = {
-  createIsolatedBrowserWindow,
+  createIsolatedBrowserContext,
 };
