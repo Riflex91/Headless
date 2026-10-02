@@ -198,6 +198,8 @@ export class ActionLedger {
 
   list(limit = 100): ActionRecord[] {
     const count = Math.max(0, Math.trunc(limit));
+    if (count === 0) return [];
+
     return this.order
       .slice(-count)
       .reverse()
@@ -230,7 +232,8 @@ export class ActionLedger {
 
   private duration(record: ActionRecord): number {
     const start = record.dispatchedAt || record.createdAt;
-    return Math.max(0, this.now() - start);
+    const end = record.completedAt || this.now();
+    return Math.max(0, end - start);
   }
 
   private emitRecord(
