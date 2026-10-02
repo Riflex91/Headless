@@ -363,7 +363,17 @@ function safeResultEvidence(result: unknown): unknown {
 
   const value = objectRecord(result);
   const evidence: Record<string, unknown> = {};
-  for (const key of ["success", "failed", "response", "reason", "place"]) {
+  for (const key of [
+    "success",
+    "failed",
+    "response",
+    "reason",
+    "place",
+    "level",
+    "num",
+    "reward",
+    "chance",
+  ]) {
     const entry = value[key];
     if (
       entry === null ||
@@ -1830,6 +1840,476 @@ export class ActionBoundary {
         error: errorMessage(error),
         after: {
           equipmentItem: equipmentSlot(this.game.equipment(), slot),
+        },
+      });
+    }
+  }
+
+
+  async upgrade(request: UpgradeRequest): Promise<ActionRecord> {
+    const beforeInventory = this.game.inventory();
+    const item = inventoryItem(beforeInventory, request.itemSlot);
+    const scroll = inventoryItem(beforeInventory, request.scrollSlot);
+    const offering =
+      request.offeringSlot === null || request.offeringSlot === undefined
+        ? null
+        : inventoryItem(beforeInventory, request.offeringSlot);
+    const name = itemName(item);
+    const itemDefinition = gameItemDefinition(this.game.gameData(), name);
+    const transaction = this.ledger.create({
+      module: request.module,
+      action: "UPGRADE",
+      why: request.why,
+      correlationId: request.correlationId,
+      expectedCost: {
+        scroll: itemName(scroll),
+        offering: itemName(offering),
+      },
+      expectedEffect: {
+        item: name,
+        fromLevel: itemLevel(item),
+        itemSlot: request.itemSlot,
+      },
+      before: {
+        item: relevantInventoryState(beforeInventory, request.itemSlot),
+        scroll: relevantInventoryState(beforeInventory, request.scrollSlot),
+        offering:
+          request.offeringSlot === null ||
+          request.offeringSlot === undefined
+            ? null
+            : relevantInventoryState(
+                beforeInventory,
+                request.offeringSlot,
+              ),
+      },
+    });
+
+    if (transaction.status === "BLOCKED") return transaction;
+    if (
+      !inventorySlotValid(request.itemSlot) ||
+      !inventorySlotValid(request.scrollSlot) ||
+      (request.offeringSlot !== undefined &&
+        request.offeringSlot !== null &&
+        !inventorySlotValid(request.offeringSlot))
+    ) {
+      return this.ledger.block(transaction.id, "INVENTORY_SLOT_INVALID");
+    }
+    if (
+      !distinctSlots([
+        request.itemSlot,
+        request.scrollSlot,
+        request.offeringSlot,
+      ])
+    ) {
+      return this.ledger.block(transaction.id, "UPGRADE_SLOTS_NOT_DISTINCT");
+    }
+    if (!item || !name) {
+      return this.ledger.block(transaction.id, "UPGRADE_ITEM_MISSING");
+    }
+    if (itemLocked(item)) {
+      return this.ledger.block(transaction.id, "ITEM_LOCKED");
+    }
+    if (!scroll) {
+      return this.ledger.block(transaction.id, "UPGRADE_SCROLL_MISSING");
+    }
+    if (itemLocked(scroll)) {
+      return this.ledger.block(transaction.id, "SCROLL_LOCKED");
+    }
+    if (
+      request.offeringSlot !== undefined &&
+      request.offeringSlot !== null &&
+      !offering
+    ) {
+      return this.ledger.block(transaction.id, "UPGRADE_OFFERING_MISSING");
+    }
+    if (offering && itemLocked(offering)) {
+      return this.ledger.block(transaction.id, "OFFERING_LOCKED");
+    }
+    if (!Object.prototype.hasOwnProperty.call(itemDefinition, "upgrade")) {
+      return this.ledger.block(transaction.id, "ITEM_NOT_UPGRADABLE");
+    }
+
+    this.ledger.dispatch(transaction.id, {
+      mutation: "upgrade",
+      itemSlot: request.itemSlot,
+      scrollSlot: request.scrollSlot,
+      offeringSlot: request.offeringSlot ?? null,
+    });
+
+    try {
+      const result = await this.driver.upgrade(
+        request.itemSlot,
+        request.scrollSlot,
+        request.offeringSlot,
+      );
+      const response = objectRecord(result);
+      const afterInventory = this.game.inventory();
+      const afterItem = inventoryItem(afterInventory, request.itemSlot);
+      const structuredOutcome =
+        typeof response.success === "boolean" &&
+        Number.isFinite(Number(response.level)) &&
+        Number.isInteger(Number(response.num));
+      const stateChanged =
+        itemIdentity(afterItem) !== itemIdentity(item) ||
+        itemLevel(afterItem) !== itemLevel(item);
+
+      if (
+        !structuredOutcome &&
+        typeof response.reason === "string" &&
+        response.reason.length > 0
+      ) {
+        return this.ledger.reject(transaction.id, {
+          why: "UPGRADE_API_REJECTED",
+          after: {
+            item: relevantInventoryState(
+              afterInventory,
+              request.itemSlot,
+            ),
+          },
+          evidence: { result: safeResultEvidence(result) },
+        });
+      }
+      if (structuredOutcome || stateChanged) {
+        return this.ledger.confirm(transaction.id, {
+          why: structuredOutcome
+            ? "UPGRADE_RESULT_CONFIRMED"
+            : "UPGRADE_STATE_CONFIRMED",
+          after: {
+            item: relevantInventoryState(
+              afterInventory,
+              request.itemSlot,
+            ),
+          },
+          evidence: {
+            upgradeSucceeded:
+              typeof response.success === "boolean"
+                ? response.success
+                : null,
+            result: safeResultEvidence(result),
+            stateChanged,
+          },
+        });
+      }
+
+      return this.ledger.unknown(transaction.id, {
+        why: "UPGRADE_OUTCOME_UNVERIFIED",
+        after: {
+          item: relevantInventoryState(
+            afterInventory,
+            request.itemSlot,
+          ),
+        },
+        evidence: { result: safeResultEvidence(result) },
+      });
+    } catch (error) {
+      return this.ledger.unknown(transaction.id, {
+        why: "UPGRADE_OUTCOME_UNCERTAIN",
+        error: errorMessage(error),
+        after: {
+          item: relevantInventoryState(
+            this.game.inventory(),
+            request.itemSlot,
+          ),
+        },
+      });
+    }
+  }
+
+  async compound(request: CompoundRequest): Promise<ActionRecord> {
+    const beforeInventory = this.game.inventory();
+    const items = request.itemSlots.map((slot) =>
+      inventoryItem(beforeInventory, slot),
+    );
+    const scroll = inventoryItem(beforeInventory, request.scrollSlot);
+    const offering =
+      request.offeringSlot === null || request.offeringSlot === undefined
+        ? null
+        : inventoryItem(beforeInventory, request.offeringSlot);
+    const names = items.map((item) => itemName(item));
+    const levels = items.map((item) => itemLevel(item));
+    const primaryName = names[0];
+    const itemDefinition = gameItemDefinition(
+      this.game.gameData(),
+      primaryName,
+    );
+    const transaction = this.ledger.create({
+      module: request.module,
+      action: "COMPOUND",
+      why: request.why,
+      correlationId: request.correlationId,
+      expectedCost: {
+        items: names,
+        scroll: itemName(scroll),
+        offering: itemName(offering),
+      },
+      expectedEffect: {
+        item: primaryName,
+        fromLevel: levels[0],
+        itemSlots: [...request.itemSlots],
+      },
+      before: {
+        items: request.itemSlots.map((slot) =>
+          relevantInventoryState(beforeInventory, slot),
+        ),
+        scroll: relevantInventoryState(beforeInventory, request.scrollSlot),
+      },
+    });
+
+    if (transaction.status === "BLOCKED") return transaction;
+    const allSlots = [
+      ...request.itemSlots,
+      request.scrollSlot,
+      request.offeringSlot,
+    ];
+    if (
+      request.itemSlots.some((slot) => !inventorySlotValid(slot)) ||
+      !inventorySlotValid(request.scrollSlot) ||
+      (request.offeringSlot !== undefined &&
+        request.offeringSlot !== null &&
+        !inventorySlotValid(request.offeringSlot))
+    ) {
+      return this.ledger.block(transaction.id, "INVENTORY_SLOT_INVALID");
+    }
+    if (!distinctSlots(allSlots)) {
+      return this.ledger.block(transaction.id, "COMPOUND_SLOTS_NOT_DISTINCT");
+    }
+    if (items.some((item) => !item) || names.some((name) => !name)) {
+      return this.ledger.block(transaction.id, "COMPOUND_ITEM_MISSING");
+    }
+    if (items.some((item) => itemLocked(item))) {
+      return this.ledger.block(transaction.id, "ITEM_LOCKED");
+    }
+    if (
+      !names.every((name) => name === primaryName) ||
+      !levels.every((level) => level === levels[0])
+    ) {
+      return this.ledger.block(transaction.id, "COMPOUND_ITEMS_MISMATCH");
+    }
+    if (!scroll) {
+      return this.ledger.block(transaction.id, "COMPOUND_SCROLL_MISSING");
+    }
+    if (itemLocked(scroll)) {
+      return this.ledger.block(transaction.id, "SCROLL_LOCKED");
+    }
+    if (
+      request.offeringSlot !== undefined &&
+      request.offeringSlot !== null &&
+      !offering
+    ) {
+      return this.ledger.block(transaction.id, "COMPOUND_OFFERING_MISSING");
+    }
+    if (offering && itemLocked(offering)) {
+      return this.ledger.block(transaction.id, "OFFERING_LOCKED");
+    }
+    if (!Object.prototype.hasOwnProperty.call(itemDefinition, "compound")) {
+      return this.ledger.block(transaction.id, "ITEM_NOT_COMPOUNDABLE");
+    }
+
+    this.ledger.dispatch(transaction.id, {
+      mutation: "compound",
+      itemSlots: [...request.itemSlots],
+      scrollSlot: request.scrollSlot,
+      offeringSlot: request.offeringSlot ?? null,
+    });
+
+    try {
+      const result = await this.driver.compound(
+        request.itemSlots[0],
+        request.itemSlots[1],
+        request.itemSlots[2],
+        request.scrollSlot,
+        request.offeringSlot,
+      );
+      const response = objectRecord(result);
+      const afterInventory = this.game.inventory();
+      const structuredOutcome =
+        typeof response.success === "boolean" &&
+        Number.isFinite(Number(response.level)) &&
+        Number.isInteger(Number(response.num));
+      const stateChanged = request.itemSlots.some(
+        (slot, index) =>
+          itemIdentity(inventoryItem(afterInventory, slot)) !==
+          itemIdentity(items[index]),
+      );
+
+      if (
+        !structuredOutcome &&
+        typeof response.reason === "string" &&
+        response.reason.length > 0
+      ) {
+        return this.ledger.reject(transaction.id, {
+          why: "COMPOUND_API_REJECTED",
+          after: {
+            items: request.itemSlots.map((slot) =>
+              relevantInventoryState(afterInventory, slot),
+            ),
+          },
+          evidence: { result: safeResultEvidence(result) },
+        });
+      }
+      if (structuredOutcome || stateChanged) {
+        return this.ledger.confirm(transaction.id, {
+          why: structuredOutcome
+            ? "COMPOUND_RESULT_CONFIRMED"
+            : "COMPOUND_STATE_CONFIRMED",
+          after: {
+            items: request.itemSlots.map((slot) =>
+              relevantInventoryState(afterInventory, slot),
+            ),
+          },
+          evidence: {
+            compoundSucceeded:
+              typeof response.success === "boolean"
+                ? response.success
+                : null,
+            result: safeResultEvidence(result),
+            stateChanged,
+          },
+        });
+      }
+
+      return this.ledger.unknown(transaction.id, {
+        why: "COMPOUND_OUTCOME_UNVERIFIED",
+        after: {
+          items: request.itemSlots.map((slot) =>
+            relevantInventoryState(afterInventory, slot),
+          ),
+        },
+        evidence: { result: safeResultEvidence(result) },
+      });
+    } catch (error) {
+      return this.ledger.unknown(transaction.id, {
+        why: "COMPOUND_OUTCOME_UNCERTAIN",
+        error: errorMessage(error),
+        after: {
+          items: request.itemSlots.map((slot) =>
+            relevantInventoryState(this.game.inventory(), slot),
+          ),
+        },
+      });
+    }
+  }
+
+  async exchange(request: ExchangeRequest): Promise<ActionRecord> {
+    const beforeInventory = this.game.inventory();
+    const item = inventoryItem(beforeInventory, request.itemSlot);
+    const name = itemName(item);
+    const definition = gameItemDefinition(this.game.gameData(), name);
+    const requiredQuantity = Number(definition.e);
+    const transaction = this.ledger.create({
+      module: request.module,
+      action: "EXCHANGE",
+      why: request.why,
+      correlationId: request.correlationId,
+      expectedCost: {
+        item: name,
+        quantity:
+          Number.isInteger(requiredQuantity) && requiredQuantity > 0
+            ? requiredQuantity
+            : null,
+      },
+      expectedEffect: {
+        itemSlot: request.itemSlot,
+        effect: "EXCHANGE_ITEM",
+      },
+      before: {
+        item: relevantInventoryState(beforeInventory, request.itemSlot),
+      },
+    });
+
+    if (transaction.status === "BLOCKED") return transaction;
+    if (!inventorySlotValid(request.itemSlot)) {
+      return this.ledger.block(transaction.id, "INVENTORY_SLOT_INVALID");
+    }
+    if (!item || !name) {
+      return this.ledger.block(transaction.id, "EXCHANGE_ITEM_MISSING");
+    }
+    if (itemLocked(item)) {
+      return this.ledger.block(transaction.id, "ITEM_LOCKED");
+    }
+    if (!Number.isInteger(requiredQuantity) || requiredQuantity <= 0) {
+      return this.ledger.block(transaction.id, "ITEM_NOT_EXCHANGEABLE");
+    }
+    if (itemQuantity(item) < requiredQuantity) {
+      return this.ledger.block(
+        transaction.id,
+        "EXCHANGE_QUANTITY_INSUFFICIENT",
+      );
+    }
+
+    this.ledger.dispatch(transaction.id, {
+      mutation: "exchange",
+      itemSlot: request.itemSlot,
+      requiredQuantity,
+    });
+
+    try {
+      const result = await this.driver.exchange(request.itemSlot);
+      const response = objectRecord(result);
+      const afterInventory = this.game.inventory();
+      const afterItem = inventoryItem(afterInventory, request.itemSlot);
+      const stateChanged =
+        itemIdentity(afterItem) !== itemIdentity(item) ||
+        itemQuantity(afterItem) <= itemQuantity(item) - requiredQuantity;
+      const structuredOutcome =
+        typeof response.success === "boolean" &&
+        Number.isInteger(Number(response.num));
+
+      if (response.success === false && !stateChanged) {
+        return this.ledger.reject(transaction.id, {
+          why: "EXCHANGE_API_REJECTED",
+          after: {
+            item: relevantInventoryState(
+              afterInventory,
+              request.itemSlot,
+            ),
+          },
+          evidence: { result: safeResultEvidence(result) },
+        });
+      }
+      if (response.success === true || stateChanged) {
+        return this.ledger.confirm(transaction.id, {
+          why:
+            response.success === true
+              ? "EXCHANGE_RESULT_CONFIRMED"
+              : "EXCHANGE_STATE_CONFIRMED",
+          after: {
+            item: relevantInventoryState(
+              afterInventory,
+              request.itemSlot,
+            ),
+          },
+          evidence: {
+            exchangeSucceeded:
+              typeof response.success === "boolean"
+                ? response.success
+                : null,
+            structuredOutcome,
+            stateChanged,
+            result: safeResultEvidence(result),
+          },
+        });
+      }
+
+      return this.ledger.unknown(transaction.id, {
+        why: "EXCHANGE_OUTCOME_UNVERIFIED",
+        after: {
+          item: relevantInventoryState(
+            afterInventory,
+            request.itemSlot,
+          ),
+        },
+        evidence: { result: safeResultEvidence(result) },
+      });
+    } catch (error) {
+      return this.ledger.unknown(transaction.id, {
+        why: "EXCHANGE_OUTCOME_UNCERTAIN",
+        error: errorMessage(error),
+        after: {
+          item: relevantInventoryState(
+            this.game.inventory(),
+            request.itemSlot,
+          ),
         },
       });
     }
