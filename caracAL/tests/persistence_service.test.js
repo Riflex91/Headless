@@ -331,7 +331,6 @@ test("queued writes serialize without losing state", async () => {
   }
 });
 
-
 test("version 2 databases migrate forward and backfill config revisions", async () => {
   const fixture = await tempDatabase();
   let service;
