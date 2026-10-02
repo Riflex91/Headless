@@ -957,7 +957,7 @@ export class BotRuntimeKernel {
         character: () => {
           const snapshot = this.game.character();
           return {
-            name: snapshot.name,
+            name: snapshot.name || "",
             ctype: snapshot.ctype,
           };
         },
