@@ -24,6 +24,9 @@ const {
   DESIRED_RUNTIME_STATES,
 } = require("../src/CharacterControl");
 const { AdventureLandAssetCache } = require("../src/AdventureLandAssetCache");
+const {
+  registerAccountCharacters,
+} = require("../src/AccountCharacterRegistry");
 const { DiagnosticEventStore } = require("../src/DiagnosticStore");
 const { EmergencyStopState } = require("../src/EmergencyStopState");
 const { attachHeadlessDashboard } = require("../src/HeadlessDashboard");
@@ -124,7 +127,14 @@ function migrate_old_storage(path, localStorage) {
   const my_acc = await account_info(sess);
   const default_realm = my_acc.response.servers[0];
 
-  const character_manage = cfg.characters;
+  const character_manage = registerAccountCharacters(
+    cfg.characters,
+    my_acc.response.characters,
+    {
+      defaultRealm: default_realm.key,
+      enableTypecode: !!cfg.enable_TYPECODE,
+    },
+  );
   const revision_cache = new FileRevisionCache();
   const source_revision = readGitRevision(process.cwd());
   const installed_config_revision = createConfigRevision(cfg);
@@ -520,7 +530,11 @@ function migrate_old_storage(path, localStorage) {
     void observe_persistence(
       persistence.saveCharacterProfile(
         char_name,
-        buildCharacterProfile(char_name, char_block),
+        buildCharacterProfile(
+          char_name,
+          char_block,
+          my_acc.resolve_char(char_name),
+        ),
       ),
       "character_profile",
       char_name,
@@ -1278,6 +1292,9 @@ function migrate_old_storage(path, localStorage) {
   }
 
   emit_supervisor_event("COORDINATOR_READY", null, {
+    registered_character_count: Object.keys(character_manage).length,
+    account_character_count: my_acc.response.characters.length,
+    registered_characters: Object.keys(character_manage).sort(),
     max_online_characters: lifecycle_policy.maxOnlineCharacters,
     heartbeat_interval_ms: lifecycle_policy.heartbeatIntervalMs,
     heartbeat_timeout_ms: lifecycle_policy.heartbeatTimeoutMs,
