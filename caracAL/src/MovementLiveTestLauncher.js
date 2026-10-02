@@ -78,12 +78,7 @@ async function stopManagedRuntime(
   }
 
   if (platform === "win32") {
-    await runProcessImpl("taskkill", [
-      "/PID",
-      String(child.pid),
-      "/T",
-      "/F",
-    ]);
+    await runProcessImpl("taskkill", ["/PID", String(child.pid), "/T", "/F"]);
     await waitForChildExit(child, forceTimeoutMs);
     return;
   }
@@ -98,21 +93,13 @@ async function stopManagedRuntime(
 async function waitForDashboard(
   probe,
   runtime,
-  {
-    timeoutMs = 60000,
-    pollMs = 500,
-    now = Date.now,
-    sleepImpl = sleep,
-  } = {},
+  { timeoutMs = 60000, pollMs = 500, now = Date.now, sleepImpl = sleep } = {},
 ) {
   const deadline = now() + timeoutMs;
   let lastError = null;
 
   while (now() < deadline) {
-    if (
-      runtime &&
-      (runtime.exitCode !== null || runtime.signalCode !== null)
-    ) {
+    if (runtime && (runtime.exitCode !== null || runtime.signalCode !== null)) {
       throw new Error(
         `caracAL runtime exited before dashboard became ready (code=${runtime.exitCode}, signal=${runtime.signalCode})`,
       );
