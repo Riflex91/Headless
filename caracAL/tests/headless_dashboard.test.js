@@ -224,10 +224,7 @@ test("dashboard visible character views include connected characters only", () =
     dashboardApp,
     /function onlineCharacters\(\)[\s\S]*character\.connected === true/,
   );
-  assert.match(
-    dashboardApp,
-    /availableMaps\(onlineCharacters\(\)\)/,
-  );
+  assert.match(dashboardApp, /availableMaps\(onlineCharacters\(\)\)/);
   assert.match(
     dashboardApp,
     /renderMovementMap\([\s\S]*characters: onlineCharacters\(\)/,
