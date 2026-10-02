@@ -8,6 +8,7 @@ const test = require("node:test");
 const {
   CONTROL_ACTIONS,
   DESIRED_RUNTIME_STATES,
+  canRestartCharacter,
   desiredStateForAction,
   normalizeControlAction,
 } = require("../src/CharacterControl");
@@ -34,6 +35,38 @@ test("control actions map to desired runtime states", () => {
     DESIRED_RUNTIME_STATES.STOPPED,
   );
   assert.equal(desiredStateForAction(CONTROL_ACTIONS.RESTART), null);
+});
+
+test("restart eligibility is limited to active non-stopping characters", () => {
+  const base = {
+    instance: { pid: 1234 },
+    enabled: true,
+    desired_runtime_state: DESIRED_RUNTIME_STATES.RUNNING,
+    lifecycle_state: "ONLINE",
+  };
+
+  assert.equal(canRestartCharacter(base), true);
+  assert.equal(
+    canRestartCharacter({
+      ...base,
+      desired_runtime_state: DESIRED_RUNTIME_STATES.PAUSED,
+      lifecycle_state: "PAUSED",
+    }),
+    true,
+  );
+  assert.equal(canRestartCharacter({ ...base, instance: null }), false);
+  assert.equal(canRestartCharacter({ ...base, enabled: false }), false);
+  assert.equal(
+    canRestartCharacter({
+      ...base,
+      desired_runtime_state: DESIRED_RUNTIME_STATES.STOPPED,
+    }),
+    false,
+  );
+  assert.equal(
+    canRestartCharacter({ ...base, lifecycle_state: "STOPPING" }),
+    false,
+  );
 });
 
 test("coordinator owns desired runtime state transitions", () => {
