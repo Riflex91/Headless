@@ -194,6 +194,37 @@ function formatMovementLiveTest(liveTest) {
   return `${outcome}${reason}${completed}`;
 }
 
+function formatCombat(combat) {
+  if (!combat) return "—";
+  const reason = combat.reason ? ` · ${combat.reason}` : "";
+  return `${combat.state || "UNKNOWN"}${reason}`;
+}
+
+function formatCombatTarget(combat) {
+  const target = combat?.target;
+  if (!target) return "—";
+  const label = target.name || target.mtype || target.id || "Target";
+  const distance = Number.isFinite(target.distance)
+    ? ` · Dist ${Math.round(target.distance)}`
+    : "";
+  const range = Number.isFinite(target.attackRange)
+    ? ` / Range ${Math.round(target.attackRange)}`
+    : "";
+  const inRange =
+    target.inRange === true
+      ? " · IN RANGE"
+      : target.inRange === false
+        ? " · OUT"
+        : "";
+  return `${label}${distance}${range}${inRange}`;
+}
+
+function formatCombatCooldowns(combat) {
+  if (!combat?.cooldowns) return "—";
+  return `Attack ${combat.cooldowns.attackRemainingMs || 0}ms · HP Pot ${
+    combat.cooldowns.hpPotionRemainingMs || 0
+  }ms · MP Pot ${combat.cooldowns.mpPotionRemainingMs || 0}ms`;
+}
 function formatTarget(game) {
   if (!game) return "—";
   const target = game.target;
@@ -648,6 +679,13 @@ function updateCharacterCard(card, character) {
   );
   card.querySelector(".character-resources").textContent =
     formatResources(game);
+  card.querySelector(".character-combat").textContent = formatCombat(
+    character.combat_runtime,
+  );
+  card.querySelector(".character-combat-target").textContent =
+    formatCombatTarget(character.combat_runtime);
+  card.querySelector(".character-combat-cooldowns").textContent =
+    formatCombatCooldowns(character.combat_runtime);
   card.querySelector(".character-movement").textContent = formatMovement(game);
   card.querySelector(".character-movement-owner").textContent =
     formatMovementOwner(game);
