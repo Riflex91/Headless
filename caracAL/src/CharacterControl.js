@@ -10,6 +10,7 @@ const CONTROL_ACTIONS = Object.freeze({
   START: "start",
   PAUSE: "pause",
   STOP: "stop",
+  RESTART: "restart",
 });
 
 function normalizeControlAction(action) {
