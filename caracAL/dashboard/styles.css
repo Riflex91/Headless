@@ -138,6 +138,55 @@ h2 {
   font-size: 0.85rem;
 }
 
+.revision-summary {
+  display: grid;
+  gap: 0.08rem;
+  min-width: 12rem;
+  margin-bottom: 0.3rem;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid #3b4661;
+  border-radius: 0.5rem;
+  background: rgba(23, 31, 52, 0.72);
+  text-align: left;
+}
+
+.revision-summary strong {
+  font-size: 0.75rem;
+}
+
+.revision-summary span {
+  color: #9ca9bf;
+  font-size: 0.65rem;
+}
+
+.revision-healthy {
+  border-color: #2f8052;
+}
+
+.revision-stale {
+  border-color: #a17b32;
+  background: rgba(161, 123, 50, 0.16);
+}
+
+.revision-unknown {
+  border-color: #596781;
+}
+
+.revision-text-healthy {
+  color: #74c990;
+  font-weight: 700;
+}
+
+.revision-text-stale {
+  color: #e1b85c;
+  font-weight: 700;
+}
+
+.revision-text-unknown {
+  color: #9faac0;
+  font-weight: 700;
+}
+
 .account-log-actions {
   display: flex;
   gap: 0.4rem;
