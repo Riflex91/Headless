@@ -28,6 +28,7 @@ function runtimeIdentity(): Record<string, unknown> {
     map: character.map,
     codeRevision: parent.caracAL?.code_revision || null,
     configRevision: parent.caracAL?.config_revision || null,
+    runtimeConfigRevision: parent.caracAL?.runtime_config_revision ?? 0,
     sourceRevision: parent.caracAL?.source_revision || null,
   };
 }
