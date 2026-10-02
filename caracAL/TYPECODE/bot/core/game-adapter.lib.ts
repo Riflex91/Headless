@@ -8,6 +8,7 @@ export interface CharacterSnapshot {
   maxHp: number | null;
   mp: number | null;
   maxMp: number | null;
+  range: number | null;
   gold: number | null;
   target: string | null;
   rip: boolean;
