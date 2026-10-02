@@ -42,6 +42,7 @@ export interface GroupLiveTestResult {
     observedInitialPairFormed: boolean;
     baselinePairOverrideApplied: boolean;
     pairLifecycleOwner: boolean;
+    coordinatedPeerPairObserved: boolean;
     dissolvedInitialPair: boolean;
     existingPartyConflict: boolean;
   };
@@ -133,6 +134,11 @@ export class GroupLiveTestRunner {
       : observedInitialPairFormed;
     const pairLifecycleOwner =
       options.coordinatedPair !== true || options.role === "leader";
+    const coordinatedPeerPairObserved =
+      options.coordinatedPair === true &&
+      !pairLifecycleOwner &&
+      initialPairFormed === false &&
+      observedInitialPairFormed === true;
     const allowed = new Set([options.leader, options.peer]);
     const existingPartyConflict = startMembers.some(
       (name) => !allowed.has(name),
@@ -161,6 +167,7 @@ export class GroupLiveTestRunner {
         observedInitialPairFormed,
         baselinePairOverrideApplied,
         pairLifecycleOwner,
+        coordinatedPeerPairObserved,
         dissolvedInitialPair: false,
         existingPartyConflict,
       },
@@ -341,7 +348,11 @@ export class GroupLiveTestRunner {
         result.reason = "GROUP_LIVE_E2E_ROLE_PROJECTION_MISSING";
         return result;
       }
-      if (!result.party.partyActionObserved && !initialPairFormed) {
+      if (
+        !result.party.partyActionObserved &&
+        !initialPairFormed &&
+        !coordinatedPeerPairObserved
+      ) {
         result.reason = "GROUP_LIVE_E2E_PARTY_ACTION_MISSING";
         return result;
       }

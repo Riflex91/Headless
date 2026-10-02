@@ -52,7 +52,8 @@ function evidenceComplete(evidence, runtimeResult) {
     evidence?.roleProjected === true &&
     evidence?.leaderProjected === true &&
     (Number(evidence?.partyActions) >= 1 ||
-      runtimeResult?.preparation?.initialPairFormed === true)
+      runtimeResult?.preparation?.initialPairFormed === true ||
+      runtimeResult?.preparation?.coordinatedPeerPairObserved === true)
   );
 }
 
@@ -102,6 +103,8 @@ function groupLiveTestDiagnostics(
         runtime.preparation?.baselinePairOverrideApplied === true,
       pair_lifecycle_owner:
         runtime.preparation?.pairLifecycleOwner !== false,
+      coordinated_peer_pair_observed:
+        runtime.preparation?.coordinatedPeerPairObserved === true,
       dissolved_initial_pair:
         runtime.preparation?.dissolvedInitialPair === true,
       existing_party_conflict:

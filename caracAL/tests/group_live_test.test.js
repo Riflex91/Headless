@@ -12,7 +12,11 @@ function coreModule(fileName) {
   );
 }
 
-function makeRunner({ role = "leader", initialParty = {} } = {}) {
+function makeRunner({
+  role = "leader",
+  initialParty = {},
+  onSleep = null,
+} = {}) {
   const { GroupLiveTestRunner } = coreModule("group-live-test.lib.ts");
   let now = 1000;
   let groupConfig = null;
@@ -55,15 +59,20 @@ function makeRunner({ role = "leader", initialParty = {} } = {}) {
     },
     async tick() {
       if (groupConfig?.groupCombat?.enabled) {
-        state.party = {
-          Leader: { name: "Leader" },
-          Follower: { name: "Follower" },
-        };
-        lastAction = {
-          id: "party-action-1",
-          status: "DISPATCHED",
-          kind: role === "leader" ? "PARTY_INVITE" : "PARTY_ACCEPT_INVITE",
-        };
+        const current = new Set(Object.keys(state.party));
+        const alreadyFormed =
+          current.has("Leader") && current.has("Follower");
+        if (!alreadyFormed) {
+          state.party = {
+            Leader: { name: "Leader" },
+            Follower: { name: "Follower" },
+          };
+          lastAction = {
+            id: "party-action-1",
+            status: "DISPATCHED",
+            kind: role === "leader" ? "PARTY_INVITE" : "PARTY_ACCEPT_INVITE",
+          };
+        }
       }
       return this.status();
     },
@@ -93,6 +102,7 @@ function makeRunner({ role = "leader", initialParty = {} } = {}) {
     now: () => now,
     sleep: async (ms) => {
       now += ms;
+      onSleep?.({ now, state, groupConfig });
     },
   });
 }
@@ -159,11 +169,18 @@ test("group live runner refuses unrelated existing party membership", async () =
 
 
 test("coordinated follower does not mistake leader-created pair for original baseline", async () => {
+  let leaderCleanupObserved = false;
   const runner = makeRunner({
     role: "follower",
     initialParty: {
       Leader: { name: "Leader" },
       Follower: { name: "Follower" },
+    },
+    onSleep: ({ now, state }) => {
+      if (now >= 2000 && !leaderCleanupObserved) {
+        state.party = {};
+        leaderCleanupObserved = true;
+      }
     },
   });
 
@@ -182,8 +199,11 @@ test("coordinated follower does not mistake leader-created pair for original bas
   assert.equal(result.preparation.initialPairFormed, false);
   assert.equal(result.preparation.baselinePairOverrideApplied, true);
   assert.equal(result.preparation.pairLifecycleOwner, false);
+  assert.equal(result.preparation.coordinatedPeerPairObserved, true);
   assert.equal(result.preparation.dissolvedInitialPair, false);
+  assert.equal(result.party.partyActionObserved, false);
   assert.equal(result.cleanup.partyLeaveStatus, null);
+  assert.equal(leaderCleanupObserved, true);
   assert.equal(result.cleanup.initialPartyRestored, true);
 });
 
