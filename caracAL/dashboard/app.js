@@ -156,9 +156,7 @@ function formatSafePoint(game) {
   const point = game?.safe_point;
   if (!point) return "—";
   const map = point.map ? `${point.map} · ` : "";
-  return `${map}${formatCoordinate(point.x)}, ${formatCoordinate(
-    point.y,
-  )}`;
+  return `${map}${formatCoordinate(point.x)}, ${formatCoordinate(point.y)}`;
 }
 
 function formatMovementStuck(game) {
@@ -568,7 +566,10 @@ function updateCharacterCard(card, character) {
     formatSafePoint(game);
   const stuckState = card.querySelector(".character-stuck-state");
   stuckState.textContent = formatMovementStuck(game);
-  stuckState.classList.toggle("movement-stuck-active", !!game?.movement_stuck?.stuck);
+  stuckState.classList.toggle(
+    "movement-stuck-active",
+    !!game?.movement_stuck?.stuck,
+  );
   card.querySelector(".character-target").textContent = formatTarget(game);
   card.querySelector(".character-inventory-summary").textContent =
     formatInventory(game);
