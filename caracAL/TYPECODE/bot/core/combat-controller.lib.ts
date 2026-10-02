@@ -53,7 +53,7 @@ export interface CombatControllerStatus {
     mode: string;
     safePoint: { map: string; x: number; y: number; tolerance: number } | null;
   };
-  lastAction: { id: string; status: string; kind: string } | null;
+  lastAction: { id: string; status: string | null; kind: string } | null;
 }
 
 export interface CombatControllerEvent {
@@ -63,7 +63,7 @@ export interface CombatControllerEvent {
   reason: string;
   targetId?: string | null;
   actionId?: string;
-  actionStatus?: string;
+  actionStatus?: string | null;
   status: CombatControllerStatus;
 }
 
@@ -294,7 +294,7 @@ export class CombatController {
               map: movement.safePoint.map,
               x: movement.safePoint.x,
               y: movement.safePoint.y,
-              tolerance: movement.safePoint.tolerance,
+              tolerance: movement.safePoint.tolerance ?? 12,
             }
           : null,
       },
@@ -511,12 +511,14 @@ export class CombatController {
       return;
     }
 
+    const safePointTolerance = safePoint.tolerance ?? 12;
+
     if (
       character.map === safePoint.map &&
       character.x !== null &&
       character.y !== null &&
       Math.hypot(character.x - safePoint.x, character.y - safePoint.y) <=
-        safePoint.tolerance
+        safePointTolerance
     ) {
       this.setState("RETREATING", "RETREAT_AT_SAFE_POINT");
       return;

@@ -233,10 +233,8 @@ test("UNKNOWN potion outcome is not blindly retried", async () => {
 test("nearest eligible monster is attacked in range", async () => {
   const setup = makeController();
   const status = await setup.controller.tick();
-  assert.deepEqual(setup.calls.find((entry) => entry[0] === "attack"), [
-    "attack",
-    "near",
-  ]);
+  const attackCall = setup.calls.find((entry) => entry[0] === "attack");
+  assert.deepEqual(attackCall, ["attack", "near"]);
   assert.equal(status.state, "ATTACKING");
   assert.equal(status.target.id, "near");
   assert.equal(status.target.inRange, true);
