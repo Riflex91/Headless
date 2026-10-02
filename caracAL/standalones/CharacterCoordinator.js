@@ -1596,8 +1596,7 @@ function migrate_old_storage(path, localStorage) {
   function capture_farm_live_test_incident(char_name, test_result) {
     const incident = incident_recorder.capture({
       reason: test_result.reason || "FARM_LIVE_TEST_FAILED",
-      severity:
-        test_result.outcome === "TIMEOUT" ? "HIGH" : "ERROR",
+      severity: test_result.outcome === "TIMEOUT" ? "HIGH" : "ERROR",
       character: char_name,
       event: {
         type: "farm_live_test",
@@ -3055,10 +3054,7 @@ function migrate_old_storage(path, localStorage) {
         character: char_name,
         since: started_at,
       });
-      const failure_evidence = farmLiveTestEvidence(
-        failure_events,
-        char_block,
-      );
+      const failure_evidence = farmLiveTestEvidence(failure_events, char_block);
       const incident_id = capture_farm_live_test_incident(
         char_name,
         failed_result,
