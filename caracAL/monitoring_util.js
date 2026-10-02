@@ -40,6 +40,19 @@ function public_item(item) {
   return result;
 }
 
+function public_smart_plot(smart) {
+  if (!smart || !Array.isArray(smart.plot)) return [];
+
+  return smart.plot.slice(0, 200).map((step) => ({
+    map: step?.map || null,
+    x: Number.isFinite(step?.x) ? step.x : null,
+    y: Number.isFinite(step?.y) ? step.y : null,
+    transport: !!step?.transport,
+    town: !!step?.town,
+    spawn: step?.s ?? null,
+  }));
+}
+
 function build_stat_beat(g_con) {
   const character = g_con.character;
   const result = { type: "stat_beat" };
@@ -69,6 +82,23 @@ function build_stat_beat(g_con) {
   result.going_y = character.going_y ?? null;
   result.angle = Number.isFinite(character.angle) ? character.angle : null;
   result.direction = character.direction || null;
+
+  const smart = g_con.smart;
+  result.movement_state = smart?.moving
+    ? "SMART_MOVING"
+    : character.moving
+      ? "MOVING"
+      : "IDLE";
+  result.planned_path = public_smart_plot(smart);
+  result.planned_destination =
+    smart && (smart.moving || smart.searching)
+      ? {
+          map: smart.map || character.map || null,
+          x: Number.isFinite(smart.x) ? smart.x : null,
+          y: Number.isFinite(smart.y) ? smart.y : null,
+          searching: !!smart.searching,
+        }
+      : null;
 
   result.items = Array.isArray(character.items)
     ? character.items.map(public_item)
@@ -420,4 +450,5 @@ function generate_minimap(game_context) {
 exports.build_stat_beat = build_stat_beat;
 exports.create_monitor_ui = create_monitor_ui;
 exports.public_item = public_item;
+exports.public_smart_plot = public_smart_plot;
 exports.register_stat_beat = register_stat_beat;
