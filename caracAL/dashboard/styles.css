@@ -72,6 +72,63 @@ h2 {
   font-size: 0.86rem;
 }
 
+.emergency-stop-control {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  min-width: 20rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid #365041;
+  border-radius: 0.65rem;
+  background: rgba(38, 93, 59, 0.16);
+}
+
+.emergency-stop-control > div:first-child {
+  display: grid;
+  gap: 0.12rem;
+}
+
+.emergency-stop-control strong {
+  font-size: 0.78rem;
+}
+
+.emergency-stop-control span {
+  color: #9faac0;
+  font-size: 0.68rem;
+}
+
+.emergency-stop-control.active {
+  border-color: #a34652;
+  background: rgba(163, 70, 82, 0.22);
+  box-shadow: inset 0 0 0 1px rgba(226, 105, 119, 0.18);
+}
+
+.emergency-stop-control.active strong {
+  color: #ff9aa6;
+}
+
+.emergency-stop-actions {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.emergency-stop-actions button {
+  padding: 0.48rem 0.62rem;
+  border: 1px solid #8f3d49;
+  border-radius: 0.5rem;
+  background: #5d2029;
+  color: #ffe9ec;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+#clear-emergency-stop {
+  border-color: #48614f;
+  background: #22362a;
+  color: #dce8df;
+}
+
 .summary {
   display: flex;
   align-items: flex-end;
@@ -698,6 +755,13 @@ dd {
 
   .inventory-slot-grid {
     grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 860px) {
+  .emergency-stop-control {
+    width: 100%;
+    min-width: 0;
   }
 }
 
