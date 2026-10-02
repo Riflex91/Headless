@@ -101,12 +101,7 @@ function migrate_old_storage(path, localStorage) {
   const character_manage = cfg.characters;
   const diagnostic_store = new DiagnosticEventStore({ maxEvents: 20000 });
   const asset_cache = new AdventureLandAssetCache({
-    cacheDir: path.join(
-      process.cwd(),
-      "data",
-      "assets",
-      "adventure-land",
-    ),
+    cacheDir: path.join(process.cwd(), "data", "assets", "adventure-land"),
   });
 
   //TODO right now this server wont terminate.
