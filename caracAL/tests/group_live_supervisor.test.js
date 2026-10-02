@@ -106,5 +106,3 @@ test("group supervisor diagnostics expose autonomous cleanup", () => {
   assert.equal(diagnostics.observed.initial_party_restored, true);
   assert.equal(diagnostics.result.outcome, "PASS");
 });
-
-
