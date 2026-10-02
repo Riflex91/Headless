@@ -109,6 +109,7 @@ export class BotRuntimeKernel {
             modules: this.modules.list(),
             schedulerJobs: this.scheduler.list(),
             gameAdapterReads: this.game.capabilities(),
+            actionBoundaryMutations: this.actions.capabilities(),
             recentActions: this.actionLedger.list(20),
           },
         });
