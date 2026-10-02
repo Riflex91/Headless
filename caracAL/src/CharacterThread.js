@@ -11,7 +11,7 @@ const { DESIRED_RUNTIME_STATES } = require("./CharacterControl");
 const { normalizeRuntimeEvent } = require("./RuntimeEventBridge");
 const { normalizeIpcMessage, sendIpcMessage } = require("./IpcProtocol");
 const { prepareConfigPush } = require("./CharacterConfigService");
-const { createIsolatedBrowserWindow } = require("./BrowserVmContext");
+const { createIsolatedBrowserContext } = require("./BrowserVmContext");
 
 const LogUtils = require("./LogUtils");
 const { console } = LogUtils;
@@ -35,14 +35,17 @@ const html_spoof = `<!DOCTYPE html>
 </html>`;
 
 function make_context(upper = null) {
-  const result = createIsolatedBrowserWindow(html_spoof);
-  //jsdom maked globalThis point to Node global
-  //but we want it to be window instead
+  const browser = createIsolatedBrowserContext(html_spoof);
+  const result = browser.context;
   result.globalThis = result;
   result.fetch = fetch;
-  result.$ = result.jQuery = node_query(result);
+  result.$ = result.jQuery = node_query(browser.window);
   result.require = require;
   result.console = console;
+  Object.defineProperty(result, "__caracalDom", {
+    value: browser.dom,
+    enumerable: false,
+  });
   if (upper) {
     Object.defineProperty(result, "parent", { value: upper });
     result._localStorage = upper._localStorage;
@@ -51,7 +54,6 @@ function make_context(upper = null) {
     result._localStorage = ipc_storage.make_IPC_storage("ls");
     result._sessionStorage = ipc_storage.make_IPC_storage("ss");
   }
-  vm.createContext(result);
 
   result.eval = function (arg) {
     return vm.runInContext(arg, result);
