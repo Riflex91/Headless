@@ -37,6 +37,7 @@ const { StructuredLogger } = require("../src/StructuredLogger");
 const { updateCharacterLiveState } = require("../src/LiveState");
 const { normalizeRuntimeEvent } = require("../src/RuntimeEventBridge");
 const { PersistenceService } = require("../src/PersistenceService");
+const { CharacterConfigService } = require("../src/CharacterConfigService");
 const {
   beginSnapshotPersist,
   buildCharacterProfile,
@@ -61,6 +62,8 @@ const {
   isHeartbeatStale,
   readLifecyclePolicy,
 } = require("../src/CharacterLifecyclePolicy");
+
+const CONFIG_PUSH_TIMEOUT_MS = 15000;
 
 //TODO check for invalid session
 //TODO improve termination
@@ -156,6 +159,7 @@ function migrate_old_storage(path, localStorage) {
     installed_config_revision,
     game_version: version,
   });
+  const character_config_service = new CharacterConfigService({ persistence });
   const diagnostic_store = new DiagnosticEventStore({ maxEvents: 20000 });
   const emergency_stop = new EmergencyStopState();
   const structured_logger = new StructuredLogger({
@@ -205,6 +209,7 @@ function migrate_old_storage(path, localStorage) {
         characterManage: character_manage,
         lifecyclePolicy: lifecycle_policy,
         controlCharacter: control_character,
+        updateCharacterConfig: control_character_config,
         controlRotation: control_rotation,
         controlEmergencyStop: control_emergency_stop,
         getEmergencyStopState: () => emergency_stop.snapshot(),
@@ -460,6 +465,39 @@ function migrate_old_storage(path, localStorage) {
     }
   }
 
+  function clear_config_push_timer(char_block) {
+    if (char_block && char_block.config_push_timer) {
+      clearTimeout(char_block.config_push_timer);
+      char_block.config_push_timer = null;
+    }
+  }
+
+  function arm_config_push_timeout(char_name, revision) {
+    const char_block = character_manage[char_name];
+    if (!char_block) return;
+
+    clear_config_push_timer(char_block);
+    char_block.config_push_timer = setTimeout(() => {
+      char_block.config_push_timer = null;
+      if (
+        char_block.runtime_config_revision !== revision ||
+        char_block.config_push_status !== "PENDING"
+      ) {
+        return;
+      }
+
+      char_block.config_push_status = "TIMEOUT";
+      char_block.config_push_error = "CONFIG_APPLY_ACK_TIMEOUT";
+      emit_supervisor_event("CHARACTER_CONFIG_PUSH_TIMEOUT", char_name, {
+        why: "CONFIG_APPLY_ACK_TIMEOUT",
+        revision,
+        timeout_ms: CONFIG_PUSH_TIMEOUT_MS,
+      });
+      dashboard?.publishSnapshot();
+    }, CONFIG_PUSH_TIMEOUT_MS);
+    char_block.config_push_timer.unref?.();
+  }
+
   function refresh_character_revision(char_block) {
     const script_path = resolveCharacterScriptPath(
       process.cwd(),
@@ -502,6 +540,10 @@ function migrate_old_storage(path, localStorage) {
 
   function initialize_char_block(char_name, char_block) {
     const persisted_lifecycle = persistence.getLifecycleState(char_name);
+    const runtime_config = character_config_service.load(
+      char_name,
+      char_block.runtime_config || {},
+    );
 
     char_block.name = char_name;
     char_block.connected = false;
@@ -511,6 +553,13 @@ function migrate_old_storage(path, localStorage) {
     char_block.controlled_restart = false;
     char_block.rotation_replacement = null;
     char_block.rotation_source = null;
+    char_block.runtime_config = runtime_config.config;
+    char_block.runtime_config_revision = runtime_config.revision;
+    char_block.runtime_config_source = runtime_config.source;
+    char_block.applied_runtime_config_revision = null;
+    char_block.config_push_status = "READY";
+    char_block.config_push_error = null;
+    char_block.config_push_timer = null;
     char_block.last_heartbeat_at = char_block.last_heartbeat_at || 0;
     char_block.last_heartbeat_pid = char_block.last_heartbeat_pid || null;
     char_block.watchdog_recovery_in_progress = false;
@@ -676,6 +725,62 @@ function migrate_old_storage(path, localStorage) {
     );
     dashboard?.publishSnapshot();
     return state;
+  }
+
+  async function control_character_config(char_name, config) {
+    const char_block = character_manage[char_name];
+    if (!char_block) {
+      throw make_control_error(
+        "CHARACTER_NOT_FOUND",
+        `Unknown character: ${char_name}`,
+        404,
+      );
+    }
+
+    let stored;
+    try {
+      stored = await character_config_service.store(
+        char_name,
+        char_block.runtime_config_revision,
+        config,
+      );
+    } catch (error) {
+      report_persistence_error("character_config", char_name, error);
+      throw error;
+    }
+
+    clear_config_push_timer(char_block);
+    char_block.runtime_config = stored.config;
+    char_block.runtime_config_revision = stored.revision;
+    char_block.runtime_config_source = "PERSISTED";
+    char_block.config_push_error = null;
+
+    if (char_block.instance && char_block.connected) {
+      char_block.config_push_status = "PENDING";
+      safe_send(char_block.instance, {
+        type: "config_push",
+        revision: stored.revision,
+        config: stored.config,
+      });
+      arm_config_push_timeout(char_name, stored.revision);
+      emit_supervisor_event("CHARACTER_CONFIG_PUSH_REQUESTED", char_name, {
+        why: "LIVE_CONFIG_UPDATE",
+        revision: stored.revision,
+      });
+    } else {
+      char_block.config_push_status = "STORED";
+      emit_supervisor_event("CHARACTER_CONFIG_STORED", char_name, {
+        why: "APPLY_ON_NEXT_CHARACTER_START",
+        revision: stored.revision,
+      });
+    }
+
+    dashboard?.publishSnapshot();
+    return {
+      character: char_name,
+      revision: stored.revision,
+      status: char_block.config_push_status,
+    };
   }
 
   async function control_rotation({ startCharacter, stopCharacter } = {}) {
@@ -974,6 +1079,10 @@ function migrate_old_storage(path, localStorage) {
         char_block.monitor = null;
       }
       clear_stable_timer(char_block);
+      clear_config_push_timer(char_block);
+      if (char_block.config_push_status === "PENDING") {
+        char_block.config_push_status = "STORED";
+      }
       char_block.connected = false;
       char_block.watchdog_recovery_in_progress = false;
       emit_supervisor_event("CHARACTER_PROCESS_EXITED", char_name, {
@@ -1099,6 +1208,11 @@ function migrate_old_storage(path, localStorage) {
           args.code_revision = char_block.running_code_revision;
           args.config_revision = char_block.running_config_revision;
           args.source_revision = source_revision;
+          args.character_config = char_block.runtime_config;
+          args.character_config_revision = char_block.runtime_config_revision;
+          char_block.config_push_status = "PENDING";
+          char_block.config_push_error = null;
+          arm_config_push_timeout(char_name, char_block.runtime_config_revision);
           persist_character_runtime_state(char_name, "process_ready");
           safe_send(result, {
             type: "process_args",
@@ -1112,6 +1226,47 @@ function migrate_old_storage(path, localStorage) {
           break;
         case "runtime_event":
           emit_runtime_event(char_name, m.event);
+          break;
+        case "config_applied": {
+          const applied_revision = Number(m.revision);
+          if (
+            Number.isInteger(applied_revision) &&
+            applied_revision === char_block.runtime_config_revision
+          ) {
+            clear_config_push_timer(char_block);
+            char_block.applied_runtime_config_revision = applied_revision;
+            char_block.config_push_status = "APPLIED";
+            char_block.config_push_error = null;
+            emit_supervisor_event("CHARACTER_CONFIG_APPLIED", char_name, {
+              why: m.source === "process_args" ? "PROCESS_START_CONFIG" : "LIVE_CONFIG_PUSH",
+              revision: applied_revision,
+              changed: m.changed !== false,
+            });
+            dashboard?.publishSnapshot();
+          } else {
+            emit_supervisor_event("CHARACTER_CONFIG_ACK_IGNORED", char_name, {
+              why: "STALE_OR_INVALID_CONFIG_ACK",
+              revision: Number.isFinite(applied_revision)
+                ? applied_revision
+                : null,
+              expected_revision: char_block.runtime_config_revision,
+            });
+          }
+          break;
+        }
+        case "config_rejected":
+          if (Number(m.revision) === char_block.runtime_config_revision) {
+            clear_config_push_timer(char_block);
+            char_block.config_push_status = "REJECTED";
+            char_block.config_push_error = m.reason || "CONFIG_REJECTED";
+          }
+          emit_supervisor_event("CHARACTER_CONFIG_REJECTED", char_name, {
+            why: m.reason || "CONFIG_REJECTED",
+            revision: Number.isFinite(Number(m.revision))
+              ? Number(m.revision)
+              : null,
+          });
+          dashboard?.publishSnapshot();
           break;
         case "emergency_stop_applied":
           emit_supervisor_event("EMERGENCY_STOP_APPLIED", char_name, {
