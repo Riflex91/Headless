@@ -10,6 +10,7 @@ export interface ActionIntent {
   action: string;
   why: string;
   correlationId?: string;
+  allowDuringEmergencyStop?: boolean;
   expectedCost?: Record<string, unknown>;
   expectedEffect?: Record<string, unknown>;
   before?: Record<string, unknown>;
@@ -111,7 +112,10 @@ export class ActionLedger {
 
     this.emitRecord("ACTION_INTENT", record, intent.why);
 
-    if (this.isEmergencyStopActive()) {
+    if (
+      this.isEmergencyStopActive() &&
+      !record.allowDuringEmergencyStop
+    ) {
       return this.block(record.id, "EMERGENCY_STOP_ACTIVE");
     }
 
@@ -124,7 +128,10 @@ export class ActionLedger {
   ): ActionRecord {
     const record = this.requireRecord(actionId);
 
-    if (this.isEmergencyStopActive()) {
+    if (
+      this.isEmergencyStopActive() &&
+      !record.allowDuringEmergencyStop
+    ) {
       return this.block(actionId, "EMERGENCY_STOP_ACTIVE");
     }
 
