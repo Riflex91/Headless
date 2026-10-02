@@ -5,7 +5,7 @@
   "main": "main.js",
   "scripts": {
     "test": "npm run test:unit && npm run typecheck && npm run build",
-    "test:unit": "node --test tests/character_lifecycle_policy.test.js tests/headless_dashboard.test.js tests/character_control.test.js tests/diagnostic_store.test.js tests/live_state.test.js tests/movement_map.test.js tests/adventure_land_asset_cache.test.js tests/inventory_equipment.test.js tests/runtime_event_bridge.test.js tests/runtime_core.test.js",
+    "test:unit": "node --test tests/character_lifecycle_policy.test.js tests/headless_dashboard.test.js tests/character_control.test.js tests/diagnostic_store.test.js tests/live_state.test.js tests/movement_map.test.js tests/adventure_land_asset_cache.test.js tests/inventory_equipment.test.js tests/runtime_event_bridge.test.js tests/runtime_core.test.js tests/runtime_entry.test.js",
     "typecheck": "tsc --noEmit",
     "build": "webpack"
   },
