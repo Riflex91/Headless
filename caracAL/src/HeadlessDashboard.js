@@ -208,6 +208,7 @@ function buildSupervisorSnapshot(
   emergencyStopState = null,
   revisionSummary = null,
   persistenceHealth = null,
+  merchantLogisticsState = null,
 ) {
   const characters = Object.entries(characterManage)
     .map(([name, charBlock]) => publicCharacterState(name, charBlock))
@@ -242,6 +243,20 @@ function buildSupervisorSnapshot(
       flush_count: 0,
       closed: true,
       last_error: null,
+    },
+    merchant_logistics: merchantLogisticsState || {
+      generatedAt: null,
+      merchantIndependent: true,
+      merchants: [],
+      claims: [],
+      suppressed: [],
+      summary: {
+        total: 0,
+        ready: 0,
+        waitingMerchant: 0,
+        suppressed: 0,
+        byType: {},
+      },
     },
     characters,
   };
@@ -285,6 +300,7 @@ function attachHeadlessDashboard({
   getEmergencyStopState,
   getRevisionSummary,
   getPersistenceHealth,
+  getMerchantLogisticsState,
   getMapScene,
   diagnosticStore,
   incidentRecorder,
@@ -303,6 +319,7 @@ function attachHeadlessDashboard({
       getEmergencyStopState?.(),
       getRevisionSummary?.(),
       getPersistenceHealth?.(),
+      getMerchantLogisticsState?.(),
     );
 
   router.use("/headless", (req, res, next) => {
