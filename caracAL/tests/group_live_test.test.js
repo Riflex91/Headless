@@ -62,10 +62,7 @@ function makeRunner({ role = "leader", initialParty = {} } = {}) {
         lastAction = {
           id: "party-action-1",
           status: "DISPATCHED",
-          kind:
-            role === "leader"
-              ? "PARTY_INVITE"
-              : "PARTY_ACCEPT_INVITE",
+          kind: role === "leader" ? "PARTY_INVITE" : "PARTY_ACCEPT_INVITE",
         };
       }
       return this.status();

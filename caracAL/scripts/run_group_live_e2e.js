@@ -34,8 +34,7 @@ function pairScore(character) {
   const partyPenalty =
     Array.isArray(partyMembers) && partyMembers.length > 1 ? 100 : 0;
   const onlinePenalty = character.connected === true ? 10 : 0;
-  const runningPenalty =
-    character.desired_runtime_state === "RUNNING" ? 5 : 0;
+  const runningPenalty = character.desired_runtime_state === "RUNNING" ? 5 : 0;
   return partyPenalty + onlinePenalty + runningPenalty;
 }
 
@@ -72,8 +71,7 @@ function selectGroupPair(
     const remaining = eligible
       .filter(
         (character) =>
-          character.name !== leader?.name &&
-          character.name !== follower?.name,
+          character.name !== leader?.name && character.name !== follower?.name,
       )
       .sort((a, b) => pairScore(a) - pairScore(b));
 
@@ -143,12 +141,7 @@ async function main() {
     );
 
     const [leaderPayload, followerPayload] = await Promise.all([
-      runCharacter(
-        pair.leader,
-        "leader",
-        pair.leader.name,
-        pair.follower.name,
-      ),
+      runCharacter(pair.leader, "leader", pair.leader.name, pair.follower.name),
       runCharacter(
         pair.follower,
         "follower",
@@ -160,8 +153,7 @@ async function main() {
     const leaderResult = leaderPayload.result;
     const followerResult = followerPayload.result;
     const pass =
-      leaderResult?.outcome === "PASS" &&
-      followerResult?.outcome === "PASS";
+      leaderResult?.outcome === "PASS" && followerResult?.outcome === "PASS";
 
     const result = {
       outcome: pass ? "PASS" : "FAIL",

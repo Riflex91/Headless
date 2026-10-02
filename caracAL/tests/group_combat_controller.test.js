@@ -55,8 +55,7 @@ function makeSetup({
   const game = {
     character: () => ({ ...state.character }),
     entities: () => state.entities.map((entity) => ({ ...entity })),
-    entity: (id) =>
-      state.entities.find((entity) => entity.id === id) || null,
+    entity: (id) => state.entities.find((entity) => entity.id === id) || null,
     party: () => ({ ...state.party }),
     skills: () => skills.map((skill) => ({ ...skill })),
     cooldowns: () => state.cooldowns.map((entry) => ({ ...entry })),
@@ -89,16 +88,14 @@ function makeSetup({
     },
     ...actionOverrides,
   };
-  const movementState =
-    movement ||
-    {
-      owner: null,
-      mode: "IDLE",
-      active: null,
-      path: null,
-      safePoint: null,
-      stuck: { stuck: false },
-    };
+  const movementState = movement || {
+    owner: null,
+    mode: "IDLE",
+    active: null,
+    path: null,
+    safePoint: null,
+    stuck: { stuck: false },
+  };
   const movementCalls = [];
   const movementController = {
     status: () => ({ ...movementState }),

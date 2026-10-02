@@ -2378,9 +2378,7 @@ function migrate_old_storage(path, localStorage) {
       );
     }
 
-    if (
-      ["STARTING", "RUNNING"].includes(char_block.group_live_test?.status)
-    ) {
+    if (["STARTING", "RUNNING"].includes(char_block.group_live_test?.status)) {
       throw make_control_error(
         "GROUP_LIVE_TEST_ALREADY_RUNNING",
         `Group live test already running for ${char_name}`,
@@ -2589,8 +2587,7 @@ function migrate_old_storage(path, localStorage) {
     } catch (error) {
       const failed_result = {
         request_id,
-        outcome:
-          error.code === "GROUP_LIVE_TEST_TIMEOUT" ? "TIMEOUT" : "FAIL",
+        outcome: error.code === "GROUP_LIVE_TEST_TIMEOUT" ? "TIMEOUT" : "FAIL",
         reason: error.code || error.message || "GROUP_LIVE_TEST_FAILED",
         error: error.message || String(error),
         started_at,
@@ -3193,17 +3190,14 @@ function migrate_old_storage(path, localStorage) {
             },
           );
           break;
-        }        case "group_live_test_result": {
+        }
+        case "group_live_test_result": {
           const pending = group_live_test_requests.get(m.request_id);
           if (!pending || pending.character !== char_name) {
-            emit_supervisor_event(
-              "GROUP_LIVE_TEST_RESULT_IGNORED",
-              char_name,
-              {
-                why: "UNKNOWN_OR_STALE_REQUEST",
-                request_id: m.request_id || null,
-              },
-            );
+            emit_supervisor_event("GROUP_LIVE_TEST_RESULT_IGNORED", char_name, {
+              why: "UNKNOWN_OR_STALE_REQUEST",
+              request_id: m.request_id || null,
+            });
             break;
           }
 
@@ -3213,15 +3207,11 @@ function migrate_old_storage(path, localStorage) {
             result: m.result || null,
             error: m.error || null,
           });
-          emit_supervisor_event(
-            "GROUP_LIVE_TEST_RESULT_RECEIVED",
-            char_name,
-            {
-              request_id: m.request_id,
-              outcome: m.result?.outcome || null,
-              error: m.error || null,
-            },
-          );
+          emit_supervisor_event("GROUP_LIVE_TEST_RESULT_RECEIVED", char_name, {
+            request_id: m.request_id,
+            outcome: m.result?.outcome || null,
+            error: m.error || null,
+          });
           break;
         }
         case "config_applied": {

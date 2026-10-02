@@ -236,8 +236,8 @@ function formatGroupTether(runtime) {
   const distance = Number.isFinite(tether.distance)
     ? `Dist ${Math.round(tether.distance)}`
     : tether.leaderVisible
-      ? "Dist unbekannt"
-      : "Leader nicht sichtbar";
+    ? "Dist unbekannt"
+    : "Leader nicht sichtbar";
   const focus = runtime.focusTargetId
     ? ` · Focus ${runtime.focusTargetId}`
     : "";
@@ -939,10 +939,12 @@ function updateCharacterCard(card, character) {
   );
   card.querySelector(".character-class-skill-action").textContent =
     formatClassSkillAction(character.class_skill_runtime);
-  card.querySelector(".character-group-combat").textContent =
-    formatGroupCombat(character.group_combat_runtime);
-  card.querySelector(".character-group-tether").textContent =
-    formatGroupTether(character.group_combat_runtime);
+  card.querySelector(".character-group-combat").textContent = formatGroupCombat(
+    character.group_combat_runtime,
+  );
+  card.querySelector(".character-group-tether").textContent = formatGroupTether(
+    character.group_combat_runtime,
+  );
   card.querySelector(".character-movement").textContent = formatMovement(game);
   card.querySelector(".character-movement-owner").textContent =
     formatMovementOwner(game);
