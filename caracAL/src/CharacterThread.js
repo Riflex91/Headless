@@ -167,6 +167,41 @@ async function make_runner(upper, CODE_file, version, is_typescript) {
           });
         break;
       }
+      case "logistics_live_test": {
+        const requestId =
+          typeof m.request_id === "string" && m.request_id
+            ? m.request_id
+            : "logistics-live-" + Date.now();
+        const runtime = runner_context.__caracalBotRuntime;
+        if (!runtime?.runLogisticsLiveTest) {
+          sendIpcMessage(process, {
+            type: "logistics_live_test_result",
+            request_id: requestId,
+            error: "LOGISTICS_LIVE_TEST_RUNTIME_NOT_READY",
+          });
+          break;
+        }
+
+        void runtime
+          .runLogisticsLiveTest({
+            requestId,
+          })
+          .then((result) => {
+            sendIpcMessage(process, {
+              type: "logistics_live_test_result",
+              request_id: requestId,
+              result,
+            });
+          })
+          .catch((error) => {
+            sendIpcMessage(process, {
+              type: "logistics_live_test_result",
+              request_id: requestId,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          });
+        break;
+      }
       case "inventory_live_test": {
         const requestId =
           typeof m.request_id === "string" && m.request_id

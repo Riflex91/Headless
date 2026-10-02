@@ -40,6 +40,11 @@ import {
   InventoryLiveTestRunner,
 } from "./inventory-live-test.lib";
 import {
+  LogisticsLiveTestOptions,
+  LogisticsLiveTestResult,
+  LogisticsLiveTestRunner,
+} from "./logistics-live-test.lib";
+import {
   FarmLiveTestOptions,
   FarmLiveTestResult,
   FarmLiveTestRunner,
@@ -140,6 +145,7 @@ export class BotRuntimeKernel {
   private groupLiveTestRunning = false;
   private farmLiveTestRunning = false;
   private inventoryLiveTestRunning = false;
+  private logisticsLiveTestRunning = false;
   private logisticsClaimRunning = false;
   private lastLogisticsExecution: LogisticsExecutionResult | null = null;
 
@@ -413,6 +419,9 @@ export class BotRuntimeKernel {
   async executeLogisticsClaim(
     claim: LogisticsClaim,
   ): Promise<LogisticsExecutionResult> {
+    if (this.logisticsLiveTestRunning) {
+      throw new Error("logistics live test is running");
+    }
     if (this.logisticsClaimRunning) {
       throw new Error("logistics claim already running");
     }
@@ -886,6 +895,106 @@ export class BotRuntimeKernel {
       throw error;
     } finally {
       this.farmLiveTestRunning = false;
+    }
+  }
+
+  async runLogisticsLiveTest(
+    options: LogisticsLiveTestOptions = {},
+  ): Promise<LogisticsLiveTestResult> {
+    if (this.logisticsLiveTestRunning) {
+      throw new Error("logistics live test already running");
+    }
+    if (this.logisticsClaimRunning) {
+      throw new Error("logistics claim already running");
+    }
+    if (this.movementLiveTestRunning) {
+      throw new Error("movement live test already running");
+    }
+    if (this.combatLiveTestRunning) {
+      throw new Error("combat live test already running");
+    }
+    if (this.classSkillLiveTestRunning) {
+      throw new Error("class skill live test already running");
+    }
+    if (this.groupLiveTestRunning) {
+      throw new Error("group live test already running");
+    }
+    if (this.farmLiveTestRunning) {
+      throw new Error("farm live test already running");
+    }
+    if (this.inventoryLiveTestRunning) {
+      throw new Error("inventory live test already running");
+    }
+    if (!this.started || this.stopping) {
+      throw new Error("runtime is not ready for logistics live test");
+    }
+    if (runtimeState() !== "RUNNING") {
+      throw new Error("runtime must be RUNNING for logistics live test");
+    }
+
+    this.logisticsLiveTestRunning = true;
+    const requestId = options.requestId || `logistics-live-${Date.now()}`;
+    this.eventBus.emit({
+      module: "LogisticsLiveTest",
+      type: "LOGISTICS_LIVE_TEST_STARTED",
+      why: "AUTONOMOUS_LOGISTICS_NON_FORCING_E2E",
+      correlationId: requestId,
+      data: {
+        requestId,
+        inventoryIntelligence: this.inventoryIntelligence.status(),
+        logisticsExecution: {
+          busy: this.logisticsClaimRunning,
+          last: this.lastLogisticsExecution,
+        },
+        ...runtimeIdentity(),
+      },
+    });
+
+    try {
+      const runner = new LogisticsLiveTestRunner({
+        logisticsClaims: this.logisticsClaims,
+        inventoryIntelligence: this.inventoryIntelligence,
+        character: () => {
+          const snapshot = this.game.character();
+          return {
+            name: snapshot.name || "",
+            ctype: snapshot.ctype,
+          };
+        },
+      });
+      const result = await runner.run({
+        ...options,
+        requestId,
+      });
+      this.eventBus.emit({
+        module: "LogisticsLiveTest",
+        type: "LOGISTICS_LIVE_TEST_COMPLETED",
+        why: result.reason,
+        correlationId: requestId,
+        data: {
+          result,
+          inventoryIntelligence: this.inventoryIntelligence.status(),
+          logisticsExecution: {
+            busy: this.logisticsClaimRunning,
+            last: this.lastLogisticsExecution,
+          },
+        },
+      });
+      return result;
+    } catch (error) {
+      this.eventBus.emit({
+        module: "LogisticsLiveTest",
+        type: "LOGISTICS_LIVE_TEST_FAILED",
+        why: "LOGISTICS_LIVE_TEST_RUNTIME_ERROR",
+        correlationId: requestId,
+        data: {
+          error: error instanceof Error ? error.message : String(error),
+          inventoryIntelligence: this.inventoryIntelligence.status(),
+        },
+      });
+      throw error;
+    } finally {
+      this.logisticsLiveTestRunning = false;
     }
   }
 

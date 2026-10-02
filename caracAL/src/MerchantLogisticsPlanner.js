@@ -322,6 +322,25 @@ class MerchantLogisticsPlanner {
     return true;
   }
 
+  diagnostics() {
+    this.prune();
+    return {
+      assignments: [...this.assignments.entries()].map(([key, value]) => ({
+        key,
+        ...value,
+      })),
+      transferHistory: this.transferHistory.map((entry) => ({ ...entry })),
+      completedClaims: [...this.completedClaims.entries()].map(([id, at]) => ({
+        id,
+        at,
+      })),
+      outcomeHolds: [...this.outcomeHolds.entries()].map(([id, hold]) => ({
+        id,
+        ...hold,
+      })),
+    };
+  }
+
   snapshot() {
     return JSON.parse(JSON.stringify(this.lastBoard));
   }
