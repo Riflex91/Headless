@@ -28,11 +28,7 @@ function makeSource() {
       target: "m-1",
       rip: false,
       moving: false,
-      items: [
-        { name: "hpot1", q: 20 },
-        null,
-        { name: "bow", level: 2 },
-      ],
+      items: [{ name: "hpot1", q: 20 }, null, { name: "bow", level: 2 }],
       slots: {
         mainhand: { name: "bow", level: 2 },
         helmet: null,
@@ -232,7 +228,10 @@ test("ActionBoundary marks uncertain post-dispatch move failures UNKNOWN", () =>
 
   assert.equal(result.status, "UNKNOWN");
   assert.equal(ledger.canRetry(result.id), false);
-  assert.throws(() => ledger.assertRetryAllowed(result.id), /must not be retried blindly/);
+  assert.throws(
+    () => ledger.assertRetryAllowed(result.id),
+    /must not be retried blindly/,
+  );
 });
 
 test("ActionBoundary blocks attack preflight without dispatch", async () => {
