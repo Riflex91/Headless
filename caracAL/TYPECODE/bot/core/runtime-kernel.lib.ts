@@ -22,6 +22,10 @@ import {
   GroupCombatControllerEvent,
 } from "./group-combat-controller.lib";
 import {
+  FarmIntelligenceController,
+  FarmIntelligenceEvent,
+} from "./farm-intelligence-controller.lib";
+import {
   CombatLiveTestOptions,
   CombatLiveTestResult,
   CombatLiveTestRunner,
@@ -46,6 +50,8 @@ import {
   MovementLiveTestRunner,
 } from "./movement-live-test.lib";
 
+const FARM_INTELLIGENCE_JOB_ID = "farm-intelligence-loop";
+const FARM_INTELLIGENCE_INTERVAL_MS = 1000;
 const GROUP_COMBAT_JOB_ID = "group-combat-loop";
 const GROUP_COMBAT_INTERVAL_MS = 250;
 const CLASS_SKILL_JOB_ID = "class-skill-loop";
@@ -101,6 +107,7 @@ export class BotRuntimeKernel {
   readonly combat: CombatController;
   readonly classSkills: ClassSkillController | null;
   readonly groupCombat: GroupCombatController;
+  readonly farmIntelligence: FarmIntelligenceController;
 
   private started = false;
   private stopping = false;
@@ -179,6 +186,19 @@ export class BotRuntimeKernel {
         onEvent: (event) => this.handleGroupCombatEvent(event),
       },
     );
+    this.farmIntelligence = new FarmIntelligenceController(this.game, {
+      config: () => runtimeConfig?.config || {},
+      onEvent: (event) => this.handleFarmIntelligenceEvent(event),
+    });
+
+    this.scheduler.register({
+      id: FARM_INTELLIGENCE_JOB_ID,
+      intervalMs: FARM_INTELLIGENCE_INTERVAL_MS,
+      priority: 80,
+      tick: () => {
+        this.farmIntelligence.tick();
+      },
+    });
 
     this.scheduler.register({
       id: GROUP_COMBAT_JOB_ID,
@@ -242,6 +262,7 @@ export class BotRuntimeKernel {
             combat: this.combat.status(),
             classSkills: this.classSkills?.status() || null,
             groupCombat: this.groupCombat.status(),
+            farmIntelligence: this.farmIntelligence.status(),
             recentActions: this.actionLedger.list(20),
           },
         });
@@ -325,6 +346,7 @@ export class BotRuntimeKernel {
       combat: this.combat.status(),
       classSkills: this.classSkills?.status() || null,
       groupCombat: this.groupCombat.status(),
+      farmIntelligence: this.farmIntelligence.status(),
       recentActions: this.actionLedger.list(20),
       ...runtimeIdentity(),
     };
@@ -644,6 +666,20 @@ export class BotRuntimeKernel {
     } finally {
       this.groupLiveTestRunning = false;
     }
+  }
+
+  private handleFarmIntelligenceEvent(
+    event: FarmIntelligenceEvent,
+  ): void {
+    this.eventBus.emit({
+      module: "FarmIntelligenceController",
+      type: event.type,
+      why: event.reason,
+      data: {
+        farmIntelligence: event.status,
+        ...(event.sample && { sample: event.sample }),
+      },
+    });
   }
 
   private handleGroupCombatEvent(event: GroupCombatControllerEvent): void {
