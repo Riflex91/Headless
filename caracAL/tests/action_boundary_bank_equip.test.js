@@ -28,12 +28,7 @@ function makeState() {
       target: null,
       rip: false,
       moving: false,
-      items: [
-        { name: "gem0", q: 2 },
-        { name: "bow", level: 2 },
-        null,
-        null,
-      ],
+      items: [{ name: "gem0", q: 2 }, { name: "bow", level: 2 }, null, null],
       slots: {
         mainhand: { name: "staff", level: 1 },
         offhand: null,
