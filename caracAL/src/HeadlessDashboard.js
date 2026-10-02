@@ -31,7 +31,6 @@ function publicLiveState(liveState) {
     "movement_reason",
     "movement_command",
     "movement_stuck",
-    "movement_runtime",
     "runtime_planned_path",
     "runtime_planned_destination",
     "safe_point",
