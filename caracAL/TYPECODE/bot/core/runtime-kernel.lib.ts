@@ -173,10 +173,6 @@ export class BotRuntimeKernel {
 
     this.game = new GameAdapter();
     this.actions = new ActionBoundary(this.actionLedger, this.game);
-    this.logisticsClaims = new LogisticsClaimExecutor(
-      this.actions,
-      this.game,
-    );
     this.movement = new MovementController(this.actions, {
       onEvent: (event) => this.handleMovementEvent(event),
       position: () => {
@@ -227,6 +223,11 @@ export class BotRuntimeKernel {
         config: () => runtimeConfig?.config || {},
         onEvent: (event) => this.handleInventoryIntelligenceEvent(event),
       },
+    );
+    this.logisticsClaims = new LogisticsClaimExecutor(
+      this.actions,
+      this.game,
+      this.inventoryIntelligence,
     );
 
     this.scheduler.register({
