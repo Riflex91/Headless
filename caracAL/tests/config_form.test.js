@@ -81,7 +81,10 @@ test("config form edits known fields while preserving unknown config", () => {
   assert.equal(getPath(config, "groupCombat.leader"), "Alpha");
   assert.equal(getPath(config, "farming.enabled"), true);
   assert.equal(getPath(config, "farming.goalMonster"), "goo");
-  assert.deepEqual(getPath(config, "farming.preferredMonsters"), ["goo", "bee"]);
+  assert.deepEqual(getPath(config, "farming.preferredMonsters"), [
+    "goo",
+    "bee",
+  ]);
   assert.equal(getPath(config, "farming.weights.observed"), 2);
   assert.deepEqual(config.customFutureBlock, { preserve: true });
 });
