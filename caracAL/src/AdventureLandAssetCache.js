@@ -5,18 +5,32 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 
 const AL_BASE_URL = "https://adventure.land";
-const AL_ITEM_ASSET_PATTERN =
-  /^\/images\/tiles\/items\/[A-Za-z0-9._/-]+\.(?:png|webp)(?:\?[^#]*)?$/i;
-
 function validateAdventureLandAssetPath(assetPath) {
   const value = String(assetPath || "").trim();
-  if (!AL_ITEM_ASSET_PATTERN.test(value)) {
+  let parsed;
+
+  try {
+    parsed = new URL(value, AL_BASE_URL);
+  } catch (_error) {
+    parsed = null;
+  }
+
+  const valid =
+    value.startsWith("/") &&
+    !value.startsWith("//") &&
+    !value.includes("..") &&
+    parsed?.origin === AL_BASE_URL &&
+    parsed.pathname.startsWith("/images/tiles/items/") &&
+    /\.(?:png|webp)$/i.test(parsed.pathname);
+
+  if (!valid) {
     const error = new Error("Unsupported Adventure Land asset path");
     error.code = "INVALID_ASSET_PATH";
     error.statusCode = 400;
     throw error;
   }
-  return value;
+
+  return `${parsed.pathname}${parsed.search}`;
 }
 
 function assetCacheFilename(assetPath) {
