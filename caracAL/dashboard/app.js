@@ -115,15 +115,62 @@ function formatResources(game) {
 
 function formatMovement(game) {
   if (!game) return "—";
-  const movementState =
+  const physicalState =
     game.movement_state || (game.moving ? "MOVING" : "IDLE");
+  const movementMode = game.movement_mode || null;
+  const movementState =
+    movementMode && movementMode !== physicalState
+      ? `${movementMode} / ${physicalState}`
+      : movementMode || physicalState;
 
-  const destination = game.planned_destination || game.movement_destination;
+  const destination =
+    game.runtime_planned_destination ||
+    game.planned_destination ||
+    game.movement_destination;
   if (!destination) return movementState;
 
-  return `${movementState} → ${formatCoordinate(
+  const map = destination.map ? `${destination.map} · ` : "";
+  return `${movementState} → ${map}${formatCoordinate(
     destination.x,
   )}, ${formatCoordinate(destination.y)}`;
+}
+
+function formatMovementOwner(game) {
+  return game?.movement_owner || "—";
+}
+
+function formatMovementCommand(game) {
+  const command = game?.movement_command;
+  if (!command) return "—";
+
+  const id = Number.isInteger(command.id) ? `#${command.id}` : "";
+  const action = command.actionId ? ` · ${command.actionId}` : "";
+  return `${command.type || "COMMAND"}${id}${action}`;
+}
+
+function formatMovementReason(game) {
+  return game?.movement_reason || game?.movement_command?.reason || "—";
+}
+
+function formatSafePoint(game) {
+  const point = game?.safe_point;
+  if (!point) return "—";
+  const map = point.map ? `${point.map} · ` : "";
+  return `${map}${formatCoordinate(point.x)}, ${formatCoordinate(point.y)}`;
+}
+
+function formatMovementStuck(game) {
+  const stuck = game?.movement_stuck;
+  if (!stuck) return "—";
+  if (!stuck.stuck) {
+    return stuck.lastProgressAt
+      ? `OK · Progress ${formatTimestamp(stuck.lastProgressAt)}`
+      : "OK";
+  }
+
+  return stuck.stuckSince
+    ? `STUCK seit ${formatTimestamp(stuck.stuckSince)}`
+    : "STUCK";
 }
 
 function formatTarget(game) {
@@ -509,6 +556,20 @@ function updateCharacterCard(card, character) {
   card.querySelector(".character-resources").textContent =
     formatResources(game);
   card.querySelector(".character-movement").textContent = formatMovement(game);
+  card.querySelector(".character-movement-owner").textContent =
+    formatMovementOwner(game);
+  card.querySelector(".character-movement-command").textContent =
+    formatMovementCommand(game);
+  card.querySelector(".character-movement-reason").textContent =
+    formatMovementReason(game);
+  card.querySelector(".character-safe-point").textContent =
+    formatSafePoint(game);
+  const stuckState = card.querySelector(".character-stuck-state");
+  stuckState.textContent = formatMovementStuck(game);
+  stuckState.classList.toggle(
+    "movement-stuck-active",
+    !!game?.movement_stuck?.stuck,
+  );
   card.querySelector(".character-target").textContent = formatTarget(game);
   card.querySelector(".character-inventory-summary").textContent =
     formatInventory(game);

@@ -65,6 +65,42 @@ test("planned path starts at the current position and stays on selected map", ()
   ]);
 });
 
+test("runtime controller waypoints override smart plot and inherit the selected map", () => {
+  const character = characterFixture();
+  character.game.runtime_planned_path = [
+    { map: null, x: 120, y: 220 },
+    { map: "main", x: 180, y: 280 },
+  ];
+  character.game.runtime_planned_destination = {
+    map: "main",
+    x: 180,
+    y: 280,
+  };
+
+  assert.deepEqual(plannedPath(character, "main"), [
+    { map: "main", x: 100, y: 200 },
+    { map: "main", x: 120, y: 220 },
+    { map: "main", x: 180, y: 280 },
+  ]);
+});
+
+test("character geometry exposes safe point for map rendering", () => {
+  const character = characterFixture();
+  character.game.safe_point = {
+    map: "main",
+    x: 25,
+    y: 35,
+    source: "CURRENT_POSITION",
+  };
+
+  const geometry = characterGeometry(character, "main", 0);
+
+  assert.deepEqual(geometry.safePoint, { x: 25, y: 35 });
+  const bounds = computeBounds([geometry]);
+  assert.equal(bounds.minX < 25, true);
+  assert.equal(bounds.minY < 35, true);
+});
+
 test("character geometry contains trail plan target and heading", () => {
   const geometry = characterGeometry(characterFixture(), "main", 0);
 

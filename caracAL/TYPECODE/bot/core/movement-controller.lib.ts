@@ -113,6 +113,9 @@ interface ActiveMovementCommand {
   id: number;
   type: MovementCommandType;
   owner: string;
+  module: string;
+  reason: string;
+  correlationId?: string;
   startedAt: number;
   actionId: string | null;
   target: Record<string, unknown> | null;
@@ -135,6 +138,9 @@ export interface MovementControllerStatus {
     id: number;
     type: MovementCommandType;
     owner: string;
+    module: string;
+    reason: string;
+    correlationId?: string;
     startedAt: number;
     actionId: string | null;
     target: Record<string, unknown> | null;
@@ -176,7 +182,24 @@ function targetForSmart(
   request: SmartMovementRequest,
 ): Record<string, unknown> {
   return {
-    destination: request.destination,
+    destination:
+      request.destination && typeof request.destination === "object"
+        ? { ...request.destination }
+        : request.destination,
+  };
+}
+
+function cloneMovementTarget(
+  target: Record<string, unknown> | null,
+): Record<string, unknown> | null {
+  if (!target) return null;
+
+  const destination = target.destination;
+  return {
+    ...target,
+    ...(destination && typeof destination === "object"
+      ? { destination: { ...destination } }
+      : {}),
   };
 }
 
@@ -229,9 +252,7 @@ export class MovementController {
       active: this.active
         ? {
             ...this.active,
-            target: this.active.target
-              ? { ...this.active.target }
-              : null,
+            target: cloneMovementTarget(this.active.target),
           }
         : null,
     };
@@ -355,6 +376,7 @@ export class MovementController {
       "DIRECT",
       owner,
       targetForDirect(request),
+      request,
     );
 
     const record = this.actions.directMove({
@@ -430,6 +452,7 @@ export class MovementController {
       "SMART",
       owner,
       targetForSmart(request),
+      request,
     );
 
     const promise = this.actions.smartMove({
@@ -550,9 +573,7 @@ export class MovementController {
     const previousActive = this.active
       ? {
           ...this.active,
-          target: this.active.target
-            ? { ...this.active.target }
-            : null,
+          target: cloneMovementTarget(this.active.target),
         }
       : null;
 
@@ -574,7 +595,13 @@ export class MovementController {
       this.owner = requestedOwner;
     }
 
-    const command = this.startCommand("CANCEL", requestedOwner, null, true);
+    const command = this.startCommand(
+      "CANCEL",
+      requestedOwner,
+      null,
+      request,
+      true,
+    );
     const record = await this.actions.cancelMovement({
       module: request.module,
       why: request.why,
@@ -793,6 +820,10 @@ export class MovementController {
     type: MovementCommandType,
     owner: string,
     target: Record<string, unknown> | null,
+    request: Pick<
+      MovementRequestBase,
+      "module" | "why" | "correlationId"
+    >,
     replaceActive = false,
   ): ActiveMovementCommand {
     if (this.active && !replaceActive) {
@@ -806,6 +837,11 @@ export class MovementController {
       id: this.commandSequence,
       type,
       owner,
+      module: request.module,
+      reason: request.why,
+      ...(request.correlationId && {
+        correlationId: request.correlationId,
+      }),
       startedAt: this.now(),
       actionId: null,
       target: target ? { ...target } : null,

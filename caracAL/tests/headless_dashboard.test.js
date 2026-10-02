@@ -204,6 +204,11 @@ test("dashboard static assets are present", () => {
   assert.match(index, /id="rotate-characters"/);
   assert.match(index, /character-runtime-config-revision/);
   assert.match(index, /character-config-push-status/);
+  assert.match(index, /character-movement-owner/);
+  assert.match(index, /character-movement-command/);
+  assert.match(index, /character-movement-reason/);
+  assert.match(index, /character-safe-point/);
+  assert.match(index, /character-stuck-state/);
 });
 
 test("dashboard module and coordinator remain syntactically valid", () => {
@@ -213,6 +218,17 @@ test("dashboard module and coordinator remain syntactically valid", () => {
   );
   const coordinator = fs.readFileSync(
     path.join(__dirname, "..", "standalones", "CharacterCoordinator.js"),
+    "utf8",
+  );
+  const runtimeKernel = fs.readFileSync(
+    path.join(
+      __dirname,
+      "..",
+      "TYPECODE",
+      "bot",
+      "core",
+      "runtime-kernel.lib.ts",
+    ),
     "utf8",
   );
 
@@ -248,4 +264,6 @@ test("dashboard module and coordinator remain syntactically valid", () => {
   assert.match(coordinator, /saveCharacterSnapshot/);
   assert.match(coordinator, /UNEXPECTED_CHARACTER_EXIT/);
   assert.match(coordinator, /dashboard\?\.publish/);
+  assert.match(coordinator, /updateCharacterMovementRuntime/);
+  assert.match(runtimeKernel, /movement:\s*this\.movement\.status\(\)/);
 });
