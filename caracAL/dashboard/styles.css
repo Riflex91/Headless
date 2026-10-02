@@ -241,6 +241,190 @@ dd {
   margin-top: 0.65rem;
 }
 
+.movement-heading {
+  align-items: flex-end;
+}
+
+.movement-controls {
+  display: flex;
+  align-items: end;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.movement-controls label {
+  display: grid;
+  gap: 0.25rem;
+  color: #9faac0;
+  font-size: 0.75rem;
+}
+
+.movement-controls select {
+  padding: 0.4rem 0.5rem;
+  border: 1px solid #374665;
+  border-radius: 0.45rem;
+  background: #18223b;
+  color: #dbe5f8;
+}
+
+.movement-controls .movement-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding-bottom: 0.4rem;
+}
+
+.movement-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 17rem;
+  min-height: 34rem;
+}
+
+.movement-map-wrap {
+  position: relative;
+  min-height: 34rem;
+  overflow: hidden;
+  border-right: 1px solid #26314b;
+  background:
+    linear-gradient(rgba(78, 94, 126, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(78, 94, 126, 0.05) 1px, transparent 1px),
+    #0d1426;
+  background-size: 2rem 2rem;
+}
+
+.movement-map {
+  display: block;
+  width: 100%;
+  height: 34rem;
+}
+
+.movement-map-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #8996af;
+}
+
+.movement-map-empty[hidden] {
+  display: none;
+}
+
+.map-grid line {
+  stroke: rgba(142, 154, 178, 0.16);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.actual-trail,
+.planned-path,
+.target-line,
+.facing-line {
+  fill: none;
+  stroke: currentColor;
+  vector-effect: non-scaling-stroke;
+}
+
+.actual-trail {
+  stroke-width: 2.5;
+  opacity: 0.72;
+}
+
+.planned-path {
+  stroke-width: 2;
+  stroke-dasharray: 8 6;
+  opacity: 0.9;
+}
+
+.target-line {
+  stroke-width: 1.5;
+  stroke-dasharray: 3 5;
+  opacity: 0.5;
+}
+
+.facing-line {
+  stroke-width: 2.5;
+}
+
+.facing-arrow {
+  fill: currentColor;
+  stroke: none;
+}
+
+.character-marker circle {
+  fill: #11182c;
+  stroke: currentColor;
+  stroke-width: 3;
+  vector-effect: non-scaling-stroke;
+}
+
+.character-marker text {
+  fill: #e8edf7;
+  paint-order: stroke;
+  stroke: #0b1020;
+  stroke-width: 4px;
+  stroke-linejoin: round;
+  font-size: 18px;
+  font-weight: 700;
+  pointer-events: none;
+}
+
+.movement-legend {
+  display: grid;
+  align-content: start;
+  gap: 0.55rem;
+  padding: 0.85rem;
+  background: #10182b;
+}
+
+.movement-legend-row {
+  display: grid;
+  grid-template-columns: 0.75rem minmax(0, 1fr);
+  align-items: center;
+  gap: 0.55rem;
+  font-size: 0.78rem;
+}
+
+.movement-legend-dot {
+  width: 0.65rem;
+  height: 0.65rem;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.character-color-0 {
+  color: #57a7ff;
+}
+
+.character-color-1 {
+  color: #b878ff;
+}
+
+.character-color-2 {
+  color: #55d68b;
+}
+
+.character-color-3 {
+  color: #ffb84f;
+}
+
+.character-color-4 {
+  color: #ff7080;
+}
+
+.character-color-5 {
+  color: #65d9e8;
+}
+
+.character-color-6 {
+  color: #e6d35d;
+}
+
+.character-color-7 {
+  color: #e98fd6;
+}
+
 .event-list {
   max-height: 24rem;
   overflow: auto;
@@ -275,6 +459,21 @@ dd {
 
 .disconnected {
   color: #e58994 !important;
+}
+
+@media (max-width: 980px) {
+  .movement-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .movement-map-wrap {
+    border-right: 0;
+    border-bottom: 1px solid #26314b;
+  }
+
+  .movement-legend {
+    grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  }
 }
 
 @media (max-width: 760px) {
