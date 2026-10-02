@@ -139,8 +139,8 @@ async function make_runner(upper, CODE_file, version, is_typescript) {
   //indicating the servers_and_characters proxy that we use
   const connected_signoff = new Promise((resolve) => {
     process.on("message", (rawMessage) => {
-    const m = acceptedIpcMessage(rawMessage);
-    if (!m) return;
+      const m = acceptedIpcMessage(rawMessage);
+      if (!m) return;
       switch (m.type) {
         case "siblings_and_acc":
           resolve();
