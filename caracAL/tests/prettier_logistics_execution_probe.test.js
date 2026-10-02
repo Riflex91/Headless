@@ -16,7 +16,7 @@ function emit(key, chunk) {
   const total = Math.ceil(chunk.length / size);
   for (let index = 0; index < total; index += 1) {
     console.log(
-      "PRETTIER_P11_EXEC_FIX2:" +
+      "PRETTIER_P11_EXEC_FIX3:" +
         key +
         ":" +
         index +
@@ -28,7 +28,7 @@ function emit(key, chunk) {
   }
 }
 
-test("recovers missing Phase 11 execution formatting chunks", async () => {
+test("recovers all truncated Phase 11 execution formatting chunks", async () => {
   const prettier = require("prettier");
   const coordinator = await encoded(
     prettier,
@@ -39,6 +39,11 @@ test("recovers missing Phase 11 execution formatting chunks", async () => {
     "merchant_logistics_planner.test.js",
   );
 
-  emit("Coordinator859", coordinator.slice(859 * 100, 860 * 100));
+  for (const index of [859, 1324, 1789]) {
+    emit(
+      "Coordinator" + index,
+      coordinator.slice(index * 100, (index + 1) * 100),
+    );
+  }
   emit("PlannerTest42", plannerTest.slice(42 * 100, 43 * 100));
 });
