@@ -144,15 +144,7 @@ test("prettier exact-output probe", async () => {
   const fs = require("node:fs");
   const nodePath = require("node:path");
   const prettier = await import("prettier");
-  const targets = [
-    "dashboard/app.js",
-    "scripts/run_combat_live_e2e.js",
-    "src/CombatLiveTest.js",
-    "standalones/CharacterCoordinator.js",
-    "tests/combat_live_supervisor.test.js",
-    "tests/combat_live_test.test.js",
-    "tests/headless_dashboard.test.js",
-  ];
+  const targets = ["standalones/CharacterCoordinator.js"];
 
   for (const relative of targets) {
     const absolute = nodePath.join(__dirname, "..", relative);
@@ -167,11 +159,11 @@ test("prettier exact-output probe", async () => {
     const encoded = Buffer.from(formatted).toString("base64");
     const pathToken = Buffer.from(relative).toString("base64");
     let part = 0;
-    for (let offset = 0; offset < encoded.length; offset += 6000) {
+    for (let offset = 0; offset < encoded.length; offset += 2000) {
       console.log(
         `PRETTIER_PROBE|${pathToken}|${String(part).padStart(4, "0")}|${encoded.slice(
           offset,
-          offset + 6000,
+          offset + 2000,
         )}`,
       );
       part += 1;
