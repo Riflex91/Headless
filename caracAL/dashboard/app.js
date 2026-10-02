@@ -37,9 +37,7 @@ const showFacing = document.querySelector("#show-facing");
 const showTargetLine = document.querySelector("#show-target-line");
 const inventoryEquipmentApi = window.HeadlessInventoryEquipment;
 const accountInventoryGrid = document.querySelector("#account-inventory-grid");
-const emergencyStopControl = document.querySelector(
-  "#emergency-stop-control",
-);
+const emergencyStopControl = document.querySelector("#emergency-stop-control");
 const emergencyStopStatus = document.querySelector("#emergency-stop-status");
 const emergencyStopReason = document.querySelector("#emergency-stop-reason");
 const activateEmergencyStop = document.querySelector(
