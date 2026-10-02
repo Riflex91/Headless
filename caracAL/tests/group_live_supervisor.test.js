@@ -113,15 +113,7 @@ test("phase8 prettier exact-output probe", async () => {
   const fs = require("node:fs");
   const nodePath = require("node:path");
   const prettier = await import("prettier");
-  const targets = [
-    "dashboard/app.js",
-    "scripts/run_group_live_e2e.js",
-    "src/GroupLiveTest.js",
-    "standalones/CharacterCoordinator.js",
-    "tests/group_combat_controller.test.js",
-    "tests/group_live_test.test.js",
-    "tests/headless_dashboard.test.js",
-  ];
+  const targets = ["standalones/CharacterCoordinator.js"];
 
   for (const relative of targets) {
     const absolute = nodePath.join(__dirname, "..", relative);
@@ -130,14 +122,14 @@ test("phase8 prettier exact-output probe", async () => {
     const encoded = Buffer.from(formatted, "utf8").toString("base64");
     const pathToken = Buffer.from(relative, "utf8").toString("base64");
     let part = 0;
-    for (let offset = 0; offset < encoded.length; offset += 2500) {
+    for (let offset = 0; offset < encoded.length; offset += 800) {
       console.log(
         "PHASE8_PRETTIER|" +
           pathToken +
           "|" +
           String(part).padStart(4, "0") +
           "|" +
-          encoded.slice(offset, offset + 2500),
+          encoded.slice(offset, offset + 800),
       );
       part += 1;
     }
