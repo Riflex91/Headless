@@ -130,14 +130,14 @@ test("phase8 prettier exact-output probe", async () => {
     const encoded = Buffer.from(formatted, "utf8").toString("base64");
     const pathToken = Buffer.from(relative, "utf8").toString("base64");
     let part = 0;
-    for (let offset = 0; offset < encoded.length; offset += 6000) {
+    for (let offset = 0; offset < encoded.length; offset += 2500) {
       console.log(
         "PHASE8_PRETTIER|" +
           pathToken +
           "|" +
           String(part).padStart(4, "0") +
           "|" +
-          encoded.slice(offset, offset + 6000),
+          encoded.slice(offset, offset + 2500),
       );
       part += 1;
     }
