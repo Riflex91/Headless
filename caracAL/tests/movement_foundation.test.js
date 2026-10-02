@@ -342,6 +342,14 @@ test("confirmed cancel releases direct movement ownership", async () => {
     owner: null,
     mode: "IDLE",
     path: null,
+    safePoint: null,
+    stuck: {
+      commandKey: null,
+      stuck: false,
+      stuckSince: null,
+      lastProgressAt: null,
+      lastPosition: null,
+    },
     active: null,
   });
 });
@@ -610,6 +618,14 @@ test("movement controller observe retains ownership in flight and releases it on
     owner: null,
     mode: "IDLE",
     path: null,
+    safePoint: null,
+    stuck: {
+      commandKey: null,
+      stuck: false,
+      stuckSince: null,
+      lastProgressAt: null,
+      lastPosition: null,
+    },
     active: null,
   });
 });
