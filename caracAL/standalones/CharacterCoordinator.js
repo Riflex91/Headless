@@ -662,8 +662,7 @@ function migrate_old_storage(path, localStorage) {
     char_block.bot_runtime_started_at = null;
     char_block.movement_live_test = char_block.movement_live_test || null;
     char_block.combat_live_test = char_block.combat_live_test || null;
-    char_block.class_skill_live_test =
-      char_block.class_skill_live_test || null;
+    char_block.class_skill_live_test = char_block.class_skill_live_test || null;
     char_block.combat_runtime = char_block.combat_runtime || null;
     char_block.class_skill_runtime = char_block.class_skill_runtime || null;
     char_block.movement_live_test_typescript_override = null;
@@ -1926,7 +1925,9 @@ function migrate_old_storage(path, localStorage) {
         400,
       );
     }
-    if (["STARTING", "RUNNING"].includes(char_block.class_skill_live_test?.status)) {
+    if (
+      ["STARTING", "RUNNING"].includes(char_block.class_skill_live_test?.status)
+    ) {
       throw make_control_error(
         "CLASS_SKILL_LIVE_TEST_ALREADY_RUNNING",
         `Class skill live test already running for ${char_name}`,
@@ -2121,7 +2122,8 @@ function migrate_old_storage(path, localStorage) {
     } catch (error) {
       const failed_result = {
         request_id,
-        outcome: error.code === "CLASS_SKILL_LIVE_TEST_TIMEOUT" ? "TIMEOUT" : "FAIL",
+        outcome:
+          error.code === "CLASS_SKILL_LIVE_TEST_TIMEOUT" ? "TIMEOUT" : "FAIL",
         reason: error.code || error.message || "CLASS_SKILL_LIVE_TEST_FAILED",
         error: error.message || String(error),
         started_at,
@@ -2689,7 +2691,8 @@ function migrate_old_storage(path, localStorage) {
             error: m.error || null,
           });
           break;
-        }        case "class_skill_live_test_result": {
+        }
+        case "class_skill_live_test_result": {
           const pending = class_skill_live_test_requests.get(m.request_id);
           if (!pending || pending.character !== char_name) {
             emit_supervisor_event(
@@ -2709,11 +2712,15 @@ function migrate_old_storage(path, localStorage) {
             result: m.result || null,
             error: m.error || null,
           });
-          emit_supervisor_event("CLASS_SKILL_LIVE_TEST_RESULT_RECEIVED", char_name, {
-            request_id: m.request_id,
-            outcome: m.result?.outcome || null,
-            error: m.error || null,
-          });
+          emit_supervisor_event(
+            "CLASS_SKILL_LIVE_TEST_RESULT_RECEIVED",
+            char_name,
+            {
+              request_id: m.request_id,
+              outcome: m.result?.outcome || null,
+              error: m.error || null,
+            },
+          );
           break;
         }
         case "config_applied": {

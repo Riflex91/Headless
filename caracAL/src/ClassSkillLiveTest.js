@@ -10,8 +10,7 @@ function classSkillLiveTestEvidence(events = [], charBlock = {}) {
   const types = runtimeEvents.map((event) => event.type);
   const actionEvents = classSkillEvents.filter(
     (event) =>
-      event.type === "CLASS_SKILL_ACTION" &&
-      event.data?.skill === "track",
+      event.type === "CLASS_SKILL_ACTION" && event.data?.skill === "track",
   );
   const projection = charBlock.class_skill_runtime || null;
 
@@ -93,8 +92,7 @@ function classSkillLiveTestDiagnostics(
       respawned_at_start: runtime.preparation?.respawnedAtStart === true,
       selected_skill: runtime.preparation?.selectedSkill || null,
       skill_mp: runtime.preparation?.skillMp ?? null,
-      initial_cooldown_ms:
-        runtime.preparation?.initialCooldownMs ?? null,
+      initial_cooldown_ms: runtime.preparation?.initialCooldownMs ?? null,
     },
     navigation: {
       required: false,
@@ -122,10 +120,8 @@ function classSkillLiveTestDiagnostics(
     observed: {
       class: runtime.scope?.testedClass || runtime.start?.ctype || null,
       skill: runtime.classSkill?.selectedSkill || null,
-      action_confirmed:
-        runtime.classSkill?.actionStatus === "CONFIRMED",
-      cooldown_observed:
-        runtime.classSkill?.cooldownObserved === true,
+      action_confirmed: runtime.classSkill?.actionStatus === "CONFIRMED",
+      cooldown_observed: runtime.classSkill?.cooldownObserved === true,
       mp_cost_observed: runtime.classSkill?.mpCostObserved === true,
       resource_telemetry_visible:
         runtime.classSkill?.resourceTelemetryVisible === true,
