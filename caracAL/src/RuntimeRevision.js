@@ -66,15 +66,11 @@ function readGitRevision(rootDir) {
       .trim();
 
     const dirty = childProcess
-      .execFileSync(
-        "git",
-        ["status", "--porcelain", "--untracked-files=no"],
-        {
-          cwd: rootDir,
-          encoding: "utf8",
-          stdio: ["ignore", "pipe", "ignore"],
-        },
-      )
+      .execFileSync("git", ["status", "--porcelain", "--untracked-files=no"], {
+        cwd: rootDir,
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+      })
       .trim();
 
     return dirty ? `${head}-dirty` : head;
