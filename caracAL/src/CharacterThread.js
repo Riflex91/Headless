@@ -203,11 +203,17 @@ async function make_game(proc_args) {
   console.log("constructing game instance");
   console.debug("source files:\n%s", game_sources);
   const game_context = make_context();
+  const serverAddress = proc_args.realm_address || proc_args.realm_addr;
+  const serverPath = proc_args.realm_path || "/socket.io";
   game_context.io = io;
   game_context.bowser = {};
+  game_context.server_address = serverAddress;
+  game_context.server_path = serverPath;
   await ev_files(game_sources, game_context);
   game_context.VERSION = "" + game_context.G.version;
-  game_context.server_addr = proc_args.realm_addr;
+  game_context.server_address = serverAddress;
+  game_context.server_path = serverPath;
+  game_context.server_addr = proc_args.realm_addr || serverAddress;
   game_context.server_port = proc_args.realm_port;
   game_context.user_id = proc_args.sess.split("-")[0];
   game_context.user_auth = proc_args.sess.split("-")[1];
@@ -453,6 +459,8 @@ process.on("message", async (rawMessage) => {
       cname,
       clid,
       version: msg.arguments.version,
+      realm_address: msg.arguments.realm_address,
+      realm_path: msg.arguments.realm_path,
       realm_addr: msg.arguments.realm_addr,
       realm_port: msg.arguments.realm_port,
       script_file: msg.arguments.script_file,
