@@ -126,24 +126,26 @@
           Math.round(entity.y),
         ].join("|");
         const previous = entities.get(key);
-        if (!previous || (entity.distance ?? Infinity) < (previous.distance ?? Infinity)) {
+        if (
+          !previous ||
+          (entity.distance ?? Infinity) < (previous.distance ?? Infinity)
+        ) {
           entities.set(key, entity);
         }
       }
     }
 
     return [...entities.values()].sort(
-      (left, right) => (left.distance ?? Infinity) - (right.distance ?? Infinity),
+      (left, right) =>
+        (left.distance ?? Infinity) - (right.distance ?? Infinity),
     );
   }
 
   function sceneNpcs(mapScene) {
-    return (mapScene?.npcs || [])
-      .filter(finitePoint)
-      .map((npc) => ({
-        ...npc,
-        kind: "npc",
-      }));
+    return (mapScene?.npcs || []).filter(finitePoint).map((npc) => ({
+      ...npc,
+      kind: "npc",
+    }));
   }
 
   function pointInBounds(point, bounds) {
@@ -270,7 +272,9 @@
     const marker = createSvgElement("g", {
       class:
         entity.kind === "monster"
-          ? `map-entity-marker monster-marker${entity.engaged ? " engaged" : ""}`
+          ? `map-entity-marker monster-marker${
+              entity.engaged ? " engaged" : ""
+            }`
           : "map-entity-marker npc-marker",
     });
 
@@ -371,7 +375,12 @@
       emptyState.hidden = false;
       if (backgroundCanvas) {
         const context = backgroundCanvas.getContext?.("2d");
-        context?.clearRect(0, 0, backgroundCanvas.width, backgroundCanvas.height);
+        context?.clearRect(
+          0,
+          0,
+          backgroundCanvas.width,
+          backgroundCanvas.height,
+        );
       }
       return;
     }
