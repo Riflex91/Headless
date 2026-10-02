@@ -258,6 +258,9 @@ test("dashboard static assets are present", () => {
   assert.match(index, /character-class-skill-action/);
   assert.match(index, /character-group-combat/);
   assert.match(index, /character-group-tether/);
+  assert.match(index, /character-farm-intelligence/);
+  assert.match(index, /character-farm-why-monster/);
+  assert.match(index, /character-farm-why-spot/);
   assert.match(index, /data-movement-live-test/);
   assert.match(index, /data-combat-live-test/);
   assert.match(index, /data-class-skill-live-test/);
@@ -400,8 +403,12 @@ test("dashboard module and coordinator remain syntactically valid", () => {
   assert.match(coordinator, /combat_runtime/);
   assert.match(coordinator, /class_skill_runtime/);
   assert.match(coordinator, /group_combat_runtime/);
+  assert.match(coordinator, /farm_intelligence_runtime/);
+  assert.match(coordinator, /appendFarmStatistic/);
   assert.match(runtimeKernel, /classSkills/);
   assert.match(runtimeKernel, /groupCombat/);
+  assert.match(runtimeKernel, /farmIntelligence/);
+  assert.match(runtimeKernel, /FARM_INTELLIGENCE_JOB_ID/);
   assert.match(runtimeKernel, /GROUP_COMBAT_JOB_ID/);
   assert.match(runtimeKernel, /CLASS_SKILL_JOB_ID/);
   assert.match(runtimeKernel, /runMovementLiveTest/);
