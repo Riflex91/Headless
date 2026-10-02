@@ -20,6 +20,7 @@ const {
 } = require("../src/CharacterControl");
 const { AdventureLandAssetCache } = require("../src/AdventureLandAssetCache");
 const { DiagnosticEventStore } = require("../src/DiagnosticStore");
+const { EmergencyStopState } = require("../src/EmergencyStopState");
 const { attachHeadlessDashboard } = require("../src/HeadlessDashboard");
 const { updateCharacterLiveState } = require("../src/LiveState");
 const { normalizeRuntimeEvent } = require("../src/RuntimeEventBridge");
@@ -101,6 +102,7 @@ function migrate_old_storage(path, localStorage) {
 
   const character_manage = cfg.characters;
   const diagnostic_store = new DiagnosticEventStore({ maxEvents: 20000 });
+  const emergency_stop = new EmergencyStopState();
   const asset_cache = new AdventureLandAssetCache({
     cacheDir: path.join(process.cwd(), "data", "assets", "adventure-land"),
   });
@@ -140,6 +142,8 @@ function migrate_old_storage(path, localStorage) {
         characterManage: character_manage,
         lifecyclePolicy: lifecycle_policy,
         controlCharacter: control_character,
+        controlEmergencyStop: control_emergency_stop,
+        getEmergencyStopState: () => emergency_stop.snapshot(),
         diagnosticStore: diagnostic_store,
         assetCache: asset_cache,
       });
@@ -419,6 +423,41 @@ function migrate_old_storage(path, localStorage) {
     return error;
   }
 
+  async function control_emergency_stop(action, reason) {
+    let state;
+
+    if (action === "activate") {
+      state = emergency_stop.activate(reason);
+    } else if (action === "clear") {
+      state = emergency_stop.clear(reason);
+    } else {
+      throw make_control_error(
+        "INVALID_EMERGENCY_STOP_ACTION",
+        `Unsupported emergency stop action: ${action}`,
+        400,
+      );
+    }
+
+    Object.values(character_manage).forEach((char_block) => {
+      if (!char_block.instance) return;
+      safe_send(char_block.instance, {
+        type: "emergency_stop",
+        state,
+      });
+    });
+
+    emit_supervisor_event(
+      state.active ? "EMERGENCY_STOP_ACTIVATED" : "EMERGENCY_STOP_CLEARED",
+      null,
+      {
+        reason: state.reason,
+        revision: state.revision,
+      },
+    );
+    dashboard?.publishSnapshot();
+    return state;
+  }
+
   async function control_character(char_name, action) {
     const char_block = character_manage[char_name];
     if (!char_block) {
@@ -599,6 +638,7 @@ function migrate_old_storage(path, localStorage) {
       clid: ctype_to_clid[char.type] || -1,
       heartbeat_interval_ms: lifecycle_policy.heartbeatIntervalMs,
       runtime_state: char_block.desired_runtime_state,
+      emergency_stop: emergency_stop.snapshot(),
     };
     if (cfg.enable_TYPECODE) {
       args.typescript_file = char_block.typescript;
@@ -693,6 +733,13 @@ function migrate_old_storage(path, localStorage) {
         case "runtime_event":
           emit_runtime_event(char_name, m.event);
           break;
+        case "emergency_stop_applied":
+          emit_supervisor_event("EMERGENCY_STOP_APPLIED", char_name, {
+            active: !!m.state?.active,
+            reason: m.state?.reason || null,
+            revision: m.state?.revision || 0,
+          });
+          break;
         case "runtime_state_applied":
           if (m.state === DESIRED_RUNTIME_STATES.PAUSED) {
             set_lifecycle_state(
@@ -734,6 +781,10 @@ function migrate_old_storage(path, localStorage) {
           safe_send(result, {
             type: "runtime_control",
             state: char_block.desired_runtime_state,
+          });
+          safe_send(result, {
+            type: "emergency_stop",
+            state: emergency_stop.snapshot(),
           });
           emit_supervisor_event("CHARACTER_CONNECTED", char_name, {
             pid: result.pid || null,
