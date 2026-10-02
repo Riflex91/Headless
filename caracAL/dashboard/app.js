@@ -650,9 +650,7 @@ function updateCharacterCard(card, character) {
     "movement-stuck-active",
     !!game?.movement_stuck?.stuck,
   );
-  const movementLiveTest = card.querySelector(
-    ".character-movement-live-test",
-  );
+  const movementLiveTest = card.querySelector(".character-movement-live-test");
   movementLiveTest.textContent = formatMovementLiveTest(
     character.movement_live_test,
   );
