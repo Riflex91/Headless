@@ -568,6 +568,24 @@ dd {
   font-weight: 700;
 }
 
+.movement-live-test-pass {
+  color: #88e7af;
+  font-weight: 700;
+}
+
+.movement-live-test-fail,
+.movement-live-test-timeout,
+.movement-live-test-unknown {
+  color: #ff9aa6;
+  font-weight: 700;
+}
+
+.movement-live-test-starting,
+.movement-live-test-running {
+  color: #ffd37a;
+  font-weight: 700;
+}
+
 .character-color-0 {
   color: #57a7ff;
 }
