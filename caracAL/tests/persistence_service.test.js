@@ -31,11 +31,13 @@ test("persistence creates a real versioned SQLite database", async () => {
 
     assert.equal(service.schemaVersion(), CURRENT_SCHEMA_VERSION);
     assert.deepEqual(service.health(), {
+      status: "HEALTHY",
       database_path: fixture.databasePath,
       schema_version: CURRENT_SCHEMA_VERSION,
       current_schema_version: CURRENT_SCHEMA_VERSION,
       flush_count: 1,
       closed: false,
+      last_error: null,
     });
 
     const bytes = await fs.readFile(fixture.databasePath);
@@ -118,6 +120,41 @@ test("persistence survives close and reopen with migrations intact", async () =>
   } finally {
     await first?.close();
     await reopened?.close();
+    await fs.rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("combined runtime state writes lifecycle and revisions in one flush", async () => {
+  const fixture = await tempDatabase();
+  let service;
+
+  try {
+    service = await PersistenceService.open({
+      databasePath: fixture.databasePath,
+      now: () => 4000,
+    });
+    const before = service.health().flush_count;
+
+    await service.saveCharacterRuntimeState("My_Ranger1", {
+      desiredState: "PAUSED",
+      actualState: "PAUSED",
+      codeRevision: "sha256-code",
+      configRevision: "cfg-code",
+    });
+
+    assert.equal(service.health().flush_count, before + 1);
+    assert.deepEqual(service.getLifecycleState("My_Ranger1"), {
+      desired_state: "PAUSED",
+      actual_state: "PAUSED",
+      updated_at: 4000,
+    });
+    assert.deepEqual(service.getRevisionState("My_Ranger1"), {
+      code_revision: "sha256-code",
+      config_revision: "cfg-code",
+      updated_at: 4000,
+    });
+  } finally {
+    await service?.close();
     await fs.rm(fixture.root, { recursive: true, force: true });
   }
 });
