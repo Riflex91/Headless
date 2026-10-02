@@ -515,3 +515,110 @@ test("movement controller status is exposed without mutable internal target refe
 
   assert.equal(movement.status().active.target.x, 10);
 });
+
+
+test("direct move settles only after observed arrival and stop", () => {
+  const setup = makeBoundary({
+    character: {
+      x: 0,
+      y: 0,
+      moving: true,
+    },
+  });
+
+  const move = setup.boundary.move({
+    x: 100,
+    y: 200,
+    module: "Movement",
+    why: "DIRECT_MOVE",
+  });
+  assert.equal(move.status, "DISPATCHED");
+
+  const inFlight = setup.boundary.settleMove(move.id, 5);
+  assert.equal(inFlight.status, "DISPATCHED");
+
+  setup.state.character.x = 98;
+  setup.state.character.y = 202;
+  setup.state.character.moving = false;
+
+  const settled = setup.boundary.settleMove(move.id, 5);
+  assert.equal(settled.status, "CONFIRMED");
+  assert.equal(settled.evidence.distance <= 5, true);
+  assert.equal(settled.evidence.tolerance, 5);
+});
+
+test("movement controller observe retains ownership in flight and releases it on settlement", () => {
+  const { MovementController } = coreModule("movement-controller.lib.ts");
+  let settlement = actionRecord("D-1", "DISPATCHED");
+  const actions = {
+    move() {
+      return actionRecord("D-1", "DISPATCHED");
+    },
+    settleMove() {
+      return settlement;
+    },
+    async smartMove() {
+      return actionRecord("S-1", "CONFIRMED");
+    },
+    async cancelMovement() {
+      return actionRecord("C-1", "CONFIRMED");
+    },
+  };
+  const movement = new MovementController(actions);
+
+  movement.direct({
+    owner: "Farm",
+    module: "Farm",
+    why: "CHASE_TARGET",
+    x: 10,
+    y: 20,
+  });
+
+  const inFlight = movement.observe();
+  assert.equal(inFlight.status, "DISPATCHED");
+  assert.equal(movement.status().owner, "Farm");
+  assert.equal(movement.status().mode, "DIRECT");
+
+  settlement = actionRecord("D-1", "CONFIRMED");
+  const arrived = movement.observe();
+  assert.equal(arrived.status, "CONFIRMED");
+  assert.deepEqual(movement.status(), {
+    owner: null,
+    mode: "IDLE",
+    active: null,
+  });
+});
+
+test("movement controller observe ignores non-direct commands", async () => {
+  const { MovementController } = coreModule("movement-controller.lib.ts");
+  const pending = deferred();
+  let settlementCalls = 0;
+  const actions = {
+    move() {
+      return actionRecord("D-1", "DISPATCHED");
+    },
+    settleMove() {
+      settlementCalls += 1;
+      return actionRecord("D-1", "CONFIRMED");
+    },
+    smartMove() {
+      return pending.promise;
+    },
+    async cancelMovement() {
+      return actionRecord("C-1", "CONFIRMED");
+    },
+  };
+  const movement = new MovementController(actions);
+
+  const smartPromise = movement.smart({
+    owner: "Travel",
+    module: "Travel",
+    why: "GO_TOWN",
+    destination: "main",
+  });
+  assert.equal(movement.observe(), null);
+  assert.equal(settlementCalls, 0);
+
+  pending.resolve(actionRecord("S-1", "CONFIRMED"));
+  await smartPromise;
+});
