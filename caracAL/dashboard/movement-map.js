@@ -157,7 +157,7 @@
     );
   }
 
-  function computeBounds(geometries) {
+  function computeBounds(geometries, extraPoints = []) {
     const points = [];
 
     for (const geometry of geometries || []) {
@@ -166,6 +166,8 @@
       if (geometry.safePoint) points.push(geometry.safePoint);
       points.push(...geometry.trail, ...geometry.plan);
     }
+
+    points.push(...(extraPoints || []).filter(finitePoint));
 
     if (points.length === 0) {
       return null;
@@ -359,7 +361,8 @@
           geometry.trail.length > 0 ||
           geometry.plan.length > 0,
       );
-    const bounds = computeBounds(geometries);
+    const liveEntities = nearbyEntities(characters, mapName);
+    const bounds = computeBounds(geometries, liveEntities);
 
     svg.replaceChildren();
     legend.replaceChildren();
@@ -422,13 +425,15 @@
       Math.min(bounds.width, bounds.height) * 0.05,
     );
 
-    const liveEntities = nearbyEntities(characters, mapName).filter((entity) =>
+    const visibleEntities = liveEntities.filter((entity) =>
       pointInBounds(entity, bounds),
     );
-    const monsters = liveEntities.filter((entity) => entity.kind === "monster");
+    const monsters = visibleEntities.filter(
+      (entity) => entity.kind === "monster",
+    );
     const npcMap = new Map();
     for (const npc of sceneNpcs(mapScene).concat(
-      liveEntities.filter((entity) => entity.kind === "npc"),
+      visibleEntities.filter((entity) => entity.kind === "npc"),
     )) {
       if (!pointInBounds(npc, bounds)) continue;
       const key = [
