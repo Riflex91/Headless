@@ -722,95 +722,99 @@ export class FarmIntelligenceController {
     }
 
     const party = this.partyMetrics(character);
-    return spots
-      .filter((spot) => !forbidden.has(spot.monster))
-      .map((spot) => {
-        const definition = catalog.monsters.get(spot.monster);
-        if (!definition) return null;
+    const candidates: RawCandidate[] = [];
 
-        const respawn = spot.respawnSeconds ?? definition.respawnSeconds;
-        const monsterDps = dps(definition.attack, definition.frequency);
-        const timeToKill =
-          definition.hp !== null &&
-          definition.hp > 0 &&
-          party.partyDps !== null &&
-          party.partyDps > 0
-            ? definition.hp / party.partyDps
-            : null;
-        const combatKills =
-          timeToKill !== null && timeToKill > 0
-            ? 3600 / Math.max(0.25, timeToKill)
-            : null;
-        const respawnKills =
-          respawn !== null && respawn > 0
-            ? (spot.count * 3600) / respawn
-            : null;
-        const killsPerHour =
-          combatKills !== null && respawnKills !== null
-            ? Math.min(combatKills, respawnKills)
-            : combatKills ?? respawnKills;
-        const travelDistance =
-          spot.map === character.map
-            ? distance(character.x, character.y, spot.x, spot.y) ?? 500
-            : config.mapChangePenalty +
-              (spot.x !== null && spot.y !== null ? Math.hypot(spot.x, spot.y) * 0.05 : 0);
-        const goalUtility = this.goalUtility(config, definition);
-        const observed = this.observed.get(spot.farmKey) || null;
+    for (const spot of spots) {
+      if (forbidden.has(spot.monster)) continue;
+      const definition = catalog.monsters.get(spot.monster);
+      if (!definition) continue;
 
-        return {
-          spot,
-          definition,
-          observed,
-          raw: {
-            xpPerHourPotential:
-              killsPerHour !== null && definition.xp !== null
-                ? killsPerHour * definition.xp
-                : null,
-            goldPerHourPotential:
-              killsPerHour !== null && definition.gold !== null
-                ? killsPerHour * definition.gold
-                : null,
-            dropPotential:
-              killsPerHour !== null
-                ? killsPerHour * definition.dropItems.length
-                : null,
-            goalUtility,
-            danger:
-              monsterDps !== null && party.tankHp !== null && party.tankHp > 0
-                ? (monsterDps * Math.max(1, timeToKill ?? 1)) / party.tankHp
-                : null,
-            travelCost: travelDistance,
-            respawnEfficiency:
-              respawn !== null && respawn > 0
-                ? (spot.count * 3600) / respawn
-                : null,
-            partyDpsFit:
-              party.partyDps !== null &&
-              definition.hp !== null &&
-              definition.hp > 0
-                ? party.partyDps / definition.hp
-                : null,
-            tankSafety:
-              party.tankHp !== null && monsterDps !== null && monsterDps > 0
-                ? party.tankHp / monsterDps
-                : null,
-            observedPerformance: observedValue(observed),
-          },
-          estimated: {
-            monsterHp: definition.hp,
-            monsterAttack: definition.attack,
-            monsterFrequency: definition.frequency,
-            xpPerKill: definition.xp,
-            goldPerKill: definition.gold,
-            respawnSeconds: respawn,
-            killsPerHour,
-            partyDps: party.partyDps,
-            tankHp: party.tankHp,
-            dropItems: [...definition.dropItems],
-          },
-        } satisfies RawCandidate;
-      })
-      .filter((candidate): candidate is RawCandidate => candidate !== null);
+      const respawn = spot.respawnSeconds ?? definition.respawnSeconds;
+      const monsterDps = dps(definition.attack, definition.frequency);
+      const timeToKill =
+        definition.hp !== null &&
+        definition.hp > 0 &&
+        party.partyDps !== null &&
+        party.partyDps > 0
+          ? definition.hp / party.partyDps
+          : null;
+      const combatKills =
+        timeToKill !== null && timeToKill > 0
+          ? 3600 / Math.max(0.25, timeToKill)
+          : null;
+      const respawnKills =
+        respawn !== null && respawn > 0
+          ? (spot.count * 3600) / respawn
+          : null;
+      const killsPerHour =
+        combatKills !== null && respawnKills !== null
+          ? Math.min(combatKills, respawnKills)
+          : combatKills ?? respawnKills;
+      const travelDistance =
+        spot.map === character.map
+          ? distance(character.x, character.y, spot.x, spot.y) ?? 500
+          : config.mapChangePenalty +
+            (spot.x !== null && spot.y !== null
+              ? Math.hypot(spot.x, spot.y) * 0.05
+              : 0);
+      const goalUtility = this.goalUtility(config, definition);
+      const observed = this.observed.get(spot.farmKey) || null;
+
+      candidates.push({
+        spot,
+        definition,
+        observed,
+        raw: {
+          xpPerHourPotential:
+            killsPerHour !== null && definition.xp !== null
+              ? killsPerHour * definition.xp
+              : null,
+          goldPerHourPotential:
+            killsPerHour !== null && definition.gold !== null
+              ? killsPerHour * definition.gold
+              : null,
+          dropPotential:
+            killsPerHour !== null
+              ? killsPerHour * definition.dropItems.length
+              : null,
+          goalUtility,
+          danger:
+            monsterDps !== null && party.tankHp !== null && party.tankHp > 0
+              ? (monsterDps * Math.max(1, timeToKill ?? 1)) / party.tankHp
+              : null,
+          travelCost: travelDistance,
+          respawnEfficiency:
+            respawn !== null && respawn > 0
+              ? (spot.count * 3600) / respawn
+              : null,
+          partyDpsFit:
+            party.partyDps !== null &&
+            definition.hp !== null &&
+            definition.hp > 0
+              ? party.partyDps / definition.hp
+              : null,
+          tankSafety:
+            party.tankHp !== null && monsterDps !== null && monsterDps > 0
+              ? party.tankHp / monsterDps
+              : null,
+          observedPerformance: observedValue(observed),
+        },
+        estimated: {
+          monsterHp: definition.hp,
+          monsterAttack: definition.attack,
+          monsterFrequency: definition.frequency,
+          xpPerKill: definition.xp,
+          goldPerKill: definition.gold,
+          respawnSeconds: respawn,
+          killsPerHour,
+          partyDps: party.partyDps,
+          tankHp: party.tankHp,
+          dropItems: [...definition.dropItems],
+        },
+      });
+    }
+
+    return candidates;
   }
 
   private scoreCandidates(
