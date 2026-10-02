@@ -36,6 +36,7 @@ export interface MovementControllerEvent {
 export interface MovementControllerOptions {
   now?: () => number;
   onEvent?: (event: MovementControllerEvent) => void;
+  directSettlementTolerance?: number;
 }
 
 export interface MovementRequestBase {
@@ -60,6 +61,7 @@ export interface CancelMovementRequest extends MovementRequestBase {
 
 export interface MovementActionBoundary {
   move(request: MoveRequest): ActionRecord;
+  settleMove(actionId: string, tolerance?: number): ActionRecord;
   smartMove(request: SmartMoveRequest): Promise<ActionRecord>;
   cancelMovement(request: BoundaryRequest): Promise<ActionRecord>;
 }
@@ -128,6 +130,7 @@ function targetForSmart(
 export class MovementController {
   private readonly now: () => number;
   private readonly onEvent?: (event: MovementControllerEvent) => void;
+  private readonly directSettlementTolerance: number;
   private owner: string | null = null;
   private mode: MovementMode = "IDLE";
   private active: ActiveMovementCommand | null = null;
@@ -139,6 +142,11 @@ export class MovementController {
   ) {
     this.now = options.now || (() => Date.now());
     this.onEvent = options.onEvent;
+    this.directSettlementTolerance =
+      Number.isFinite(options.directSettlementTolerance) &&
+      (options.directSettlementTolerance || 0) > 0
+        ? Number(options.directSettlementTolerance)
+        : 5;
   }
 
   status(): MovementControllerStatus {
@@ -202,7 +210,11 @@ export class MovementController {
 
     if (this.isCurrent(command.id)) {
       this.active!.actionId = record.id;
-      if (record.status === "BLOCKED" || record.status === "REJECTED") {
+      if (
+        record.status === "CONFIRMED" ||
+        record.status === "BLOCKED" ||
+        record.status === "REJECTED"
+      ) {
         this.settleCurrent(record, true);
       } else if (record.status === "UNKNOWN") {
         this.mode = "UNKNOWN";
@@ -232,6 +244,36 @@ export class MovementController {
     if (!this.isCurrent(command.id)) return record;
 
     this.active!.actionId = record.id;
+    if (
+      record.status === "CONFIRMED" ||
+      record.status === "REJECTED" ||
+      record.status === "BLOCKED"
+    ) {
+      this.settleCurrent(record, true);
+    } else if (record.status === "UNKNOWN") {
+      this.mode = "UNKNOWN";
+      this.emitUnknown(record);
+    }
+
+    return record;
+  }
+
+  observe(): ActionRecord | null {
+    const command = this.active;
+    if (
+      !command ||
+      command.type !== "DIRECT" ||
+      !command.actionId
+    ) {
+      return null;
+    }
+
+    const record = this.actions.settleMove(
+      command.actionId,
+      this.directSettlementTolerance,
+    );
+    if (!this.isCurrent(command.id)) return record;
+
     if (
       record.status === "CONFIRMED" ||
       record.status === "REJECTED" ||
