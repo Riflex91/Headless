@@ -26,6 +26,10 @@ import {
   FarmIntelligenceEvent,
 } from "./farm-intelligence-controller.lib";
 import {
+  InventoryIntelligenceController,
+  InventoryIntelligenceEvent,
+} from "./inventory-intelligence-controller.lib";
+import {
   FarmLiveTestOptions,
   FarmLiveTestResult,
   FarmLiveTestRunner,
@@ -55,6 +59,8 @@ import {
   MovementLiveTestRunner,
 } from "./movement-live-test.lib";
 
+const INVENTORY_INTELLIGENCE_JOB_ID = "inventory-intelligence-loop";
+const INVENTORY_INTELLIGENCE_INTERVAL_MS = 1000;
 const FARM_INTELLIGENCE_JOB_ID = "farm-intelligence-loop";
 const FARM_INTELLIGENCE_INTERVAL_MS = 1000;
 const GROUP_COMBAT_JOB_ID = "group-combat-loop";
@@ -113,6 +119,7 @@ export class BotRuntimeKernel {
   readonly classSkills: ClassSkillController | null;
   readonly groupCombat: GroupCombatController;
   readonly farmIntelligence: FarmIntelligenceController;
+  readonly inventoryIntelligence: InventoryIntelligenceController;
 
   private started = false;
   private stopping = false;
@@ -196,6 +203,22 @@ export class BotRuntimeKernel {
       config: () => runtimeConfig?.config || {},
       onEvent: (event) => this.handleFarmIntelligenceEvent(event),
     });
+    this.inventoryIntelligence = new InventoryIntelligenceController(
+      this.game,
+      {
+        config: () => runtimeConfig?.config || {},
+        onEvent: (event) => this.handleInventoryIntelligenceEvent(event),
+      },
+    );
+
+    this.scheduler.register({
+      id: INVENTORY_INTELLIGENCE_JOB_ID,
+      intervalMs: INVENTORY_INTELLIGENCE_INTERVAL_MS,
+      priority: 85,
+      tick: () => {
+        this.inventoryIntelligence.tick();
+      },
+    });
 
     this.scheduler.register({
       id: FARM_INTELLIGENCE_JOB_ID,
@@ -269,6 +292,7 @@ export class BotRuntimeKernel {
             classSkills: this.classSkills?.status() || null,
             groupCombat: this.groupCombat.status(),
             farmIntelligence: this.farmIntelligence.status(),
+            inventoryIntelligence: this.inventoryIntelligence.status(),
             recentActions: this.actionLedger.list(20),
           },
         });
@@ -353,6 +377,7 @@ export class BotRuntimeKernel {
       classSkills: this.classSkills?.status() || null,
       groupCombat: this.groupCombat.status(),
       farmIntelligence: this.farmIntelligence.status(),
+      inventoryIntelligence: this.inventoryIntelligence.status(),
       recentActions: this.actionLedger.list(20),
       ...runtimeIdentity(),
     };
@@ -760,6 +785,19 @@ export class BotRuntimeKernel {
     } finally {
       this.farmLiveTestRunning = false;
     }
+  }
+
+  private handleInventoryIntelligenceEvent(
+    event: InventoryIntelligenceEvent,
+  ): void {
+    this.eventBus.emit({
+      module: "InventoryIntelligenceController",
+      type: event.type,
+      why: event.reason,
+      data: {
+        inventoryIntelligence: event.status,
+      },
+    });
   }
 
   private handleFarmIntelligenceEvent(
