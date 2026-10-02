@@ -101,6 +101,7 @@ function publicCharacterState(name, charBlock = {}) {
     revision_status: charBlock.revision_status || "UNKNOWN",
     movement_live_test: charBlock.movement_live_test || null,
     combat_live_test: charBlock.combat_live_test || null,
+    class_skill_live_test: charBlock.class_skill_live_test || null,
     combat_runtime: charBlock.combat_runtime || null,
     class_skill_runtime: charBlock.class_skill_runtime || null,
     game: publicLiveState(charBlock.live_state),
@@ -185,6 +186,7 @@ function attachHeadlessDashboard({
   controlRotation,
   runMovementLiveTest,
   runCombatLiveTest,
+  runClassSkillLiveTest,
   controlEmergencyStop,
   getEmergencyStopState,
   getRevisionSummary,
@@ -319,6 +321,29 @@ function attachHeadlessDashboard({
       } catch (error) {
         res.status(Number(error.statusCode) || 500).json({
           error: error.code || "COMBAT_LIVE_TEST_FAILED",
+          message: error.message,
+        });
+      }
+    },
+  );
+  router.post(
+    "/headless/api/characters/:name/tests/class-skill",
+    async (req, res) => {
+      if (!runClassSkillLiveTest) {
+        res.status(503).json({ error: "CLASS_SKILL_LIVE_TEST_UNAVAILABLE" });
+        return;
+      }
+
+      try {
+        const result = await runClassSkillLiveTest(req.params.name);
+        res.json({
+          ok: result?.outcome === "PASS",
+          result,
+          snapshot: getSnapshot(),
+        });
+      } catch (error) {
+        res.status(Number(error.statusCode) || 500).json({
+          error: error.code || "CLASS_SKILL_LIVE_TEST_FAILED",
           message: error.message,
         });
       }

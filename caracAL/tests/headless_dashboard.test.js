@@ -74,6 +74,7 @@ test("public character state exposes only dashboard-safe fields", () => {
     revision_status: "STALE",
     movement_live_test: null,
     combat_live_test: null,
+    class_skill_live_test: null,
     combat_runtime: null,
     class_skill_runtime: null,
     game: null,
@@ -216,6 +217,7 @@ test("dashboard static assets are present", () => {
   assert.match(index, /character-stuck-state/);
   assert.match(index, /character-movement-live-test/);
   assert.match(index, /character-combat-live-test/);
+  assert.match(index, /character-class-skill-live-test/);
   assert.match(index, /character-combat/);
   assert.match(index, /character-combat-target/);
   assert.match(index, /character-combat-cooldowns/);
@@ -223,6 +225,7 @@ test("dashboard static assets are present", () => {
   assert.match(index, /character-class-skill-action/);
   assert.match(index, /data-movement-live-test/);
   assert.match(index, /data-combat-live-test/);
+  assert.match(index, /data-class-skill-live-test/);
   assert.match(index, /id="movement-map-background"/);
   assert.match(index, /id="show-nearby-monsters"/);
   assert.match(index, /id="show-nearby-npcs"/);
@@ -326,6 +329,10 @@ test("dashboard module and coordinator remain syntactically valid", () => {
     /\/headless\/api\/characters\/:name\/tests\/movement/,
   );
   assert.match(dashboard, /\/headless\/api\/characters\/:name\/tests\/combat/);
+  assert.match(
+    dashboard,
+    /\/headless\/api\/characters\/:name\/tests\/class-skill/,
+  );
   assert.match(dashboard, /\/headless\/api\/maps\/:name\/scene/);
   assert.match(dashboard, /nearby_entities/);
   assert.match(coordinator, /control_character_config/);
@@ -343,6 +350,8 @@ test("dashboard module and coordinator remain syntactically valid", () => {
   assert.match(coordinator, /movement_live_test_result/);
   assert.match(coordinator, /run_combat_live_test/);
   assert.match(coordinator, /combat_live_test_result/);
+  assert.match(coordinator, /run_class_skill_live_test/);
+  assert.match(coordinator, /class_skill_live_test_result/);
   assert.match(runtimeKernel, /movement:\s*this\.movement\.status\(\)/);
   assert.match(runtimeKernel, /combat:\s*this\.combat\.status\(\)/);
   assert.match(coordinator, /combat_runtime/);
@@ -351,10 +360,13 @@ test("dashboard module and coordinator remain syntactically valid", () => {
   assert.match(runtimeKernel, /CLASS_SKILL_JOB_ID/);
   assert.match(runtimeKernel, /runMovementLiveTest/);
   assert.match(runtimeKernel, /runCombatLiveTest/);
+  assert.match(runtimeKernel, /runClassSkillLiveTest/);
   assert.match(characterThread, /movement_live_test/);
   assert.match(characterThread, /movement_live_test_result/);
   assert.match(characterThread, /combat_live_test/);
   assert.match(characterThread, /combat_live_test_result/);
+  assert.match(characterThread, /class_skill_live_test/);
+  assert.match(characterThread, /class_skill_live_test_result/);
 });
 
 test("dashboard public live state keeps nearby entity telemetry but not map scene blobs", () => {

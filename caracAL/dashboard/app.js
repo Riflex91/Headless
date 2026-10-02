@@ -555,6 +555,28 @@ async function sendCombatLiveTest(characterName) {
   return payload.result;
 }
 
+async function sendClassSkillLiveTest(characterName) {
+  const response = await fetch(
+    `/headless/api/characters/${encodeURIComponent(
+      characterName,
+    )}/tests/class-skill`,
+    {
+      method: "POST",
+    },
+  );
+  const payload = await response.json();
+
+  if (payload.snapshot) {
+    applySnapshot(payload.snapshot);
+  }
+  if (!response.ok) {
+    throw new Error(
+      payload.message || payload.error || "Class skill live test failed",
+    );
+  }
+  return payload.result;
+}
+
 function updateControlButtons(card, character) {
   const desired =
     character.desired_runtime_state ||
@@ -588,22 +610,31 @@ function updateControlButtons(card, character) {
     "[data-movement-live-test]",
   );
   const combatLiveTestButton = card.querySelector("[data-combat-live-test]");
+  const classSkillLiveTestButton = card.querySelector(
+    "[data-class-skill-live-test]",
+  );
   const movementTestRunning = ["STARTING", "RUNNING"].includes(
     character.movement_live_test?.status || "",
   );
   const combatTestRunning = ["STARTING", "RUNNING"].includes(
     character.combat_live_test?.status || "",
   );
+  const classSkillTestRunning = ["STARTING", "RUNNING"].includes(
+    character.class_skill_live_test?.status || "",
+  );
+  const anyLiveTestRunning =
+    movementTestRunning || combatTestRunning || classSkillTestRunning;
+
   if (movementLiveTestButton) {
-    movementLiveTestButton.disabled =
-      busy || movementTestRunning || combatTestRunning;
+    movementLiveTestButton.disabled = busy || anyLiveTestRunning;
   }
   if (combatLiveTestButton) {
     combatLiveTestButton.disabled =
-      busy ||
-      movementTestRunning ||
-      combatTestRunning ||
-      character.ctype === "merchant";
+      busy || anyLiveTestRunning || character.ctype === "merchant";
+  }
+  if (classSkillLiveTestButton) {
+    classSkillLiveTestButton.disabled =
+      busy || anyLiveTestRunning || character.ctype !== "ranger";
   }
 }
 
@@ -767,6 +798,39 @@ function configureCardInteractions(card) {
     }
   });
 
+  const classSkillLiveTestButton = card.querySelector(
+    "[data-class-skill-live-test]",
+  );
+  classSkillLiveTestButton?.addEventListener("click", async () => {
+    const characterName = card.dataset.character;
+    const character = state.characters.get(characterName);
+    if (!character) return;
+
+    card.dataset.controlBusy = "true";
+    updateControlButtons(card, character);
+    feedback.textContent = "Autonomer Class-Skill-E2E-Test läuft …";
+
+    try {
+      const result = await sendClassSkillLiveTest(characterName);
+      feedback.textContent = `Class Skill E2E: ${
+        result?.outcome || "UNKNOWN"
+      } · ${result?.reason || "ohne Reason"}`;
+    } catch (error) {
+      feedback.textContent = error.message;
+      addEvent({
+        timestamp: Date.now(),
+        event: "CLASS_SKILL_LIVE_TEST_UI_ERROR",
+        character: characterName,
+        reason: error.message,
+      });
+      await loadInitialState().catch(() => {});
+    } finally {
+      card.dataset.controlBusy = "false";
+      const current = state.characters.get(characterName);
+      if (current) updateControlButtons(card, current);
+    }
+  });
+
   const copyButton = card.querySelector("[data-copy-log]");
   const range = card.querySelector(".diagnostic-range");
   copyButton.addEventListener("click", async () => {
@@ -878,6 +942,17 @@ function updateCharacterCard(card, character) {
   combatLiveTest.className = `character-combat-live-test movement-live-test-${String(
     character.combat_live_test?.outcome ||
       character.combat_live_test?.status ||
+      "idle",
+  ).toLowerCase()}`;
+  const classSkillLiveTest = card.querySelector(
+    ".character-class-skill-live-test",
+  );
+  classSkillLiveTest.textContent = formatMovementLiveTest(
+    character.class_skill_live_test,
+  );
+  classSkillLiveTest.className = `character-class-skill-live-test movement-live-test-${String(
+    character.class_skill_live_test?.outcome ||
+      character.class_skill_live_test?.status ||
       "idle",
   ).toLowerCase()}`;
   card.querySelector(".character-target").textContent = formatTarget(game);

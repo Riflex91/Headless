@@ -23,6 +23,11 @@ import {
   CombatLiveTestRunner,
 } from "./combat-live-test.lib";
 import {
+  ClassSkillLiveTestOptions,
+  ClassSkillLiveTestResult,
+  ClassSkillLiveTestRunner,
+} from "./class-skill-live-test.lib";
+import {
   MovementController,
   MovementControllerEvent,
 } from "./movement-controller.lib";
@@ -89,6 +94,7 @@ export class BotRuntimeKernel {
   private stopping = false;
   private movementLiveTestRunning = false;
   private combatLiveTestRunning = false;
+  private classSkillLiveTestRunning = false;
 
   constructor() {
     this.eventBus = new EventBus({
@@ -299,6 +305,9 @@ export class BotRuntimeKernel {
     if (this.combatLiveTestRunning) {
       throw new Error("combat live test already running");
     }
+    if (this.classSkillLiveTestRunning) {
+      throw new Error("class skill live test already running");
+    }
     if (!this.started || this.stopping) {
       throw new Error("runtime is not ready for movement live test");
     }
@@ -367,6 +376,9 @@ export class BotRuntimeKernel {
     if (this.movementLiveTestRunning) {
       throw new Error("movement live test already running");
     }
+    if (this.classSkillLiveTestRunning) {
+      throw new Error("class skill live test already running");
+    }
     if (!this.started || this.stopping) {
       throw new Error("runtime is not ready for combat live test");
     }
@@ -428,6 +440,86 @@ export class BotRuntimeKernel {
       throw error;
     } finally {
       this.combatLiveTestRunning = false;
+    }
+  }
+
+  async runClassSkillLiveTest(
+    options: ClassSkillLiveTestOptions = {},
+  ): Promise<ClassSkillLiveTestResult> {
+    if (this.classSkillLiveTestRunning) {
+      throw new Error("class skill live test already running");
+    }
+    if (this.movementLiveTestRunning) {
+      throw new Error("movement live test already running");
+    }
+    if (this.combatLiveTestRunning) {
+      throw new Error("combat live test already running");
+    }
+    if (!this.classSkills) {
+      throw new Error("class skill controller is unavailable");
+    }
+    if (!this.started || this.stopping) {
+      throw new Error("runtime is not ready for class skill live test");
+    }
+    if (runtimeState() !== "RUNNING") {
+      throw new Error("runtime must be RUNNING for class skill live test");
+    }
+
+    this.classSkillLiveTestRunning = true;
+    const requestId =
+      options.requestId || `class-skill-live-${Date.now()}`;
+    this.eventBus.emit({
+      module: "ClassSkillLiveTest",
+      type: "CLASS_SKILL_LIVE_TEST_STARTED",
+      why: "AUTONOMOUS_CLASS_SKILL_E2E",
+      correlationId: requestId,
+      data: {
+        requestId,
+        classSkills: this.classSkills.status(),
+        combat: this.combat.status(),
+        ...runtimeIdentity(),
+      },
+    });
+
+    try {
+      const runner = new ClassSkillLiveTestRunner({
+        classSkills: this.classSkills,
+        combat: this.combat,
+        character: () => this.game.character(),
+        skills: () => this.game.skills(false),
+        cooldowns: () => this.game.cooldowns(),
+      });
+      const result = await runner.run({
+        ...options,
+        requestId,
+      });
+      this.eventBus.emit({
+        module: "ClassSkillLiveTest",
+        type: "CLASS_SKILL_LIVE_TEST_COMPLETED",
+        why: result.reason,
+        correlationId: requestId,
+        data: {
+          result,
+          classSkills: this.classSkills.status(),
+          combat: this.combat.status(),
+        },
+      });
+      return result;
+    } catch (error) {
+      this.eventBus.emit({
+        module: "ClassSkillLiveTest",
+        type: "CLASS_SKILL_LIVE_TEST_FAILED",
+        why: "CLASS_SKILL_LIVE_TEST_RUNTIME_ERROR",
+        correlationId: requestId,
+        data: {
+          error: error instanceof Error ? error.message : String(error),
+          classSkills: this.classSkills.status(),
+          combat: this.combat.status(),
+        },
+      });
+      throw error;
+    } finally {
+      this.classSkillLiveTestRunning = false;
     }
   }
 
