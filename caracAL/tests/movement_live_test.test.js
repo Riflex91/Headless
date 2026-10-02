@@ -1,6 +1,7 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
 
@@ -176,6 +177,19 @@ function successfulHarness({ rejectFirstRoute = false } = {}) {
     cancelCalls: () => cancelCalls,
   };
 }
+
+test("coordinator temporarily swaps to the bot runtime for movement live E2E", () => {
+  const coordinator = fs.readFileSync(
+    path.join(__dirname, "..", "standalones", "CharacterCoordinator.js"),
+    "utf8",
+  );
+
+  assert.match(coordinator, /MOVEMENT_LIVE_TEST_RUNTIME_OVERRIDE_APPLIED/);
+  assert.match(coordinator, /movement_live_test_typescript_override/);
+  assert.match(coordinator, /MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE/);
+  assert.match(coordinator, /restore_movement_live_test_execution_source/);
+  assert.match(coordinator, /MOVEMENT_LIVE_TEST_RUNTIME_OVERRIDE_CLEARED/);
+});
 
 test("movement live runner autonomously paths and returns to captured safe point", async () => {
   const { MovementLiveTestRunner } = coreModule("movement-live-test.lib.ts");
