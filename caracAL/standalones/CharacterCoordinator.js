@@ -501,6 +501,39 @@ function migrate_old_storage(path, localStorage) {
       char_block.group_combat_runtime = normalized.data.groupCombat;
     }
 
+    if (
+      char_block &&
+      normalized.data?.farmIntelligence &&
+      typeof normalized.data.farmIntelligence === "object"
+    ) {
+      char_block.farm_intelligence_runtime = normalized.data.farmIntelligence;
+    }
+
+    if (
+      normalized.module === "FarmIntelligenceController" &&
+      normalized.type === "FARM_INTELLIGENCE_SAMPLE" &&
+      normalized.data?.sample &&
+      typeof normalized.data.sample === "object"
+    ) {
+      const sample = normalized.data.sample;
+      const farm_key =
+        typeof sample.farmKey === "string" ? sample.farmKey.trim() : "";
+      if (farm_key) {
+        void observe_persistence(
+          persistence.appendFarmStatistic(char_name, farm_key, {
+            startedAt: Number(sample.startedAt) || normalized.timestamp,
+            endedAt: Number(sample.endedAt) || normalized.timestamp,
+            stats:
+              sample.stats && typeof sample.stats === "object"
+                ? sample.stats
+                : {},
+          }),
+          "farm_intelligence_sample",
+          char_name,
+        );
+      }
+    }
+
     if (char_block && normalized.data?.movement) {
       updateCharacterMovementRuntime(char_block, normalized.data.movement, {
         timestamp: normalized.timestamp,
@@ -525,7 +558,8 @@ function migrate_old_storage(path, localStorage) {
       (normalized.data?.movement ||
         normalized.data?.combat ||
         normalized.data?.classSkills ||
-        normalized.data?.groupCombat)
+        normalized.data?.groupCombat ||
+        normalized.data?.farmIntelligence)
     ) {
       dashboard?.publishSnapshot();
     }
@@ -685,6 +719,8 @@ function migrate_old_storage(path, localStorage) {
     char_block.combat_runtime = char_block.combat_runtime || null;
     char_block.class_skill_runtime = char_block.class_skill_runtime || null;
     char_block.group_combat_runtime = char_block.group_combat_runtime || null;
+    char_block.farm_intelligence_runtime =
+      char_block.farm_intelligence_runtime || null;
     char_block.movement_live_test_typescript_override = null;
     char_block.running_code_revision = char_block.running_code_revision || null;
     char_block.running_config_revision =
