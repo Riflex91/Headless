@@ -130,6 +130,22 @@ export interface UnequipRequest extends BoundaryRequest {
   slot: string;
 }
 
+export interface UpgradeRequest extends BoundaryRequest {
+  itemSlot: number;
+  scrollSlot: number;
+  offeringSlot?: number | null;
+}
+
+export interface CompoundRequest extends BoundaryRequest {
+  itemSlots: [number, number, number];
+  scrollSlot: number;
+  offeringSlot?: number | null;
+}
+
+export interface ExchangeRequest extends BoundaryRequest {
+  itemSlot: number;
+}
+
 export interface MutationDriver {
   move(x: number, y: number): unknown;
   resolveEntity(id: string): unknown;
@@ -160,6 +176,19 @@ export interface MutationDriver {
   bankWithdraw(amount: number): Promise<unknown> | unknown;
   equip(inventorySlot: number, slot?: string): Promise<unknown> | unknown;
   unequip(slot: string): Promise<unknown> | unknown;
+  upgrade(
+    itemSlot: number,
+    scrollSlot: number,
+    offeringSlot?: number | null,
+  ): Promise<unknown> | unknown;
+  compound(
+    itemSlot1: number,
+    itemSlot2: number,
+    itemSlot3: number,
+    scrollSlot: number,
+    offeringSlot?: number | null,
+  ): Promise<unknown> | unknown;
+  exchange(itemSlot: number): Promise<unknown> | unknown;
 }
 
 function runtimeFunction(name: string): (...args: unknown[]) => unknown {
@@ -219,6 +248,27 @@ export function createRuntimeMutationDriver(): MutationDriver {
         ? runtimeFunction("equip")(inventorySlot)
         : runtimeFunction("equip")(inventorySlot, slot),
     unequip: (slot) => runtimeFunction("unequip")(slot),
+    upgrade: (itemSlot, scrollSlot, offeringSlot) =>
+      runtimeFunction("upgrade")(
+        itemSlot,
+        scrollSlot,
+        offeringSlot === undefined ? null : offeringSlot,
+      ),
+    compound: (
+      itemSlot1,
+      itemSlot2,
+      itemSlot3,
+      scrollSlot,
+      offeringSlot,
+    ) =>
+      runtimeFunction("compound")(
+        itemSlot1,
+        itemSlot2,
+        itemSlot3,
+        scrollSlot,
+        offeringSlot === undefined ? null : offeringSlot,
+      ),
+    exchange: (itemSlot) => runtimeFunction("exchange")(itemSlot),
   };
 }
 
@@ -253,6 +303,31 @@ function itemQuantity(item: Record<string, unknown> | null): number {
 
 function itemName(item: Record<string, unknown> | null): string | null {
   return item && typeof item.name === "string" ? item.name : null;
+}
+
+function itemLevel(item: Record<string, unknown> | null): number {
+  if (!item) return 0;
+  const level = Number(item.level);
+  return Number.isInteger(level) && level >= 0 ? level : 0;
+}
+
+function inventorySlotValid(slot: number): boolean {
+  return Number.isInteger(slot) && slot >= 0;
+}
+
+function distinctSlots(slots: Array<number | null | undefined>): boolean {
+  const present = slots.filter(
+    (slot): slot is number => slot !== null && slot !== undefined,
+  );
+  return new Set(present).size === present.length;
+}
+
+function gameItemDefinition(
+  gameData: Record<string, unknown>,
+  name: string | null,
+): Record<string, unknown> {
+  if (!name) return {};
+  return objectRecord(objectRecord(gameData.items)[name]);
 }
 
 function itemLocked(item: Record<string, unknown> | null): boolean {
@@ -393,6 +468,9 @@ export const ACTION_BOUNDARY_MUTATION_CAPABILITIES = [
   "BANK_WITHDRAW_GOLD",
   "EQUIP",
   "UNEQUIP",
+  "UPGRADE",
+  "COMPOUND",
+  "EXCHANGE",
 ] as const;
 
 export class ActionBoundary {
