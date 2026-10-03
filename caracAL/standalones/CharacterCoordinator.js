@@ -5597,8 +5597,7 @@ function migrate_old_storage(path, localStorage) {
         : DESIRED_RUNTIME_STATES.STOPPED);
     const started_at = Date.now();
     market_trading_live_test_sequence += 1;
-    const request_id =
-      `market-trading-live-${started_at}-${market_trading_live_test_sequence}`;
+    const request_id = `market-trading-live-${started_at}-${market_trading_live_test_sequence}`;
 
     char_block.market_trading_live_test = {
       request_id,
@@ -5688,8 +5687,7 @@ function migrate_old_storage(path, localStorage) {
       if (child_response.error || !child_response.result) {
         throw make_control_error(
           "MARKET_TRADING_LIVE_TEST_RUNTIME_FAILED",
-          child_response.error ||
-            "Market trading live test returned no result",
+          child_response.error || "Market trading live test returned no result",
           500,
         );
       }
