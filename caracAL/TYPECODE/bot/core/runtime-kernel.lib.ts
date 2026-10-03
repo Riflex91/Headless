@@ -38,6 +38,10 @@ import {
   FutureGearEvent,
 } from "./future-gear-controller.lib";
 import {
+  UpgradeController,
+  UpgradeEvent,
+} from "./upgrade-controller.lib";
+import {
   MerchantAutonomyController,
   MerchantAutonomyEvent,
 } from "./merchant-autonomy-controller.lib";
@@ -147,6 +151,8 @@ const GEAR_SCORING_JOB_ID = "gear-scoring-loop";
 const GEAR_SCORING_INTERVAL_MS = 1000;
 const FUTURE_GEAR_JOB_ID = "future-gear-loop";
 const FUTURE_GEAR_INTERVAL_MS = 1000;
+const UPGRADE_JOB_ID = "upgrade-loop";
+const UPGRADE_INTERVAL_MS = 1000;
 const FARM_INTELLIGENCE_JOB_ID = "farm-intelligence-loop";
 const FARM_INTELLIGENCE_INTERVAL_MS = 1000;
 const MERCHANT_AUTONOMY_JOB_ID = "merchant-autonomy-loop";
@@ -217,6 +223,7 @@ export class BotRuntimeKernel {
   readonly inventoryIntelligence: InventoryIntelligenceController;
   readonly gearScoring: GearScoringController;
   readonly futureGear: FutureGearController;
+  readonly upgrade: UpgradeController;
   readonly merchantAutonomy: MerchantAutonomyController;
   readonly bankTravel: BankTravelController;
   readonly bankGoldSettlement: BankGoldSettlementController;
@@ -334,6 +341,15 @@ export class BotRuntimeKernel {
         onEvent: (event) => this.handleInventoryIntelligenceEvent(event),
       },
     );
+    this.upgrade = new UpgradeController(
+      this.game,
+      this.actions,
+      this.inventoryIntelligence,
+      {
+        config: () => runtimeConfig?.config || {},
+        onEvent: (event) => this.handleUpgradeEvent(event),
+      },
+    );
     this.merchantAutonomy = new MerchantAutonomyController(
       this.game,
       this.actions,
@@ -410,6 +426,15 @@ export class BotRuntimeKernel {
       priority: 84,
       tick: () => {
         this.inventoryIntelligence.tick();
+      },
+    });
+
+    this.scheduler.register({
+      id: UPGRADE_JOB_ID,
+      intervalMs: UPGRADE_INTERVAL_MS,
+      priority: 83,
+      tick: () => {
+        this.upgrade.tick();
       },
     });
 
@@ -562,6 +587,7 @@ export class BotRuntimeKernel {
       inventoryIntelligence: this.inventoryIntelligence.status(),
       gearScoring: this.gearScoring.status(),
       futureGear: this.futureGear.status(),
+      upgrade: this.upgrade.status(),
       merchantAutonomy: this.merchantAutonomy.status(),
       bankTravel: this.bankTravel.status(),
       merchantMerrit: this.merchantMerrit.status(),
@@ -573,6 +599,16 @@ export class BotRuntimeKernel {
       recentActions: this.actionLedger.list(20),
       ...runtimeIdentity(),
     };
+  }
+
+  async executeUpgradeNext(): Promise<Record<string, unknown>> {
+    if (!this.started || this.stopping) {
+      throw new Error("runtime is not ready for upgrade execution");
+    }
+    if (runtimeState() !== "RUNNING") {
+      throw new Error("runtime must be RUNNING for upgrade execution");
+    }
+    return this.upgrade.executeNext() as unknown as Record<string, unknown>;
   }
 
   async executeLogisticsClaim(
@@ -2265,6 +2301,18 @@ export class BotRuntimeKernel {
       why: event.reason,
       data: {
         futureGear: event.status,
+      },
+    });
+  }
+
+  private handleUpgradeEvent(event: UpgradeEvent): void {
+    this.eventBus.emit({
+      module: "UpgradeController",
+      type: event.type,
+      why: event.reason,
+      ...(event.actionId && { actionId: event.actionId }),
+      data: {
+        upgrade: event.status,
       },
     });
   }
