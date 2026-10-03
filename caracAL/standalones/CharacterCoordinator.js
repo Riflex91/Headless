@@ -527,6 +527,7 @@ function migrate_old_storage(path, localStorage) {
       bank_gold_live_test_active ||
       upgrade_live_test_active ||
       upgrade_live_preflight_active ||
+      exchange_preflight_active ||
       compound_live_test_active ||
       compound_material_preparation_active ||
       npc_trading_live_test_active ||
@@ -2852,7 +2853,8 @@ function migrate_old_storage(path, localStorage) {
       compound_material_preparation_active ||
       compound_live_test_active ||
       upgrade_live_test_active ||
-      upgrade_live_preflight_active
+      upgrade_live_preflight_active ||
+      exchange_preflight_active
     ) {
       throw make_control_error(
         "MUTATION_VERIFICATION_ALREADY_RUNNING",
@@ -7807,7 +7809,11 @@ function migrate_old_storage(path, localStorage) {
         400,
       );
     }
-    if (upgrade_live_preflight_active || upgrade_live_test_active) {
+    if (
+      upgrade_live_preflight_active ||
+      upgrade_live_test_active ||
+      exchange_preflight_active
+    ) {
       throw make_control_error(
         "UPGRADE_VERIFICATION_ALREADY_RUNNING",
         "An Upgrade verification is already running",
@@ -8351,6 +8357,7 @@ function migrate_old_storage(path, localStorage) {
     if (
       upgrade_live_test_active ||
       upgrade_live_preflight_active ||
+      exchange_preflight_active ||
       compound_live_test_active ||
       compound_material_preparation_active
     ) {
@@ -8670,7 +8677,8 @@ function migrate_old_storage(path, localStorage) {
       compound_live_test_active ||
       compound_material_preparation_active ||
       upgrade_live_test_active ||
-      upgrade_live_preflight_active
+      upgrade_live_preflight_active ||
+      exchange_preflight_active
     ) {
       throw make_control_error(
         "MUTATION_VERIFICATION_ALREADY_RUNNING",
