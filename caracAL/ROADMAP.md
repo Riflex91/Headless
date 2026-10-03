@@ -1154,12 +1154,12 @@ Merchant bleibt unabhängig.
 ## Phase 12 – Merchant Autonomy
 Aus ALFinal 0.26.57-h26 übernehmen/neu strukturieren:
 - Merrit
-- Fishing
-- Mining
 - Wishlist
 - Giveaways
 - Ponty
 - Merchant Skills
+
+Fishing und Mining werden in Phase 12 nicht weitergeführt. Bereits vorhandene Implementierung, Tests und Live-Evidence bleiben unverändert erhalten; die weitere Umsetzung und Live-Verifikation wird ans Ende von Phase 22 verschoben.
 
 ### Merrit
 ```text
@@ -1173,19 +1173,6 @@ Cooldown
 → Handoff
 → Parcel
 → Cooldown persistieren
-```
-
-### Fishing / Mining
-```text
-Skill
-→ Tool
-→ Tool beschaffen
-→ Zone
-→ Travel
-→ Equip
-→ Skill
-→ Ergebnis
-→ alte Waffe restaurieren
 ```
 
 ### Giveaways
@@ -1351,6 +1338,27 @@ Beispiele:
 - Decision Inspector
 - erweiterte Inventory-/Equipment-Historie
 
+### Abschluss von Phase 22 – Fishing / Mining
+Fishing und Mining werden erst nach Abschluss der übrigen Phase-22-Arbeiten weitergeführt und live verifiziert.
+
+```text
+Skill
+→ Tool
+→ Tool beschaffen
+→ Zone
+→ Travel
+→ Equip
+→ Skill
+→ Ergebnis
+→ alte Waffe restaurieren
+```
+
+Reihenfolge am Ende von Phase 22:
+```text
+Fishing
+→ Mining
+```
+
 ## Phase 23 – Production Hardening
 - Long-Run Tests
 - Restart Tests
@@ -1393,7 +1401,7 @@ Beispiele:
 19 Goals
 20 Boss/Event/Quest
 21 Recovery
-22 Dashboard V2
+22 Dashboard V2 → Fishing → Mining
 23 Production Hardening
 ```
 
