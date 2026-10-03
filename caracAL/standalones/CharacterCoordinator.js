@@ -4812,7 +4812,9 @@ function migrate_old_storage(path, localStorage) {
       );
     }
     if (
-      ["STARTING", "RUNNING"].includes(char_block.gear_scoring_live_test?.status)
+      ["STARTING", "RUNNING"].includes(
+        char_block.gear_scoring_live_test?.status,
+      )
     ) {
       throw make_control_error(
         "GEAR_SCORING_LIVE_TEST_ALREADY_RUNNING",
@@ -4848,8 +4850,7 @@ function migrate_old_storage(path, localStorage) {
       Math.min(5000, Number(sample_ms) || 1200),
     );
     gear_scoring_live_test_sequence += 1;
-    const request_id =
-      `gear-scoring-live-${started_at}-${gear_scoring_live_test_sequence}`;
+    const request_id = `gear-scoring-live-${started_at}-${gear_scoring_live_test_sequence}`;
 
     char_block.gear_scoring_live_test = {
       request_id,
@@ -4959,10 +4960,7 @@ function migrate_old_storage(path, localStorage) {
           error.code === "GEAR_SCORING_LIVE_TEST_RUNTIME_TIMEOUT"
             ? "TIMEOUT"
             : "FAIL",
-        reason:
-          error.code ||
-          error.message ||
-          "GEAR_SCORING_LIVE_TEST_FAILED",
+        reason: error.code || error.message || "GEAR_SCORING_LIVE_TEST_FAILED",
         error: error.message || String(error),
         character: char_name,
         started_at,
