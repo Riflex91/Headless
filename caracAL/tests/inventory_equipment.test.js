@@ -196,9 +196,7 @@ test("account inventory renders all connected live characters together", () => {
       root.querySelector(".item-future-gear-badge").textContent,
       "FG +7.5",
     );
-    const futureSlot = root.querySelector(
-      '[data-future-gear="true"]',
-    );
+    const futureSlot = root.querySelector('[data-future-gear="true"]');
     assert.match(futureSlot.title, /Future Gear \+7\.5 vs mainhand/);
     assert.match(futureSlot.title, /FUTURE_GEAR_SCORE_IMPROVEMENT/);
   } finally {
