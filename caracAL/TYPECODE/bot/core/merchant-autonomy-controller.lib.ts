@@ -215,7 +215,14 @@ function gatheringZones(
 
 function standItemNames(items: Record<string, unknown>): string[] {
   return Object.entries(items)
-    .filter(([, raw]) => objectValue(raw).stand === true)
+    .filter(([, raw]) => {
+      const item = objectValue(raw);
+      return (
+        item.type === "stand" ||
+        item.stand === true ||
+        (typeof item.stand === "string" && item.stand.length > 0)
+      );
+    })
     .map(([name]) => name)
     .sort();
 }
