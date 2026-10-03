@@ -23,7 +23,8 @@ function bankStatus(state = "READY") {
     timestamp: 1000,
     enabled: true,
     state,
-    reason: state === "READY" ? "BANK_AVAILABLE" : "BANK_TRAVEL_OUTCOME_UNKNOWN",
+    reason:
+      state === "READY" ? "BANK_AVAILABLE" : "BANK_TRAVEL_OUTCOME_UNKNOWN",
     roadmapStage: state === "READY" ? "Bank bereit" : "Travel",
     character: {
       name: "My_Merchant",
@@ -127,7 +128,8 @@ function setup({
       return travelStates[Math.min(travelIndex, travelStates.length - 1)];
     },
     async tick() {
-      const value = travelStates[Math.min(travelIndex, travelStates.length - 1)];
+      const value =
+        travelStates[Math.min(travelIndex, travelStates.length - 1)];
       travelIndex += 1;
       return value;
     },
