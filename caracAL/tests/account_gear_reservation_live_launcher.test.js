@@ -191,10 +191,7 @@ test("Account Gear Reservation live result requires complete cleanup and evidenc
   const result = combineSupervisorResult(supervisorResult());
 
   assert.equal(result.outcome, "PASS");
-  assert.equal(
-    result.reason,
-    "ACCOUNT_GEAR_RESERVATION_LIVE_E2E_CONFIRMED",
-  );
+  assert.equal(result.reason, "ACCOUNT_GEAR_RESERVATION_LIVE_E2E_CONFIRMED");
   assert.equal(result.evidence.allReservationsRecomputed, true);
   assert.equal(result.evidence.reservationProtectionComplete, true);
   assert.equal(result.evidence.runtimeStatesRestored, true);
@@ -324,10 +321,7 @@ test("Account Gear Reservation live wiring uses the two-character TYPECODE harne
   );
 
   assert.match(coordinator, /run_account_gear_reservation_live_test/);
-  assert.match(
-    coordinator,
-    /wait_for_account_gear_reservation_live_runtime/,
-  );
+  assert.match(coordinator, /wait_for_account_gear_reservation_live_runtime/);
   assert.match(
     dashboard,
     /\/headless\/api\/characters\/:name\/tests\/account-gear-reservation/,
