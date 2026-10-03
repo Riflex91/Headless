@@ -1896,10 +1896,7 @@ function migrate_old_storage(path, localStorage) {
     });
   }
 
-  function wait_for_market_trading_live_test_result(
-    char_name,
-    request_id,
-  ) {
+  function wait_for_market_trading_live_test_result(char_name, request_id) {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         market_trading_live_test_requests.delete(request_id);
@@ -5558,9 +5555,7 @@ function migrate_old_storage(path, localStorage) {
       );
     }
     if (
-      ["STARTING", "RUNNING"].includes(
-        char_block.market_trading_live_test?.status,
-      )
+      ["STARTING", "RUNNING"].includes(char_block.market_trading_live_test?.status)
     ) {
       throw make_control_error(
         "MARKET_TRADING_LIVE_TEST_ALREADY_RUNNING",
@@ -5723,8 +5718,7 @@ function migrate_old_storage(path, localStorage) {
           error.code === "MERCHANT_LIVE_TEST_RUNTIME_TIMEOUT"
             ? "TIMEOUT"
             : "FAIL",
-        reason:
-          error.code || error.message || "MARKET_TRADING_LIVE_TEST_FAILED",
+        reason: error.code || error.message || "MARKET_TRADING_LIVE_TEST_FAILED",
         error: error.message || String(error),
         status: "FAILED",
         started_at,
