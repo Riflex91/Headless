@@ -6,8 +6,7 @@ const {
 } = require("../src/MovementLiveTestLauncher");
 const { readState } = require("./run_gear_scoring_live_e2e");
 
-const baseUrl =
-  process.env.CARACAL_HEADLESS_URL || "http://127.0.0.1:924";
+const baseUrl = process.env.CARACAL_HEADLESS_URL || "http://127.0.0.1:924";
 
 const DEFAULT_MERCHANT = "My_Merchant";
 const DEFAULT_WORKERS = ["My_Ranger1", "My_Ranger2", "My_Ranger3"];
@@ -89,11 +88,9 @@ function verifyCompoundPreparation(source) {
       record(result.evidence).threeMatchingItemsObserved === true &&
       record(result.evidence).allDeliveredItemsLevelMatched === true,
     workerEvidenceValid,
-    blindRetryAvoided:
-      record(result.evidence).blindRetryUsed === false,
+    blindRetryAvoided: record(result.evidence).blindRetryUsed === false,
     scrollPresent:
-      Number(result.scrollQuantity) >= 1 &&
-      result.readyForCompound === true,
+      Number(result.scrollQuantity) >= 1 && result.readyForCompound === true,
   };
 
   const passed = Object.values(verified).every((value) => value === true);
@@ -103,10 +100,10 @@ function verifyCompoundPreparation(source) {
     reason: passed
       ? "COMPOUND_PREPARATION_E2E_CONFIRMED"
       : verified.preparationConfirmed &&
-          verified.matchingTripleObserved &&
-          !verified.scrollPresent
-        ? "COMPOUND_PREPARATION_SCROLL_MISSING"
-        : "COMPOUND_PREPARATION_EVIDENCE_INCOMPLETE",
+        verified.matchingTripleObserved &&
+        !verified.scrollPresent
+      ? "COMPOUND_PREPARATION_SCROLL_MISSING"
+      : "COMPOUND_PREPARATION_EVIDENCE_INCOMPLETE",
     verifier: verified,
   };
 }
@@ -114,9 +111,7 @@ function verifyCompoundPreparation(source) {
 async function main() {
   const merchant = process.argv[2] || DEFAULT_MERCHANT;
   const suppliedWorkers = process.argv.slice(3).filter(Boolean);
-  const workers = suppliedWorkers.length
-    ? suppliedWorkers
-    : DEFAULT_WORKERS;
+  const workers = suppliedWorkers.length ? suppliedWorkers : DEFAULT_WORKERS;
 
   process.stdout.write(
     `Preparing Compound live test for ${merchant} with workers ${workers.join(
