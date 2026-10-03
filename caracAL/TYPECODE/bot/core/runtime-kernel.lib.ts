@@ -680,7 +680,14 @@ export class BotRuntimeKernel {
   }
 
   compoundGatherPlan(): CompoundGatherPlan {
-    return buildCompoundGatherPlan(this.game);
+    const runtimeCharacter = character as unknown as {
+      q?: {
+        compound?: unknown;
+      };
+    };
+    return buildCompoundGatherPlan(this.game, {
+      compoundInProgress: !!runtimeCharacter.q?.compound,
+    });
   }
 
   async runCompoundLiveTest(
