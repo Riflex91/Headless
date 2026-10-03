@@ -343,4 +343,3 @@ test("Upgrade live IPC stays in runner context and exposes one attempt only", ()
   assert.doesNotMatch(liveTest, /\bexchange\s*\(/);
   assert.doesNotMatch(liveTest, /\bcraft\s*\(/);
 });
-
