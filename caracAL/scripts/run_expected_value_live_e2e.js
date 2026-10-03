@@ -156,8 +156,7 @@ function expectedValueEvidence(snapshot) {
 
   const modelPinned =
     model.valueModel === "ADVENTURE_LAND_INTRINSIC_GOLD_VALUE" &&
-    model.probabilityModel ===
-      "OFFICIAL_BASE_NO_DYNAMIC_GRACE_NO_OFFERING" &&
+    model.probabilityModel === "OFFICIAL_BASE_NO_DYNAMIC_GRACE_NO_OFFERING" &&
     model.sourceRepository === "kaansoral/adventureland" &&
     model.sourceCommit === "f927df37da777eb7f048fd9209c039653a3406bd" &&
     model.marketPricesIncluded === false &&
