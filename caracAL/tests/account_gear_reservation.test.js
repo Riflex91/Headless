@@ -54,6 +54,7 @@ function character({
     account_owned: owned,
     account_character_type: type,
     connected: true,
+    bot_runtime_started_at: 1000,
     live_state: {
       ctype: type,
       slots,
@@ -263,3 +264,20 @@ test("scoreStats applies target-character weights deterministically", () => {
     23,
   );
 });
+
+test("account Gear Reservation ignores stale disconnected projections", () => {
+  const disconnected = character({
+    inventory: [inventoryGear()],
+  });
+  disconnected.connected = false;
+
+  const plan = buildAccountGearReservationPlan({
+    RangerA: disconnected,
+    RangerB: character(),
+  });
+
+  assert.equal(plan.summary.readyGearCharacters, 1);
+  assert.equal(plan.summary.eligiblePairs, 0);
+  assert.equal(plan.reservations.length, 0);
+});
+
