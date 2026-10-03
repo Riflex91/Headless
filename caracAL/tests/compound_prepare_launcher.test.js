@@ -131,6 +131,8 @@ test("Compound preparation wiring uses the three Ranger workers and no Compound 
   }
   assert.match(coordinator, /COMPOUND_TEST_MATERIAL/);
   assert.match(coordinator, /compound_gather_plan/);
+  assert.match(coordinator, /plan\.observerPosition/);
+  assert.match(coordinator, /observer_position/);
   assert.match(
     dashboard,
     /\/headless\/api\/characters\/:name\/tests\/compound-prepare/,
