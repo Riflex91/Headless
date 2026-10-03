@@ -792,7 +792,6 @@ function migrate_old_storage(path, localStorage) {
       char_block.fishing_runtime = normalized.data.merchantFishing;
     }
 
-
     if (
       normalized.module === "MerchantMerritController" &&
       normalized.type === "MERRIT_PARCEL_CONFIRMED" &&
@@ -4597,8 +4596,7 @@ function migrate_old_storage(path, localStorage) {
     };
     const started_at = Date.now();
     fishing_live_test_sequence += 1;
-    const request_id =
-      `fishing-live-${started_at}-${fishing_live_test_sequence}`;
+    const request_id = `fishing-live-${started_at}-${fishing_live_test_sequence}`;
 
     char_block.fishing_live_test = {
       request_id,
@@ -4876,8 +4874,7 @@ function migrate_old_storage(path, localStorage) {
           );
           final_block.fishing_live_test.incident_id = incident_id;
           if (final_block.fishing_live_test.diagnostics) {
-            final_block.fishing_live_test.diagnostics.incident_id =
-              incident_id;
+            final_block.fishing_live_test.diagnostics.incident_id = incident_id;
             final_block.fishing_live_test.diagnostics.result = {
               outcome: "FAIL",
               reason: "FISHING_LIVE_E2E_STATE_RESTORE_FAILED",
