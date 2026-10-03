@@ -181,10 +181,7 @@ test("class skill supervisor confirms Merchant massproduction", () => {
     },
   };
 
-  const evidence = classSkillLiveTestEvidence(
-    merchantEvents,
-    merchantProjection,
-  );
+  const evidence = classSkillLiveTestEvidence(merchantEvents, merchantProjection);
 
   assert.equal(evidence.testedClass, "merchant");
   assert.equal(evidence.safeSkill, "massproduction");
