@@ -1473,6 +1473,30 @@ function migrate_old_storage(path, localStorage) {
     );
   }
 
+  async function wait_for_fishing_live_test_runtime(
+    char_name,
+    timeout_ms = MOVEMENT_LIVE_TEST_RUNTIME_TIMEOUT_MS,
+  ) {
+    const started_at = Date.now();
+    while (Date.now() - started_at < timeout_ms) {
+      const char_block = character_manage[char_name];
+      if (
+        char_block?.instance &&
+        char_block.connected &&
+        Number.isFinite(char_block.bot_runtime_started_at)
+      ) {
+        return char_block;
+      }
+      await sleep(100);
+    }
+
+    throw make_control_error(
+      "FISHING_LIVE_TEST_RUNTIME_TIMEOUT",
+      `Fishing runtime did not become ready for ${char_name}`,
+      504,
+    );
+  }
+
   async function wait_for_farm_live_test_runtime(
     char_name,
     timeout_ms = MOVEMENT_LIVE_TEST_RUNTIME_TIMEOUT_MS,
