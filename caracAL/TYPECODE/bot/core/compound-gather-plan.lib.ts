@@ -213,13 +213,17 @@ export function planCompoundGatherTarget(
   const itemDefinitions = record(gameData.items);
   const monsters = record(gameData.monsters);
   const dropTables = record(gameData.drops);
+  const monsterDropTables = record(dropTables.monsters);
   const compoundable = new Set(compoundableItemNames(itemDefinitions));
   const candidates: CompoundGatherCandidate[] = [];
 
   for (const [monsterType, rawMonster] of Object.entries(monsters)) {
     const monster = record(rawMonster);
     const refs = dropReferences(
-      monster.drop ?? monster.drops ?? monster.loot,
+      monsterDropTables[monsterType] ??
+        monster.drop ??
+        monster.drops ??
+        monster.loot,
       itemDefinitions,
       dropTables,
     );

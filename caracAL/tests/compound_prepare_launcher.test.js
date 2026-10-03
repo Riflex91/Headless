@@ -77,6 +77,26 @@ test("Compound preparation launcher confirms Ranger farm and Merchant readiness"
   assert.equal(result.verifier.scrollPresent, true);
 });
 
+test("Compound preparation launcher preserves planner failure reason", () => {
+  const result = verifyCompoundPreparation({
+    outcome: "FAIL",
+    reason: "COMPOUND_GATHER_TARGET_NOT_FOUND",
+    merchant: "My_Merchant",
+    workers: ["My_Ranger1", "My_Ranger2", "My_Ranger3"],
+    plan: {
+      outcome: "FAIL",
+      reason: "COMPOUND_GATHER_TARGET_NOT_FOUND",
+      selected: null,
+      candidates: [],
+    },
+    workerResults: [],
+  });
+
+  assert.equal(result.outcome, "FAIL");
+  assert.equal(result.reason, "COMPOUND_GATHER_TARGET_NOT_FOUND");
+  assert.equal(result.verifier.gatherTargetSelected, false);
+});
+
 test("Compound preparation launcher refuses PASS when compound scroll is missing", () => {
   const result = verifyCompoundPreparation(
     passResult({

@@ -106,11 +106,23 @@ function verifyCompoundPreparation(source) {
   };
 
   const passed = Object.values(verified).every((value) => value === true);
+  const sourceFailed =
+    result.outcome === "FAIL" ||
+    result.outcome === "UNKNOWN" ||
+    result.outcome === "TIMEOUT";
   return {
     ...result,
-    outcome: passed ? "PASS" : "FAIL",
+    outcome: passed
+      ? "PASS"
+      : result.outcome === "UNKNOWN"
+      ? "UNKNOWN"
+      : result.outcome === "TIMEOUT"
+      ? "TIMEOUT"
+      : "FAIL",
     reason: passed
       ? "COMPOUND_PREPARATION_E2E_CONFIRMED"
+      : sourceFailed && typeof result.reason === "string" && result.reason
+      ? result.reason
       : verified.preparationConfirmed &&
         verified.matchingTripleObserved &&
         !verified.scrollPresent
