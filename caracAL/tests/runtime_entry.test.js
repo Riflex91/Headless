@@ -486,6 +486,51 @@ test("Expected Value runtime remains read-only and exposes scheduler status", ()
   assert.match(controller, /OFFICIAL_BASE_NO_DYNAMIC_GRACE_NO_OFFERING/);
 });
 
+test("Risk Policy runtime remains read-only and blocks unknown EV", () => {
+  const kernel = fs.readFileSync(
+    path.join(
+      __dirname,
+      "..",
+      "TYPECODE",
+      "bot",
+      "core",
+      "runtime-kernel.lib.ts",
+    ),
+    "utf8",
+  );
+  const controller = fs.readFileSync(
+    path.join(
+      __dirname,
+      "..",
+      "TYPECODE",
+      "bot",
+      "core",
+      "risk-policy-controller.lib.ts",
+    ),
+    "utf8",
+  );
+
+  assert.match(kernel, /RISK_POLICY_JOB_ID/);
+  assert.match(kernel, /riskPolicy: this\.riskPolicy\.status\(\)/);
+  assert.match(kernel, /this\.riskPolicy\.tick\(\)/);
+
+  const schedulerStart = kernel.indexOf("id: RISK_POLICY_JOB_ID");
+  const schedulerEnd = kernel.indexOf(
+    "id: FARM_INTELLIGENCE_JOB_ID",
+    schedulerStart,
+  );
+  assert.ok(schedulerStart >= 0);
+  assert.ok(schedulerEnd > schedulerStart);
+  const schedulerBlock = kernel.slice(schedulerStart, schedulerEnd);
+  assert.match(schedulerBlock, /this\.riskPolicy\.tick\(\)/);
+  assert.doesNotMatch(schedulerBlock, /executeNext/);
+
+  assert.doesNotMatch(controller, /this\.actions/);
+  assert.doesNotMatch(controller, /executeNext/);
+  assert.match(controller, /RISK_POLICY_EXPECTED_VALUE_UNKNOWN/);
+  assert.match(controller, /unknownAlwaysBlocked: true/);
+});
+
 test("Upgrade live IPC stays in runner context and exposes one attempt only", () => {
   const thread = fs.readFileSync(
     path.join(__dirname, "..", "src", "CharacterThread.js"),
