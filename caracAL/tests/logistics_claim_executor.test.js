@@ -381,3 +381,83 @@ test("missing outbound item blocks before mutation", async () => {
   assert.equal(result.reason, "CLAIM_ITEM_UNAVAILABLE");
   assert.equal(calls.length, 0);
 });
+
+test("authorized fishing material delivery sends ranger item to merchant", async () => {
+  const { executor, calls } = setup({
+    character: "My_Ranger1",
+    items: [{ name: "spidersilk", q: 2, locked: false }],
+    protectedSlots: [0],
+  });
+  const result = await executor.execute({
+    id: "fishing-material-1",
+    type: "MATERIAL_DELIVERY",
+    farmer: "My_Ranger1",
+    merchant: { name: "My_Merchant", live: true },
+    itemName: "spidersilk",
+    quantity: 1,
+    reason: "FISHING_MATERIAL_DELIVERY",
+    metadata: {
+      purpose: "FISHING_MATERIAL",
+      authorized: true,
+    },
+  });
+
+  assert.equal(result.outcome, "CONFIRMED");
+  assert.equal(result.fulfilled, true);
+  assert.equal(result.source, "My_Ranger1");
+  assert.equal(result.target, "My_Merchant");
+  assert.equal(result.executedQuantity, 1);
+  assert.deepEqual(calls[0], [
+    "sendItem",
+    {
+      recipient: "My_Merchant",
+      inventorySlot: 0,
+      quantity: 1,
+      module: "MerchantLogistics",
+      why: "FISHING_MATERIAL_DELIVERY",
+      correlationId: "fishing-material-1",
+    },
+  ]);
+});
+
+test("material delivery blocks without explicit fishing authorization", async () => {
+  const { executor, calls } = setup({
+    character: "My_Ranger1",
+    items: [{ name: "spidersilk", q: 1 }],
+  });
+  const result = await executor.execute({
+    id: "fishing-material-invalid",
+    type: "MATERIAL_DELIVERY",
+    farmer: "My_Ranger1",
+    merchant: { name: "My_Merchant", live: true },
+    itemName: "spidersilk",
+    quantity: 1,
+  });
+
+  assert.equal(result.outcome, "BLOCKED");
+  assert.equal(result.reason, "MATERIAL_DELIVERY_AUTHORIZATION_INVALID");
+  assert.equal(calls.length, 0);
+});
+
+test("material delivery never sends locked crafting material", async () => {
+  const { executor, calls } = setup({
+    character: "My_Ranger1",
+    items: [{ name: "spidersilk", q: 1, locked: true }],
+  });
+  const result = await executor.execute({
+    id: "fishing-material-locked",
+    type: "MATERIAL_DELIVERY",
+    farmer: "My_Ranger1",
+    merchant: { name: "My_Merchant", live: true },
+    itemName: "spidersilk",
+    quantity: 1,
+    metadata: {
+      purpose: "FISHING_MATERIAL",
+      authorized: true,
+    },
+  });
+
+  assert.equal(result.outcome, "BLOCKED");
+  assert.equal(result.reason, "CLAIM_ITEM_UNAVAILABLE");
+  assert.equal(calls.length, 0);
+});

@@ -300,7 +300,7 @@ test("Fishing follows zone -> equip -> skill result -> old weapon restore", asyn
   );
 });
 
-test("Fishing acquires staff and spidersilk, crafts rod, then completes autonomously", async () => {
+test("Fishing requests spidersilk from workers, crafts rod, and never attacks as merchant", async () => {
   const s = fixture({
     found: true,
     inventory: [
@@ -309,32 +309,36 @@ test("Fishing acquires staff and spidersilk, crafts rod, then completes autonomo
       { slot: 2, item: null },
       { slot: 3, item: null },
     ],
-    entities: [
-      {
-        id: "spider-1",
-        type: "monster",
-        name: "Spider",
-        mtype: "spider",
-        map: "main",
-        x: 500,
-        y: 500,
-        hp: 50,
-        maxHp: 50,
-        level: 1,
-        attack: 1,
-        frequency: 1,
-        armor: 0,
-        resistance: 0,
-        range: 10,
-        target: null,
-        dead: false,
-        rip: false,
-      },
-    ],
+  });
+
+  const staff = await s.controller.tick();
+  assert.equal(staff.reason, "FISHING_STAFF_ACQUIRED");
+
+  const request = await s.controller.tick();
+  assert.equal(request.state, "TOOL_ACQUIRE");
+  assert.equal(request.reason, "FISHING_WAITING_FOR_MATERIAL");
+  assert.equal(request.materialRequest.pending, true);
+  assert.equal(request.materialRequest.itemName, "spidersilk");
+  assert.equal(request.materialRequest.quantity, 1);
+  assert.equal(
+    s.events.some((event) => event.type === "FISHING_MATERIAL_REQUESTED"),
+    true,
+  );
+  assert.equal(
+    s.calls.some(([name]) => name === "attack" || name === "loot"),
+    false,
+  );
+
+  const empty = s.state.inventory.find((entry) => entry.item === null);
+  empty.item = { name: "spidersilk" };
+  s.controller.reportMaterialRequestResult({
+    itemName: "spidersilk",
+    success: true,
+    reason: "FISHING_MATERIAL_DELIVERY_CONFIRMED",
   });
 
   const seen = [];
-  for (let index = 0; index < 20; index += 1) {
+  for (let index = 0; index < 16; index += 1) {
     const current = await s.controller.tick();
     seen.push([current.state, current.reason]);
     if (current.state === "COMPLETE") break;
@@ -346,14 +350,6 @@ test("Fishing acquires staff and spidersilk, crafts rod, then completes autonomo
     true,
   );
   assert.equal(
-    s.calls.some(([name]) => name === "attack"),
-    true,
-  );
-  assert.equal(
-    s.calls.some(([name]) => name === "loot"),
-    true,
-  );
-  assert.equal(
     s.calls.some(([name, recipe]) => name === "craft" && recipe === "rod"),
     true,
   );
@@ -361,8 +357,39 @@ test("Fishing acquires staff and spidersilk, crafts rod, then completes autonomo
     s.calls.some(([name]) => name === "useSkill"),
     true,
   );
+  assert.equal(
+    s.calls.some(([name]) => name === "attack" || name === "loot"),
+    false,
+  );
   assert.equal(s.state.equipment.mainhand.name, "sword");
   assert.equal(s.state.equipment.mainhand.rid, "OLD-WEAPON");
+});
+
+test("Fishing blocks after an explicit worker-pool material failure", async () => {
+  const s = fixture({
+    inventory: [
+      { slot: 0, item: { name: "staff" } },
+      { slot: 1, item: null },
+      { slot: 2, item: null },
+      { slot: 3, item: null },
+    ],
+  });
+
+  const request = await s.controller.tick();
+  assert.equal(request.reason, "FISHING_WAITING_FOR_MATERIAL");
+
+  s.controller.reportMaterialRequestResult({
+    itemName: "spidersilk",
+    success: false,
+    reason: "FISHING_MATERIAL_NO_WORKER_SUCCEEDED",
+  });
+  const blocked = await s.controller.tick();
+
+  assert.equal(blocked.state, "BLOCKED");
+  assert.equal(
+    blocked.reason,
+    "FISHING_MATERIAL_REQUEST_FAILED:FISHING_MATERIAL_NO_WORKER_SUCCEEDED",
+  );
 });
 
 test("Fishing stops permanently after UNKNOWN equipment mutation", async () => {

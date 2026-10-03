@@ -42,8 +42,8 @@ export interface FishingLiveTestResult {
   evidence: FishingLiveTestEvidence;
   scope: {
     movementMutationAllowed: true;
-    combatMutationAllowed: true;
-    lootMutationAllowed: true;
+    combatMutationAllowed: false;
+    lootMutationAllowed: false;
     prerequisitePurchaseAllowed: true;
     craftMutationAllowed: true;
     equipmentMutationAllowed: true;
@@ -300,8 +300,8 @@ export class FishingLiveTestRunner {
       evidence,
       scope: {
         movementMutationAllowed: true,
-        combatMutationAllowed: true,
-        lootMutationAllowed: true,
+        combatMutationAllowed: false,
+        lootMutationAllowed: false,
         prerequisitePurchaseAllowed: true,
         craftMutationAllowed: true,
         equipmentMutationAllowed: true,

@@ -52,6 +52,11 @@ import {
   FishingLiveTestRunner,
 } from "./fishing-live-test.lib";
 import {
+  MaterialGatherTaskOptions,
+  MaterialGatherTaskResult,
+  MaterialGatheringTaskRunner,
+} from "./material-gathering-task.lib";
+import {
   LogisticsClaim,
   LogisticsClaimExecutor,
   LogisticsExecutionResult,
@@ -185,6 +190,7 @@ export class BotRuntimeKernel {
   private merchantLiveTestRunning = false;
   private merritLiveTestRunning = false;
   private fishingLiveTestRunning = false;
+  private materialGatherTaskRunning = false;
   private logisticsClaimRunning = false;
   private lastLogisticsExecution: LogisticsExecutionResult | null = null;
 
@@ -1130,6 +1136,112 @@ export class BotRuntimeKernel {
       throw error;
     } finally {
       this.inventoryLiveTestRunning = false;
+    }
+  }
+
+  reportFishingMaterialRequestResult(result: {
+    itemName: string;
+    success: boolean;
+    reason?: string | null;
+  }): void {
+    this.merchantFishing.reportMaterialRequestResult(result);
+  }
+
+  async runMaterialGatherTask(
+    options: MaterialGatherTaskOptions,
+  ): Promise<MaterialGatherTaskResult> {
+    if (this.materialGatherTaskRunning) {
+      throw new Error("material gathering task already running");
+    }
+    if (
+      this.movementLiveTestRunning ||
+      this.combatLiveTestRunning ||
+      this.classSkillLiveTestRunning ||
+      this.groupLiveTestRunning ||
+      this.farmLiveTestRunning ||
+      this.inventoryLiveTestRunning ||
+      this.logisticsLiveTestRunning ||
+      this.merchantLiveTestRunning ||
+      this.merritLiveTestRunning ||
+      this.fishingLiveTestRunning ||
+      this.logisticsClaimRunning
+    ) {
+      throw new Error("runtime is busy with another controlled activity");
+    }
+    if (!this.started || this.stopping || runtimeState() !== "RUNNING") {
+      throw new Error("runtime is not ready for material gathering task");
+    }
+
+    const worker = this.game.character();
+    if (worker.ctype !== "ranger") {
+      throw new Error("material gathering task requires ranger character");
+    }
+
+    this.materialGatherTaskRunning = true;
+    const requestId =
+      options.requestId || `material-gather-${Date.now()}`;
+    const suspended = {
+      groupCombat: this.scheduler.unregister(GROUP_COMBAT_JOB_ID),
+      classSkill: this.scheduler.unregister(CLASS_SKILL_JOB_ID),
+      combat: this.scheduler.unregister(COMBAT_JOB_ID),
+    };
+
+    this.eventBus.emit({
+      module: "MaterialGatheringTask",
+      type: "MATERIAL_GATHER_TASK_STARTED",
+      why: "FISHING_MATERIAL_WORKER",
+      correlationId: requestId,
+      data: {
+        requestId,
+        itemName: options.itemName,
+        monsterType: options.monsterType,
+        quantity: options.quantity,
+        recipient: options.recipient,
+        suspended,
+        ...runtimeIdentity(),
+      },
+    });
+
+    try {
+      const runner = new MaterialGatheringTaskRunner({
+        game: this.game,
+        combat: this.combat,
+        movement: this.movement,
+        actions: this.actions,
+        logistics: this.logisticsClaims,
+      });
+      const result = await runner.run({
+        ...options,
+        requestId,
+      });
+      this.eventBus.emit({
+        module: "MaterialGatheringTask",
+        type: "MATERIAL_GATHER_TASK_COMPLETED",
+        why: result.reason,
+        correlationId: requestId,
+        data: {
+          result,
+          suspended,
+        },
+      });
+      return result;
+    } catch (error) {
+      this.eventBus.emit({
+        module: "MaterialGatheringTask",
+        type: "MATERIAL_GATHER_TASK_FAILED",
+        why: "MATERIAL_GATHER_TASK_RUNTIME_ERROR",
+        correlationId: requestId,
+        data: {
+          error: error instanceof Error ? error.message : String(error),
+          suspended,
+        },
+      });
+      throw error;
+    } finally {
+      if (suspended.groupCombat) this.registerGroupCombatJob();
+      if (suspended.classSkill) this.registerClassSkillJob();
+      if (suspended.combat) this.registerCombatJob();
+      this.materialGatherTaskRunning = false;
     }
   }
 

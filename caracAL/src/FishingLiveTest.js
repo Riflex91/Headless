@@ -2,8 +2,6 @@
 
 const ALLOWED_FISHING_ACTIONS = new Set([
   "SMART_MOVE",
-  "ATTACK",
-  "LOOT",
   "BUY",
   "CRAFT",
   "EQUIP",
@@ -37,6 +35,10 @@ function fishingLiveTestEvidence(
   const scope = runtimeResult?.scope || {};
   const cleanup = runtimeResult?.cleanup || {};
   const intents = fishingActionIntents(runtimeEvents);
+  const materialRequest = characterBlock.fishing_material_request || null;
+  const materialWorkerDeliveryConfirmed =
+    runtimeEvidence.toolAcquisitionRequired !== true ||
+    materialRequest?.outcome === "PASS";
   const foreignIntents = intents.filter(
     (event) =>
       event?.module !== "MerchantFishingController" ||
@@ -56,6 +58,11 @@ function fishingLiveTestEvidence(
     toolAcquisitionSatisfied:
       runtimeEvidence.toolAcquisitionRequired !== true ||
       runtimeEvidence.toolAcquisitionObserved === true,
+    materialWorkerDeliveryConfirmed,
+    materialWorker:
+      typeof materialRequest?.activeWorker === "string"
+        ? materialRequest.activeWorker
+        : null,
     zoneLocated: runtimeEvidence.zoneLocated === true,
     travelSatisfied: runtimeEvidence.travelSatisfied === true,
     rodEquipped: runtimeEvidence.rodEquipped === true,
@@ -95,6 +102,7 @@ function evidenceComplete(evidence) {
     evidence.skillChecked === true &&
     evidence.toolSatisfied === true &&
     evidence.toolAcquisitionSatisfied === true &&
+    evidence.materialWorkerDeliveryConfirmed === true &&
     evidence.zoneLocated === true &&
     evidence.travelSatisfied === true &&
     evidence.rodEquipped === true &&
@@ -173,6 +181,7 @@ function fishingLiveTestDiagnostics(
     expected: {
       merchant_account_owned: true,
       fishing_result_observed: true,
+      ranger_material_delivery_confirmed_when_required: true,
       found_true_or_false_both_valid: true,
       original_mainhand_restored: true,
       blind_retry_allowed: false,
@@ -183,6 +192,9 @@ function fishingLiveTestDiagnostics(
     observed: {
       supervisor_evidence_complete: evidenceComplete(supervisor),
       result_found: supervisor.resultFound ?? null,
+      material_worker_delivery_confirmed:
+        supervisor.materialWorkerDeliveryConfirmed === true,
+      material_worker: supervisor.materialWorker || null,
       action_isolation_confirmed: supervisor.actionIsolationConfirmed === true,
       logistics_dispatcher_suppressed:
         supervisor.dispatcherSuppressedDuringTest === true,

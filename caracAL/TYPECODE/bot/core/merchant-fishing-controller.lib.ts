@@ -3,7 +3,6 @@ import type { ActionBoundary } from "./action-boundary.lib";
 import type {
   CharacterSnapshot,
   CooldownSnapshot,
-  EntitySnapshot,
   EquipmentSnapshot,
   InventorySlotSnapshot,
 } from "./game-adapter.lib";
@@ -73,6 +72,11 @@ export interface MerchantFishingStatus {
     found: boolean | null;
     response: string | null;
   };
+  materialRequest: {
+    itemName: string | null;
+    quantity: number;
+    pending: boolean;
+  };
   restore: {
     required: boolean;
     restored: boolean;
@@ -90,6 +94,7 @@ export interface MerchantFishingEvent {
   type:
     | "FISHING_STATUS"
     | "FISHING_RESULT_CONFIRMED"
+    | "FISHING_MATERIAL_REQUESTED"
     | "FISHING_ACTION_UNKNOWN";
   reason: string;
   status: MerchantFishingStatus;
@@ -101,14 +106,13 @@ interface MerchantFishingGame {
   character(): CharacterSnapshot;
   inventory(): InventorySlotSnapshot[];
   equipment(): EquipmentSnapshot;
-  entities(): EntitySnapshot[];
   cooldowns(): CooldownSnapshot[];
   gameData(): Record<string, unknown>;
 }
 
 type FishingActions = Pick<
   ActionBoundary,
-  "useSkill" | "equip" | "unequip" | "buy" | "craft" | "attack" | "loot"
+  "useSkill" | "equip" | "unequip" | "buy" | "craft"
 >;
 
 type FishingMovement = Pick<MovementController, "smart" | "status">;
@@ -147,7 +151,6 @@ const TOOL = "rod";
 const MATERIAL = "spidersilk";
 const STAFF = "staff";
 const SKILL = "fishing";
-const TARGET_TOLERANCE = 8;
 
 function objectValue(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -525,7 +528,9 @@ export class MerchantFishingController {
   private resultAttempted = false;
   private resultFound: boolean | null = null;
   private resultResponse: string | null = null;
-  private lootAfterSpider = false;
+  private materialRequestPending = false;
+  private materialRequestQuantity = 0;
+  private materialRequestFailureReason: string | null = null;
 
   constructor(
     private readonly game: MerchantFishingGame,
@@ -545,6 +550,23 @@ export class MerchantFishingController {
   clearConfigOverride(): void {
     this.configOverride = undefined;
   }
+
+  reportMaterialRequestResult(result: {
+    itemName: string;
+    success: boolean;
+    reason?: string | null;
+  }): void {
+    if (result.itemName !== MATERIAL) return;
+    if (result.success) {
+      this.materialRequestFailureReason = null;
+      return;
+    }
+    this.materialRequestFailureReason =
+      typeof result.reason === "string" && result.reason.trim()
+        ? result.reason.trim()
+        : "MATERIAL_REQUEST_FAILED";
+  }
+
 
   status(): MerchantFishingStatus {
     const config = normalizeConfig(this.effectiveConfig());
@@ -849,7 +871,9 @@ export class MerchantFishingController {
     this.resultAttempted = false;
     this.resultFound = null;
     this.resultResponse = null;
-    this.lootAfterSpider = false;
+    this.materialRequestPending = false;
+    this.materialRequestQuantity = 0;
+    this.materialRequestFailureReason = null;
   }
 
   private async acquireTool(
@@ -927,18 +951,60 @@ export class MerchantFishingController {
       );
     }
 
-    const missingSilk = requirements.some(
-      (requirement) =>
-        requirement.name === MATERIAL &&
-        inventoryQuantity(
-          inventory,
-          requirement.name,
-          requirement.level,
-        ) < requirement.quantity,
+    const silkRequirement = requirements.find(
+      (requirement) => requirement.name === MATERIAL,
     );
-    if (missingSilk) {
-      return await this.acquireSpiderSilk(config);
+    const currentSilk = silkRequirement
+      ? inventoryQuantity(
+          inventory,
+          silkRequirement.name,
+          silkRequirement.level,
+        )
+      : 0;
+    if (silkRequirement && currentSilk < silkRequirement.quantity) {
+      const missingQuantity = silkRequirement.quantity - currentSilk;
+      this.materialRequestQuantity = missingQuantity;
+      if (this.materialRequestFailureReason) {
+        return this.block(
+          config,
+          `FISHING_MATERIAL_REQUEST_FAILED:${this.materialRequestFailureReason}`,
+          "Tool beschaffen",
+        );
+      }
+      if (!this.materialRequestPending) {
+        this.materialRequestPending = true;
+        const status = this.buildStatus(
+          config,
+          "TOOL_ACQUIRE",
+          "FISHING_WAITING_FOR_MATERIAL",
+          "Tool beschaffen",
+        );
+        this.publish(status);
+        this.onEvent?.({
+          type: "FISHING_MATERIAL_REQUESTED",
+          reason: "FISHING_MATERIAL_REQUIRED",
+          status,
+          data: {
+            itemName: MATERIAL,
+            quantity: missingQuantity,
+            recipient: this.game.character().name,
+            purpose: "FISHING_ROD",
+          },
+        });
+        return status;
+      }
+      return this.publish(
+        this.buildStatus(
+          config,
+          "TOOL_ACQUIRE",
+          "FISHING_WAITING_FOR_MATERIAL",
+          "Tool beschaffen",
+        ),
+      );
     }
+    this.materialRequestPending = false;
+    this.materialRequestQuantity = 0;
+    this.materialRequestFailureReason = null;
 
     const craftCost = recipeCost(gameData);
     const gold = this.game.character().gold;
@@ -991,162 +1057,6 @@ export class MerchantFishingController {
       crafted,
       "Tool beschaffen",
       "FISHING_ROD_CRAFT_FAILED",
-    );
-  }
-
-  private async acquireSpiderSilk(
-    config: FishingConfig,
-  ): Promise<MerchantFishingStatus> {
-    if (this.lootAfterSpider) {
-      const looted = await this.actions.loot({
-        module: MODULE,
-        why: "FISHING_LOOT_SPIDER_FOR_SILK",
-      });
-      this.recordAction(looted);
-      this.lootAfterSpider = false;
-      if (looted.status === "UNKNOWN") {
-        return this.actionFailure(
-          config,
-          looted,
-          "Tool beschaffen",
-          "FISHING_SPIDER_LOOT_UNKNOWN",
-        );
-      }
-      return this.publish(
-        this.buildStatus(
-          config,
-          "TOOL_ACQUIRE",
-          "FISHING_SPIDER_LOOT_CHECKED",
-          "Tool beschaffen",
-        ),
-      );
-    }
-
-    const character = this.game.character();
-    const spiders = this.game
-      .entities()
-      .filter(
-        (entity) =>
-          entity.mtype === "spider" &&
-          !entity.dead &&
-          !entity.rip &&
-          entity.x !== null &&
-          entity.y !== null,
-      )
-      .sort((a, b) => {
-        if (
-          character.x === null ||
-          character.y === null ||
-          a.x === null ||
-          a.y === null ||
-          b.x === null ||
-          b.y === null
-        ) {
-          return a.id.localeCompare(b.id);
-        }
-        return (
-          distance(
-            { x: character.x, y: character.y },
-            { x: a.x, y: a.y },
-          ) -
-          distance(
-            { x: character.x, y: character.y },
-            { x: b.x, y: b.y },
-          )
-        );
-      });
-
-    if (!spiders.length) {
-      const moved = await this.smartMove(
-        config,
-        "spider",
-        "FISHING_TRAVEL_TO_SPIDER",
-        "Tool beschaffen",
-      );
-      return (
-        moved ||
-        this.buildStatus(
-          config,
-          "TOOL_ACQUIRE",
-          "FISHING_WAITING_FOR_SPIDER",
-          "Tool beschaffen",
-        )
-      );
-    }
-
-    const spider = spiders[0];
-    const current = this.game.character();
-    const attackRange = Math.max(10, current.range || 10);
-    if (
-      current.map !== spider.map ||
-      current.x === null ||
-      current.y === null ||
-      spider.x === null ||
-      spider.y === null ||
-      distance(
-        { x: current.x, y: current.y },
-        { x: spider.x, y: spider.y },
-      ) >
-        Math.max(10, attackRange - 4)
-    ) {
-      const moved = await this.smartMove(
-        config,
-        {
-          map: spider.map || current.map || "main",
-          x: spider.x as number,
-          y: spider.y as number,
-        },
-        "FISHING_APPROACH_SPIDER",
-        "Tool beschaffen",
-      );
-      return (
-        moved ||
-        this.buildStatus(
-          config,
-          "TOOL_ACQUIRE",
-          "FISHING_APPROACHING_SPIDER",
-          "Tool beschaffen",
-        )
-      );
-    }
-
-    const attacked = await this.actions.attack({
-      targetId: spider.id,
-      module: MODULE,
-      why: "FISHING_ACQUIRE_SPIDER_SILK",
-    });
-    this.recordAction(attacked);
-    if (attacked.status === "UNKNOWN") {
-      return this.actionFailure(
-        config,
-        attacked,
-        "Tool beschaffen",
-        "FISHING_SPIDER_ATTACK_UNKNOWN",
-      );
-    }
-    if (attacked.status === "BLOCKED") {
-      return this.publish(
-        this.buildStatus(
-          config,
-          "TOOL_ACQUIRE",
-          "FISHING_WAITING_FOR_ATTACK_WINDOW",
-          "Tool beschaffen",
-        ),
-      );
-    }
-    const afterTarget = this.game
-      .entities()
-      .find((entity) => entity.id === spider.id);
-    if (!afterTarget || afterTarget.dead || afterTarget.rip) {
-      this.lootAfterSpider = true;
-    }
-    return this.publish(
-      this.buildStatus(
-        config,
-        "TOOL_ACQUIRE",
-        "FISHING_SPIDER_ATTACKED",
-        "Tool beschaffen",
-      ),
     );
   }
 
@@ -1422,6 +1332,11 @@ export class MerchantFishingController {
         attempted: this.resultAttempted,
         found: this.resultFound,
         response: this.resultResponse,
+      },
+      materialRequest: {
+        itemName: this.materialRequestPending ? MATERIAL : null,
+        quantity: this.materialRequestQuantity,
+        pending: this.materialRequestPending,
       },
       restore: {
         required: this.restoreRequired,
