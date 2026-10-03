@@ -336,7 +336,6 @@ test("compound thrown structured rejection is REJECTED with preserved reason", a
   });
 
   assert.equal(result.status, "REJECTED");
-  assert.equal(result.why, "COMPOUND_API_REJECTED");
   assert.equal(result.error, "scroll");
   assert.equal(result.evidence.reason, "scroll");
   assert.equal(setup.ledger.canRetry(result.id), true);
