@@ -10,6 +10,7 @@ const {
   gearScoringEvidence,
   runGearScoringLiveVerification,
   selectGearScoringCharacter,
+  waitForGearScoringCharacter,
   waitForGearScoringProjection,
 } = require("../scripts/run_gear_scoring_live_e2e");
 
@@ -106,19 +107,48 @@ test("gear scoring evidence rejects a mismatched contribution", () => {
   );
 });
 
-test("gear scoring character selection prefers connected owned gear", () => {
+test("gear scoring character selection never auto-selects offline gear", () => {
+  const offline = character("Offline", {
+    connected: false,
+    gear_scoring_runtime: null,
+  });
   const snapshot = {
-    characters: [
-      character("Offline", {
-        connected: false,
-        gear_scoring_runtime: null,
-      }),
-      character("Ready"),
-    ],
+    characters: [offline, character("Ready")],
   };
 
   assert.equal(selectGearScoringCharacter(snapshot).name, "Ready");
   assert.equal(selectGearScoringCharacter(snapshot, "Offline").name, "Offline");
+  assert.equal(selectGearScoringCharacter({ characters: [offline] }), null);
+});
+
+test("wait for gear scoring character survives dashboard-ready before character-online", async () => {
+  const offline = character("My_Mage", {
+    connected: false,
+    gear_scoring_runtime: null,
+  });
+  const connected = character("My_Ranger1");
+  let reads = 0;
+
+  const result = await waitForGearScoringCharacter(null, {
+    initialState: { characters: [offline] },
+    readStateImpl: async () => {
+      reads += 1;
+      return { characters: [offline, connected] };
+    },
+    timeoutMs: 100,
+    pollMs: 1,
+    now: (() => {
+      let value = 0;
+      return () => {
+        value += 1;
+        return value;
+      };
+    })(),
+    sleepImpl: async () => {},
+  });
+
+  assert.equal(result.name, "My_Ranger1");
+  assert.equal(reads, 1);
 });
 
 test("equipment signature ignores trade slots but detects gear changes", () => {

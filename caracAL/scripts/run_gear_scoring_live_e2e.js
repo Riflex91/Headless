@@ -73,37 +73,61 @@ function selectGearScoringCharacter(snapshot, requested = null) {
     return exact;
   }
 
-  const owned = characters.filter(
-    (character) => character.account_owned === true,
-  );
   const hasEquipment = (character) => equipmentEntries(character).length > 0;
   const projectionReady = (character) =>
     character?.gear_scoring_runtime?.state === "READY";
+  const connectedOwned = characters.filter(
+    (character) =>
+      character.account_owned === true && character.connected === true,
+  );
 
   return (
-    owned.find(
-      (character) =>
-        character.connected === true &&
-        projectionReady(character) &&
-        hasEquipment(character),
+    connectedOwned.find(
+      (character) => projectionReady(character) && hasEquipment(character),
     ) ||
-    owned.find(
-      (character) => character.connected === true && hasEquipment(character),
-    ) ||
-    owned.find((character) => projectionReady(character)) ||
-    owned.find(hasEquipment) ||
-    owned[0] ||
-    characters.find(
-      (character) =>
-        character.connected === true &&
-        projectionReady(character) &&
-        hasEquipment(character),
-    ) ||
-    characters.find(
-      (character) => character.connected === true && hasEquipment(character),
-    ) ||
-    characters[0] ||
+    connectedOwned.find(hasEquipment) ||
     null
+  );
+}
+
+async function waitForGearScoringCharacter(
+  requested = null,
+  {
+    initialState = null,
+    readStateImpl = readState,
+    timeoutMs = Number(
+      process.env.CARACAL_GEAR_SCORING_LIVE_TIMEOUT_MS || 30000,
+    ),
+    pollMs = Number(process.env.CARACAL_GEAR_SCORING_LIVE_POLL_MS || 500),
+    now = Date.now,
+    sleepImpl = sleep,
+  } = {},
+) {
+  const deadline = now() + timeoutMs;
+  let state = initialState;
+
+  while (now() < deadline) {
+    if (!state) {
+      state = await readStateImpl();
+    }
+
+    const selected = selectGearScoringCharacter(state, requested);
+    const liveOwnedWithEquipment =
+      selected?.account_owned === true &&
+      selected?.connected === true &&
+      equipmentEntries(selected).length > 0;
+
+    if (liveOwnedWithEquipment) {
+      return selected;
+    }
+
+    await sleepImpl(pollMs);
+    state = await readStateImpl();
+  }
+
+  const target = requested ? ` for ${requested}` : "";
+  throw new Error(
+    `Timed out waiting for a connected account-owned Gear Scoring character${target}`,
   );
 }
 
@@ -295,15 +319,9 @@ async function main() {
         : "Using existing caracAL runtime at " + baseUrl + "\n",
     );
 
-    const selected = selectGearScoringCharacter(
-      dashboard.state,
-      requestedCharacter,
-    );
-    if (!selected || selected.account_owned !== true) {
-      throw new Error(
-        "An account-owned character is required for Gear Scoring E2E",
-      );
-    }
+    const selected = await waitForGearScoringCharacter(requestedCharacter, {
+      initialState: dashboard.state,
+    });
 
     process.stdout.write(
       "Running read-only Gear Scoring E2E with " + selected.name + "\n",
@@ -338,5 +356,6 @@ module.exports = {
   readState,
   runGearScoringLiveVerification,
   selectGearScoringCharacter,
+  waitForGearScoringCharacter,
   waitForGearScoringProjection,
 };
