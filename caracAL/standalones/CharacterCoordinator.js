@@ -2266,10 +2266,7 @@ function migrate_old_storage(path, localStorage) {
     });
   }
 
-  function wait_for_upgrade_live_preflight_result(
-    char_name,
-    request_id,
-  ) {
+  function wait_for_upgrade_live_preflight_result(char_name, request_id) {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         upgrade_live_preflight_requests.delete(request_id);
@@ -7116,8 +7113,7 @@ function migrate_old_storage(path, localStorage) {
         : DESIRED_RUNTIME_STATES.STOPPED);
     const started_at = Date.now();
     upgrade_live_preflight_sequence += 1;
-    const request_id =
-      `upgrade-preflight-${started_at}-${upgrade_live_preflight_sequence}`;
+    const request_id = `upgrade-preflight-${started_at}-${upgrade_live_preflight_sequence}`;
 
     char_block.upgrade_live_preflight = {
       request_id,
