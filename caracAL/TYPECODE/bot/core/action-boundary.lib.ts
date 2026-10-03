@@ -567,6 +567,7 @@ function safeResultEvidence(result: unknown): unknown {
     "num",
     "reward",
     "chance",
+    "found",
   ]) {
     const entry = value[key];
     if (
