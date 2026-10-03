@@ -2981,8 +2981,7 @@ function migrate_old_storage(path, localStorage) {
       const item_level = 0;
       const current_merchant = character_manage[merchant_name];
       const observer_position =
-        plan.observerPosition &&
-        typeof plan.observerPosition === "object"
+        plan.observerPosition && typeof plan.observerPosition === "object"
           ? plan.observerPosition
           : null;
       const observer_x = Number(observer_position?.x);
