@@ -90,7 +90,7 @@ test("Compound preparation launcher accepts an existing Merchant triple without 
         selected: {
           source: "MERCHANT_INVENTORY",
           itemName: "amulet",
-          itemLevel: 0,
+          itemLevel: 2,
           itemSlots: [2, 7, 9],
           monsterType: null,
           itemGrade: 0,
@@ -98,6 +98,7 @@ test("Compound preparation launcher accepts an existing Merchant triple without 
         },
       },
       itemName: "amulet",
+      itemLevel: 2,
       monsterType: null,
     }),
   );
