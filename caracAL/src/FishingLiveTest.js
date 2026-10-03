@@ -66,8 +66,7 @@ function fishingLiveTestEvidence(
         ? runtimeEvidence.resultFound
         : null,
     mainhandRestored: runtimeEvidence.mainhandRestored === true,
-    unknownOutcomeAvoided:
-      runtimeEvidence.unknownOutcomeAvoided === true,
+    unknownOutcomeAvoided: runtimeEvidence.unknownOutcomeAvoided === true,
     roadmapComplete: runtimeEvidence.roadmapComplete === true,
     blindRetryDisabled: scope.blindRetryAllowed === false,
     standMutationIsolated: scope.standMutationAllowed === false,
@@ -81,8 +80,7 @@ function fishingLiveTestEvidence(
       action: event.data?.action || null,
       actionId: event.actionId || null,
     })),
-    dispatcherSuppressedDuringTest:
-      dispatcherSuppressedDuringTest === true,
+    dispatcherSuppressedDuringTest: dispatcherSuppressedDuringTest === true,
     overrideCleared: cleanup.autonomyOverrideCleared === true,
     cleanupMainhandSafe: cleanup.mainhandRestored !== false,
   };
@@ -185,8 +183,7 @@ function fishingLiveTestDiagnostics(
     observed: {
       supervisor_evidence_complete: evidenceComplete(supervisor),
       result_found: supervisor.resultFound ?? null,
-      action_isolation_confirmed:
-        supervisor.actionIsolationConfirmed === true,
+      action_isolation_confirmed: supervisor.actionIsolationConfirmed === true,
       logistics_dispatcher_suppressed:
         supervisor.dispatcherSuppressedDuringTest === true,
     },
