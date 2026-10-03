@@ -556,6 +556,16 @@ export class MerchantMerritController {
     this.requestStatusIfDue(config);
     const rules = merritRules(this.game.gameData());
     const server = parseServerStatus(character);
+    if (!character.merrit || server.serverNow === null) {
+      return this.publish(
+        this.buildStatus(
+          config,
+          "SYNCING",
+          "MERRIT_WAITING_FOR_SERVER_STATUS",
+          "Cooldown",
+        ),
+      );
+    }
     const currentReceiptKey = receiptKey(server.lastReceipt);
 
     if (
