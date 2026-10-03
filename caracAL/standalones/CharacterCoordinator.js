@@ -2212,7 +2212,8 @@ function migrate_old_storage(path, localStorage) {
     const baseline = live_item_quantity(merchant_block, item_name);
     const target_quantity = baseline + quantity;
     const event_position =
-      request?.recipientPosition && typeof request.recipientPosition === "object"
+      request?.recipientPosition &&
+      typeof request.recipientPosition === "object"
         ? request.recipientPosition
         : null;
     const finite_coordinate = (value) =>
