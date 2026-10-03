@@ -311,6 +311,31 @@ test("Expected Value stays conservative when model metadata is incomplete", () =
   assert.equal(status.summary.evaluated, 0);
 });
 
+test("Expected Value refuses to infer a missing intrinsic probability grade", () => {
+  const gameData = baseGameData();
+  delete gameData.items.sword.igrade;
+
+  const setup = makeController({
+    inventory: [
+      { name: "sword", level: 0 },
+      null,
+      null,
+      { name: "scroll0", q: 1 },
+    ],
+    gameData,
+    upgrades: [upgradeCandidate()],
+  });
+
+  const status = setup.controller.tick();
+  const estimate = status.estimates[0];
+
+  assert.equal(estimate.probabilityGrade, null);
+  assert.equal(estimate.successProbability, null);
+  assert.equal(estimate.expectedDeltaGold, null);
+  assert.equal(estimate.decision, "UNKNOWN");
+  assert.equal(status.summary.unknown, 1);
+});
+
 test("Expected Value supports disabling and emits only when state changes", () => {
   const events = [];
   const setup = makeController({
