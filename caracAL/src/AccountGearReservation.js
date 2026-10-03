@@ -110,6 +110,17 @@ function claimFor(sourceName, sourceBlock, sourceEntry, targetName, targetBlock)
   if (!Number.isInteger(sourceEntry?.slot)) return null;
   if (finite(sourceEntry?.score) === null) return null;
 
+  const sourceFutureGearEntries = Array.isArray(
+    sourceBlock?.future_gear_runtime?.entries,
+  )
+    ? sourceBlock.future_gear_runtime.entries
+    : [];
+  const reservedForSelf = sourceFutureGearEntries.some(
+    (entry) =>
+      entry?.inventorySlot === sourceEntry.slot && entry?.candidate === true,
+  );
+  if (reservedForSelf) return null;
+
   const baseline = targetBaseline(sourceEntry, targetBlock);
   if (!baseline) return null;
 
