@@ -11,7 +11,8 @@ export type LogisticsClaimType =
   | "ITEM_DELIVERY"
   | "GOLD_PICKUP"
   | "INVENTORY_PRESSURE"
-  | "GEAR_DELIVERY";
+  | "GEAR_DELIVERY"
+  | "MATERIAL_DELIVERY";
 
 export interface LogisticsClaim {
   id: string;
@@ -106,6 +107,7 @@ function sourceAndTarget(claim: LogisticsClaim): {
       return { source: merchant, target: farmer };
     case "GOLD_PICKUP":
     case "INVENTORY_PRESSURE":
+    case "MATERIAL_DELIVERY":
       return { source: farmer, target: merchant };
   }
 }
@@ -198,6 +200,8 @@ export class LogisticsClaimExecutor {
         return this.executeGoldPickup(claim, source, target);
       case "INVENTORY_PRESSURE":
         return this.executeInventoryPressure(claim, source, target);
+      case "MATERIAL_DELIVERY":
+        return this.executeMaterialDelivery(claim, source, target);
     }
   }
 
@@ -314,6 +318,73 @@ export class LogisticsClaimExecutor {
       amount,
       fulfilled:
         action.status === "CONFIRMED" && amount >= requestedAmount,
+    });
+  }
+
+  private async executeMaterialDelivery(
+    claim: LogisticsClaim,
+    source: string,
+    target: string,
+  ): Promise<LogisticsExecutionResult> {
+    const name = text(claim.itemName);
+    const requestedQuantity = positiveInteger(claim.quantity) || 1;
+    if (!name) {
+      return blocked(claim, source, target, "CLAIM_ITEM_INVALID");
+    }
+    if (
+      claim.metadata?.purpose !== "FISHING_MATERIAL" ||
+      claim.metadata?.authorized !== true
+    ) {
+      return blocked(
+        claim,
+        source,
+        target,
+        "MATERIAL_DELIVERY_AUTHORIZATION_INVALID",
+      );
+    }
+
+    const candidates = this.game
+      .inventory()
+      .filter((slot) => {
+        if (itemName(slot) !== name || !slot.item) return false;
+        const item = slot.item;
+        return (
+          item.l !== true &&
+          item.locked !== true &&
+          item.acl !== true
+        );
+      })
+      .sort((a, b) => itemQuantity(b) - itemQuantity(a));
+    const slot = candidates[0];
+    if (!slot) {
+      return blocked(claim, source, target, "CLAIM_ITEM_UNAVAILABLE");
+    }
+
+    const quantity = Math.min(requestedQuantity, itemQuantity(slot));
+    if (quantity <= 0) {
+      return blocked(
+        claim,
+        source,
+        target,
+        "CLAIM_ITEM_QUANTITY_INVALID",
+      );
+    }
+
+    const action = await this.actions.sendItem({
+      recipient: target,
+      inventorySlot: slot.slot,
+      quantity,
+      module: "MerchantLogistics",
+      why: claim.reason || "MATERIAL_DELIVERY",
+      correlationId: claim.id,
+    });
+
+    return resultFromAction(claim, source, target, action, {
+      itemName: name,
+      requestedQuantity,
+      executedQuantity: quantity,
+      fulfilled:
+        action.status === "CONFIRMED" && quantity >= requestedQuantity,
     });
   }
 
