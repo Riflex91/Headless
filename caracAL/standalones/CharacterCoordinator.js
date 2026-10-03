@@ -1538,6 +1538,12 @@ function migrate_old_storage(path, localStorage) {
       scoring: JSON.parse(
         JSON.stringify(char_block?.gear_scoring_runtime || null),
       ),
+      futureGear: JSON.parse(
+        JSON.stringify(char_block?.future_gear_runtime || null),
+      ),
+      inventoryIntelligence: JSON.parse(
+        JSON.stringify(char_block?.inventory_intelligence_runtime || null),
+      ),
       slots: JSON.parse(JSON.stringify(char_block?.live_state?.slots || {})),
     };
   }
