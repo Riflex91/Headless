@@ -181,7 +181,10 @@ test("class skill supervisor confirms Merchant massproduction", () => {
     },
   };
 
-  const evidence = classSkillLiveTestEvidence(merchantEvents, merchantProjection);
+  const evidence = classSkillLiveTestEvidence(
+    merchantEvents,
+    merchantProjection,
+  );
 
   assert.equal(evidence.testedClass, "merchant");
   assert.equal(evidence.safeSkill, "massproduction");
@@ -212,8 +215,5 @@ test("class skill supervisor confirms Merchant massproduction", () => {
   assert.equal(diagnostics.expected.class, "merchant");
   assert.equal(diagnostics.expected.skill, "massproduction");
   assert.equal(diagnostics.expected.cooldown_required, false);
-  assert.equal(
-    diagnostics.navigation.reason,
-    "SAFE_NON_TARGET_MERCHANT_SKILL",
-  );
+  assert.equal(diagnostics.navigation.reason, "SAFE_NON_TARGET_MERCHANT_SKILL");
 });
