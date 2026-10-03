@@ -58,6 +58,11 @@ import {
   CraftPreflightRunner,
 } from "./craft-preflight.lib";
 import {
+  CraftLiveTestOptions,
+  CraftLiveTestResult,
+  CraftLiveTestRunner,
+} from "./craft-live-test.lib";
+import {
   CraftMaterialPreparationPlan,
   planCraftMaterialPreparation,
 } from "./craft-material-preparation-plan.lib";
@@ -299,6 +304,7 @@ export class BotRuntimeKernel {
   private exchangePreflightRunning = false;
   private exchangeLiveTestRunning = false;
   private craftPreflightRunning = false;
+  private craftLiveTestRunning = false;
   private logisticsLiveTestRunning = false;
   private merchantLiveTestRunning = false;
   private bankTravelLiveTestRunning = false;
@@ -864,6 +870,137 @@ export class BotRuntimeKernel {
       this.craft.clearConfigOverride();
       this.craft.tick();
       this.craftPreflightRunning = false;
+    }
+  }
+
+  async runCraftLiveTest(
+    options: CraftLiveTestOptions,
+  ): Promise<CraftLiveTestResult> {
+    if (
+      this.craftLiveTestRunning ||
+      this.craftPreflightRunning ||
+      this.exchangePreflightRunning ||
+      this.exchangeLiveTestRunning ||
+      this.compoundLiveTestRunning ||
+      this.upgradeLiveTestRunning ||
+      this.upgradePreflightRunning
+    ) {
+      throw new Error("mutation verification already running");
+    }
+    if (!this.started || this.stopping) {
+      throw new Error("runtime is not ready for craft live test");
+    }
+    if (runtimeState() !== "RUNNING") {
+      throw new Error("runtime must be RUNNING for craft live test");
+    }
+    if (
+      this.movementLiveTestRunning ||
+      this.combatLiveTestRunning ||
+      this.classSkillLiveTestRunning ||
+      this.groupLiveTestRunning ||
+      this.bankTravelLiveTestRunning ||
+      this.merritLiveTestRunning ||
+      this.fishingLiveTestRunning
+    ) {
+      throw new Error("movement activity is running during craft live test");
+    }
+
+    this.craftLiveTestRunning = true;
+    const requestId = options.requestId || `craft-live-${Date.now()}`;
+    const suspended = {
+      merchantAutonomy: this.scheduler.unregister(MERCHANT_AUTONOMY_JOB_ID),
+      bankTravel: this.scheduler.unregister(BANK_TRAVEL_JOB_ID),
+      merrit: this.scheduler.unregister(MERRIT_AUTONOMY_JOB_ID),
+      fishing: this.scheduler.unregister(FISHING_AUTONOMY_JOB_ID),
+      groupCombat: this.scheduler.unregister(GROUP_COMBAT_JOB_ID),
+      classSkill: this.scheduler.unregister(CLASS_SKILL_JOB_ID),
+      combat: this.scheduler.unregister(COMBAT_JOB_ID),
+    };
+
+    this.eventBus.emit({
+      module: "CraftLiveTest",
+      type: "CRAFT_LIVE_TEST_STARTED",
+      why: "EXPLICIT_SINGLE_CRAFT_E2E",
+      correlationId: requestId,
+      data: {
+        requestId,
+        recipe: options.recipe,
+        itemSlots: [...options.itemSlots],
+        irreversibleMutation: true,
+        stationTravelAllowed: true,
+        blindRetryAllowed: false,
+        suspended,
+        ...runtimeIdentity(),
+      },
+    });
+
+    try {
+      const runner = new CraftLiveTestRunner({
+        game: this.game,
+        inventoryIntelligence: this.inventoryIntelligence,
+        craft: this.craft,
+        movement: this.movement,
+        characterName: () => character.name,
+        runtimePreflight: () => {
+          const runtimeCharacter = character as unknown as {
+            map?: unknown;
+            q?: {
+              craft?: unknown;
+            };
+          };
+          return {
+            map:
+              typeof runtimeCharacter.map === "string" &&
+              runtimeCharacter.map.trim().length > 0
+                ? runtimeCharacter.map
+                : null,
+            craftInProgress: !!runtimeCharacter.q?.craft,
+          };
+        },
+      });
+
+      const result = await runner.run({
+        ...options,
+        requestId,
+      });
+      this.eventBus.emit({
+        module: "CraftLiveTest",
+        type:
+          result.outcome === "PASS"
+            ? "CRAFT_LIVE_TEST_COMPLETED"
+            : "CRAFT_LIVE_TEST_FAILED",
+        why: result.reason,
+        correlationId: requestId,
+        ...(result.craft?.lastAction?.id && {
+          actionId: result.craft.lastAction.id,
+        }),
+        data: {
+          result,
+          craft: this.craft.status(),
+        },
+      });
+      return result;
+    } catch (error) {
+      this.eventBus.emit({
+        module: "CraftLiveTest",
+        type: "CRAFT_LIVE_TEST_FAILED",
+        why: "CRAFT_LIVE_TEST_RUNTIME_ERROR",
+        correlationId: requestId,
+        data: {
+          error: error instanceof Error ? error.message : String(error),
+          craft: this.craft.status(),
+        },
+      });
+      throw error;
+    } finally {
+      if (suspended.merchantAutonomy) this.registerMerchantAutonomyJob();
+      if (suspended.bankTravel) this.registerBankTravelJob();
+      if (suspended.merrit) this.registerMerritJob();
+      if (suspended.fishing) this.registerFishingJob();
+      if (suspended.groupCombat) this.registerGroupCombatJob();
+      if (suspended.classSkill) this.registerClassSkillJob();
+      if (suspended.combat) this.registerCombatJob();
+      this.craftLiveTestRunning = false;
     }
   }
 
