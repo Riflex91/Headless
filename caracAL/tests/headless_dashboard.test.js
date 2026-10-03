@@ -82,6 +82,7 @@ test("public character state exposes only dashboard-safe fields", () => {
     gear_scoring_live_test: null,
     account_gear_reservation_live_test: null,
     upgrade_live_test: null,
+    upgrade_live_preflight: null,
     logistics_live_test: null,
     merchant_live_test: null,
     bank_travel_live_test: null,
@@ -400,6 +401,10 @@ test("dashboard module and coordinator remain syntactically valid", () => {
   );
   assert.match(dashboard, /\/headless\/api\/characters\/:name\/tests\/group/);
   assert.match(dashboard, /\/headless\/api\/characters\/:name\/tests\/upgrade/);
+  assert.match(
+    dashboard,
+    /\/headless\/api\/characters\/:name\/tests\/upgrade-preflight/,
+  );
   assert.match(dashboard, /\/headless\/api\/maps\/:name\/scene/);
   assert.match(dashboard, /nearby_entities/);
   assert.match(coordinator, /control_character_config/);
@@ -431,6 +436,7 @@ test("dashboard module and coordinator remain syntactically valid", () => {
   assert.match(coordinator, /gear_scoring_runtime/);
   assert.match(coordinator, /upgrade_runtime/);
   assert.match(coordinator, /upgrade_live_test/);
+  assert.match(coordinator, /upgrade_live_preflight/);
   assert.match(coordinator, /run_upgrade_live_test/);
   assert.match(coordinator, /inventory_live_test/);
   assert.match(coordinator, /merrit_live_test/);

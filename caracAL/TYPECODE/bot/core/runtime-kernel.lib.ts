@@ -45,6 +45,7 @@ import {
   UpgradeLiveTestOptions,
   UpgradeLiveTestResult,
   UpgradeLiveTestRunner,
+  UpgradePreflightResult,
 } from "./upgrade-live-test.lib";
 import {
   MerchantAutonomyController,
@@ -246,6 +247,7 @@ export class BotRuntimeKernel {
   private farmLiveTestRunning = false;
   private inventoryLiveTestRunning = false;
   private upgradeLiveTestRunning = false;
+  private upgradePreflightRunning = false;
   private logisticsLiveTestRunning = false;
   private merchantLiveTestRunning = false;
   private bankTravelLiveTestRunning = false;
@@ -608,8 +610,8 @@ export class BotRuntimeKernel {
   }
 
   async executeUpgradeNext(): Promise<Record<string, unknown>> {
-    if (this.upgradeLiveTestRunning) {
-      throw new Error("upgrade live test is running");
+    if (this.upgradeLiveTestRunning || this.upgradePreflightRunning) {
+      throw new Error("upgrade verification is running");
     }
     if (!this.started || this.stopping) {
       throw new Error("runtime is not ready for upgrade execution");
@@ -620,11 +622,63 @@ export class BotRuntimeKernel {
     return this.upgrade.executeNext() as unknown as Record<string, unknown>;
   }
 
+  async runUpgradePreflight(): Promise<UpgradePreflightResult> {
+    if (this.upgradeLiveTestRunning || this.upgradePreflightRunning) {
+      throw new Error("upgrade verification already running");
+    }
+    if (!this.started || this.stopping) {
+      throw new Error("runtime is not ready for upgrade preflight");
+    }
+    if (runtimeState() !== "RUNNING") {
+      throw new Error("runtime must be RUNNING for upgrade preflight");
+    }
+
+    this.upgradePreflightRunning = true;
+    const requestId = `upgrade-preflight-${Date.now()}`;
+    this.eventBus.emit({
+      module: "UpgradePreflight",
+      type: "UPGRADE_PREFLIGHT_STARTED",
+      why: "READ_ONLY_UPGRADE_INVENTORY_SCAN",
+      correlationId: requestId,
+      data: {
+        requestId,
+        readOnly: true,
+        ...runtimeIdentity(),
+      },
+    });
+
+    try {
+      const runner = new UpgradeLiveTestRunner({
+        game: this.game,
+        inventoryIntelligence: this.inventoryIntelligence,
+        upgrade: this.upgrade,
+        characterName: () => character.name,
+      });
+      const result = runner.preflight();
+      this.eventBus.emit({
+        module: "UpgradePreflight",
+        type:
+          result.outcome === "PASS"
+            ? "UPGRADE_PREFLIGHT_COMPLETED"
+            : "UPGRADE_PREFLIGHT_FAILED",
+        why: result.reason,
+        correlationId: requestId,
+        data: {
+          requestId,
+          result,
+        },
+      });
+      return result;
+    } finally {
+      this.upgradePreflightRunning = false;
+    }
+  }
+
   async runUpgradeLiveTest(
     options: UpgradeLiveTestOptions,
   ): Promise<UpgradeLiveTestResult> {
-    if (this.upgradeLiveTestRunning) {
-      throw new Error("upgrade live test already running");
+    if (this.upgradeLiveTestRunning || this.upgradePreflightRunning) {
+      throw new Error("upgrade verification already running");
     }
     if (!this.started || this.stopping) {
       throw new Error("runtime is not ready for upgrade live test");

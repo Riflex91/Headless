@@ -58,6 +58,7 @@ function makeRunner({
   mutate = true,
   itemProtected = false,
   scrollProtected = false,
+  itemGrade = 0,
 } = {}) {
   const { UpgradeLiveTestRunner } = coreModule("upgrade-live-test.lib.ts");
   const state = {
@@ -179,7 +180,7 @@ function makeRunner({
         };
       },
       itemGrade() {
-        return 0;
+        return itemGrade;
       },
     },
     inventoryIntelligence: intelligence,
@@ -199,6 +200,57 @@ function makeRunner({
     },
   };
 }
+
+test("Upgrade preflight is read-only and reports a grade-compatible candidate", () => {
+  const setup = makeRunner();
+
+  const result = setup.runner.preflight();
+
+  assert.equal(result.outcome, "PASS");
+  assert.equal(result.reason, "UPGRADE_PREFLIGHT_COMPLETED");
+  assert.equal(result.scope.readOnly, true);
+  assert.equal(result.scope.upgradeMutationForced, false);
+  assert.equal(result.summary.upgradableItems, 1);
+  assert.equal(result.summary.eligibleCandidates, 1);
+  assert.equal(result.candidates[0].itemSlot, 0);
+  assert.equal(result.candidates[0].itemName, "sword");
+  assert.equal(result.candidates[0].itemGrade, 0);
+  assert.equal(result.candidates[0].expectedScrollName, "scroll0");
+  assert.deepEqual(result.candidates[0].matchingScrollSlots, [1]);
+  assert.equal(result.candidates[0].eligible, true);
+  assert.equal(result.candidates[0].reason, "UPGRADE_PREFLIGHT_READY");
+  assert.equal(setup.executeCalls(), 0);
+});
+
+test("Upgrade preflight reports missing grade-compatible scroll without mutation", () => {
+  const setup = makeRunner({ itemGrade: 1 });
+
+  const result = setup.runner.preflight();
+
+  assert.equal(result.outcome, "PASS");
+  assert.equal(result.summary.eligibleCandidates, 0);
+  assert.equal(result.summary.missingScrollItems, 1);
+  assert.equal(result.candidates[0].itemGrade, 1);
+  assert.equal(result.candidates[0].expectedScrollName, "scroll1");
+  assert.deepEqual(result.candidates[0].matchingScrollSlots, []);
+  assert.equal(
+    result.candidates[0].reason,
+    "UPGRADE_PREFLIGHT_MATCHING_SCROLL_MISSING",
+  );
+  assert.equal(setup.executeCalls(), 0);
+});
+
+test("Upgrade preflight preserves protected upgradeable items as ineligible evidence", () => {
+  const setup = makeRunner({ itemProtected: true });
+
+  const result = setup.runner.preflight();
+
+  assert.equal(result.outcome, "PASS");
+  assert.equal(result.summary.protectedItems, 1);
+  assert.equal(result.candidates[0].eligible, false);
+  assert.equal(result.candidates[0].reason, "UPGRADE_PREFLIGHT_ITEM_PROTECTED");
+  assert.equal(setup.executeCalls(), 0);
+});
 
 test("Upgrade live runner confirms one real successful mutation", async () => {
   const setup = makeRunner();
