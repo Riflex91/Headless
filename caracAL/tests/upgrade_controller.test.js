@@ -196,10 +196,7 @@ test("Upgrade requires explicit max-level and scroll policies", () => {
     },
   }).controller.tick();
   assert.equal(noMax.state, "EMPTY");
-  assert.equal(
-    noMax.decisions[0].reason,
-    "UPGRADE_MAX_LEVEL_POLICY_MISSING",
-  );
+  assert.equal(noMax.decisions[0].reason, "UPGRADE_MAX_LEVEL_POLICY_MISSING");
 
   const noScroll = makeController({
     config: {
@@ -210,10 +207,7 @@ test("Upgrade requires explicit max-level and scroll policies", () => {
     },
   }).controller.tick();
   assert.equal(noScroll.state, "EMPTY");
-  assert.equal(
-    noScroll.decisions[0].reason,
-    "UPGRADE_SCROLL_POLICY_MISSING",
-  );
+  assert.equal(noScroll.decisions[0].reason, "UPGRADE_SCROLL_POLICY_MISSING");
 });
 
 test("Upgrade respects max level and requires the configured scroll in inventory", () => {
