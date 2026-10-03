@@ -263,7 +263,6 @@ test("safe NPC trade item selection uses cheapest allowlisted item", () => {
   });
 });
 
-
 test("NPC potion items resolve to Adventure Land potions smart-move alias", () => {
   const { npcVendorDestination } = loadController();
 
