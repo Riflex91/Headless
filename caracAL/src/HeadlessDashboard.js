@@ -110,6 +110,7 @@ function publicCharacterState(name, charBlock = {}) {
     bank_travel_live_test: charBlock.bank_travel_live_test || null,
     bank_gold_live_test: charBlock.bank_gold_live_test || null,
     npc_trading_live_test: charBlock.npc_trading_live_test || null,
+    market_trading_live_test: charBlock.market_trading_live_test || null,
     merrit_live_test: charBlock.merrit_live_test || null,
     fishing_live_test: charBlock.fishing_live_test || null,
     fishing_material_request: charBlock.fishing_material_request || null,
@@ -311,6 +312,7 @@ function attachHeadlessDashboard({
   runBankTravelLiveTest,
   runBankGoldLiveTest,
   runNpcTradingLiveTest,
+  runMarketTradingLiveTest,
   runMerritLiveTest,
   runFishingLiveTest,
   controlEmergencyStop,
@@ -576,6 +578,30 @@ function attachHeadlessDashboard({
       } catch (error) {
         res.status(Number(error.statusCode) || 500).json({
           error: error.code || "FISHING_LIVE_TEST_FAILED",
+          message: error.message,
+        });
+      }
+    },
+  );
+
+  router.post(
+    "/headless/api/characters/:name/tests/market-trading",
+    async (req, res) => {
+      if (!runMarketTradingLiveTest) {
+        res.status(503).json({ error: "MARKET_TRADING_LIVE_TEST_UNAVAILABLE" });
+        return;
+      }
+
+      try {
+        const result = await runMarketTradingLiveTest(req.params.name);
+        res.json({
+          ok: result?.outcome === "PASS",
+          result,
+          snapshot: getSnapshot(),
+        });
+      } catch (error) {
+        res.status(Number(error.statusCode) || 500).json({
+          error: error.code || "MARKET_TRADING_LIVE_TEST_FAILED",
           message: error.message,
         });
       }
