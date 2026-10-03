@@ -5630,8 +5630,7 @@ function migrate_old_storage(path, localStorage) {
           error.code === "MERCHANT_LIVE_TEST_RUNTIME_TIMEOUT"
             ? "TIMEOUT"
             : "FAIL",
-        reason:
-          error.code || error.message || "BANK_TRAVEL_LIVE_TEST_FAILED",
+        reason: error.code || error.message || "BANK_TRAVEL_LIVE_TEST_FAILED",
         error: error.message || String(error),
         status: "FAILED",
         started_at,
