@@ -1139,6 +1139,14 @@ export class BotRuntimeKernel {
     }
   }
 
+  reportFishingMaterialRequestResult(result: {
+    itemName: string;
+    success: boolean;
+    reason?: string | null;
+  }): void {
+    this.merchantFishing.reportMaterialRequestResult(result);
+  }
+
   async runMaterialGatherTask(
     options: MaterialGatherTaskOptions,
   ): Promise<MaterialGatherTaskResult> {
