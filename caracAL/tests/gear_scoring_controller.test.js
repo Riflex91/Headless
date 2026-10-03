@@ -63,11 +63,7 @@ function makeController({
 
 test("gear scoring reads Adventure Land stats and upgrade levels", () => {
   const setup = makeController({
-    items: [
-      { name: "bow", level: 2 },
-      { name: "hpot1", q: 100 },
-      null,
-    ],
+    items: [{ name: "bow", level: 2 }, { name: "hpot1", q: 100 }, null],
     equipment: {
       helmet: { name: "helmet", level: 0 },
     },
