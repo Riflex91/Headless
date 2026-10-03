@@ -134,6 +134,12 @@ const LOGISTICS_LIVE_TEST_RESULT_TIMEOUT_MS = 120000;
 const MERCHANT_LIVE_TEST_RESULT_TIMEOUT_MS = 120000;
 const MERRIT_LIVE_TEST_RESULT_TIMEOUT_MS = 420000;
 const FISHING_LIVE_TEST_RESULT_TIMEOUT_MS = 20 * 60 * 1000;
+const MATERIAL_GATHER_TASK_RESULT_TIMEOUT_MS = 6 * 60 * 1000;
+const DEFAULT_FISHING_MATERIAL_WORKERS = Object.freeze([
+  "My_Ranger1",
+  "My_Ranger2",
+  "My_Ranger3",
+]);
 const LOGISTICS_CLAIM_RESULT_TIMEOUT_MS = 30000;
 
 //TODO check for invalid session
@@ -273,6 +279,10 @@ function migrate_old_storage(path, localStorage) {
   const fishing_live_test_requests = new Map();
   let fishing_live_test_sequence = 0;
   let fishing_live_test_active = false;
+  const material_gather_task_requests = new Map();
+  let material_gather_task_sequence = 0;
+  const fishing_material_requests = new Map();
+  let material_worker_active_count = 0;
   const logistics_claim_requests = new Map();
   let logistics_claim_sequence = 0;
   let logistics_dispatch_scheduled = false;
@@ -382,7 +392,11 @@ function migrate_old_storage(path, localStorage) {
     ) {
       return { source: merchant, target: farmer };
     }
-    if (["GOLD_PICKUP", "INVENTORY_PRESSURE"].includes(claim?.type)) {
+    if (
+      ["GOLD_PICKUP", "INVENTORY_PRESSURE", "MATERIAL_DELIVERY"].includes(
+        claim?.type,
+      )
+    ) {
       return { source: farmer, target: merchant };
     }
     return { source: null, target: null };
@@ -447,7 +461,12 @@ function migrate_old_storage(path, localStorage) {
 
   function dispatch_merchant_logistics_claim() {
     if (coordinator_shutting_down) return false;
-    if (logistics_live_test_active || fishing_live_test_active) return false;
+    if (
+      logistics_live_test_active ||
+      fishing_live_test_active ||
+      material_worker_active_count > 0
+    )
+      return false;
     if (emergency_stop.snapshot().active) return false;
     if (logistics_claim_requests.size > 0) return false;
 
