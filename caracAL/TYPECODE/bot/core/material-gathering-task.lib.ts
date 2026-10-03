@@ -14,10 +14,9 @@ import type { MovementController } from "./movement-controller.lib";
 export interface MaterialGatherTaskOptions {
   requestId?: string;
   itemName: string;
-  itemLevel: number | null;
+  itemLevel?: number;
   monsterType: string;
   quantity: number;
-  itemLevel?: number;
   recipient: string;
   recipientPosition: {
     map: string;
@@ -38,6 +37,7 @@ export interface MaterialGatherTaskResult {
   durationMs: number;
   worker: string | null;
   itemName: string;
+  itemLevel: number | null;
   monsterType: string;
   quantity: number;
   recipient: string;
