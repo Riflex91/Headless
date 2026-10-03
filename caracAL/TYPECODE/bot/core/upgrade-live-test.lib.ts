@@ -83,6 +83,47 @@ export interface UpgradeLiveTestResult {
   };
 }
 
+export interface UpgradePreflightCandidate {
+  itemSlot: number;
+  itemName: string;
+  level: number;
+  itemGrade: number | null;
+  expectedScrollName: string | null;
+  protected: boolean;
+  protections: string[];
+  matchingScrollSlots: number[];
+  eligible: boolean;
+  reason:
+    | "UPGRADE_PREFLIGHT_READY"
+    | "UPGRADE_PREFLIGHT_ITEM_PROTECTED"
+    | "UPGRADE_PREFLIGHT_ITEM_GRADE_UNKNOWN"
+    | "UPGRADE_PREFLIGHT_MATCHING_SCROLL_MISSING";
+}
+
+export interface UpgradePreflightResult {
+  outcome: "PASS" | "FAIL";
+  reason: "UPGRADE_PREFLIGHT_COMPLETED" | "UPGRADE_PREFLIGHT_RUNTIME_NOT_READY";
+  timestamp: number;
+  character: string | null;
+  inventoryState: string | null;
+  candidates: UpgradePreflightCandidate[];
+  summary: {
+    upgradableItems: number;
+    eligibleCandidates: number;
+    protectedItems: number;
+    unknownGradeItems: number;
+    missingScrollItems: number;
+  };
+  scope: {
+    readOnly: true;
+    upgradeMutationForced: false;
+    offeringMutationForced: false;
+    compoundMutationForced: false;
+    exchangeMutationForced: false;
+    craftMutationForced: false;
+  };
+}
+
 interface UpgradeLiveGameAdapter {
   inventory(): InventorySlotSnapshot[];
   gameData(): Record<string, unknown>;
@@ -278,6 +319,141 @@ export class UpgradeLiveTestRunner {
     this.sleep =
       deps.sleep ||
       ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+  }
+
+  preflight(): UpgradePreflightResult {
+    const timestamp = this.now();
+    const intelligence = this.deps.inventoryIntelligence.tick();
+    const inventoryState =
+      typeof intelligence?.state === "string" ? intelligence.state : null;
+    const ready = ["READY", "EMPTY"].includes(inventoryState || "");
+
+    if (!ready) {
+      return {
+        outcome: "FAIL",
+        reason: "UPGRADE_PREFLIGHT_RUNTIME_NOT_READY",
+        timestamp,
+        character: this.deps.characterName?.() || null,
+        inventoryState,
+        candidates: [],
+        summary: {
+          upgradableItems: 0,
+          eligibleCandidates: 0,
+          protectedItems: 0,
+          unknownGradeItems: 0,
+          missingScrollItems: 0,
+        },
+        scope: {
+          readOnly: true,
+          upgradeMutationForced: false,
+          offeringMutationForced: false,
+          compoundMutationForced: false,
+          exchangeMutationForced: false,
+          craftMutationForced: false,
+        },
+      };
+    }
+
+    const inventory = this.deps.game.inventory();
+    const gameData = this.deps.game.gameData();
+    const intelligenceBySlot = new Map(
+      intelligence.entries.map((entry) => [entry.slot, entry]),
+    );
+    const candidates: UpgradePreflightCandidate[] = [];
+
+    for (const slot of inventory) {
+      const item = slot.item ? record(slot.item) : null;
+      const name = item ? text(item.name) : null;
+      if (!item || !name || !isUpgradableDefinition(gameData, name)) continue;
+
+      const level = nonNegativeInteger(item.level) ?? 0;
+      const intelligenceEntry = intelligenceBySlot.get(slot.slot);
+      const protections = Array.isArray(intelligenceEntry?.protections)
+        ? [...intelligenceEntry.protections]
+        : [];
+      const protectedItem =
+        intelligenceEntry?.protected === true || protections.length > 0;
+      const grade = this.deps.game.itemGrade(item);
+      const expectedScrollName =
+        grade !== null && Number.isInteger(grade) && grade >= 0
+          ? `scroll${grade}`
+          : null;
+      const matchingScrollSlots = expectedScrollName
+        ? inventory
+            .filter((candidate) => candidate.slot !== slot.slot)
+            .filter((candidate) => {
+              const raw = candidate.item ? record(candidate.item) : null;
+              if (!raw || text(raw.name) !== expectedScrollName) return false;
+              const scrollIntelligence = intelligenceBySlot.get(candidate.slot);
+              return (
+                !!scrollIntelligence &&
+                scrollIntelligence.protected !== true &&
+                scrollIntelligence.protections.length === 0
+              );
+            })
+            .map((candidate) => candidate.slot)
+            .sort((left, right) => left - right)
+        : [];
+
+      let reason: UpgradePreflightCandidate["reason"];
+      if (protectedItem) {
+        reason = "UPGRADE_PREFLIGHT_ITEM_PROTECTED";
+      } else if (expectedScrollName === null) {
+        reason = "UPGRADE_PREFLIGHT_ITEM_GRADE_UNKNOWN";
+      } else if (matchingScrollSlots.length === 0) {
+        reason = "UPGRADE_PREFLIGHT_MATCHING_SCROLL_MISSING";
+      } else {
+        reason = "UPGRADE_PREFLIGHT_READY";
+      }
+
+      candidates.push({
+        itemSlot: slot.slot,
+        itemName: name,
+        level,
+        itemGrade: grade,
+        expectedScrollName,
+        protected: protectedItem,
+        protections,
+        matchingScrollSlots,
+        eligible: reason === "UPGRADE_PREFLIGHT_READY",
+        reason,
+      });
+    }
+
+    candidates.sort(
+      (left, right) =>
+        Number(right.eligible) - Number(left.eligible) ||
+        left.itemSlot - right.itemSlot ||
+        left.itemName.localeCompare(right.itemName),
+    );
+
+    return {
+      outcome: "PASS",
+      reason: "UPGRADE_PREFLIGHT_COMPLETED",
+      timestamp,
+      character: this.deps.characterName?.() || null,
+      inventoryState,
+      candidates,
+      summary: {
+        upgradableItems: candidates.length,
+        eligibleCandidates: candidates.filter((entry) => entry.eligible).length,
+        protectedItems: candidates.filter((entry) => entry.protected).length,
+        unknownGradeItems: candidates.filter(
+          (entry) => entry.reason === "UPGRADE_PREFLIGHT_ITEM_GRADE_UNKNOWN",
+        ).length,
+        missingScrollItems: candidates.filter(
+          (entry) => entry.reason === "UPGRADE_PREFLIGHT_MATCHING_SCROLL_MISSING",
+        ).length,
+      },
+      scope: {
+        readOnly: true,
+        upgradeMutationForced: false,
+        offeringMutationForced: false,
+        compoundMutationForced: false,
+        exchangeMutationForced: false,
+        craftMutationForced: false,
+      },
+    };
   }
 
   async run(options: UpgradeLiveTestOptions): Promise<UpgradeLiveTestResult> {
