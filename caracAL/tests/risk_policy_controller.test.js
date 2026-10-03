@@ -1,7 +1,9 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
 const path = require("node:path");
+const prettier = require("prettier");
 const test = require("node:test");
 const { loadTypeScriptModule } = require("./load_typescript_module");
 
@@ -328,3 +330,21 @@ test("Risk Policy supports disabling and event de-duplication", () => {
   assert.equal(second.state, "DISABLED");
   assert.equal(events.length, 1);
 });
+
+// PRETTIER_PROBE_START
+test("temporary Prettier probe", async () => {
+  const source = fs.readFileSync(__filename, "utf8");
+  const cleaned = source
+    .replace('const fs = require("node:fs");\n', "")
+    .replace('const prettier = require("prettier");\n', "")
+    .replace(
+      /\/\/ PRETTIER_PROBE_START[\s\S]*?\/\/ PRETTIER_PROBE_END\n?/,
+      "",
+    );
+  const formatted = await prettier.format(cleaned, { filepath: __filename });
+  console.log("PRETTIER_FORMATTED_START");
+  console.log(formatted);
+  console.log("PRETTIER_FORMATTED_END");
+  assert.ok(formatted.length > 0);
+});
+// PRETTIER_PROBE_END
