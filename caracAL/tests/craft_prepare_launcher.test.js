@@ -281,6 +281,7 @@ test("Craft material launcher accepts an already-ready recipe without a worker",
       deliveryMutationAllowed: false,
       craftMutationAllowed: false,
       blindRetryAllowed: false,
+      mutationScope: "single-craft-material-preparation-only",
     },
     cleanup: {
       runtimeStateRestored: true,
