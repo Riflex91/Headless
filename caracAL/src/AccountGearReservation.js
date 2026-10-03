@@ -147,7 +147,10 @@ function buildAccountGearReservationPlan(
     ([, block]) => block?.account_owned === true,
   );
   const ready = owned.filter(
-    ([, block]) => block?.gear_scoring_runtime?.state === "READY",
+    ([, block]) =>
+      block?.connected === true &&
+      Number.isFinite(block?.bot_runtime_started_at) &&
+      block?.gear_scoring_runtime?.state === "READY",
   );
 
   const claims = [];
