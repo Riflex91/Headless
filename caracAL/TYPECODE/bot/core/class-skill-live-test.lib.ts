@@ -17,6 +17,7 @@ interface SafeLiveProfile {
   skill: SafeSkill;
   module: "RangerSkillController" | "MerchantSkillController";
   unavailableReason: string;
+  cooldownEvidenceRequired: boolean;
 }
 
 const SAFE_LIVE_PROFILES: Record<SafeClass, SafeLiveProfile> = {
@@ -25,12 +26,14 @@ const SAFE_LIVE_PROFILES: Record<SafeClass, SafeLiveProfile> = {
     skill: "track",
     module: "RangerSkillController",
     unavailableReason: "SAFE_RANGER_SKILL_UNAVAILABLE",
+    cooldownEvidenceRequired: true,
   },
   merchant: {
     className: "merchant",
     skill: "massproduction",
     module: "MerchantSkillController",
     unavailableReason: "SAFE_MERCHANT_SKILL_UNAVAILABLE",
+    cooldownEvidenceRequired: false,
   },
 };
 
@@ -125,6 +128,7 @@ export interface ClassSkillLiveTestResult {
     combatMutationForced: false;
     targetMutationForced: false;
     respawnObservedOnlyWhenInitiallyDead: true;
+    cooldownEvidenceRequired: boolean;
   };
   cleanup: {
     classSkillOverrideCleared: boolean;
@@ -242,6 +246,7 @@ export class ClassSkillLiveTestRunner {
         combatMutationForced: false,
         targetMutationForced: false,
         respawnObservedOnlyWhenInitiallyDead: true,
+        cooldownEvidenceRequired: profile?.cooldownEvidenceRequired ?? true,
       },
       cleanup: {
         classSkillOverrideCleared: false,
@@ -380,7 +385,8 @@ export class ClassSkillLiveTestRunner {
           result.classSkill.resourceTelemetryVisible =
             resourceTelemetryVisible(current);
           return (
-            result.classSkill.cooldownObserved &&
+            (!profile.cooldownEvidenceRequired ||
+              result.classSkill.cooldownObserved) &&
             result.classSkill.mpCostObserved &&
             result.classSkill.resourceTelemetryVisible
           );
@@ -390,11 +396,13 @@ export class ClassSkillLiveTestRunner {
       );
 
       if (!evidenceSeen) {
-        result.reason = !result.classSkill.cooldownObserved
-          ? "CLASS_SKILL_COOLDOWN_NOT_OBSERVED"
-          : !result.classSkill.mpCostObserved
-            ? "CLASS_SKILL_MP_COST_NOT_OBSERVED"
-            : "CLASS_SKILL_RESOURCE_TELEMETRY_MISSING";
+        result.reason =
+          profile.cooldownEvidenceRequired &&
+          !result.classSkill.cooldownObserved
+            ? "CLASS_SKILL_COOLDOWN_NOT_OBSERVED"
+            : !result.classSkill.mpCostObserved
+              ? "CLASS_SKILL_MP_COST_NOT_OBSERVED"
+              : "CLASS_SKILL_RESOURCE_TELEMETRY_MISSING";
         return result;
       }
 
