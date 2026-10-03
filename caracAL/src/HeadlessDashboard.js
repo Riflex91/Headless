@@ -107,6 +107,7 @@ function publicCharacterState(name, charBlock = {}) {
     inventory_live_test: charBlock.inventory_live_test || null,
     logistics_live_test: charBlock.logistics_live_test || null,
     merchant_live_test: charBlock.merchant_live_test || null,
+    bank_travel_live_test: charBlock.bank_travel_live_test || null,
     merrit_live_test: charBlock.merrit_live_test || null,
     fishing_live_test: charBlock.fishing_live_test || null,
     fishing_material_request: charBlock.fishing_material_request || null,
@@ -305,6 +306,7 @@ function attachHeadlessDashboard({
   runInventoryLiveTest,
   runLogisticsLiveTest,
   runMerchantLiveTest,
+  runBankTravelLiveTest,
   runMerritLiveTest,
   runFishingLiveTest,
   controlEmergencyStop,
@@ -570,6 +572,30 @@ function attachHeadlessDashboard({
       } catch (error) {
         res.status(Number(error.statusCode) || 500).json({
           error: error.code || "FISHING_LIVE_TEST_FAILED",
+          message: error.message,
+        });
+      }
+    },
+  );
+
+  router.post(
+    "/headless/api/characters/:name/tests/bank-travel",
+    async (req, res) => {
+      if (!runBankTravelLiveTest) {
+        res.status(503).json({ error: "BANK_TRAVEL_LIVE_TEST_UNAVAILABLE" });
+        return;
+      }
+
+      try {
+        const result = await runBankTravelLiveTest(req.params.name);
+        res.json({
+          ok: result?.outcome === "PASS",
+          result,
+          snapshot: getSnapshot(),
+        });
+      } catch (error) {
+        res.status(Number(error.statusCode) || 500).json({
+          error: error.code || "BANK_TRAVEL_LIVE_TEST_FAILED",
           message: error.message,
         });
       }
