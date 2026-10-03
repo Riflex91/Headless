@@ -195,10 +195,7 @@ test("coordinator, thread, dashboard and launcher expose Merrit live path", () =
   assert.match(coordinator, /run_merrit_live_test/);
   assert.match(coordinator, /MERRIT_LIVE_TEST_RESULT_RECEIVED/);
   assert.match(coordinator, /saveCooldown\("account", "merrit"/);
-  assert.match(
-    dashboard,
-    /\/headless\/api\/characters\/:name\/tests\/merrit/,
-  );
+  assert.match(dashboard, /\/headless\/api\/characters\/:name\/tests\/merrit/);
   assert.match(thread, /case "merrit_live_test"/);
   assert.match(thread, /runMerritLiveTest/);
   assert.match(launcher, /selectMerchantLiveTestCharacter/);
