@@ -302,9 +302,6 @@ test("Upgrade live runner requires explicit target and scroll without dispatch",
   });
 
   assert.equal(result.outcome, "FAIL");
-  assert.equal(
-    result.reason,
-    "UPGRADE_LIVE_EXPLICIT_ITEM_AND_SCROLL_REQUIRED",
-  );
+  assert.equal(result.reason, "UPGRADE_LIVE_EXPLICIT_ITEM_AND_SCROLL_REQUIRED");
   assert.equal(setup.executeCalls(), 0);
 });
