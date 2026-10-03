@@ -137,14 +137,14 @@ function makeSetup({
           exchangeStatus === "CONFIRMED"
             ? "EXCHANGE_RESULT_CONFIRMED"
             : exchangeStatus === "UNKNOWN"
-              ? "EXCHANGE_OUTCOME_UNCERTAIN"
-              : "EXCHANGE_API_REJECTED",
+            ? "EXCHANGE_OUTCOME_UNCERTAIN"
+            : "EXCHANGE_API_REJECTED",
         error:
           exchangeStatus === "UNKNOWN"
             ? "uncertain"
             : exchangeStatus === "REJECTED"
-              ? "distance"
-              : null,
+            ? "distance"
+            : null,
         evidence: {
           exchangeSucceeded,
         },
@@ -152,10 +152,15 @@ function makeSetup({
     },
   };
 
-  const exchange = new ExchangeController(game, actions, inventoryIntelligence, {
-    now: () => 1000,
-    config: () => ({ exchange: { enabled: true } }),
-  });
+  const exchange = new ExchangeController(
+    game,
+    actions,
+    inventoryIntelligence,
+    {
+      now: () => 1000,
+      config: () => ({ exchange: { enabled: true } }),
+    },
+  );
 
   let travelCalls = 0;
   const movement = {
