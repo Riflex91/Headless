@@ -36,6 +36,7 @@ function setup({
   let now = 1000;
   let pending = null;
   let travelCalls = 0;
+  let travelDestination = null;
   let buyCalls = 0;
   let sellCalls = 0;
 
@@ -95,6 +96,7 @@ function setup({
   const movement = {
     async smart(request) {
       travelCalls += 1;
+      travelDestination = request.destination;
       if (travelStatus === "CONFIRMED") {
         state.map = "main";
       }
@@ -158,17 +160,19 @@ function setup({
     controller,
     state,
     counts: () => ({ travelCalls, buyCalls, sellCalls }),
+    travelDestination: () => travelDestination,
   };
 }
 
 test("NPC trade round trip buys and sells exactly once with bounded cost", async () => {
-  const { controller, counts } = setup();
+  const { controller, counts, travelDestination } = setup();
   const result = await controller.roundTrip("npc-live-1");
 
   assert.equal(result.outcome, "PASS");
   assert.equal(result.reason, "NPC_TRADING_ROUND_TRIP_SETTLED");
   assert.equal(result.itemName, "hpot0");
   assert.equal(result.unitPrice, 20);
+  assert.equal(travelDestination(), "potions");
   assert.equal(result.travel.settled, true);
   assert.equal(result.buy.settled, true);
   assert.equal(result.sell.settled, true);
@@ -257,4 +261,12 @@ test("safe NPC trade item selection uses cheapest allowlisted item", () => {
     itemName: "mpot0",
     unitPrice: 10,
   });
+});
+
+test("NPC potion items resolve to Adventure Land potions smart-move alias", () => {
+  const { npcVendorDestination } = loadController();
+
+  assert.equal(npcVendorDestination("hpot0"), "potions");
+  assert.equal(npcVendorDestination("mpot0"), "potions");
+  assert.equal(npcVendorDestination("unknown"), null);
 });
