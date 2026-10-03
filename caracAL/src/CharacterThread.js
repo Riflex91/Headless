@@ -236,6 +236,10 @@ async function make_runner(upper, CODE_file, version, is_typescript) {
             quantity: m.quantity,
             recipient: m.recipient,
             recipientPosition: m.recipient_position,
+            purpose:
+              m.purpose === "COMPOUND_TEST_MATERIAL"
+                ? "COMPOUND_TEST_MATERIAL"
+                : "FISHING_MATERIAL",
           })
           .then((result) => {
             sendIpcMessage(process, {
