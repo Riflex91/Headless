@@ -304,6 +304,68 @@ function spawnTypes(value: unknown): string[] {
   return [];
 }
 
+export interface MonsterDropSource {
+  itemName: string;
+  monsterType: string;
+  dropChance: number | null;
+  monsterHp: number | null;
+  score: number;
+}
+
+export function findMonsterDropSources(
+  gameDataValue: Record<string, unknown>,
+  itemName: string,
+): MonsterDropSource[] {
+  const gameData = record(gameDataValue);
+  const itemDefinitions = record(gameData.items);
+  const monsters = record(gameData.monsters);
+  const dropTables = record(gameData.drops);
+  const monsterDropTables = record(dropTables.monsters);
+  const regularSpawns = regularSpawnMonsterTypes(record(gameData.maps));
+  const restrictToRegularSpawns = regularSpawns.size > 0;
+  const result: MonsterDropSource[] = [];
+
+  for (const [monsterType, rawMonster] of Object.entries(monsters)) {
+    if (restrictToRegularSpawns && !regularSpawns.has(monsterType)) continue;
+    const monster = record(rawMonster);
+    const refs = dropReferences(
+      monsterDropTables[monsterType] ??
+        monster.drop ??
+        monster.drops ??
+        monster.loot,
+      itemDefinitions,
+      dropTables,
+    );
+    if (!refs.length) continue;
+
+    const dropChance = bestDropChance(refs, itemName);
+    const itemObserved = refs.some((entry) => entry.itemName === itemName);
+    if (!itemObserved) continue;
+
+    const monsterHp = finite(monster.hp);
+    const chanceWeight =
+      dropChance !== null && dropChance > 0 ? dropChance : 0.000001;
+    const hpWeight =
+      monsterHp !== null && monsterHp > 0 ? monsterHp : 1000000;
+    result.push({
+      itemName,
+      monsterType,
+      dropChance,
+      monsterHp,
+      score: chanceWeight / Math.max(1, hpWeight),
+    });
+  }
+
+  return result.sort(
+    (left, right) =>
+      right.score - left.score ||
+      (right.dropChance ?? -1) - (left.dropChance ?? -1) ||
+      (left.monsterHp ?? Number.MAX_SAFE_INTEGER) -
+        (right.monsterHp ?? Number.MAX_SAFE_INTEGER) ||
+      left.monsterType.localeCompare(right.monsterType),
+  );
+}
+
 function regularSpawnMonsterTypes(
   maps: Record<string, unknown>,
 ): Set<string> {
