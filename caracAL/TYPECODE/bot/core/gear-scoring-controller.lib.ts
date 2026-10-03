@@ -369,6 +369,7 @@ export class GearScoringController {
   ) {
     this.now = options.now || (() => Date.now());
     this.configSource = options.config || (() => ({}));
+    this.onEvent = options.onEvent;
     const characterClass = this.game.character().ctype;
     const config = normalizeConfig(this.configSource(), characterClass);
     this.lastStatus = this.emptyStatus(
