@@ -47,6 +47,7 @@
     intelligence = null,
     gearScore = null,
     futureGear = null,
+    accountReservation = null,
   ) {
     if (!item) return "Leer";
 
@@ -79,6 +80,15 @@
       parts.push(`Future Gear ${delta}${baseline}`);
     }
     if (futureGear?.reason) parts.push(futureGear.reason);
+    if (accountReservation?.reservedForCharacter) {
+      const delta = Number.isFinite(accountReservation.scoreDelta)
+        ? `+${accountReservation.scoreDelta}`
+        : "?";
+      parts.push(
+        `Account Reserved for ${accountReservation.reservedForCharacter} ${delta}`,
+      );
+    }
+    if (accountReservation?.reason) parts.push(accountReservation.reason);
     return parts.join(" · ");
   }
 
@@ -132,16 +142,26 @@
     intelligence = null,
     gearScore = null,
     futureGear = null,
+    accountReservation = null,
     displaySize = 40,
   }) {
     const slot = document.createElement("div");
     slot.className = "live-item-slot";
-    slot.title = itemTitle(item, intelligence, gearScore, futureGear);
+    slot.title = itemTitle(
+      item,
+      intelligence,
+      gearScore,
+      futureGear,
+      accountReservation,
+    );
     if (intelligence?.disposition) {
       slot.dataset.disposition = intelligence.disposition;
     }
     if (futureGear?.candidate) {
       slot.dataset.futureGear = "true";
+    }
+    if (accountReservation?.reservedForCharacter) {
+      slot.dataset.accountReserved = "true";
     }
 
     const key = `${characterName}:${location}:${slotName}`;
@@ -219,6 +239,14 @@
           : "FG";
         candidate.title = futureGear.reason || "FUTURE_GEAR";
         slot.append(candidate);
+      }
+
+      if (accountReservation?.reservedForCharacter) {
+        const reservation = document.createElement("span");
+        reservation.className = "item-account-reservation-badge";
+        reservation.textContent = "AR";
+        reservation.title = `Reserved for ${accountReservation.reservedForCharacter}`;
+        slot.append(reservation);
       }
 
       if (
@@ -334,6 +362,16 @@
         .filter((entry) => Number.isInteger(entry?.inventorySlot))
         .map((entry) => [entry.inventorySlot, entry]),
     );
+    const accountReservations = Array.isArray(
+      character.account_gear_reservation_runtime?.sourceReservations,
+    )
+      ? character.account_gear_reservation_runtime.sourceReservations
+      : [];
+    const reservationBySlot = new Map(
+      accountReservations
+        .filter((entry) => Number.isInteger(entry?.sourceInventorySlot))
+        .map((entry) => [entry.sourceInventorySlot, entry]),
+    );
     const section = document.createElement("section");
     section.className = "inventory-section";
 
@@ -365,6 +403,7 @@
           intelligence: intelligenceBySlot.get(index) || null,
           gearScore: gearBySlot.get(index) || null,
           futureGear: futureGearBySlot.get(index) || null,
+          accountReservation: reservationBySlot.get(index) || null,
         }),
       );
     }
