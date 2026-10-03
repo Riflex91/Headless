@@ -41,6 +41,12 @@ function passResult() {
       allItemsUnprotectedBefore: true,
       scrollUnprotectedBefore: true,
       exactCandidateSelected: true,
+      localPreflightReadOnly: true,
+      compoundOperationIdle: true,
+      itemLocksClear: true,
+      scrollLocksClear: true,
+      mapAllowsCompound: true,
+      runtimeMap: "main",
       actionDispatchedOnce: true,
       actionConfirmed: true,
       mutationObserved: true,
@@ -76,9 +82,25 @@ test("Compound live launcher independently confirms complete PASS evidence", () 
   assert.equal(result.outcome, "PASS");
   assert.equal(result.reason, "COMPOUND_LIVE_E2E_CONFIRMED");
   assert.equal(result.verifier.explicitTargetObserved, true);
+  assert.equal(result.verifier.localPreflightReady, true);
   assert.equal(result.verifier.actionDispatchedOnce, true);
   assert.equal(result.verifier.cleanupComplete, true);
   assert.equal(result.verifier.scopeRestricted, true);
+});
+
+test("Compound live launcher rejects missing local preflight evidence", () => {
+  const source = passResult();
+  source.evidence.compoundOperationIdle = false;
+
+  const result = verifyCompoundLiveResult(source, {
+    itemName: "ring",
+    itemSlots: [2, 7, 9],
+    scrollName: "cscroll0",
+  });
+
+  assert.equal(result.outcome, "FAIL");
+  assert.equal(result.reason, "COMPOUND_LIVE_E2E_EVIDENCE_INCOMPLETE");
+  assert.equal(result.verifier.localPreflightReady, false);
 });
 
 test("Compound live launcher rejects incomplete cleanup", () => {
