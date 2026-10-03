@@ -1403,6 +1403,15 @@ function migrate_old_storage(path, localStorage) {
     }
   }
 
+  function reject_material_gather_tasks_for_character(char_name, reason) {
+    for (const [request_id, pending] of material_gather_task_requests) {
+      if (pending.character !== char_name) continue;
+      clearTimeout(pending.timer);
+      material_gather_task_requests.delete(request_id);
+      pending.reject(new Error(reason));
+    }
+  }
+
   async function wait_for_logistics_claim_idle(
     timeout_ms = LOGISTICS_CLAIM_RESULT_TIMEOUT_MS + 5000,
   ) {
@@ -1883,6 +1892,28 @@ function migrate_old_storage(path, localStorage) {
       }, FISHING_LIVE_TEST_RESULT_TIMEOUT_MS);
 
       fishing_live_test_requests.set(request_id, {
+        character: char_name,
+        resolve,
+        reject,
+        timer,
+      });
+    });
+  }
+
+  function wait_for_material_gather_task_result(char_name, request_id) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        material_gather_task_requests.delete(request_id);
+        reject(
+          make_control_error(
+            "MATERIAL_GATHER_TASK_TIMEOUT",
+            `Material gathering task timed out for ${char_name}`,
+            504,
+          ),
+        );
+      }, MATERIAL_GATHER_TASK_RESULT_TIMEOUT_MS);
+
+      material_gather_task_requests.set(request_id, {
         character: char_name,
         resolve,
         reject,
@@ -5973,6 +6004,10 @@ function migrate_old_storage(path, localStorage) {
         char_name,
         "CHARACTER_PROCESS_EXITED_DURING_FISHING_LIVE_TEST",
       );
+      reject_material_gather_tasks_for_character(
+        char_name,
+        "CHARACTER_PROCESS_EXITED_DURING_MATERIAL_GATHER_TASK",
+      );
       emit_supervisor_event("CHARACTER_PROCESS_EXITED", char_name, {
         code,
         signal,
@@ -6282,6 +6317,37 @@ function migrate_old_storage(path, localStorage) {
           });
           emit_supervisor_event(
             "LOGISTICS_LIVE_TEST_RESULT_RECEIVED",
+            char_name,
+            {
+              request_id: m.request_id,
+              outcome: m.result?.outcome || null,
+              error: m.error || null,
+            },
+          );
+          break;
+        }
+        case "material_gather_task_result": {
+          const pending = material_gather_task_requests.get(m.request_id);
+          if (!pending || pending.character !== char_name) {
+            emit_supervisor_event(
+              "MATERIAL_GATHER_TASK_RESULT_IGNORED",
+              char_name,
+              {
+                why: "UNKNOWN_OR_STALE_REQUEST",
+                request_id: m.request_id || null,
+              },
+            );
+            break;
+          }
+
+          clearTimeout(pending.timer);
+          material_gather_task_requests.delete(m.request_id);
+          pending.resolve({
+            result: m.result || null,
+            error: m.error || null,
+          });
+          emit_supervisor_event(
+            "MATERIAL_GATHER_TASK_RESULT_RECEIVED",
             char_name,
             {
               request_id: m.request_id,
