@@ -103,7 +103,7 @@ interface CompoundGameAdapter {
 }
 
 interface CompoundActionBoundary {
-  compound(request: CompoundRequest): Promise<ActionRecord>;
+  ["compound"]: (request: CompoundRequest) => Promise<ActionRecord>;
 }
 
 interface CompoundInventoryIntelligence {
