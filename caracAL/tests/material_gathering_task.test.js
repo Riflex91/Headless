@@ -269,7 +269,10 @@ test("material worker uses CombatController, loots, and delivers acquired spider
     s.calls.some(([name]) => name === "combatTick"),
     true,
   );
-  assert.equal(s.calls.some(([name]) => name === "loot"), true);
+  assert.equal(
+    s.calls.some(([name]) => name === "loot"),
+    true,
+  );
   assert.equal(
     s.calls.some(([name]) => name === "logistics"),
     true,
