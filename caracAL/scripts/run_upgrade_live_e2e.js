@@ -6,8 +6,7 @@ const {
 } = require("../src/MovementLiveTestLauncher");
 const { readState } = require("./run_gear_scoring_live_e2e");
 
-const baseUrl =
-  process.env.CARACAL_HEADLESS_URL || "http://127.0.0.1:924";
+const baseUrl = process.env.CARACAL_HEADLESS_URL || "http://127.0.0.1:924";
 
 function record(value) {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -51,10 +50,8 @@ function combineUpgradeSupervisorResult(source) {
       typeof result.target?.scrollName === "string" &&
       !!result.target.scrollName &&
       Number.isInteger(result.target?.scrollSlot),
-    inventoryIntelligenceReady:
-      evidence.inventoryIntelligenceReady === true,
-    itemDefinitionUpgradable:
-      evidence.itemDefinitionUpgradable === true,
+    inventoryIntelligenceReady: evidence.inventoryIntelligenceReady === true,
+    itemDefinitionUpgradable: evidence.itemDefinitionUpgradable === true,
     itemUnprotectedBefore: evidence.itemUnprotectedBefore === true,
     scrollUnprotectedBefore: evidence.scrollUnprotectedBefore === true,
     exactCandidateSelected: evidence.exactCandidateSelected === true,
@@ -66,8 +63,7 @@ function combineUpgradeSupervisorResult(source) {
       !!lastAction.id,
     itemStateChanged,
     scrollStateChanged,
-    mutationObserved:
-      evidence.mutationObserved === true && mutationObserved,
+    mutationObserved: evidence.mutationObserved === true && mutationObserved,
     blindRetryAvoided: evidence.blindRetryAvoided === true,
     offeringOmitted: evidence.offeringOmitted === true,
     cleanupComplete:
