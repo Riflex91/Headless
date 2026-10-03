@@ -3,6 +3,7 @@
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
+const prettier = require("prettier");
 const test = require("node:test");
 
 const {
@@ -303,3 +304,20 @@ test("Risk Policy live launcher stays on the read-only Gear Scoring probe", () =
   assert.doesNotMatch(launcher, /executeNext/);
 });
 
+
+// PRETTIER_RISK_LIVE_TEST_PROBE_START
+test("temporary Risk Policy live test Prettier probe", async () => {
+  const source = fs.readFileSync(__filename, "utf8");
+  const cleaned = source
+    .replace('const prettier = require("prettier");\n', "")
+    .replace(
+      /\/\/ PRETTIER_RISK_LIVE_TEST_PROBE_START[\s\S]*?\/\/ PRETTIER_RISK_LIVE_TEST_PROBE_END\n?/,
+      "",
+    );
+  const formatted = await prettier.format(cleaned, { filepath: __filename });
+  console.log("RISK_LIVE_TEST_PRETTIER_START");
+  console.log(formatted);
+  console.log("RISK_LIVE_TEST_PRETTIER_END");
+  assert.ok(formatted.length > 0);
+});
+// PRETTIER_RISK_LIVE_TEST_PROBE_END
