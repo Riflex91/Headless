@@ -171,10 +171,7 @@ test("Exchange preflight reports insufficient quantity without dispatching", () 
   assert.equal(result.summary.exchangeDispositionItems, 1);
   assert.equal(result.summary.eligibleCandidates, 0);
   assert.equal(result.summary.insufficientQuantityItems, 1);
-  assert.equal(
-    result.candidates[0].reason,
-    "EXCHANGE_QUANTITY_INSUFFICIENT",
-  );
+  assert.equal(result.candidates[0].reason, "EXCHANGE_QUANTITY_INSUFFICIENT");
   assert.equal(setup.exchangeCalls(), 0);
 });
 
