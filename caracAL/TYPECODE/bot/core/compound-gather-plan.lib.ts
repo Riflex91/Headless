@@ -1,6 +1,11 @@
+import type { InventorySlotSnapshot } from "./game-adapter.lib";
+
 export interface CompoundGatherCandidate {
+  source: "MERCHANT_INVENTORY" | "MONSTER_DROP";
   itemName: string;
-  monsterType: string;
+  itemLevel: number;
+  itemSlots: number[];
+  monsterType: string | null;
   itemGrade: number;
   scrollName: string;
   dropChance: number | null;
@@ -30,6 +35,7 @@ interface CompoundGatherGame {
     x?: unknown;
     y?: unknown;
   };
+  inventory?(): InventorySlotSnapshot[];
 }
 
 interface DropReference {
@@ -50,6 +56,15 @@ function text(value: unknown): string | null {
 function finite(value: unknown): number | null {
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
+}
+
+function nonNegativeInteger(value: unknown): number | null {
+  const number = Number(value);
+  return Number.isFinite(number) &&
+    Number.isInteger(number) &&
+    number >= 0
+    ? number
+    : null;
 }
 
 function probability(value: unknown): number | null {
@@ -303,6 +318,88 @@ function observerPosition(
   return map && x !== null && y !== null ? { map, x, y } : null;
 }
 
+function inventoryTripleCandidates(
+  game: CompoundGatherGame,
+  itemDefinitions: Record<string, unknown>,
+): CompoundGatherCandidate[] {
+  if (!game.inventory) return [];
+
+  const groups = new Map<
+    string,
+    {
+      itemName: string;
+      itemLevel: number;
+      entries: Array<{ slot: number; item: Record<string, unknown> }>;
+    }
+  >();
+
+  for (const entry of game.inventory()) {
+    if (!entry.item) continue;
+    const item = record(entry.item);
+    const itemName = text(item.name);
+    if (!itemName) continue;
+
+    const definition = record(itemDefinitions[itemName]);
+    if (!Object.prototype.hasOwnProperty.call(definition, "compound")) {
+      continue;
+    }
+
+    const itemLevel = nonNegativeInteger(item.level) ?? 0;
+    const key = JSON.stringify([itemName, itemLevel]);
+    const group = groups.get(key) || {
+      itemName,
+      itemLevel,
+      entries: [],
+    };
+    group.entries.push({ slot: entry.slot, item });
+    groups.set(key, group);
+  }
+
+  const result: CompoundGatherCandidate[] = [];
+  for (const group of groups.values()) {
+    const entries = group.entries
+      .slice()
+      .sort((left, right) => left.slot - right.slot);
+    if (entries.length < 3) continue;
+
+    const selected = entries.slice(0, 3);
+    const grades = selected.map((entry) => game.itemGrade(entry.item));
+    if (
+      grades.some(
+        (grade) =>
+          grade === null ||
+          !Number.isInteger(grade) ||
+          Number(grade) < 0,
+      ) ||
+      !grades.every((grade) => grade === grades[0])
+    ) {
+      continue;
+    }
+
+    const itemGrade = grades[0] as number;
+    result.push({
+      source: "MERCHANT_INVENTORY",
+      itemName: group.itemName,
+      itemLevel: group.itemLevel,
+      itemSlots: selected.map((entry) => entry.slot),
+      monsterType: null,
+      itemGrade,
+      scrollName: `cscroll${itemGrade}`,
+      dropChance: null,
+      monsterHp: null,
+      score: 0,
+    });
+  }
+
+  return result.sort(
+    (left, right) =>
+      (left.itemSlots[0] ?? Number.MAX_SAFE_INTEGER) -
+        (right.itemSlots[0] ?? Number.MAX_SAFE_INTEGER) ||
+      left.itemName.localeCompare(right.itemName) ||
+      left.itemLevel - right.itemLevel,
+  );
+}
+
 function compoundableItemNames(
   itemDefinitions: Record<string, unknown>,
 ): string[] {
@@ -326,7 +423,10 @@ export function planCompoundGatherTarget(
   const regularSpawns = regularSpawnMonsterTypes(record(gameData.maps));
   const restrictToRegularSpawns = regularSpawns.size > 0;
   const position = observerPosition(game);
-  const candidates: CompoundGatherCandidate[] = [];
+  const candidates: CompoundGatherCandidate[] = inventoryTripleCandidates(
+    game,
+    itemDefinitions,
+  );
 
   for (const [monsterType, rawMonster] of Object.entries(monsters)) {
     if (restrictToRegularSpawns && !regularSpawns.has(monsterType)) continue;
@@ -360,7 +460,10 @@ export function planCompoundGatherTarget(
       const hpWeight =
         monsterHp !== null && monsterHp > 0 ? monsterHp : 1000000;
       candidates.push({
+        source: "MONSTER_DROP",
         itemName,
+        itemLevel: 0,
+        itemSlots: [],
         monsterType,
         itemGrade,
         scrollName: `cscroll${itemGrade}`,
@@ -371,15 +474,27 @@ export function planCompoundGatherTarget(
     }
   }
 
-  candidates.sort(
-    (left, right) =>
+  candidates.sort((left, right) => {
+    if (left.source !== right.source) {
+      return left.source === "MERCHANT_INVENTORY" ? -1 : 1;
+    }
+    if (left.source === "MERCHANT_INVENTORY") {
+      return (
+        (left.itemSlots[0] ?? Number.MAX_SAFE_INTEGER) -
+          (right.itemSlots[0] ?? Number.MAX_SAFE_INTEGER) ||
+        left.itemName.localeCompare(right.itemName) ||
+        left.itemLevel - right.itemLevel
+      );
+    }
+    return (
       right.score - left.score ||
       (right.dropChance ?? -1) - (left.dropChance ?? -1) ||
       (left.monsterHp ?? Number.MAX_SAFE_INTEGER) -
         (right.monsterHp ?? Number.MAX_SAFE_INTEGER) ||
       left.itemName.localeCompare(right.itemName) ||
-      left.monsterType.localeCompare(right.monsterType),
-  );
+      (left.monsterType || "").localeCompare(right.monsterType || "")
+    );
+  });
 
   return candidates.length
     ? {
