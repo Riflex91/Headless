@@ -84,6 +84,11 @@ const {
   merchantLiveTestDiagnostics,
   merchantLiveTestEvidence,
 } = require("../src/MerchantLiveTest");
+const {
+  combineMerritLiveTestResult,
+  merritLiveTestDiagnostics,
+  merritLiveTestEvidence,
+} = require("../src/MerritLiveTest");
 const { PersistenceService } = require("../src/PersistenceService");
 const { CharacterConfigService } = require("../src/CharacterConfigService");
 const { MerchantLogisticsPlanner } = require("../src/MerchantLogisticsPlanner");
@@ -122,6 +127,7 @@ const FARM_LIVE_TEST_RESULT_TIMEOUT_MS = 120000;
 const INVENTORY_LIVE_TEST_RESULT_TIMEOUT_MS = 120000;
 const LOGISTICS_LIVE_TEST_RESULT_TIMEOUT_MS = 120000;
 const MERCHANT_LIVE_TEST_RESULT_TIMEOUT_MS = 120000;
+const MERRIT_LIVE_TEST_RESULT_TIMEOUT_MS = 420000;
 const LOGISTICS_CLAIM_RESULT_TIMEOUT_MS = 30000;
 
 //TODO check for invalid session
@@ -256,6 +262,8 @@ function migrate_old_storage(path, localStorage) {
   let logistics_live_test_active = false;
   const merchant_live_test_requests = new Map();
   let merchant_live_test_sequence = 0;
+  const merrit_live_test_requests = new Map();
+  let merrit_live_test_sequence = 0;
   const logistics_claim_requests = new Map();
   let logistics_claim_sequence = 0;
   let logistics_dispatch_scheduled = false;
@@ -303,6 +311,7 @@ function migrate_old_storage(path, localStorage) {
         runInventoryLiveTest: run_inventory_live_test,
         runLogisticsLiveTest: run_logistics_live_test,
         runMerchantLiveTest: run_merchant_live_test,
+        runMerritLiveTest: run_merrit_live_test,
         controlEmergencyStop: control_emergency_stop,
         getEmergencyStopState: () => emergency_stop.snapshot(),
         getRevisionSummary: revision_summary,
