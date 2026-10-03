@@ -8,6 +8,7 @@ const test = require("node:test");
 const {
   combineFutureGearSupervisorResult,
   decisionMatches,
+  decisionEvidenceComplete,
   evidenceComplete,
   futureGearEvidence,
 } = require("../scripts/run_future_gear_live_e2e");
@@ -174,6 +175,31 @@ test("Future Gear live verification does not require an artificial positive cand
   assert.equal(result.evidence.candidateCount, 0);
   assert.equal(result.evidence.decisionEntriesObserved, true);
   assert.equal(result.evidence.allDecisionsRecomputed, true);
+});
+
+test("Future Gear live verification tolerates Inventory Intelligence startup lag before settle", () => {
+  const before = snapshot();
+  before.inventoryIntelligence = null;
+  const beforeEvidence = futureGearEvidence(before);
+
+  assert.equal(beforeEvidence.gearScoringReady, true);
+  assert.equal(beforeEvidence.futureGearProjectionVisible, true);
+  assert.equal(beforeEvidence.inventoryIntelligenceReady, false);
+  assert.equal(decisionEvidenceComplete(beforeEvidence), true);
+  assert.equal(evidenceComplete(beforeEvidence), false);
+
+  const result = combineFutureGearSupervisorResult(
+    supervisorResult({
+      before,
+      after: snapshot(),
+    }),
+  );
+
+  assert.equal(result.outcome, "PASS");
+  assert.equal(result.reason, "FUTURE_GEAR_LIVE_E2E_CONFIRMED");
+  assert.equal(result.evidence.projectionWasReadyBeforeSettle, true);
+  assert.equal(result.evidence.inventoryIntelligenceReady, true);
+  assert.equal(result.evidence.candidateProtectionComplete, true);
 });
 
 test("Future Gear live verification rejects an invented candidate decision", () => {
