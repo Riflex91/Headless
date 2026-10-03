@@ -114,6 +114,12 @@ import {
   BankTravelLiveTestResult,
   BankTravelLiveTestRunner,
 } from "./bank-travel-live-test.lib";
+import { BankGoldSettlementController } from "./bank-gold-settlement.lib";
+import {
+  BankGoldLiveTestOptions,
+  BankGoldLiveTestResult,
+  BankGoldLiveTestRunner,
+} from "./bank-gold-live-test.lib";
 
 const INVENTORY_INTELLIGENCE_JOB_ID = "inventory-intelligence-loop";
 const INVENTORY_INTELLIGENCE_INTERVAL_MS = 1000;
@@ -187,6 +193,7 @@ export class BotRuntimeKernel {
   readonly inventoryIntelligence: InventoryIntelligenceController;
   readonly merchantAutonomy: MerchantAutonomyController;
   readonly bankTravel: BankTravelController;
+  readonly bankGoldSettlement: BankGoldSettlementController;
   readonly merchantMerrit: MerchantMerritController;
   readonly merchantFishing: MerchantFishingController;
 
@@ -201,6 +208,7 @@ export class BotRuntimeKernel {
   private logisticsLiveTestRunning = false;
   private merchantLiveTestRunning = false;
   private bankTravelLiveTestRunning = false;
+  private bankGoldLiveTestRunning = false;
   private merritLiveTestRunning = false;
   private fishingLiveTestRunning = false;
   private materialGatherTaskRunning = false;
@@ -300,6 +308,10 @@ export class BotRuntimeKernel {
       config: () => runtimeConfig?.config || {},
       onEvent: (event) => this.handleBankTravelEvent(event),
     });
+    this.bankGoldSettlement = new BankGoldSettlementController(
+      this.game,
+      this.actions,
+    );
     this.merchantMerrit = new MerchantMerritController(
       this.game,
       this.actions,
@@ -342,14 +354,7 @@ export class BotRuntimeKernel {
       },
     });
 
-    this.scheduler.register({
-      id: MERCHANT_AUTONOMY_JOB_ID,
-      intervalMs: MERCHANT_AUTONOMY_INTERVAL_MS,
-      priority: 75,
-      tick: () => {
-        this.merchantAutonomy.tick();
-      },
-    });
+    this.registerMerchantAutonomyJob();
     this.registerBankTravelJob();
     this.registerMerritJob();
     this.registerFishingJob();
@@ -1376,6 +1381,119 @@ export class BotRuntimeKernel {
     }
   }
 
+  async runBankGoldLiveTest(
+    options: BankGoldLiveTestOptions = {},
+  ): Promise<BankGoldLiveTestResult> {
+    if (this.bankGoldLiveTestRunning) {
+      throw new Error("bank gold live test already running");
+    }
+    if (this.bankTravelLiveTestRunning) {
+      throw new Error("bank travel live test is running");
+    }
+    if (this.merritLiveTestRunning || this.fishingLiveTestRunning) {
+      throw new Error("merchant travel activity is running");
+    }
+    if (
+      this.movementLiveTestRunning ||
+      this.combatLiveTestRunning ||
+      this.classSkillLiveTestRunning ||
+      this.groupLiveTestRunning ||
+      this.merchantLiveTestRunning
+    ) {
+      throw new Error("movement, combat, or merchant live test is running");
+    }
+    if (
+      this.farmLiveTestRunning ||
+      this.inventoryLiveTestRunning ||
+      this.logisticsLiveTestRunning ||
+      this.logisticsClaimRunning
+    ) {
+      throw new Error("another live or logistics test is running");
+    }
+    if (!this.started || this.stopping) {
+      throw new Error("runtime is not ready for bank gold live test");
+    }
+    if (runtimeState() !== "RUNNING") {
+      throw new Error("runtime must be RUNNING for bank gold live test");
+    }
+
+    const character = this.game.character();
+    if (character.ctype !== "merchant") {
+      throw new Error("bank gold live test requires merchant character");
+    }
+
+    this.bankGoldLiveTestRunning = true;
+    const requestId = options.requestId || `bank-gold-live-${Date.now()}`;
+    const suspended = {
+      merchantAutonomy: this.scheduler.unregister(MERCHANT_AUTONOMY_JOB_ID),
+      bankTravel: this.scheduler.unregister(BANK_TRAVEL_JOB_ID),
+      fishing: this.scheduler.unregister(FISHING_AUTONOMY_JOB_ID),
+      merrit: this.scheduler.unregister(MERRIT_AUTONOMY_JOB_ID),
+      groupCombat: this.scheduler.unregister(GROUP_COMBAT_JOB_ID),
+      classSkill: this.scheduler.unregister(CLASS_SKILL_JOB_ID),
+      combat: this.scheduler.unregister(COMBAT_JOB_ID),
+    };
+
+    this.eventBus.emit({
+      module: "BankGoldLiveTest",
+      type: "BANK_GOLD_LIVE_TEST_STARTED",
+      why: "PHASE13_BANK_GOLD_SETTLEMENT_E2E",
+      correlationId: requestId,
+      data: {
+        requestId,
+        amount: options.amount ?? 1,
+        bankTravel: this.bankTravel.status(),
+        suspended,
+        ...runtimeIdentity(),
+      },
+    });
+
+    try {
+      const runner = new BankGoldLiveTestRunner({
+        bankTravel: this.bankTravel,
+        bankGold: this.bankGoldSettlement,
+      });
+      const result = await runner.run({
+        ...options,
+        requestId,
+      });
+      this.eventBus.emit({
+        module: "BankGoldLiveTest",
+        type: "BANK_GOLD_LIVE_TEST_COMPLETED",
+        why: result.reason,
+        correlationId: requestId,
+        data: {
+          result,
+          bankTravel: this.bankTravel.status(),
+          suspended,
+        },
+      });
+      return result;
+    } catch (error) {
+      this.eventBus.emit({
+        module: "BankGoldLiveTest",
+        type: "BANK_GOLD_LIVE_TEST_FAILED",
+        why: "BANK_GOLD_LIVE_TEST_RUNTIME_ERROR",
+        correlationId: requestId,
+        data: {
+          error: error instanceof Error ? error.message : String(error),
+          bankTravel: this.bankTravel.status(),
+          suspended,
+        },
+      });
+      throw error;
+    } finally {
+      if (suspended.merchantAutonomy) this.registerMerchantAutonomyJob();
+      if (suspended.bankTravel) this.registerBankTravelJob();
+      if (suspended.merrit) this.registerMerritJob();
+      if (suspended.fishing) this.registerFishingJob();
+      if (suspended.groupCombat) this.registerGroupCombatJob();
+      if (suspended.classSkill) this.registerClassSkillJob();
+      if (suspended.combat) this.registerCombatJob();
+      this.bankGoldLiveTestRunning = false;
+    }
+  }
+
   async runBankTravelLiveTest(
     options: BankTravelLiveTestOptions = {},
   ): Promise<BankTravelLiveTestResult> {
@@ -1668,6 +1786,18 @@ export class BotRuntimeKernel {
     } finally {
       this.merchantLiveTestRunning = false;
     }
+  }
+
+  private registerMerchantAutonomyJob(): void {
+    if (this.scheduler.has(MERCHANT_AUTONOMY_JOB_ID)) return;
+    this.scheduler.register({
+      id: MERCHANT_AUTONOMY_JOB_ID,
+      intervalMs: MERCHANT_AUTONOMY_INTERVAL_MS,
+      priority: 75,
+      tick: () => {
+        this.merchantAutonomy.tick();
+      },
+    });
   }
 
   private registerBankTravelJob(): void {
