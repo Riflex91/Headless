@@ -245,3 +245,31 @@ test("inventory intelligence can be disabled and only emits on changes", () => {
   assert.equal(status.state, "DISABLED");
   assert.equal(events.length, 1);
 });
+
+test("inventory intelligence protects dynamically detected Future Gear slots", () => {
+  const setup = makeController({
+    items: [{ name: "candidate_bow", level: 2 }],
+    gameData: {
+      items: {
+        candidate_bow: {
+          type: "weapon",
+          wtype: "bow",
+          attack: 20,
+        },
+      },
+    },
+    inventory: {
+      intelligence: { enabled: true },
+    },
+  });
+
+  setup.controller.setDynamicFutureGearSlots([0]);
+  const status = setup.controller.tick();
+  const entry = status.entries[0];
+
+  assert.equal(entry.disposition, "GEAR");
+  assert.equal(entry.protected, true);
+  assert.deepEqual(entry.protections, ["FUTURE_GEAR"]);
+  assert.equal(status.summary.protections.FUTURE_GEAR, 1);
+});
+
