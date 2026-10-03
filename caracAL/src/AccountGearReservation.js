@@ -94,9 +94,18 @@ function targetBaseline(sourceEntry, targetBlock) {
   );
 }
 
-function claimFor(sourceName, sourceBlock, sourceEntry, targetName, targetBlock) {
+function claimFor(
+  sourceName,
+  sourceBlock,
+  sourceEntry,
+  targetName,
+  targetBlock,
+) {
   if (sourceName === targetName) return null;
-  if (sourceBlock?.account_owned !== true || targetBlock?.account_owned !== true) {
+  if (
+    sourceBlock?.account_owned !== true ||
+    targetBlock?.account_owned !== true
+  ) {
     return null;
   }
 
@@ -171,7 +180,9 @@ function buildAccountGearReservationPlan(
 
   for (const [sourceName, sourceBlock] of ready) {
     const sourceClass = characterClass(sourceBlock);
-    const sourceEntries = Array.isArray(sourceBlock?.gear_scoring_runtime?.entries)
+    const sourceEntries = Array.isArray(
+      sourceBlock?.gear_scoring_runtime?.entries,
+    )
       ? sourceBlock.gear_scoring_runtime.entries.filter(
           (entry) => entry?.location === "INVENTORY",
         )
@@ -267,13 +278,12 @@ function reservationProjectionForCharacter(plan, characterName) {
     timestamp: plan?.timestamp || Date.now(),
     enabled: plan?.enabled !== false,
     state: plan?.state || "EMPTY",
-    reason:
-      plan?.reason || "ACCOUNT_GEAR_RESERVATION_INSUFFICIENT_PROJECTIONS",
+    reason: plan?.reason || "ACCOUNT_GEAR_RESERVATION_INSUFFICIENT_PROJECTIONS",
     sameClassOnly: plan?.sameClassOnly !== false,
     sourceReservations,
     targetReservations,
     summary: {
-      ...(record(plan?.summary)),
+      ...record(plan?.summary),
       sourceReservations: sourceReservations.length,
       targetReservations: targetReservations.length,
     },
@@ -281,8 +291,8 @@ function reservationProjectionForCharacter(plan, characterName) {
 }
 
 function reservedSlotsForCharacter(plan, characterName) {
-  return reservationProjectionForCharacter(plan, characterName).sourceReservations
-    .map((entry) => entry.sourceInventorySlot)
+  return reservationProjectionForCharacter(plan, characterName)
+    .sourceReservations.map((entry) => entry.sourceInventorySlot)
     .filter((slot) => Number.isInteger(slot) && slot >= 0)
     .sort((left, right) => left - right);
 }
