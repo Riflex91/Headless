@@ -1,32 +1,63 @@
 "use strict";
 
+function liveProfile(charBlock = {}) {
+  const projection = charBlock.class_skill_runtime || null;
+  const ctype =
+    charBlock.account_character_type ||
+    charBlock.live_state?.ctype ||
+    projection?.className ||
+    null;
+
+  if (ctype === "merchant") {
+    return {
+      className: "merchant",
+      module: "MerchantSkillController",
+      skill: "massproduction",
+      navigationReason: "SAFE_NON_TARGET_MERCHANT_SKILL",
+    };
+  }
+
+  return {
+    className: "ranger",
+    module: "RangerSkillController",
+    skill: "track",
+    navigationReason: "SAFE_NON_TARGET_RANGER_SKILL",
+  };
+}
+
 function classSkillLiveTestEvidence(events = [], charBlock = {}) {
+  const profile = liveProfile(charBlock);
   const runtimeEvents = (events || []).filter(
     (event) => event?.source === "bot_runtime",
   );
   const classSkillEvents = runtimeEvents.filter(
-    (event) => event?.module === "RangerSkillController",
+    (event) => event?.module === profile.module,
   );
   const types = runtimeEvents.map((event) => event.type);
   const actionEvents = classSkillEvents.filter(
     (event) =>
-      event.type === "CLASS_SKILL_ACTION" && event.data?.skill === "track",
+      event.type === "CLASS_SKILL_ACTION" &&
+      event.data?.skill === profile.skill,
   );
   const projection = charBlock.class_skill_runtime || null;
+  const confirmedSkill = actionEvents.some(
+    (event) => event.data?.actionStatus === "CONFIRMED",
+  );
 
   return {
+    testedClass: profile.className,
+    safeSkill: profile.skill,
     classSkillTestStarted: types.includes("CLASS_SKILL_LIVE_TEST_STARTED"),
     actionEvents: actionEvents.length,
-    confirmedTrack: actionEvents.some(
-      (event) => event.data?.actionStatus === "CONFIRMED",
-    ),
+    confirmedSkill,
+    confirmedTrack: profile.skill === "track" && confirmedSkill,
     classSkillTestCompleted: types.includes("CLASS_SKILL_LIVE_TEST_COMPLETED"),
     classSkillProjectionVisible:
       !!projection &&
-      projection.className === "ranger" &&
-      projection.module === "RangerSkillController",
+      projection.className === profile.className &&
+      projection.module === profile.module,
     confirmedActionProjection:
-      projection?.lastAction?.skill === "track" &&
+      projection?.lastAction?.skill === profile.skill &&
       projection?.lastAction?.status === "CONFIRMED",
   };
 }
@@ -35,7 +66,7 @@ function evidenceComplete(evidence) {
   return (
     evidence?.classSkillTestStarted === true &&
     Number(evidence?.actionEvents) >= 1 &&
-    evidence?.confirmedTrack === true &&
+    evidence?.confirmedSkill === true &&
     evidence?.classSkillTestCompleted === true &&
     evidence?.classSkillProjectionVisible === true &&
     evidence?.confirmedActionProjection === true
@@ -68,6 +99,14 @@ function classSkillLiveTestDiagnostics(
 ) {
   const runtime = result || {};
   const supervisor = evidence || runtime.supervisor || {};
+  const expectedClass =
+    runtime.scope?.testedClass || supervisor.testedClass || "ranger";
+  const expectedSkill =
+    runtime.scope?.safeSkill || supervisor.safeSkill || "track";
+  const navigationReason =
+    expectedClass === "merchant"
+      ? "SAFE_NON_TARGET_MERCHANT_SKILL"
+      : "SAFE_NON_TARGET_RANGER_SKILL";
 
   return {
     test_id: runtime.requestId || runtime.request_id || null,
@@ -96,7 +135,7 @@ function classSkillLiveTestDiagnostics(
     },
     navigation: {
       required: false,
-      reason: "SAFE_NON_TARGET_RANGER_SKILL",
+      reason: navigationReason,
     },
     actions: {
       skill: runtime.classSkill?.selectedSkill || null,
@@ -108,8 +147,8 @@ function classSkillLiveTestDiagnostics(
       supervisor,
     },
     expected: {
-      class: "ranger",
-      skill: "track",
+      class: expectedClass,
+      skill: expectedSkill,
       action_confirmed: true,
       cooldown_observed: true,
       mp_cost_observed: true,
