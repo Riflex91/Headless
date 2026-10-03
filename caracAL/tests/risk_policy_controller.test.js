@@ -50,25 +50,24 @@ function expectedValueStatus(estimates = []) {
     (entry) => entry.decision === "UNKNOWN",
   ).length;
   const evaluated = estimates.length - unknown;
+  let state = "READY";
+  let reason = "EXPECTED_VALUE_READY";
+  if (estimates.length === 0) {
+    state = "EMPTY";
+    reason = "EXPECTED_VALUE_NO_CANDIDATES";
+  } else if (unknown > 0 && evaluated > 0) {
+    state = "PARTIAL";
+    reason = "EXPECTED_VALUE_PARTIAL";
+  } else if (unknown > 0) {
+    state = "EMPTY";
+    reason = "EXPECTED_VALUE_MODEL_INPUT_UNKNOWN";
+  }
+
   return {
     timestamp: 1000,
     enabled: true,
-    state:
-      estimates.length === 0
-        ? "EMPTY"
-        : unknown > 0
-        ? evaluated > 0
-          ? "PARTIAL"
-          : "EMPTY"
-        : "READY",
-    reason:
-      estimates.length === 0
-        ? "EXPECTED_VALUE_NO_CANDIDATES"
-        : unknown > 0
-        ? evaluated > 0
-          ? "EXPECTED_VALUE_PARTIAL"
-          : "EXPECTED_VALUE_MODEL_INPUT_UNKNOWN"
-        : "EXPECTED_VALUE_READY",
+    state,
+    reason,
     model: {
       valueModel: "ADVENTURE_LAND_INTRINSIC_GOLD_VALUE",
       probabilityModel: "OFFICIAL_BASE_NO_DYNAMIC_GRACE_NO_OFFERING",
