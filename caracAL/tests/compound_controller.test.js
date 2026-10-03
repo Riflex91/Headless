@@ -219,10 +219,7 @@ test("Compound requires explicit max-level and grade-scroll policies", () => {
     },
   }).controller.tick();
   assert.equal(noMax.state, "EMPTY");
-  assert.equal(
-    noMax.decisions[0].reason,
-    "COMPOUND_MAX_LEVEL_POLICY_MISSING",
-  );
+  assert.equal(noMax.decisions[0].reason, "COMPOUND_MAX_LEVEL_POLICY_MISSING");
 
   const noScroll = makeController({
     config: {
@@ -233,10 +230,7 @@ test("Compound requires explicit max-level and grade-scroll policies", () => {
     },
   }).controller.tick();
   assert.equal(noScroll.state, "EMPTY");
-  assert.equal(
-    noScroll.decisions[0].reason,
-    "COMPOUND_SCROLL_POLICY_MISSING",
-  );
+  assert.equal(noScroll.decisions[0].reason, "COMPOUND_SCROLL_POLICY_MISSING");
 });
 
 test("Compound rejects wrong scroll grade and non-compoundable definitions", () => {
