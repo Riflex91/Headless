@@ -84,6 +84,11 @@ const {
   merchantLiveTestDiagnostics,
   merchantLiveTestEvidence,
 } = require("../src/MerchantLiveTest");
+const {
+  combineMerritLiveTestResult,
+  merritLiveTestDiagnostics,
+  merritLiveTestEvidence,
+} = require("../src/MerritLiveTest");
 const { PersistenceService } = require("../src/PersistenceService");
 const { CharacterConfigService } = require("../src/CharacterConfigService");
 const { MerchantLogisticsPlanner } = require("../src/MerchantLogisticsPlanner");
@@ -122,6 +127,7 @@ const FARM_LIVE_TEST_RESULT_TIMEOUT_MS = 120000;
 const INVENTORY_LIVE_TEST_RESULT_TIMEOUT_MS = 120000;
 const LOGISTICS_LIVE_TEST_RESULT_TIMEOUT_MS = 120000;
 const MERCHANT_LIVE_TEST_RESULT_TIMEOUT_MS = 120000;
+const MERRIT_LIVE_TEST_RESULT_TIMEOUT_MS = 420000;
 const LOGISTICS_CLAIM_RESULT_TIMEOUT_MS = 30000;
 
 //TODO check for invalid session
@@ -256,6 +262,8 @@ function migrate_old_storage(path, localStorage) {
   let logistics_live_test_active = false;
   const merchant_live_test_requests = new Map();
   let merchant_live_test_sequence = 0;
+  const merrit_live_test_requests = new Map();
+  let merrit_live_test_sequence = 0;
   const logistics_claim_requests = new Map();
   let logistics_claim_sequence = 0;
   let logistics_dispatch_scheduled = false;
@@ -303,6 +311,7 @@ function migrate_old_storage(path, localStorage) {
         runInventoryLiveTest: run_inventory_live_test,
         runLogisticsLiveTest: run_logistics_live_test,
         runMerchantLiveTest: run_merchant_live_test,
+        runMerritLiveTest: run_merrit_live_test,
         controlEmergencyStop: control_emergency_stop,
         getEmergencyStopState: () => emergency_stop.snapshot(),
         getRevisionSummary: revision_summary,
@@ -758,6 +767,34 @@ function migrate_old_storage(path, localStorage) {
     }
 
     if (
+      char_block &&
+      normalized.data?.merchantMerrit &&
+      typeof normalized.data.merchantMerrit === "object"
+    ) {
+      char_block.merrit_runtime = normalized.data.merchantMerrit;
+    }
+
+    if (
+      normalized.module === "MerchantMerritController" &&
+      normalized.type === "MERRIT_PARCEL_CONFIRMED" &&
+      Number.isFinite(Number(normalized.data?.readyAt))
+    ) {
+      const readyAt = Number(normalized.data.readyAt);
+      void observe_persistence(
+        persistence.saveCooldown("account", "merrit", {
+          readyAt,
+          state: {
+            character: char_name,
+            receiptAt: Number(normalized.data?.receiptAt) || null,
+            shells: Number(normalized.data?.shells) || 0,
+          },
+        }),
+        "merrit_cooldown",
+        char_name,
+      );
+    }
+
+    if (
       normalized.module === "FarmIntelligenceController" &&
       normalized.type === "FARM_INTELLIGENCE_SAMPLE" &&
       normalized.data?.sample &&
@@ -808,7 +845,8 @@ function migrate_old_storage(path, localStorage) {
         normalized.data?.classSkills ||
         normalized.data?.groupCombat ||
         normalized.data?.farmIntelligence ||
-        normalized.data?.inventoryIntelligence)
+        normalized.data?.inventoryIntelligence ||
+        normalized.data?.merchantMerrit)
     ) {
       dashboard?.publishSnapshot();
     }
@@ -1309,6 +1347,15 @@ function migrate_old_storage(path, localStorage) {
     }
   }
 
+  function reject_merrit_live_tests_for_character(char_name, reason) {
+    for (const [request_id, pending] of merrit_live_test_requests) {
+      if (pending.character !== char_name) continue;
+      clearTimeout(pending.timer);
+      merrit_live_test_requests.delete(request_id);
+      pending.reject(new Error(reason));
+    }
+  }
+
   async function wait_for_logistics_claim_idle(
     timeout_ms = LOGISTICS_CLAIM_RESULT_TIMEOUT_MS + 5000,
   ) {
@@ -1729,6 +1776,28 @@ function migrate_old_storage(path, localStorage) {
     });
   }
 
+  function wait_for_merrit_live_test_result(char_name, request_id) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        merrit_live_test_requests.delete(request_id);
+        reject(
+          make_control_error(
+            "MERRIT_LIVE_TEST_TIMEOUT",
+            `Merrit live test timed out for ${char_name}`,
+            504,
+          ),
+        );
+      }, MERRIT_LIVE_TEST_RESULT_TIMEOUT_MS);
+
+      merrit_live_test_requests.set(request_id, {
+        character: char_name,
+        resolve,
+        reject,
+        timer,
+      });
+    });
+  }
+
   async function restore_movement_live_test_state(
     char_name,
     desired_runtime_state,
@@ -2134,6 +2203,36 @@ function migrate_old_storage(path, localStorage) {
         path.join("logs", "incidents", incident.incident_id),
       ),
       "merchant_live_test_incident",
+      char_name,
+    );
+    return incident.incident_id;
+  }
+
+  function capture_merrit_live_test_incident(char_name, test_result) {
+    const incident = incident_recorder.capture({
+      reason: test_result.reason || "MERRIT_LIVE_TEST_FAILED",
+      severity: test_result.outcome === "TIMEOUT" ? "HIGH" : "ERROR",
+      character: char_name,
+      event: {
+        type: "merrit_live_test",
+        event: "MERRIT_LIVE_TEST_FAILED",
+        character: char_name,
+        timestamp: Date.now(),
+        request_id: test_result.request_id || test_result.requestId || null,
+        outcome: test_result.outcome || "FAIL",
+        reason: test_result.reason || "MERRIT_LIVE_TEST_FAILED",
+      },
+      extra: {
+        test: test_result,
+      },
+    });
+
+    void observe_persistence(
+      persistence.indexIncident(
+        incident,
+        path.join("logs", "incidents", incident.incident_id),
+      ),
+      "merrit_live_test_incident",
       char_name,
     );
     return incident.incident_id;
@@ -4315,6 +4414,387 @@ function migrate_old_storage(path, localStorage) {
     return character_manage[char_name]?.logistics_live_test;
   }
 
+  async function run_merrit_live_test(char_name) {
+    const char_block = character_manage[char_name];
+    if (!char_block) {
+      throw make_control_error(
+        "CHARACTER_NOT_FOUND",
+        `Unknown character: ${char_name}`,
+        404,
+      );
+    }
+    if (
+      (char_block.account_character_type || char_block.live_state?.ctype) !==
+      "merchant"
+    ) {
+      throw make_control_error(
+        "MERRIT_LIVE_TEST_MERCHANT_REQUIRED",
+        "Merrit live test requires a merchant: " + char_name,
+        400,
+      );
+    }
+    if (char_block.account_owned !== true) {
+      throw make_control_error(
+        "MERRIT_LIVE_TEST_ACCOUNT_MERCHANT_REQUIRED",
+        "Merrit live test requires an account-owned merchant: " + char_name,
+        400,
+      );
+    }
+    if (["STARTING", "RUNNING"].includes(char_block.merrit_live_test?.status)) {
+      throw make_control_error(
+        "MERRIT_LIVE_TEST_ALREADY_RUNNING",
+        "Merrit live test already running for " + char_name,
+        409,
+      );
+    }
+
+    for (const active of [
+      ["MOVEMENT", char_block.movement_live_test],
+      ["COMBAT", char_block.combat_live_test],
+      ["CLASS_SKILL", char_block.class_skill_live_test],
+      ["GROUP", char_block.group_live_test],
+      ["FARM", char_block.farm_live_test],
+      ["INVENTORY", char_block.inventory_live_test],
+      ["LOGISTICS", char_block.logistics_live_test],
+      ["MERCHANT", char_block.merchant_live_test],
+    ]) {
+      if (["STARTING", "RUNNING"].includes(active[1]?.status)) {
+        throw make_control_error(
+          active[0] + "_LIVE_TEST_ALREADY_RUNNING",
+          active[0] + " live test already running for " + char_name,
+          409,
+        );
+      }
+    }
+
+    const original_desired_state =
+      char_block.desired_runtime_state ||
+      (char_block.enabled
+        ? DESIRED_RUNTIME_STATES.RUNNING
+        : DESIRED_RUNTIME_STATES.STOPPED);
+    const start_state = {
+      lifecycle_state: char_block.lifecycle_state || null,
+      desired_runtime_state: original_desired_state,
+      enabled: !!char_block.enabled,
+      connected: !!char_block.connected,
+      map: char_block.live_state?.map || null,
+      gold: Number.isFinite(char_block.live_state?.gold)
+        ? char_block.live_state.gold
+        : null,
+      inventory_slots: Array.isArray(char_block.live_state?.items)
+        ? char_block.live_state.items.filter(Boolean).length
+        : null,
+      persisted_cooldown: persistence.getCooldown("account", "merrit"),
+    };
+    const started_at = Date.now();
+    merrit_live_test_sequence += 1;
+    const request_id = `merrit-live-${started_at}-${merrit_live_test_sequence}`;
+
+    char_block.merrit_live_test = {
+      request_id,
+      status: "STARTING",
+      outcome: null,
+      reason: null,
+      started_at,
+      completed_at: null,
+    };
+    emit_supervisor_event("MERRIT_LIVE_TEST_REQUESTED", char_name, {
+      request_id,
+      original_desired_state,
+    });
+    dashboard?.publishSnapshot();
+
+    let runtime_override_applied = false;
+    let runtime_state_restored = false;
+
+    try {
+      const runtime_ready =
+        !!char_block.instance &&
+        char_block.connected &&
+        Number.isFinite(char_block.bot_runtime_started_at);
+
+      if (!runtime_ready) {
+        const bundle_path = path.join(
+          process.cwd(),
+          "TYPECODE.out",
+          MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE,
+        );
+        if (!fs_regular.existsSync(bundle_path)) {
+          throw make_control_error(
+            "MERRIT_LIVE_TEST_RUNTIME_BUNDLE_MISSING",
+            `Merrit runtime bundle is missing: ${bundle_path}`,
+            503,
+          );
+        }
+
+        char_block.movement_live_test_typescript_override =
+          MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE;
+        runtime_override_applied = true;
+        emit_supervisor_event(
+          "MERRIT_LIVE_TEST_RUNTIME_OVERRIDE_APPLIED",
+          char_name,
+          {
+            typescript_file: MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE,
+          },
+        );
+      }
+
+      if (original_desired_state !== DESIRED_RUNTIME_STATES.RUNNING) {
+        char_block.enabled = true;
+        char_block.desired_runtime_state = DESIRED_RUNTIME_STATES.RUNNING;
+      }
+
+      if (runtime_override_applied) {
+        await restart_character_for_movement_runtime(char_name, char_block);
+      } else if (!char_block.instance) {
+        await control_character(char_name, CONTROL_ACTIONS.START);
+      }
+
+      await wait_for_merchant_live_test_runtime(char_name);
+      const ready_block = character_manage[char_name];
+      const result_promise = wait_for_merrit_live_test_result(
+        char_name,
+        request_id,
+      );
+
+      ready_block.merrit_live_test = {
+        ...ready_block.merrit_live_test,
+        status: "RUNNING",
+      };
+      dashboard?.publishSnapshot();
+
+      const sent = safe_send(ready_block.instance, {
+        type: "merrit_live_test",
+        request_id,
+      });
+      if (!sent) {
+        const pending = merrit_live_test_requests.get(request_id);
+        if (pending) {
+          clearTimeout(pending.timer);
+          merrit_live_test_requests.delete(request_id);
+        }
+        throw make_control_error(
+          "MERRIT_LIVE_TEST_DISPATCH_FAILED",
+          `Could not dispatch Merrit live test to ${char_name}`,
+          503,
+        );
+      }
+
+      const child_response = await result_promise;
+      if (child_response.error || !child_response.result) {
+        throw make_control_error(
+          "MERRIT_LIVE_TEST_RUNTIME_FAILED",
+          child_response.error || "Merrit live test returned no result",
+          500,
+        );
+      }
+
+      const runtime_result = child_response.result;
+      const parcel_ready_at = Number(
+        runtime_result.finalStatus?.parcel?.readyAt,
+      );
+      if (
+        runtime_result.outcome === "PASS" &&
+        Number.isFinite(parcel_ready_at) &&
+        parcel_ready_at > 0
+      ) {
+        await persistence.saveCooldown("account", "merrit", {
+          readyAt: parcel_ready_at,
+          state: {
+            character: char_name,
+            receiptAt:
+              Number(runtime_result.finalStatus?.parcel?.confirmedAt) || null,
+            source: "merrit_live_test",
+          },
+        });
+      }
+      const persisted_cooldown = persistence.getCooldown("account", "merrit");
+
+      const events = diagnostic_store.getEvents({
+        character: char_name,
+        since: started_at,
+      });
+      const evidence = merritLiveTestEvidence(
+        events,
+        ready_block,
+        persisted_cooldown,
+      );
+      const combined = combineMerritLiveTestResult(runtime_result, evidence);
+      const incident_id =
+        combined.outcome === "PASS"
+          ? null
+          : capture_merrit_live_test_incident(char_name, {
+              ...combined,
+              request_id,
+            });
+      const diagnostics = merritLiveTestDiagnostics(combined, {
+        character: char_name,
+        originalDesiredState: original_desired_state,
+        startState: start_state,
+        evidence,
+        persistedCooldown: persisted_cooldown,
+        incidentId: incident_id,
+      });
+
+      ready_block.merrit_live_test = {
+        ...combined,
+        request_id,
+        status: combined.outcome === "PASS" ? "COMPLETED" : "FAILED",
+        started_at,
+        completed_at: Date.now(),
+        incident_id,
+        persisted_cooldown,
+        diagnostics,
+        cleanup: {
+          ...(combined.cleanup || {}),
+          runtimeStateRestored: false,
+        },
+      };
+      emit_supervisor_event("MERRIT_LIVE_TEST_COMPLETED", char_name, {
+        request_id,
+        outcome: combined.outcome,
+        reason: combined.reason,
+        incident_id,
+        supervisor: evidence,
+        persisted_cooldown,
+      });
+    } catch (error) {
+      const failed_result = {
+        request_id,
+        outcome:
+          error.code === "MERRIT_LIVE_TEST_TIMEOUT" ||
+          error.code === "MERCHANT_LIVE_TEST_RUNTIME_TIMEOUT"
+            ? "TIMEOUT"
+            : "FAIL",
+        reason: error.code || error.message || "MERRIT_LIVE_TEST_FAILED",
+        error: error.message || String(error),
+        started_at,
+        completed_at: Date.now(),
+        durationMs: Date.now() - started_at,
+        scope: {
+          movementMutationAllowed: true,
+          standMutationAllowed: true,
+          listingMutationAllowed: true,
+          prerequisitePurchaseAllowed: true,
+          blindRetryAllowed: false,
+          wishlistMutationAllowed: false,
+          pontyPurchaseAllowed: false,
+          giveawayMutationAllowed: false,
+          gatheringMutationAllowed: false,
+          equipmentMutationAllowed: false,
+          mutationScope: "merrit-only",
+        },
+      };
+      const failure_events = diagnostic_store.getEvents({
+        character: char_name,
+        since: started_at,
+      });
+      const persisted_cooldown = persistence.getCooldown("account", "merrit");
+      const failure_evidence = merritLiveTestEvidence(
+        failure_events,
+        char_block,
+        persisted_cooldown,
+      );
+      const incident_id = capture_merrit_live_test_incident(
+        char_name,
+        failed_result,
+      );
+      char_block.merrit_live_test = {
+        ...failed_result,
+        status: "FAILED",
+        incident_id,
+        persisted_cooldown,
+        diagnostics: merritLiveTestDiagnostics(failed_result, {
+          character: char_name,
+          originalDesiredState: original_desired_state,
+          startState: start_state,
+          evidence: failure_evidence,
+          persistedCooldown: persisted_cooldown,
+          incidentId: incident_id,
+        }),
+        cleanup: {
+          runtimeStateRestored: false,
+        },
+      };
+      emit_supervisor_event(
+        "MERRIT_LIVE_TEST_FAILED",
+        char_name,
+        char_block.merrit_live_test,
+      );
+    } finally {
+      const pending = merrit_live_test_requests.get(request_id);
+      if (pending) {
+        clearTimeout(pending.timer);
+        merrit_live_test_requests.delete(request_id);
+      }
+
+      try {
+        if (runtime_override_applied) {
+          await restore_movement_live_test_execution_source(
+            char_name,
+            original_desired_state,
+          );
+        } else {
+          await restore_movement_live_test_state(
+            char_name,
+            original_desired_state,
+          );
+        }
+        runtime_state_restored = true;
+      } catch (restore_error) {
+        emit_supervisor_event(
+          "MERRIT_LIVE_TEST_STATE_RESTORE_FAILED",
+          char_name,
+          {
+            request_id,
+            desired_runtime_state: original_desired_state,
+            error:
+              restore_error instanceof Error
+                ? restore_error.message
+                : String(restore_error),
+          },
+        );
+      }
+
+      const final_block = character_manage[char_name];
+      if (final_block?.merrit_live_test) {
+        final_block.merrit_live_test.cleanup = {
+          ...(final_block.merrit_live_test.cleanup || {}),
+          runtimeStateRestored: runtime_state_restored,
+        };
+        if (
+          !runtime_state_restored &&
+          final_block.merrit_live_test.outcome === "PASS"
+        ) {
+          final_block.merrit_live_test.outcome = "FAIL";
+          final_block.merrit_live_test.reason =
+            "MERRIT_LIVE_E2E_STATE_RESTORE_FAILED";
+          final_block.merrit_live_test.status = "FAILED";
+          const incident_id = capture_merrit_live_test_incident(
+            char_name,
+            final_block.merrit_live_test,
+          );
+          final_block.merrit_live_test.incident_id = incident_id;
+          if (final_block.merrit_live_test.diagnostics) {
+            final_block.merrit_live_test.diagnostics.incident_id = incident_id;
+            final_block.merrit_live_test.diagnostics.result = {
+              outcome: "FAIL",
+              reason: "MERRIT_LIVE_E2E_STATE_RESTORE_FAILED",
+            };
+            final_block.merrit_live_test.diagnostics.cleanup =
+              final_block.merrit_live_test.cleanup;
+          }
+        } else if (final_block.merrit_live_test.diagnostics) {
+          final_block.merrit_live_test.diagnostics.cleanup =
+            final_block.merrit_live_test.cleanup;
+        }
+      }
+      dashboard?.publishSnapshot();
+    }
+
+    return character_manage[char_name]?.merrit_live_test;
+  }
+
   async function run_merchant_live_test(char_name) {
     const char_block = character_manage[char_name];
     if (!char_block) {
@@ -4348,6 +4828,13 @@ function migrate_old_storage(path, localStorage) {
       throw make_control_error(
         "MERCHANT_LIVE_TEST_ALREADY_RUNNING",
         "Merchant Autonomy live test already running for " + char_name,
+        409,
+      );
+    }
+    if (["STARTING", "RUNNING"].includes(char_block.merrit_live_test?.status)) {
+      throw make_control_error(
+        "MERRIT_LIVE_TEST_ALREADY_RUNNING",
+        "Merrit live test already running for " + char_name,
         409,
       );
     }
@@ -4980,6 +5467,10 @@ function migrate_old_storage(path, localStorage) {
         char_name,
         "CHARACTER_PROCESS_EXITED_DURING_MERCHANT_LIVE_TEST",
       );
+      reject_merrit_live_tests_for_character(
+        char_name,
+        "CHARACTER_PROCESS_EXITED_DURING_MERRIT_LIVE_TEST",
+      );
       emit_supervisor_event("CHARACTER_PROCESS_EXITED", char_name, {
         code,
         signal,
@@ -5296,6 +5787,33 @@ function migrate_old_storage(path, localStorage) {
               error: m.error || null,
             },
           );
+          break;
+        }
+        case "merrit_live_test_result": {
+          const pending = merrit_live_test_requests.get(m.request_id);
+          if (!pending || pending.character !== char_name) {
+            emit_supervisor_event(
+              "MERRIT_LIVE_TEST_RESULT_IGNORED",
+              char_name,
+              {
+                why: "UNKNOWN_OR_STALE_REQUEST",
+                request_id: m.request_id || null,
+              },
+            );
+            break;
+          }
+
+          clearTimeout(pending.timer);
+          merrit_live_test_requests.delete(m.request_id);
+          pending.resolve({
+            result: m.result || null,
+            error: m.error || null,
+          });
+          emit_supervisor_event("MERRIT_LIVE_TEST_RESULT_RECEIVED", char_name, {
+            request_id: m.request_id,
+            outcome: m.result?.outcome || null,
+            error: m.error || null,
+          });
           break;
         }
         case "merchant_live_test_result": {

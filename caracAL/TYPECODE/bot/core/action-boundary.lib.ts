@@ -176,6 +176,21 @@ export interface CraftRequest extends BoundaryRequest {
   itemSlots: number[];
 }
 
+export interface OpenStandRequest extends BoundaryRequest {
+  inventorySlot?: number;
+}
+
+export interface TradeListRequest extends BoundaryRequest {
+  inventorySlot: number;
+  slot: string | number;
+  price: number;
+  quantity?: number;
+}
+
+export interface TradeUnlistRequest extends BoundaryRequest {
+  slot: string | number;
+}
+
 export interface WishlistRequest extends BoundaryRequest {
   slot: string | number;
   itemName: string;
@@ -242,6 +257,16 @@ export interface MutationDriver {
   ): Promise<unknown> | unknown;
   exchange(itemSlot: number): Promise<unknown> | unknown;
   craft(itemSlots: number[]): Promise<unknown> | unknown;
+  openStand(inventorySlot?: number): Promise<unknown> | unknown;
+  closeStand(): Promise<unknown> | unknown;
+  tradeList(
+    inventorySlot: number,
+    slot: string | number,
+    price: number,
+    quantity?: number,
+  ): Promise<unknown> | unknown;
+  tradeUnlist(slot: string): Promise<unknown> | unknown;
+  requestMerritStatus(): unknown;
   wishlist(
     slot: string | number,
     itemName: string,
@@ -360,6 +385,18 @@ export function createRuntimeMutationDriver(): MutationDriver {
       ),
     exchange: (itemSlot) => runtimeFunction("exchange")(itemSlot),
     craft: (itemSlots) => runtimeFunction("craft")(...itemSlots),
+    openStand: (inventorySlot) =>
+      inventorySlot === undefined
+        ? runtimeFunction("open_stand")()
+        : runtimeFunction("open_stand")(inventorySlot),
+    closeStand: () => runtimeFunction("close_stand")(),
+    tradeList: (inventorySlot, slot, price, quantity) =>
+      quantity === undefined
+        ? runtimeFunction("trade")(inventorySlot, slot, price)
+        : runtimeFunction("trade")(inventorySlot, slot, price, quantity),
+    tradeUnlist: (slot) => runtimeFunction("unequip")(slot),
+    requestMerritStatus: () =>
+      runtimeSocketEmit("interaction", { type: "merrit_info" }),
     wishlist: (slot, itemName, price, level, quantity) =>
       runtimeFunction("wishlist")(slot, itemName, price, level, quantity),
     pontyBuy: (rid) => runtimeSocketEmit("sbuy", { rid }),
@@ -653,6 +690,11 @@ export const ACTION_BOUNDARY_MUTATION_CAPABILITIES = [
   "COMPOUND",
   "EXCHANGE",
   "CRAFT",
+  "OPEN_STAND",
+  "CLOSE_STAND",
+  "TRADE_LIST",
+  "TRADE_UNLIST",
+  "MERRIT_STATUS_REQUEST",
   "WISHLIST",
   "PONTY_BUY",
   "PARTY_INVITE",
@@ -3048,6 +3090,365 @@ export class ActionBoundary {
             recipeName,
           ),
         },
+      });
+    }
+  }
+
+  requestMerritStatus(request: BoundaryRequest): ActionRecord {
+    const transaction = this.ledger.create({
+      module: request.module,
+      action: "MERRIT_STATUS_REQUEST",
+      why: request.why,
+      correlationId: request.correlationId,
+      expectedEffect: { serverStatusRefreshRequested: true },
+    });
+
+    if (transaction.status === "BLOCKED") return transaction;
+    this.ledger.dispatch(transaction.id, {
+      mutation: "interaction",
+      type: "merrit_info",
+    });
+
+    try {
+      this.driver.requestMerritStatus();
+      return this.ledger.confirm(transaction.id, {
+        why: "MERRIT_STATUS_REQUEST_DISPATCHED",
+        evidence: { requestDispatched: true },
+      });
+    } catch (error) {
+      return this.ledger.unknown(transaction.id, {
+        why: "MERRIT_STATUS_REQUEST_UNCERTAIN",
+        error: errorMessage(error),
+      });
+    }
+  }
+
+  async openStand(request: OpenStandRequest): Promise<ActionRecord> {
+    const beforeCharacter = this.game.character();
+    const beforeInventory = this.game.inventory();
+    const gameData = this.game.gameData();
+    const requestedSlot = request.inventorySlot;
+    const inventorySlot =
+      requestedSlot === undefined
+        ? beforeInventory.find((entry) => {
+            const name = itemName(entry.item);
+            if (!name) return false;
+            const definition = gameItemDefinition(gameData, name);
+            return (
+              definition.type === "stand" ||
+              definition.stand === true ||
+              (typeof definition.stand === "string" &&
+                definition.stand.length > 0)
+            );
+          })?.slot
+        : requestedSlot;
+    const standItem =
+      inventorySlot === undefined
+        ? null
+        : inventoryItem(beforeInventory, inventorySlot);
+    const standName = itemName(standItem);
+    const standDefinition = standName
+      ? gameItemDefinition(gameData, standName)
+      : {};
+    const validStand =
+      standName !== null &&
+      (standDefinition.type === "stand" ||
+        standDefinition.stand === true ||
+        (typeof standDefinition.stand === "string" &&
+          standDefinition.stand.length > 0));
+
+    const transaction = this.ledger.create({
+      module: request.module,
+      action: "OPEN_STAND",
+      why: request.why,
+      correlationId: request.correlationId,
+      expectedEffect: {
+        standOpen: true,
+        inventorySlot: inventorySlot ?? null,
+        standItem: standName,
+      },
+      before: {
+        stand: beforeCharacter.stand ?? null,
+      },
+    });
+
+    if (transaction.status === "BLOCKED") return transaction;
+    if (
+      inventorySlot === undefined ||
+      !Number.isInteger(inventorySlot) ||
+      inventorySlot < 0 ||
+      !validStand
+    ) {
+      return this.ledger.block(transaction.id, "STAND_ITEM_INVALID");
+    }
+    if (beforeCharacter.stand) {
+      return this.ledger.confirm(transaction.id, {
+        why: "STAND_ALREADY_OPEN",
+        after: { stand: beforeCharacter.stand },
+        evidence: { alreadyOpen: true },
+      });
+    }
+
+    this.ledger.dispatch(transaction.id, {
+      mutation: "open_stand",
+      inventorySlot,
+      standItem: standName,
+    });
+
+    try {
+      const result = await this.driver.openStand(inventorySlot);
+      const after = this.game.character();
+      if (explicitFailure(result)) {
+        return this.ledger.reject(transaction.id, {
+          why: "OPEN_STAND_API_REJECTED",
+          after: { stand: after.stand ?? null },
+          evidence: { result: safeResultEvidence(result) },
+        });
+      }
+      if (after.stand) {
+        return this.ledger.confirm(transaction.id, {
+          why: "OPEN_STAND_STATE_CONFIRMED",
+          after: { stand: after.stand },
+          evidence: { result: safeResultEvidence(result) },
+        });
+      }
+      return this.ledger.unknown(transaction.id, {
+        why: "OPEN_STAND_OUTCOME_UNVERIFIED",
+        after: { stand: after.stand ?? null },
+        evidence: { result: safeResultEvidence(result) },
+      });
+    } catch (error) {
+      return this.ledger.unknown(transaction.id, {
+        why: "OPEN_STAND_OUTCOME_UNCERTAIN",
+        error: errorMessage(error),
+        after: { stand: this.game.character().stand ?? null },
+      });
+    }
+  }
+
+  async closeStand(request: BoundaryRequest): Promise<ActionRecord> {
+    const before = this.game.character();
+    const transaction = this.ledger.create({
+      module: request.module,
+      action: "CLOSE_STAND",
+      why: request.why,
+      correlationId: request.correlationId,
+      expectedEffect: { standOpen: false },
+      before: { stand: before.stand ?? null },
+    });
+
+    if (transaction.status === "BLOCKED") return transaction;
+    if (!before.stand) {
+      return this.ledger.confirm(transaction.id, {
+        why: "STAND_ALREADY_CLOSED",
+        after: { stand: before.stand ?? null },
+        evidence: { alreadyClosed: true },
+      });
+    }
+
+    this.ledger.dispatch(transaction.id, { mutation: "close_stand" });
+    try {
+      const result = await this.driver.closeStand();
+      const after = this.game.character();
+      if (explicitFailure(result)) {
+        return this.ledger.reject(transaction.id, {
+          why: "CLOSE_STAND_API_REJECTED",
+          after: { stand: after.stand ?? null },
+          evidence: { result: safeResultEvidence(result) },
+        });
+      }
+      if (!after.stand) {
+        return this.ledger.confirm(transaction.id, {
+          why: "CLOSE_STAND_STATE_CONFIRMED",
+          after: { stand: after.stand ?? null },
+          evidence: { result: safeResultEvidence(result) },
+        });
+      }
+      return this.ledger.unknown(transaction.id, {
+        why: "CLOSE_STAND_OUTCOME_UNVERIFIED",
+        after: { stand: after.stand ?? null },
+        evidence: { result: safeResultEvidence(result) },
+      });
+    } catch (error) {
+      return this.ledger.unknown(transaction.id, {
+        why: "CLOSE_STAND_OUTCOME_UNCERTAIN",
+        error: errorMessage(error),
+        after: { stand: this.game.character().stand ?? null },
+      });
+    }
+  }
+
+  async tradeList(request: TradeListRequest): Promise<ActionRecord> {
+    const slot = normalizeTradeSlot(request.slot);
+    const quantity = positiveInteger(request.quantity);
+    const beforeInventory = this.game.inventory();
+    const beforeTradeSlots = this.game.tradeSlots();
+    const item = inventoryItem(beforeInventory, request.inventorySlot);
+    const name = itemName(item);
+    const available = itemQuantity(item);
+    const definition = name
+      ? gameItemDefinition(this.game.gameData(), name)
+      : {};
+    const transaction = this.ledger.create({
+      module: request.module,
+      action: "TRADE_LIST",
+      why: request.why,
+      correlationId: request.correlationId,
+      expectedEffect: {
+        inventorySlot: request.inventorySlot,
+        tradeSlot: slot,
+        itemName: name,
+        price: request.price,
+        quantity,
+      },
+      before: {
+        tradeSlot: slot ? beforeTradeSlots[slot] || null : null,
+      },
+    });
+
+    if (transaction.status === "BLOCKED") return transaction;
+    if (!slot) {
+      return this.ledger.block(transaction.id, "TRADE_SLOT_INVALID");
+    }
+    if (
+      !Number.isInteger(request.inventorySlot) ||
+      request.inventorySlot < 0 ||
+      !item ||
+      !name ||
+      Object.keys(definition).length === 0
+    ) {
+      return this.ledger.block(transaction.id, "TRADE_ITEM_INVALID");
+    }
+    if (itemLocked(item)) {
+      return this.ledger.block(transaction.id, "TRADE_ITEM_LOCKED");
+    }
+    if (!Number.isInteger(request.price) || request.price <= 0) {
+      return this.ledger.block(transaction.id, "TRADE_PRICE_INVALID");
+    }
+    if (quantity === null || quantity > available) {
+      return this.ledger.block(transaction.id, "QUANTITY_INVALID");
+    }
+    if (beforeTradeSlots[slot]) {
+      return this.ledger.block(transaction.id, "TRADE_SLOT_OCCUPIED");
+    }
+
+    this.ledger.dispatch(transaction.id, {
+      mutation: "trade",
+      inventorySlot: request.inventorySlot,
+      tradeSlot: slot,
+      itemName: name,
+      price: request.price,
+      quantity,
+    });
+
+    try {
+      const result = await this.driver.tradeList(
+        request.inventorySlot,
+        slot,
+        request.price,
+        quantity,
+      );
+      const after = this.game.tradeSlots()[slot] || null;
+      const matched =
+        !!after &&
+        after.b !== true &&
+        after.giveaway === undefined &&
+        after.want === undefined &&
+        itemName(after) === name &&
+        Number(after.price) === request.price &&
+        itemQuantity(after) === quantity;
+
+      if (explicitFailure(result)) {
+        return this.ledger.reject(transaction.id, {
+          why: "TRADE_LIST_API_REJECTED",
+          after: { tradeSlot: after },
+          evidence: { result: safeResultEvidence(result) },
+        });
+      }
+      if (matched) {
+        return this.ledger.confirm(transaction.id, {
+          why: "TRADE_LIST_STATE_CONFIRMED",
+          after: { tradeSlot: after },
+          evidence: {
+            matched,
+            result: safeResultEvidence(result),
+          },
+        });
+      }
+      return this.ledger.unknown(transaction.id, {
+        why: "TRADE_LIST_OUTCOME_UNVERIFIED",
+        after: { tradeSlot: after },
+        evidence: { result: safeResultEvidence(result) },
+      });
+    } catch (error) {
+      return this.ledger.unknown(transaction.id, {
+        why: "TRADE_LIST_OUTCOME_UNCERTAIN",
+        error: errorMessage(error),
+        after: { tradeSlot: this.game.tradeSlots()[slot] || null },
+      });
+    }
+  }
+
+  async tradeUnlist(request: TradeUnlistRequest): Promise<ActionRecord> {
+    const slot = normalizeTradeSlot(request.slot);
+    const beforeTradeSlots = this.game.tradeSlots();
+    const before = slot ? beforeTradeSlots[slot] || null : null;
+    const transaction = this.ledger.create({
+      module: request.module,
+      action: "TRADE_UNLIST",
+      why: request.why,
+      correlationId: request.correlationId,
+      expectedEffect: { tradeSlot: slot, listed: false },
+      before: { tradeSlot: before },
+    });
+
+    if (transaction.status === "BLOCKED") return transaction;
+    if (!slot) {
+      return this.ledger.block(transaction.id, "TRADE_SLOT_INVALID");
+    }
+    if (!before) {
+      return this.ledger.confirm(transaction.id, {
+        why: "TRADE_SLOT_ALREADY_EMPTY",
+        after: { tradeSlot: null },
+        evidence: { alreadyEmpty: true },
+      });
+    }
+    if (!this.game.inventory().some((entry) => entry.item === null)) {
+      return this.ledger.block(transaction.id, "INVENTORY_FULL");
+    }
+
+    this.ledger.dispatch(transaction.id, {
+      mutation: "trade_unlist",
+      tradeSlot: slot,
+    });
+
+    try {
+      const result = await this.driver.tradeUnlist(slot);
+      const after = this.game.tradeSlots()[slot] || null;
+      if (explicitFailure(result)) {
+        return this.ledger.reject(transaction.id, {
+          why: "TRADE_UNLIST_API_REJECTED",
+          after: { tradeSlot: after },
+          evidence: { result: safeResultEvidence(result) },
+        });
+      }
+      if (!after) {
+        return this.ledger.confirm(transaction.id, {
+          why: "TRADE_UNLIST_STATE_CONFIRMED",
+          after: { tradeSlot: null },
+          evidence: { result: safeResultEvidence(result) },
+        });
+      }
+      return this.ledger.unknown(transaction.id, {
+        why: "TRADE_UNLIST_OUTCOME_UNVERIFIED",
+        after: { tradeSlot: after },
+        evidence: { result: safeResultEvidence(result) },
+      });
+    } catch (error) {
+      return this.ledger.unknown(transaction.id, {
+        why: "TRADE_UNLIST_OUTCOME_UNCERTAIN",
+        error: errorMessage(error),
+        after: { tradeSlot: this.game.tradeSlots()[slot] || null },
       });
     }
   }
