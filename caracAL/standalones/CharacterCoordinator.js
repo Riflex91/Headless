@@ -5291,8 +5291,8 @@ function migrate_old_storage(path, localStorage) {
         durationMs: Date.now() - started_at,
         scope: {
           movementMutationAllowed: true,
-          combatMutationAllowed: true,
-          lootMutationAllowed: true,
+          combatMutationAllowed: false,
+          lootMutationAllowed: false,
           prerequisitePurchaseAllowed: true,
           craftMutationAllowed: true,
           equipmentMutationAllowed: true,
