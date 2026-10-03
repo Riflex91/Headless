@@ -179,6 +179,10 @@ test("Compound preparation wiring uses the three Ranger workers and no Compound 
   assert.match(coordinator, /selected\.scrollSlots/);
   assert.match(coordinator, /selected\.scrollQuantity/);
   assert.match(
+    coordinator,
+    /active_typescript_override[\s\S]*movement_live_test_typescript_override/,
+  );
+  assert.match(
     dashboard,
     /\/headless\/api\/characters\/:name\/tests\/compound-prepare/,
   );
