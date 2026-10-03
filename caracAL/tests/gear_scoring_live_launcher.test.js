@@ -1,9 +1,12 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 const test = require("node:test");
 
 const {
+  combineGearScoringSupervisorResult,
   contributionMatches,
   equipmentSignature,
   evidenceComplete,
@@ -202,6 +205,100 @@ test("wait for gear scoring projection accepts the first READY runtime projectio
 
   assert.equal(result.gear_scoring_runtime.state, "READY");
   assert.equal(calls, 2);
+});
+
+test("supervisor Gear Scoring result independently recomputes live evidence", () => {
+  const result = combineGearScoringSupervisorResult({
+    request_id: "gear-scoring-live-1",
+    outcome: "PASS",
+    reason: "GEAR_SCORING_LIVE_RUNTIME_E2E_CONFIRMED",
+    character: "My_Ranger1",
+    before: {
+      scoring: scoring(),
+      slots: {
+        mainhand: { name: "bow", level: 2 },
+      },
+    },
+    after: {
+      scoring: scoring({ timestamp: 2000 }),
+      slots: {
+        mainhand: { name: "bow", level: 2 },
+      },
+    },
+    scope: {
+      readOnly: true,
+      movementMutationForced: false,
+      combatMutationForced: false,
+      valueMutationForced: false,
+      equipmentMutationForced: false,
+      runtimeOverrideApplied: true,
+    },
+    cleanup: {
+      equipmentBaselineRestored: true,
+      runtimeStateRestored: true,
+    },
+  });
+
+  assert.equal(result.outcome, "PASS");
+  assert.equal(result.reason, "GEAR_SCORING_LIVE_E2E_CONFIRMED");
+  assert.equal(result.evidence.allScoredEntriesRecomputed, true);
+  assert.equal(result.evidence.runtimeStateRestored, true);
+  assert.equal(result.cleanup.equipmentBaselineRestored, true);
+});
+
+test("supervisor Gear Scoring result fails when original runtime was not restored", () => {
+  const result = combineGearScoringSupervisorResult({
+    outcome: "PASS",
+    reason: "GEAR_SCORING_LIVE_RUNTIME_E2E_CONFIRMED",
+    character: "My_Ranger1",
+    before: {
+      scoring: scoring(),
+      slots: {
+        mainhand: { name: "bow", level: 2 },
+      },
+    },
+    after: {
+      scoring: scoring(),
+      slots: {
+        mainhand: { name: "bow", level: 2 },
+      },
+    },
+    cleanup: {
+      equipmentBaselineRestored: true,
+      runtimeStateRestored: false,
+    },
+  });
+
+  assert.equal(result.outcome, "FAIL");
+  assert.equal(result.evidence.runtimeStateRestored, false);
+});
+
+test("coordinator and dashboard expose Gear Scoring TYPECODE live path", () => {
+  const coordinator = fs.readFileSync(
+    path.join(__dirname, "..", "standalones", "CharacterCoordinator.js"),
+    "utf8",
+  );
+  const dashboard = fs.readFileSync(
+    path.join(__dirname, "..", "src", "HeadlessDashboard.js"),
+    "utf8",
+  );
+  const launcher = fs.readFileSync(
+    path.join(__dirname, "..", "scripts", "run_gear_scoring_live_e2e.js"),
+    "utf8",
+  );
+
+  assert.match(coordinator, /run_gear_scoring_live_test/);
+  assert.match(coordinator, /GEAR_SCORING_LIVE_TEST_RUNTIME_OVERRIDE_APPLIED/);
+  assert.match(
+    coordinator,
+    /movement_live_test_typescript_override\s*=\s*MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE/,
+  );
+  assert.match(
+    dashboard,
+    /\/headless\/api\/characters\/:name\/tests\/gear-scoring/,
+  );
+  assert.match(launcher, /runGearScoringSupervisorLiveTest/);
+  assert.match(launcher, /combineGearScoringSupervisorResult/);
 });
 
 test("live verification stays read-only and requires stable equipment", async () => {

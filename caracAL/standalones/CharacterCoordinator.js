@@ -273,6 +273,7 @@ function migrate_old_storage(path, localStorage) {
   let farm_live_test_sequence = 0;
   const inventory_live_test_requests = new Map();
   let inventory_live_test_sequence = 0;
+  let gear_scoring_live_test_sequence = 0;
   const logistics_live_test_requests = new Map();
   let logistics_live_test_sequence = 0;
   let logistics_live_test_active = false;
@@ -344,6 +345,7 @@ function migrate_old_storage(path, localStorage) {
         runGroupLiveTest: run_group_live_test,
         runFarmLiveTest: run_farm_live_test,
         runInventoryLiveTest: run_inventory_live_test,
+        runGearScoringLiveTest: run_gear_scoring_live_test,
         runLogisticsLiveTest: run_logistics_live_test,
         runMerchantLiveTest: run_merchant_live_test,
         runBankTravelLiveTest: run_bank_travel_live_test,
@@ -1099,6 +1101,8 @@ function migrate_old_storage(path, localStorage) {
     char_block.inventory_intelligence_runtime =
       char_block.inventory_intelligence_runtime || null;
     char_block.gear_scoring_runtime = char_block.gear_scoring_runtime || null;
+    char_block.gear_scoring_live_test =
+      char_block.gear_scoring_live_test || null;
     char_block.movement_live_test_typescript_override = null;
     char_block.running_code_revision = char_block.running_code_revision || null;
     char_block.running_config_revision =
@@ -1497,6 +1501,59 @@ function migrate_old_storage(path, localStorage) {
     throw make_control_error(
       "INVENTORY_LIVE_TEST_RUNTIME_TIMEOUT",
       `Inventory runtime did not become ready for ${char_name}`,
+      504,
+    );
+  }
+
+  function gear_scoring_equipment_signature(char_block) {
+    const slots =
+      char_block?.live_state?.slots &&
+      typeof char_block.live_state.slots === "object"
+        ? char_block.live_state.slots
+        : {};
+    return JSON.stringify(
+      Object.entries(slots)
+        .filter(([slot, item]) => !slot.startsWith("trade") && !!item)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([slot, item]) => [
+          slot,
+          item?.name || null,
+          Number.isFinite(item?.level) ? item.level : 0,
+          Number.isFinite(item?.q) ? item.q : 1,
+        ]),
+    );
+  }
+
+  function gear_scoring_live_snapshot(char_block) {
+    return {
+      scoring: JSON.parse(
+        JSON.stringify(char_block?.gear_scoring_runtime || null),
+      ),
+      slots: JSON.parse(JSON.stringify(char_block?.live_state?.slots || {})),
+    };
+  }
+
+  async function wait_for_gear_scoring_live_runtime(
+    char_name,
+    timeout_ms = MOVEMENT_LIVE_TEST_RUNTIME_TIMEOUT_MS,
+  ) {
+    const started_at = Date.now();
+    while (Date.now() - started_at < timeout_ms) {
+      const char_block = character_manage[char_name];
+      if (
+        char_block?.instance &&
+        char_block.connected &&
+        Number.isFinite(char_block.bot_runtime_started_at) &&
+        char_block.gear_scoring_runtime?.state === "READY"
+      ) {
+        return char_block;
+      }
+      await sleep(100);
+    }
+
+    throw make_control_error(
+      "GEAR_SCORING_LIVE_TEST_RUNTIME_TIMEOUT",
+      `Gear Scoring runtime did not become ready for ${char_name}`,
       504,
     );
   }
@@ -4743,6 +4800,256 @@ function migrate_old_storage(path, localStorage) {
       }
       dashboard?.publishSnapshot();
     }
+  }
+
+  async function run_gear_scoring_live_test(char_name, sample_ms = 1200) {
+    const char_block = character_manage[char_name];
+    if (!char_block) {
+      throw make_control_error(
+        "CHARACTER_NOT_FOUND",
+        `Unknown character: ${char_name}`,
+        404,
+      );
+    }
+    if (
+      ["STARTING", "RUNNING"].includes(
+        char_block.gear_scoring_live_test?.status,
+      )
+    ) {
+      throw make_control_error(
+        "GEAR_SCORING_LIVE_TEST_ALREADY_RUNNING",
+        `Gear Scoring live test already running for ${char_name}`,
+        409,
+      );
+    }
+    for (const active of [
+      ["MOVEMENT", char_block.movement_live_test],
+      ["COMBAT", char_block.combat_live_test],
+      ["CLASS_SKILL", char_block.class_skill_live_test],
+      ["GROUP", char_block.group_live_test],
+      ["FARM", char_block.farm_live_test],
+      ["INVENTORY", char_block.inventory_live_test],
+    ]) {
+      if (["STARTING", "RUNNING"].includes(active[1]?.status)) {
+        throw make_control_error(
+          active[0] + "_LIVE_TEST_ALREADY_RUNNING",
+          active[0] + " live test already running for " + char_name,
+          409,
+        );
+      }
+    }
+
+    const original_desired_state =
+      char_block.desired_runtime_state ||
+      (char_block.enabled
+        ? DESIRED_RUNTIME_STATES.RUNNING
+        : DESIRED_RUNTIME_STATES.STOPPED);
+    const started_at = Date.now();
+    const bounded_sample_ms = Math.max(
+      250,
+      Math.min(5000, Number(sample_ms) || 1200),
+    );
+    gear_scoring_live_test_sequence += 1;
+    const request_id = `gear-scoring-live-${started_at}-${gear_scoring_live_test_sequence}`;
+
+    char_block.gear_scoring_live_test = {
+      request_id,
+      status: "STARTING",
+      outcome: null,
+      reason: null,
+      started_at,
+      completed_at: null,
+    };
+    emit_supervisor_event("GEAR_SCORING_LIVE_TEST_REQUESTED", char_name, {
+      request_id,
+      original_desired_state,
+      sample_ms: bounded_sample_ms,
+    });
+    dashboard?.publishSnapshot();
+
+    let runtime_override_applied = false;
+    let runtime_state_restored = false;
+    let result = null;
+
+    try {
+      const bundle_path = path.join(
+        process.cwd(),
+        "TYPECODE.out",
+        MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE,
+      );
+      if (!fs_regular.existsSync(bundle_path)) {
+        throw make_control_error(
+          "GEAR_SCORING_LIVE_TEST_RUNTIME_BUNDLE_MISSING",
+          `Gear Scoring runtime bundle is missing: ${bundle_path}`,
+          503,
+        );
+      }
+
+      char_block.movement_live_test_typescript_override =
+        MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE;
+      runtime_override_applied = true;
+      char_block.gear_scoring_runtime = null;
+      emit_supervisor_event(
+        "GEAR_SCORING_LIVE_TEST_RUNTIME_OVERRIDE_APPLIED",
+        char_name,
+        {
+          request_id,
+          typescript_file: MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE,
+        },
+      );
+
+      if (original_desired_state !== DESIRED_RUNTIME_STATES.RUNNING) {
+        char_block.enabled = true;
+        char_block.desired_runtime_state = DESIRED_RUNTIME_STATES.RUNNING;
+      }
+
+      await restart_character_for_movement_runtime(char_name, char_block);
+      const ready_block = await wait_for_gear_scoring_live_runtime(char_name);
+      const baseline_signature = gear_scoring_equipment_signature(ready_block);
+      const before = gear_scoring_live_snapshot(ready_block);
+
+      ready_block.gear_scoring_live_test = {
+        ...ready_block.gear_scoring_live_test,
+        status: "RUNNING",
+      };
+      dashboard?.publishSnapshot();
+
+      await sleep(bounded_sample_ms);
+
+      const final_block = character_manage[char_name];
+      if (final_block?.gear_scoring_runtime?.state !== "READY") {
+        throw make_control_error(
+          "GEAR_SCORING_LIVE_TEST_PROJECTION_LOST",
+          `Gear Scoring projection was lost for ${char_name}`,
+          500,
+        );
+      }
+      const after = gear_scoring_live_snapshot(final_block);
+      const equipment_baseline_restored =
+        gear_scoring_equipment_signature(final_block) === baseline_signature;
+
+      result = {
+        request_id,
+        outcome: equipment_baseline_restored ? "PASS" : "FAIL",
+        reason: equipment_baseline_restored
+          ? "GEAR_SCORING_LIVE_RUNTIME_E2E_CONFIRMED"
+          : "GEAR_SCORING_LIVE_EQUIPMENT_CHANGED",
+        character: char_name,
+        started_at,
+        completed_at: Date.now(),
+        durationMs: Date.now() - started_at,
+        before,
+        after,
+        scope: {
+          readOnly: true,
+          movementMutationForced: false,
+          combatMutationForced: false,
+          valueMutationForced: false,
+          equipmentMutationForced: false,
+          runtimeOverrideApplied: true,
+        },
+        cleanup: {
+          equipmentBaselineRestored: equipment_baseline_restored,
+          runtimeStateRestored: false,
+        },
+      };
+    } catch (error) {
+      result = {
+        request_id,
+        outcome:
+          error.code === "GEAR_SCORING_LIVE_TEST_RUNTIME_TIMEOUT"
+            ? "TIMEOUT"
+            : "FAIL",
+        reason: error.code || error.message || "GEAR_SCORING_LIVE_TEST_FAILED",
+        error: error.message || String(error),
+        character: char_name,
+        started_at,
+        completed_at: Date.now(),
+        durationMs: Date.now() - started_at,
+        before: null,
+        after: null,
+        scope: {
+          readOnly: true,
+          movementMutationForced: false,
+          combatMutationForced: false,
+          valueMutationForced: false,
+          equipmentMutationForced: false,
+          runtimeOverrideApplied: runtime_override_applied,
+        },
+        cleanup: {
+          equipmentBaselineRestored: false,
+          runtimeStateRestored: false,
+        },
+      };
+    } finally {
+      try {
+        if (runtime_override_applied) {
+          await restore_movement_live_test_execution_source(
+            char_name,
+            original_desired_state,
+          );
+        } else {
+          await restore_movement_live_test_state(
+            char_name,
+            original_desired_state,
+          );
+        }
+        runtime_state_restored = true;
+      } catch (restore_error) {
+        emit_supervisor_event(
+          "GEAR_SCORING_LIVE_TEST_STATE_RESTORE_FAILED",
+          char_name,
+          {
+            request_id,
+            desired_runtime_state: original_desired_state,
+            error:
+              restore_error instanceof Error
+                ? restore_error.message
+                : String(restore_error),
+          },
+        );
+        result = {
+          ...result,
+          outcome: "FAIL",
+          reason: "GEAR_SCORING_LIVE_TEST_STATE_RESTORE_FAILED",
+          restore_error:
+            restore_error instanceof Error
+              ? restore_error.message
+              : String(restore_error),
+        };
+      }
+
+      const completed_at = Date.now();
+      result = {
+        ...result,
+        completed_at,
+        durationMs: Math.max(0, completed_at - started_at),
+        cleanup: {
+          ...(result?.cleanup || {}),
+          runtimeStateRestored: runtime_state_restored,
+        },
+      };
+      char_block.gear_scoring_runtime = null;
+      char_block.gear_scoring_live_test = {
+        ...result,
+        status: result.outcome === "PASS" ? "COMPLETED" : "FAILED",
+      };
+      emit_supervisor_event(
+        result.outcome === "PASS"
+          ? "GEAR_SCORING_LIVE_TEST_COMPLETED"
+          : "GEAR_SCORING_LIVE_TEST_FAILED",
+        char_name,
+        {
+          request_id,
+          outcome: result.outcome,
+          reason: result.reason,
+          runtime_state_restored,
+        },
+      );
+      dashboard?.publishSnapshot();
+    }
+
+    return char_block.gear_scoring_live_test;
   }
 
   async function run_logistics_live_test(char_name) {

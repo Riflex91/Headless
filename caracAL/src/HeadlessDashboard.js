@@ -105,6 +105,7 @@ function publicCharacterState(name, charBlock = {}) {
     group_live_test: charBlock.group_live_test || null,
     farm_live_test: charBlock.farm_live_test || null,
     inventory_live_test: charBlock.inventory_live_test || null,
+    gear_scoring_live_test: charBlock.gear_scoring_live_test || null,
     logistics_live_test: charBlock.logistics_live_test || null,
     merchant_live_test: charBlock.merchant_live_test || null,
     bank_travel_live_test: charBlock.bank_travel_live_test || null,
@@ -308,6 +309,7 @@ function attachHeadlessDashboard({
   runGroupLiveTest,
   runFarmLiveTest,
   runInventoryLiveTest,
+  runGearScoringLiveTest,
   runLogisticsLiveTest,
   runMerchantLiveTest,
   runBankTravelLiveTest,
@@ -531,6 +533,33 @@ function attachHeadlessDashboard({
       } catch (error) {
         res.status(Number(error.statusCode) || 500).json({
           error: error.code || "INVENTORY_LIVE_TEST_FAILED",
+          message: error.message,
+        });
+      }
+    },
+  );
+
+  router.post(
+    "/headless/api/characters/:name/tests/gear-scoring",
+    async (req, res) => {
+      if (!runGearScoringLiveTest) {
+        res.status(503).json({ error: "GEAR_SCORING_LIVE_TEST_UNAVAILABLE" });
+        return;
+      }
+
+      try {
+        const result = await runGearScoringLiveTest(
+          req.params.name,
+          Number(req.body?.sampleMs) || 1200,
+        );
+        res.json({
+          ok: result?.outcome === "PASS",
+          result,
+          snapshot: getSnapshot(),
+        });
+      } catch (error) {
+        res.status(Number(error.statusCode) || 500).json({
+          error: error.code || "GEAR_SCORING_LIVE_TEST_FAILED",
           message: error.message,
         });
       }
