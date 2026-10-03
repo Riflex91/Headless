@@ -126,6 +126,12 @@ import {
   NpcTradingLiveTestResult,
   NpcTradingLiveTestRunner,
 } from "./npc-trading-live-test.lib";
+import { MarketTradingController } from "./market-trading-controller.lib";
+import {
+  MarketTradingLiveTestOptions,
+  MarketTradingLiveTestResult,
+  MarketTradingLiveTestRunner,
+} from "./market-trading-live-test.lib";
 
 const INVENTORY_INTELLIGENCE_JOB_ID = "inventory-intelligence-loop";
 const INVENTORY_INTELLIGENCE_INTERVAL_MS = 1000;
@@ -201,6 +207,7 @@ export class BotRuntimeKernel {
   readonly bankTravel: BankTravelController;
   readonly bankGoldSettlement: BankGoldSettlementController;
   readonly npcTrading: NpcTradingController;
+  readonly marketTrading: MarketTradingController;
   readonly merchantMerrit: MerchantMerritController;
   readonly merchantFishing: MerchantFishingController;
 
@@ -217,6 +224,7 @@ export class BotRuntimeKernel {
   private bankTravelLiveTestRunning = false;
   private bankGoldLiveTestRunning = false;
   private npcTradingLiveTestRunning = false;
+  private marketTradingLiveTestRunning = false;
   private merritLiveTestRunning = false;
   private fishingLiveTestRunning = false;
   private materialGatherTaskRunning = false;
@@ -324,6 +332,10 @@ export class BotRuntimeKernel {
       this.game,
       this.actions,
       this.movement,
+    );
+    this.marketTrading = new MarketTradingController(
+      this.game,
+      this.actions,
     );
     this.merchantMerrit = new MerchantMerritController(
       this.game,
@@ -1391,6 +1403,119 @@ export class BotRuntimeKernel {
       if (suspended.classSkill) this.registerClassSkillJob();
       if (suspended.combat) this.registerCombatJob();
       this.fishingLiveTestRunning = false;
+    }
+  }
+
+  async runMarketTradingLiveTest(
+    options: MarketTradingLiveTestOptions = {},
+  ): Promise<MarketTradingLiveTestResult> {
+    if (this.marketTradingLiveTestRunning) {
+      throw new Error("market trading live test already running");
+    }
+    if (
+      this.npcTradingLiveTestRunning ||
+      this.bankGoldLiveTestRunning ||
+      this.bankTravelLiveTestRunning
+    ) {
+      throw new Error("bank or NPC trading live test is running");
+    }
+    if (this.merritLiveTestRunning || this.fishingLiveTestRunning) {
+      throw new Error("merchant travel activity is running");
+    }
+    if (
+      this.movementLiveTestRunning ||
+      this.combatLiveTestRunning ||
+      this.classSkillLiveTestRunning ||
+      this.groupLiveTestRunning ||
+      this.merchantLiveTestRunning
+    ) {
+      throw new Error("movement, combat, or merchant live test is running");
+    }
+    if (
+      this.farmLiveTestRunning ||
+      this.inventoryLiveTestRunning ||
+      this.logisticsLiveTestRunning ||
+      this.logisticsClaimRunning
+    ) {
+      throw new Error("another live or logistics test is running");
+    }
+    if (!this.started || this.stopping) {
+      throw new Error("runtime is not ready for market trading live test");
+    }
+    if (runtimeState() !== "RUNNING") {
+      throw new Error("runtime must be RUNNING for market trading live test");
+    }
+
+    const character = this.game.character();
+    if (character.ctype !== "merchant") {
+      throw new Error("market trading live test requires merchant character");
+    }
+
+    this.marketTradingLiveTestRunning = true;
+    const requestId =
+      options.requestId || `market-trading-live-${Date.now()}`;
+    const suspended = {
+      merchantAutonomy: this.scheduler.unregister(MERCHANT_AUTONOMY_JOB_ID),
+      bankTravel: this.scheduler.unregister(BANK_TRAVEL_JOB_ID),
+      fishing: this.scheduler.unregister(FISHING_AUTONOMY_JOB_ID),
+      merrit: this.scheduler.unregister(MERRIT_AUTONOMY_JOB_ID),
+      groupCombat: this.scheduler.unregister(GROUP_COMBAT_JOB_ID),
+      classSkill: this.scheduler.unregister(CLASS_SKILL_JOB_ID),
+      combat: this.scheduler.unregister(COMBAT_JOB_ID),
+    };
+
+    this.eventBus.emit({
+      module: "MarketTradingLiveTest",
+      type: "MARKET_TRADING_LIVE_TEST_STARTED",
+      why: "PHASE13_MARKET_TRADING_E2E",
+      correlationId: requestId,
+      data: {
+        requestId,
+        suspended,
+        ...runtimeIdentity(),
+      },
+    });
+
+    try {
+      const runner = new MarketTradingLiveTestRunner({
+        marketTrading: this.marketTrading,
+      });
+      const result = await runner.run({
+        ...options,
+        requestId,
+      });
+      this.eventBus.emit({
+        module: "MarketTradingLiveTest",
+        type: "MARKET_TRADING_LIVE_TEST_COMPLETED",
+        why: result.reason,
+        correlationId: requestId,
+        data: {
+          result,
+          suspended,
+        },
+      });
+      return result;
+    } catch (error) {
+      this.eventBus.emit({
+        module: "MarketTradingLiveTest",
+        type: "MARKET_TRADING_LIVE_TEST_FAILED",
+        why: "MARKET_TRADING_LIVE_TEST_RUNTIME_ERROR",
+        correlationId: requestId,
+        data: {
+          error: error instanceof Error ? error.message : String(error),
+          suspended,
+        },
+      });
+      throw error;
+    } finally {
+      if (suspended.merchantAutonomy) this.registerMerchantAutonomyJob();
+      if (suspended.bankTravel) this.registerBankTravelJob();
+      if (suspended.merrit) this.registerMerritJob();
+      if (suspended.fishing) this.registerFishingJob();
+      if (suspended.groupCombat) this.registerGroupCombatJob();
+      if (suspended.classSkill) this.registerClassSkillJob();
+      if (suspended.combat) this.registerCombatJob();
+      this.marketTradingLiveTestRunning = false;
     }
   }
 
