@@ -6,8 +6,7 @@ const {
 } = require("../src/MovementLiveTestLauncher");
 const { readState } = require("./run_gear_scoring_live_e2e");
 
-const baseUrl =
-  process.env.CARACAL_HEADLESS_URL || "http://127.0.0.1:924";
+const baseUrl = process.env.CARACAL_HEADLESS_URL || "http://127.0.0.1:924";
 
 function record(value) {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -106,8 +105,7 @@ function selectReservationPair(
     let target = null;
     if (requestedTarget) {
       target = sorted.find(
-        (entry) =>
-          entry.name === requestedTarget && entry.name !== source.name,
+        (entry) => entry.name === requestedTarget && entry.name !== source.name,
       );
       if (!target) continue;
     } else {
@@ -450,8 +448,7 @@ function combineSupervisorResult(source) {
     result.cleanup?.equipmentBaselineRestored === true;
   const inventoryGearBaselineRestored =
     result.cleanup?.inventoryGearBaselineRestored === true;
-  const runtimeStatesRestored =
-    result.cleanup?.runtimeStatesRestored === true;
+  const runtimeStatesRestored = result.cleanup?.runtimeStatesRestored === true;
 
   const evidence = {
     ...afterEvidence,
