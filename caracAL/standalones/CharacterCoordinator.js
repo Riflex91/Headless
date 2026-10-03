@@ -8201,9 +8201,7 @@ function migrate_old_storage(path, localStorage) {
     const item_slots = raw_slots.map((slot) => Number(slot));
     const slots_valid =
       item_slots.length === 3 &&
-      item_slots.every(
-        (slot) => Number.isInteger(slot) && slot >= 0,
-      ) &&
+      item_slots.every((slot) => Number.isInteger(slot) && slot >= 0) &&
       new Set(item_slots).size === 3;
 
     if (!item_name || !scroll_name || !slots_valid) {
@@ -8266,8 +8264,7 @@ function migrate_old_storage(path, localStorage) {
         : DESIRED_RUNTIME_STATES.STOPPED);
     const started_at = Date.now();
     compound_live_test_sequence += 1;
-    const request_id =
-      `compound-live-${started_at}-${compound_live_test_sequence}`;
+    const request_id = `compound-live-${started_at}-${compound_live_test_sequence}`;
 
     char_block.compound_live_test = {
       request_id,
@@ -8370,8 +8367,8 @@ function migrate_old_storage(path, localStorage) {
           runtime_result.outcome === "PASS"
             ? "COMPLETED"
             : runtime_result.outcome === "UNKNOWN"
-              ? "UNKNOWN"
-              : "FAILED",
+            ? "UNKNOWN"
+            : "FAILED",
         started_at,
         completed_at: Date.now(),
         cleanup: {
