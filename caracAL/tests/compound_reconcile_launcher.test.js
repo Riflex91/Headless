@@ -61,10 +61,7 @@ test("Compound UNKNOWN reconcile recognizes an observed +1 success state", () =>
   const result = classifyCompoundUnknown(snapshot, expected);
 
   assert.equal(result.state, "SUCCESS_STATE");
-  assert.equal(
-    result.reason,
-    "COMPOUND_UNKNOWN_RECONCILED_SUCCESS_STATE",
-  );
+  assert.equal(result.reason, "COMPOUND_UNKNOWN_RECONCILED_SUCCESS_STATE");
   assert.equal(result.mutationObserved, true);
   assert.equal(result.successObserved, true);
   assert.equal(result.retryAllowed, false);
