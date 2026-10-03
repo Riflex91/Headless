@@ -107,6 +107,18 @@ function verifyCompoundPreparation(source) {
       record(result.evidence).threeMatchingItemsObserved === true &&
       record(result.evidence).allDeliveredItemsLevelMatched === true,
     workerEvidenceValid,
+    localPreflightReady:
+      record(result.evidence).localPreflightReadOnly === true &&
+      record(result.evidence).compoundOperationIdle === true &&
+      record(result.evidence).itemLocksClear === true &&
+      record(result.evidence).scrollLocksClear === true &&
+      record(result.evidence).mapAllowsCompound === true &&
+      Array.isArray(result.itemLockedSlots) &&
+      result.itemLockedSlots.length === 0 &&
+      Array.isArray(result.scrollLockedSlots) &&
+      result.scrollLockedSlots.length === 0 &&
+      typeof result.runtimeMap === "string" &&
+      !result.runtimeMap.toLowerCase().startsWith("bank"),
     blindRetryAvoided: record(result.evidence).blindRetryUsed === false,
     matchingItemSlotsObserved:
       Array.isArray(result.matchingItemSlots) &&
