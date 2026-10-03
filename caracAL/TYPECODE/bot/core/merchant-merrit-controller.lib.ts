@@ -1004,6 +1004,7 @@ export class MerchantMerritController {
       if (npcBlocked) continue;
 
       const merchantBlocked = market.some((listing) => {
+        if (listing.x === null || listing.y === null) return false;
         const dx = Math.abs(listing.x - x);
         const dy = Math.abs(listing.y - y);
         return (
