@@ -2889,8 +2889,8 @@ function migrate_old_storage(path, localStorage) {
         purpose === "COMPOUND_TEST_MATERIAL"
           ? "COMPOUND_MATERIAL_WORKER_DISPATCHED"
           : purpose === "CRAFT_TEST_MATERIAL"
-            ? "CRAFT_MATERIAL_WORKER_DISPATCHED"
-            : "FISHING_MATERIAL_WORKER_DISPATCHED",
+          ? "CRAFT_MATERIAL_WORKER_DISPATCHED"
+          : "FISHING_MATERIAL_WORKER_DISPATCHED",
         worker_name,
         {
           request_id,
@@ -2957,8 +2957,8 @@ function migrate_old_storage(path, localStorage) {
         purpose === "COMPOUND_TEST_MATERIAL"
           ? "COMPOUND_MATERIAL_WORKER_RESTORED"
           : purpose === "CRAFT_TEST_MATERIAL"
-            ? "CRAFT_MATERIAL_WORKER_RESTORED"
-            : "FISHING_MATERIAL_WORKER_RESTORED",
+          ? "CRAFT_MATERIAL_WORKER_RESTORED"
+          : "FISHING_MATERIAL_WORKER_RESTORED",
         worker_name,
         {
           request_id,
@@ -2969,10 +2969,7 @@ function migrate_old_storage(path, localStorage) {
     }
   }
 
-  async function run_craft_material_preparation(
-    merchant_name,
-    options = {},
-  ) {
+  async function run_craft_material_preparation(merchant_name, options = {}) {
     if (
       craft_material_preparation_active ||
       compound_material_preparation_active ||
@@ -3058,16 +3055,12 @@ function migrate_old_storage(path, localStorage) {
     };
 
     craft_material_preparation_active = true;
-    emit_supervisor_event(
-      "CRAFT_MATERIAL_PREPARATION_STARTED",
-      merchant_name,
-      {
-        worker: worker_name,
-        recipe: requested_recipe,
-        original_desired_state,
-        irreversibleCraftMutation: false,
-      },
-    );
+    emit_supervisor_event("CRAFT_MATERIAL_PREPARATION_STARTED", merchant_name, {
+      worker: worker_name,
+      recipe: requested_recipe,
+      original_desired_state,
+      irreversibleCraftMutation: false,
+    });
 
     try {
       if (!runtime_ready) {
@@ -3099,8 +3092,7 @@ function migrate_old_storage(path, localStorage) {
       const ready_merchant =
         await wait_for_material_worker_runtime(merchant_name);
       craft_material_plan_sequence += 1;
-      plan_request_id =
-        `craft-material-plan-${Date.now()}-${craft_material_plan_sequence}`;
+      plan_request_id = `craft-material-plan-${Date.now()}-${craft_material_plan_sequence}`;
       const plan_promise = wait_for_craft_material_plan_result(
         merchant_name,
         plan_request_id,
@@ -3128,8 +3120,7 @@ function migrate_old_storage(path, localStorage) {
       if (plan_response.error || !plan_response.result) {
         return {
           outcome: "FAIL",
-          reason:
-            plan_response.error || "CRAFT_MATERIAL_PLAN_RESULT_MISSING",
+          reason: plan_response.error || "CRAFT_MATERIAL_PLAN_RESULT_MISSING",
           merchant: merchant_name,
           worker: worker_name,
         };
@@ -3276,9 +3267,7 @@ function migrate_old_storage(path, localStorage) {
             : "";
         worker_result = {
           outcome:
-            error_code === "MATERIAL_GATHER_TASK_TIMEOUT"
-              ? "TIMEOUT"
-              : "FAIL",
+            error_code === "MATERIAL_GATHER_TASK_TIMEOUT" ? "TIMEOUT" : "FAIL",
           reason:
             error_code ||
             (error instanceof Error ? error.message : String(error)),
@@ -3293,8 +3282,7 @@ function migrate_old_storage(path, localStorage) {
         return {
           outcome: worker_result.outcome,
           reason:
-            worker_result.reason ||
-            "CRAFT_MATERIAL_WORKER_OUTCOME_UNCERTAIN",
+            worker_result.reason || "CRAFT_MATERIAL_WORKER_OUTCOME_UNCERTAIN",
           merchant: merchant_name,
           worker: worker_name,
           plan,
@@ -3346,8 +3334,7 @@ function migrate_old_storage(path, localStorage) {
         return {
           outcome: "FAIL",
           reason:
-            worker_result?.reason ||
-            "CRAFT_MATERIAL_DELIVERY_NOT_OBSERVED",
+            worker_result?.reason || "CRAFT_MATERIAL_DELIVERY_NOT_OBSERVED",
           merchant: merchant_name,
           worker: worker_name,
           plan,
