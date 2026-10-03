@@ -161,8 +161,5 @@ test("Craft live wiring exposes runtime, IPC and dashboard boundaries", () => {
   assert.match(characterThread, /craft_live_test_result/);
   assert.match(coordinator, /run_craft_live_test/);
   assert.match(coordinator, /type: "craft_live_test"/);
-  assert.match(
-    dashboard,
-    /\/headless\/api\/characters\/:name\/tests\/craft/,
-  );
+  assert.match(dashboard, /\/headless\/api\/characters\/:name\/tests\/craft/);
 });
