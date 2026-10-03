@@ -53,20 +53,20 @@ interface NpcTradingGame {
 }
 
 interface NpcTradingActions {
-  buy(request: {
+  buy: (request: {
     itemName: string;
     quantity: number;
     module: string;
     why: string;
     correlationId?: string;
-  }): Promise<ActionRecord>;
-  sell(request: {
+  }) => Promise<ActionRecord>;
+  sell: (request: {
     inventorySlot: number;
     quantity: number;
     module: string;
     why: string;
     correlationId?: string;
-  }): Promise<ActionRecord>;
+  }) => Promise<ActionRecord>;
 }
 
 interface NpcTradingMovement {
