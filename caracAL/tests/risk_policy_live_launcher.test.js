@@ -1,11 +1,8 @@
 "use strict";
-
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
-const prettier = require("prettier");
 const test = require("node:test");
-
 const {
   combineRiskPolicySupervisorResult,
   decisionMatches,
@@ -14,7 +11,6 @@ const {
   normalizedPolicy,
   riskPolicyEvidence,
 } = require("../scripts/run_risk_policy_live_e2e");
-
 function policy(overrides = {}) {
   return {
     minExpectedDeltaGold: 0,
@@ -26,7 +22,6 @@ function policy(overrides = {}) {
     ...overrides,
   };
 }
-
 function estimate(overrides = {}) {
   return {
     kind: "UPGRADE",
@@ -53,7 +48,6 @@ function estimate(overrides = {}) {
     ...overrides,
   };
 }
-
 function expectedValue(estimates = []) {
   return {
     timestamp: 1000,
@@ -65,7 +59,6 @@ function expectedValue(estimates = []) {
     estimates,
   };
 }
-
 function emptyRiskPolicy(overrides = {}) {
   return {
     timestamp: 1000,
@@ -89,7 +82,6 @@ function emptyRiskPolicy(overrides = {}) {
     ...overrides,
   };
 }
-
 function readyRiskPolicy(overrides = {}) {
   const decision = {
     kind: "UPGRADE",
@@ -127,7 +119,6 @@ function readyRiskPolicy(overrides = {}) {
     ...overrides,
   };
 }
-
 function supervisorResult({
   expected = expectedValue(),
   risk = emptyRiskPolicy(),
@@ -163,10 +154,8 @@ function supervisorResult({
     },
   };
 }
-
 test("Risk Policy live verifier accepts a consistent EMPTY projection", () => {
   const result = combineRiskPolicySupervisorResult(supervisorResult());
-
   assert.equal(result.outcome, "PASS");
   assert.equal(result.reason, "RISK_POLICY_LIVE_E2E_CONFIRMED");
   assert.equal(result.evidence.projectionVisible, true);
@@ -178,7 +167,6 @@ test("Risk Policy live verifier accepts a consistent EMPTY projection", () => {
   assert.equal(result.scope.readOnly, true);
   assert.equal(result.scope.riskPolicyMutationForced, false);
 });
-
 test("Risk Policy live verifier independently recomputes an allowed decision", () => {
   const ev = expectedValue([estimate()]);
   const risk = readyRiskPolicy();
@@ -195,7 +183,6 @@ test("Risk Policy live verifier independently recomputes an allowed decision", (
       risk,
     }),
   );
-
   assert.equal(expected.decision, "ALLOW");
   assert.equal(decisionMatches(risk.decisions[0], expected), true);
   assert.equal(evidenceComplete(evidence), true);
@@ -203,7 +190,6 @@ test("Risk Policy live verifier independently recomputes an allowed decision", (
   assert.equal(result.evidence.allowed, 1);
   assert.equal(result.evidence.blocked, 0);
 });
-
 test("Risk Policy live verifier rejects an invented ALLOW for negative EV", () => {
   const negative = estimate({
     expectedOutcomeValueGold: 900,
@@ -227,7 +213,6 @@ test("Risk Policy live verifier rejects an invented ALLOW for negative EV", () =
       },
     ],
   });
-
   const evidence = riskPolicyEvidence({
     expectedValue: ev,
     riskPolicy: invalid,
@@ -238,11 +223,9 @@ test("Risk Policy live verifier rejects an invented ALLOW for negative EV", () =
       risk: invalid,
     }),
   );
-
   assert.equal(evidence.decisionsRecomputed, false);
   assert.equal(result.outcome, "FAIL");
 });
-
 test("Risk Policy live verifier rejects policy drift that permits UNKNOWN", () => {
   const risk = emptyRiskPolicy({
     policy: policy({
@@ -254,12 +237,10 @@ test("Risk Policy live verifier rejects policy drift that permits UNKNOWN", () =
       risk,
     }),
   );
-
   assert.equal(result.evidence.policyValid, false);
   assert.equal(result.evidence.unknownAlwaysBlocked, false);
   assert.equal(result.outcome, "FAIL");
 });
-
 test("Risk Policy live verifier requires runtime and equipment restoration", () => {
   const result = combineRiskPolicySupervisorResult(
     supervisorResult({
@@ -268,11 +249,9 @@ test("Risk Policy live verifier requires runtime and equipment restoration", () 
       },
     }),
   );
-
   assert.equal(result.evidence.runtimeStateRestored, false);
   assert.equal(result.outcome, "FAIL");
 });
-
 test("Risk Policy live verifier rejects any supervisor value mutation", () => {
   const result = combineRiskPolicySupervisorResult(
     supervisorResult({
@@ -281,11 +260,9 @@ test("Risk Policy live verifier rejects any supervisor value mutation", () => {
       },
     }),
   );
-
   assert.equal(result.evidence.supervisorValueMutationForced, true);
   assert.equal(result.outcome, "FAIL");
 });
-
 test("Risk Policy live launcher stays on the read-only Gear Scoring probe", () => {
   const coordinator = fs.readFileSync(
     path.join(__dirname, "..", "standalones", "CharacterCoordinator.js"),
@@ -295,7 +272,6 @@ test("Risk Policy live launcher stays on the read-only Gear Scoring probe", () =
     path.join(__dirname, "..", "scripts", "run_risk_policy_live_e2e.js"),
     "utf8",
   );
-
   assert.match(coordinator, /risk_policy_runtime/);
   assert.match(coordinator, /riskPolicy:/);
   assert.match(launcher, /runGearScoringSupervisorLiveTest/);
@@ -303,21 +279,3 @@ test("Risk Policy live launcher stays on the read-only Gear Scoring probe", () =
   assert.match(launcher, /riskPolicyMutationForced: false/);
   assert.doesNotMatch(launcher, /executeNext/);
 });
-
-
-// PRETTIER_RISK_LIVE_TEST_PROBE_START
-test("temporary Risk Policy live test Prettier probe", async () => {
-  const source = fs.readFileSync(__filename, "utf8");
-  const cleaned = source
-    .replace('const prettier = require("prettier");\n', "")
-    .replace(
-      /\/\/ PRETTIER_RISK_LIVE_TEST_PROBE_START[\s\S]*?\/\/ PRETTIER_RISK_LIVE_TEST_PROBE_END\n?/,
-      "",
-    );
-  const formatted = await prettier.format(cleaned, { filepath: __filename });
-  console.log("RISK_LIVE_TEST_PRETTIER_START");
-  console.log(formatted);
-  console.log("RISK_LIVE_TEST_PRETTIER_END");
-  assert.ok(formatted.length > 0);
-});
-// PRETTIER_RISK_LIVE_TEST_PROBE_END
