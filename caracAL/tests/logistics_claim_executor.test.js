@@ -461,4 +461,3 @@ test("material delivery never sends locked crafting material", async () => {
   assert.equal(result.reason, "CLAIM_ITEM_UNAVAILABLE");
   assert.equal(calls.length, 0);
 });
-
