@@ -52,6 +52,8 @@ function combineUpgradeSupervisorResult(source) {
       Number.isInteger(result.target?.scrollSlot),
     inventoryIntelligenceReady: evidence.inventoryIntelligenceReady === true,
     itemDefinitionUpgradable: evidence.itemDefinitionUpgradable === true,
+    itemGradeKnown: evidence.itemGradeKnown === true,
+    scrollGradeCompatible: evidence.scrollGradeCompatible === true,
     itemUnprotectedBefore: evidence.itemUnprotectedBefore === true,
     scrollUnprotectedBefore: evidence.scrollUnprotectedBefore === true,
     exactCandidateSelected: evidence.exactCandidateSelected === true,

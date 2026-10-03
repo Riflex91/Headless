@@ -53,6 +53,8 @@ export interface UpgradeLiveTestResult {
   evidence: {
     inventoryIntelligenceReady: boolean;
     itemDefinitionUpgradable: boolean;
+    itemGradeKnown: boolean;
+    scrollGradeCompatible: boolean;
     itemUnprotectedBefore: boolean;
     scrollUnprotectedBefore: boolean;
     exactCandidateSelected: boolean;
@@ -84,6 +86,7 @@ export interface UpgradeLiveTestResult {
 interface UpgradeLiveGameAdapter {
   inventory(): InventorySlotSnapshot[];
   gameData(): Record<string, unknown>;
+  itemGrade(item: Record<string, unknown>): number | null;
 }
 
 interface UpgradeLiveTestDependencies {
@@ -105,6 +108,8 @@ interface SelectedLiveTarget {
   itemSlot: number;
   itemName: string;
   level: number;
+  itemGrade: number;
+  expectedScrollName: string;
   scrollSlot: number;
   scrollName: string;
   itemEntry: InventoryIntelligenceEntry;
@@ -183,6 +188,7 @@ function selectLiveTarget(
   inventory: InventorySlotSnapshot[],
   intelligenceEntries: InventoryIntelligenceEntry[],
   gameData: Record<string, unknown>,
+  itemGrade: (item: Record<string, unknown>) => number | null,
   options: UpgradeLiveTestOptions,
 ): SelectedLiveTarget | null {
   const requestedSlot = nonNegativeInteger(options.itemSlot);
@@ -208,7 +214,12 @@ function selectLiveTarget(
   for (const candidate of itemCandidates) {
     const item = candidate.item ? record(candidate.item) : null;
     const level = item ? nonNegativeInteger(item.level) ?? 0 : null;
-    if (level === null) continue;
+    if (level === null || !item) continue;
+
+    const grade = itemGrade(item);
+    if (grade === null || !Number.isInteger(grade) || grade < 0) continue;
+    const expectedScrollName = `scroll${grade}`;
+    if (options.scrollName !== expectedScrollName) continue;
 
     const scroll = inventory
       .filter((slot) => slot.slot !== candidate.slot)
@@ -226,6 +237,8 @@ function selectLiveTarget(
       itemSlot: candidate.slot,
       itemName: options.itemName,
       level,
+      itemGrade: grade,
+      expectedScrollName,
       scrollSlot: scroll.slot,
       scrollName: options.scrollName,
       itemEntry: entriesBySlot.get(candidate.slot) as InventoryIntelligenceEntry,
@@ -240,6 +253,8 @@ function baseEvidence(): UpgradeLiveTestResult["evidence"] {
   return {
     inventoryIntelligenceReady: false,
     itemDefinitionUpgradable: false,
+    itemGradeKnown: false,
+    scrollGradeCompatible: false,
     itemUnprotectedBefore: false,
     scrollUnprotectedBefore: false,
     exactCandidateSelected: false,
@@ -373,6 +388,7 @@ export class UpgradeLiveTestRunner {
         initialInventory,
         originalIntelligence.entries,
         gameData,
+        (item) => this.deps.game.itemGrade(item),
         {
           ...options,
           itemName,
@@ -384,6 +400,9 @@ export class UpgradeLiveTestRunner {
         return (finalResult = finish());
       }
 
+      evidence.itemGradeKnown = true;
+      evidence.scrollGradeCompatible =
+        scrollName === selected.expectedScrollName;
       evidence.itemUnprotectedBefore =
         !selected.itemEntry.protected &&
         selected.itemEntry.protections.length === 0;
