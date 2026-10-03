@@ -16,13 +16,20 @@ function makeSetup({ actionStatus = "CONFIRMED", ctype = "ranger" } = {}) {
   const { ClassSkillLiveTestRunner } = coreModule(
     "class-skill-live-test.lib.ts",
   );
+  const merchant = ctype === "merchant";
+  const safeSkill = merchant ? "massproduction" : "track";
+  const moduleName = merchant
+    ? "MerchantSkillController"
+    : "RangerSkillController";
+  const skillMp = merchant ? 20 : 80;
+  const skillCooldown = merchant ? 50 : 1600;
   let now = 1000;
   let classSkillEnabled = false;
   let action = null;
   let cooldownMs = 0;
   const state = {
     character: {
-      name: "My_Ranger1",
+      name: merchant ? "My_Merchant" : "My_Ranger1",
       ctype,
       map: "main",
       x: 10,
@@ -31,6 +38,7 @@ function makeSetup({ actionStatus = "CONFIRMED", ctype = "ranger" } = {}) {
       maxHp: 1000,
       mp: 500,
       maxMp: 1000,
+      level: merchant ? 58 : 80,
       range: 140,
       gold: 0,
       target: null,
@@ -42,8 +50,8 @@ function makeSetup({ actionStatus = "CONFIRMED", ctype = "ranger" } = {}) {
   const classSkills = {
     setConfigOverride(config) {
       classSkillEnabled =
-        config?.classSkills?.ranger?.enabled === true &&
-        config?.classSkills?.ranger?.skills?.track?.enabled === true;
+        config?.classSkills?.[ctype]?.enabled === true &&
+        config?.classSkills?.[ctype]?.skills?.[safeSkill]?.enabled === true;
     },
     clearConfigOverride() {
       classSkillEnabled = false;
@@ -51,13 +59,13 @@ function makeSetup({ actionStatus = "CONFIRMED", ctype = "ranger" } = {}) {
     status() {
       return {
         timestamp: now,
-        className: "ranger",
-        module: "RangerSkillController",
+        className: ctype,
+        module: moduleName,
         enabled: classSkillEnabled,
         state: action ? "USING" : classSkillEnabled ? "IDLE" : "DISABLED",
         reason: action ? "CLASS_SKILL_DISPATCHED" : "CLASS_SKILLS_DISABLED",
-        configuredSkills: classSkillEnabled ? ["track"] : [],
-        selectedSkill: action ? "track" : null,
+        configuredSkills: classSkillEnabled ? [safeSkill] : [],
+        selectedSkill: action ? safeSkill : null,
         targetId: null,
         lastAction: action,
         unknownSkill: null,
@@ -68,11 +76,11 @@ function makeSetup({ actionStatus = "CONFIRMED", ctype = "ranger" } = {}) {
         action = {
           id: "skill-1",
           status: actionStatus,
-          skill: "track",
+          skill: safeSkill,
         };
         if (actionStatus === "CONFIRMED") {
-          state.character.mp -= 80;
-          cooldownMs = 1600;
+          state.character.mp -= skillMp;
+          cooldownMs = skillCooldown;
         }
       }
       return this.status();
@@ -94,12 +102,13 @@ function makeSetup({ actionStatus = "CONFIRMED", ctype = "ranger" } = {}) {
     character: () => ({ ...state.character }),
     skills: () => [
       {
-        key: "track",
-        name: "Track",
-        classes: ["ranger"],
-        mp: 80,
-        cooldown: 1600,
-        range: 1440,
+        key: safeSkill,
+        name: merchant ? "Mass Production" : "Track",
+        classes: [ctype],
+        level: merchant ? 30 : null,
+        mp: skillMp,
+        cooldown: skillCooldown,
+        range: merchant ? null : 1440,
         hostile: false,
         party: false,
         passive: false,
@@ -109,7 +118,7 @@ function makeSetup({ actionStatus = "CONFIRMED", ctype = "ranger" } = {}) {
       cooldownMs > 0
         ? [
             {
-              skill: "track",
+              skill: safeSkill,
               readyAt: now + cooldownMs,
               remainingMs: cooldownMs,
               ready: false,
@@ -136,10 +145,29 @@ test("class skill live runner confirms safe Ranger track skill", async () => {
   assert.equal(result.classSkill.actionStatus, "CONFIRMED");
   assert.equal(result.classSkill.cooldownObserved, true);
   assert.equal(result.classSkill.mpCostObserved, true);
+  assert.equal(result.scope.testedClass, "ranger");
+  assert.equal(result.scope.safeSkill, "track");
   assert.equal(result.scope.consumableMutationForced, false);
   assert.equal(result.scope.combatMutationForced, false);
   assert.equal(result.cleanup.classSkillOverrideCleared, true);
   assert.equal(result.cleanup.combatOverrideCleared, true);
+});
+
+test("class skill live runner confirms safe Merchant massproduction skill", async () => {
+  const setup = makeSetup({ ctype: "merchant" });
+  const result = await setup.runner.run();
+
+  assert.equal(result.outcome, "PASS");
+  assert.equal(result.reason, "CLASS_SKILL_LIVE_E2E_CONFIRMED");
+  assert.equal(result.preparation.selectedSkill, "massproduction");
+  assert.equal(result.classSkill.module, "MerchantSkillController");
+  assert.equal(result.classSkill.actionStatus, "CONFIRMED");
+  assert.equal(result.classSkill.cooldownObserved, true);
+  assert.equal(result.classSkill.mpCostObserved, true);
+  assert.equal(result.scope.testedClass, "merchant");
+  assert.equal(result.scope.safeSkill, "massproduction");
+  assert.equal(result.scope.combatMutationForced, false);
+  assert.equal(result.scope.targetMutationForced, false);
 });
 
 test("class skill live runner never treats UNKNOWN as success", async () => {
@@ -151,11 +179,13 @@ test("class skill live runner never treats UNKNOWN as success", async () => {
   assert.equal(result.cleanup.classSkillOverrideCleared, true);
 });
 
-test("class skill live runner rejects non-ranger characters safely", async () => {
+test("class skill live runner rejects unsupported characters safely", async () => {
   const setup = makeSetup({ ctype: "warrior" });
   const result = await setup.runner.run();
 
   assert.equal(result.outcome, "FAIL");
-  assert.equal(result.reason, "CLASS_SKILL_LIVE_E2E_REQUIRES_RANGER");
+  assert.equal(result.reason, "CLASS_SKILL_LIVE_E2E_UNSUPPORTED_CLASS");
   assert.equal(result.scope.combatMutationForced, false);
+  assert.equal(result.cleanup.classSkillOverrideCleared, true);
+  assert.equal(result.cleanup.combatOverrideCleared, true);
 });
