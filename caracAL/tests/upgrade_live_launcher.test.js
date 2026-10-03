@@ -70,6 +70,8 @@ function passResult(overrides = {}) {
     evidence: {
       inventoryIntelligenceReady: true,
       itemDefinitionUpgradable: true,
+      itemGradeKnown: true,
+      scrollGradeCompatible: true,
       itemUnprotectedBefore: true,
       scrollUnprotectedBefore: true,
       exactCandidateSelected: true,
@@ -108,6 +110,8 @@ test("Upgrade live launcher independently confirms complete PASS evidence", () =
   assert.equal(result.outcome, "PASS");
   assert.equal(result.reason, "UPGRADE_LIVE_E2E_CONFIRMED");
   assert.equal(result.evidence.verifier.explicitTargetObserved, true);
+  assert.equal(result.evidence.verifier.itemGradeKnown, true);
+  assert.equal(result.evidence.verifier.scrollGradeCompatible, true);
   assert.equal(result.evidence.verifier.actionConfirmed, true);
   assert.equal(result.evidence.verifier.mutationObserved, true);
   assert.equal(result.evidence.verifier.cleanupComplete, true);
