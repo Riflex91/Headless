@@ -402,6 +402,7 @@ function migrate_old_storage(path, localStorage) {
         runUpgradeLivePreflight: run_upgrade_live_preflight,
         runExchangePreflight: run_exchange_preflight,
         runCraftPreflight: run_craft_preflight,
+        runCraftMaterialPlanReadOnly: run_craft_material_plan_readonly,
         runCraftMaterialPreparation: run_craft_material_preparation,
         runExchangeLiveTest: run_exchange_live_test,
         runCompoundMaterialPreparation: run_compound_material_preparation,
@@ -2964,6 +2965,255 @@ function migrate_old_storage(path, localStorage) {
           request_id,
           runtime_state_restored,
           desired_runtime_state: original_desired_state,
+        },
+      );
+    }
+  }
+
+  async function run_craft_material_plan_readonly(
+    merchant_name,
+    options = {},
+  ) {
+    if (
+      craft_preflight_active ||
+      craft_material_preparation_active ||
+      compound_material_preparation_active ||
+      compound_live_test_active ||
+      upgrade_live_test_active ||
+      upgrade_live_preflight_active ||
+      exchange_preflight_active ||
+      exchange_live_test_active ||
+      material_worker_active_count > 0
+    ) {
+      throw make_control_error(
+        "MUTATION_VERIFICATION_ALREADY_RUNNING",
+        "A mutation verification or material preparation is already running",
+        409,
+      );
+    }
+
+    const merchant_block = character_manage[merchant_name];
+    if (!merchant_block) {
+      throw make_control_error(
+        "CHARACTER_NOT_FOUND",
+        `Unknown character: ${merchant_name}`,
+        404,
+      );
+    }
+    if (
+      merchant_block.account_owned !== true ||
+      (merchant_block.account_character_type ||
+        merchant_block.live_state?.ctype) !== "merchant"
+    ) {
+      throw make_control_error(
+        "CRAFT_MATERIAL_PLAN_ACCOUNT_MERCHANT_REQUIRED",
+        "Craft material planning requires an account-owned merchant: " +
+          merchant_name,
+        400,
+      );
+    }
+
+    const requested_recipe =
+      typeof options.recipe === "string" && options.recipe.trim()
+        ? options.recipe.trim()
+        : null;
+    const original_desired_state =
+      merchant_block.desired_runtime_state ||
+      (merchant_block.enabled
+        ? DESIRED_RUNTIME_STATES.RUNNING
+        : DESIRED_RUNTIME_STATES.STOPPED);
+    const runtime_ready =
+      !!merchant_block.instance &&
+      merchant_block.connected &&
+      Number.isFinite(merchant_block.bot_runtime_started_at);
+    const started_at = Date.now();
+    const cleanup = {
+      runtimeStateRestored: false,
+      dispatcherRestored: false,
+    };
+    const scope = {
+      readOnly: true,
+      movementMutationForced: false,
+      combatMutationForced: false,
+      lootMutationForced: false,
+      deliveryMutationForced: false,
+      craftMutationForced: false,
+      blindRetryUsed: false,
+    };
+    let runtime_override_applied = false;
+    let runtime_state_restored = false;
+    let plan_request_id = null;
+    let result = null;
+
+    craft_preflight_active = true;
+    emit_supervisor_event(
+      "CRAFT_MATERIAL_PLAN_READ_ONLY_STARTED",
+      merchant_name,
+      {
+        recipe: requested_recipe,
+        original_desired_state,
+        readOnly: true,
+      },
+    );
+
+    try {
+      if (!runtime_ready) {
+        const bundle_path = path.join(
+          process.cwd(),
+          "TYPECODE.out",
+          MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE,
+        );
+        if (!fs_regular.existsSync(bundle_path)) {
+          result = {
+            outcome: "FAIL",
+            reason: "CRAFT_MATERIAL_PLAN_RUNTIME_BUNDLE_MISSING",
+            merchant: merchant_name,
+            requestedRecipe: requested_recipe,
+            plan: null,
+            scope,
+            cleanup,
+          };
+          return result;
+        }
+
+        merchant_block.movement_live_test_typescript_override =
+          MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE;
+        runtime_override_applied = true;
+        merchant_block.enabled = true;
+        merchant_block.desired_runtime_state = DESIRED_RUNTIME_STATES.RUNNING;
+        await restart_character_for_movement_runtime(
+          merchant_name,
+          merchant_block,
+        );
+      }
+
+      const ready_merchant =
+        await wait_for_material_worker_runtime(merchant_name);
+      craft_material_plan_sequence += 1;
+      plan_request_id =
+        `craft-material-plan-readonly-${Date.now()}-${craft_material_plan_sequence}`;
+      const plan_promise = wait_for_craft_material_plan_result(
+        merchant_name,
+        plan_request_id,
+      );
+      const sent = safe_send(ready_merchant.instance, {
+        type: "craft_material_plan",
+        request_id: plan_request_id,
+        ...(requested_recipe && { recipe: requested_recipe }),
+      });
+      if (!sent) {
+        const pending = craft_material_plan_requests.get(plan_request_id);
+        if (pending) {
+          clearTimeout(pending.timer);
+          craft_material_plan_requests.delete(plan_request_id);
+        }
+        result = {
+          outcome: "FAIL",
+          reason: "CRAFT_MATERIAL_PLAN_DISPATCH_FAILED",
+          merchant: merchant_name,
+          requestedRecipe: requested_recipe,
+          plan: null,
+          scope,
+          cleanup,
+        };
+        return result;
+      }
+
+      const response = await plan_promise;
+      if (response.error || !response.result) {
+        result = {
+          outcome: "FAIL",
+          reason:
+            response.error || "CRAFT_MATERIAL_PLAN_RESULT_MISSING",
+          merchant: merchant_name,
+          requestedRecipe: requested_recipe,
+          plan: response.result || null,
+          scope,
+          cleanup,
+        };
+        return result;
+      }
+
+      result = {
+        outcome: "PASS",
+        reason: "CRAFT_MATERIAL_PLAN_E2E_CONFIRMED",
+        merchant: merchant_name,
+        requestedRecipe: requested_recipe,
+        startedAt: started_at,
+        completedAt: Date.now(),
+        plan: response.result,
+        scope,
+        cleanup,
+      };
+      emit_supervisor_event(
+        "CRAFT_MATERIAL_PLAN_READ_ONLY_COMPLETED",
+        merchant_name,
+        {
+          outcome: result.outcome,
+          reason: result.reason,
+          requestedRecipe: requested_recipe,
+          planOutcome: response.result.outcome,
+          planReason: response.result.reason,
+          selected: response.result.selected || null,
+          rejectedSourceCount: Array.isArray(response.result.rejectedSources)
+            ? response.result.rejectedSources.length
+            : 0,
+        },
+      );
+      return result;
+    } finally {
+      if (plan_request_id) {
+        const pending = craft_material_plan_requests.get(plan_request_id);
+        if (pending) {
+          clearTimeout(pending.timer);
+          craft_material_plan_requests.delete(plan_request_id);
+        }
+      }
+
+      try {
+        if (runtime_override_applied) {
+          await restore_movement_live_test_execution_source(
+            merchant_name,
+            original_desired_state,
+          );
+        } else {
+          await restore_movement_live_test_state(
+            merchant_name,
+            original_desired_state,
+          );
+        }
+        runtime_state_restored = true;
+      } catch (restore_error) {
+        emit_supervisor_event(
+          "CRAFT_MATERIAL_PLAN_READ_ONLY_RESTORE_FAILED",
+          merchant_name,
+          {
+            recipe: requested_recipe,
+            error:
+              restore_error instanceof Error
+                ? restore_error.message
+                : String(restore_error),
+          },
+        );
+      }
+
+      cleanup.runtimeStateRestored = runtime_state_restored;
+      craft_preflight_active = false;
+      schedule_merchant_logistics_dispatch();
+      cleanup.dispatcherRestored = true;
+      if (
+        result?.outcome === "PASS" &&
+        !cleanup.runtimeStateRestored
+      ) {
+        result.outcome = "FAIL";
+        result.reason = "CRAFT_MATERIAL_PLAN_STATE_RESTORE_FAILED";
+      }
+      emit_supervisor_event(
+        "CRAFT_MATERIAL_PLAN_READ_ONLY_RESTORED",
+        merchant_name,
+        {
+          runtimeStateRestored: cleanup.runtimeStateRestored,
+          dispatcherRestored: cleanup.dispatcherRestored,
         },
       );
     }
