@@ -425,7 +425,10 @@ function validListing(
 ): boolean {
   if (!item) return false;
   const name = itemName(item);
-  if (!name || !objectValue(objectValue(gameData.items)[name])) return false;
+  const definition = name
+    ? objectValue(objectValue(gameData.items)[name])
+    : {};
+  if (!name || Object.keys(definition).length === 0) return false;
   if (item.name === "placeholder") return false;
   if (item.l || item.locked === true || item.acl) return false;
   if (item.v || item.giveaway || item.want) return false;
