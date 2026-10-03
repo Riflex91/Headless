@@ -99,7 +99,7 @@ interface UpgradeGameAdapter {
 }
 
 interface UpgradeActionBoundary {
-  upgrade(request: UpgradeRequest): Promise<ActionRecord>;
+  ["upgrade"]: (request: UpgradeRequest) => Promise<ActionRecord>;
 }
 
 interface UpgradeInventoryIntelligence {
