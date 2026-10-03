@@ -8875,8 +8875,8 @@ function migrate_old_storage(path, localStorage) {
           runtime_result.outcome === "PASS"
             ? "COMPLETED"
             : runtime_result.outcome === "UNKNOWN"
-              ? "UNKNOWN"
-              : "FAILED",
+            ? "UNKNOWN"
+            : "FAILED",
         started_at,
         completed_at: Date.now(),
         cleanup: {
