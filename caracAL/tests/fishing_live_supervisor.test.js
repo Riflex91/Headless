@@ -366,12 +366,3 @@ test("coordinator, runtime, thread, dashboard and launcher expose Fishing live p
   assert.match(launcher, /selectMerchantLiveTestCharacter/);
   assert.match(launcher, /Stopping temporary caracAL runtime/);
 });
-
-
-test("temporary roadmap prettier probe", async () => {
-  const prettier = await import("prettier");
-  const roadmapPath = path.join(__dirname, "..", "ROADMAP.md");
-  const source = fs.readFileSync(roadmapPath, "utf8");
-  const formatted = await prettier.format(source, { parser: "markdown" });
-  console.log("ROADMAP_PRETTIER_BASE64:" + Buffer.from(formatted, "utf8").toString("base64"));
-});
