@@ -97,6 +97,7 @@ function parseArguments(args = process.argv.slice(2)) {
 
 async function main() {
   const { ctype, requested } = parseArguments();
+  const classLabel = ctype === "merchant" ? "Merchant" : "Ranger";
   const dashboard = await ensureDashboardAvailable(readState);
   const managedRuntime = dashboard.runtime;
 
@@ -114,12 +115,12 @@ async function main() {
     );
     if (!character) {
       throw new Error(
-        `No ${ctype === "merchant" ? "Merchant" : "Ranger"} is available for the class-skill live test`,
+        `No ${classLabel} is available for the class-skill live test`,
       );
     }
 
     process.stdout.write(
-      `Running autonomous ${ctype === "merchant" ? "Merchant" : "Ranger"} class-skill E2E for ${character.name} via ${baseUrl}\n`,
+      `Running autonomous ${classLabel} class-skill E2E for ${character.name} via ${baseUrl}\n`,
     );
 
     const payload = await readJson(
