@@ -2762,12 +2762,38 @@ export class ActionBoundary {
         evidence: { result: safeResultEvidence(result) },
       });
     } catch (error) {
+      const reason = structuredReason(error);
+      const afterInventory = this.game.inventory();
+      if (reason) {
+        return this.ledger.reject(transaction.id, {
+          why: "COMPOUND_API_REJECTED",
+          after: {
+            items: request.itemSlots.map((slot) =>
+              relevantInventoryState(afterInventory, slot),
+            ),
+            scroll: relevantInventoryState(
+              afterInventory,
+              request.scrollSlot,
+            ),
+          },
+          evidence: {
+            reason,
+            result: safeResultEvidence(error),
+          },
+          error: reason,
+        });
+      }
+
       return this.ledger.unknown(transaction.id, {
         why: "COMPOUND_OUTCOME_UNCERTAIN",
         error: errorMessage(error),
         after: {
           items: request.itemSlots.map((slot) =>
-            relevantInventoryState(this.game.inventory(), slot),
+            relevantInventoryState(afterInventory, slot),
+          ),
+          scroll: relevantInventoryState(
+            afterInventory,
+            request.scrollSlot,
           ),
         },
       });

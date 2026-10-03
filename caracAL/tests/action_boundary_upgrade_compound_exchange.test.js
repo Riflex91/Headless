@@ -321,6 +321,26 @@ test("compound API rejection stays distinct from uncertain post-dispatch result"
   assert.equal(unknownSetup.ledger.canRetry(unknownResult.id), false);
 });
 
+test("compound thrown structured rejection is REJECTED with preserved reason", async () => {
+  const setup = makeBoundary(makeState(), {
+    async compound() {
+      throw { reason: "scroll" };
+    },
+  });
+
+  const result = await setup.boundary.compound({
+    itemSlots: [3, 4, 5],
+    scrollSlot: 6,
+    module: "Compound",
+    why: "COMPOUND_RING",
+  });
+
+  assert.equal(result.status, "REJECTED");
+  assert.equal(result.error, "scroll");
+  assert.equal(result.evidence.reason, "scroll");
+  assert.equal(setup.ledger.canRetry(result.id), true);
+});
+
 test("exchange blocks non-exchangeable and insufficient stacks before dispatch", async () => {
   const state = makeState();
   let calls = 0;
