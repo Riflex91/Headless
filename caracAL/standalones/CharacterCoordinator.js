@@ -2509,7 +2509,14 @@ function migrate_old_storage(path, localStorage) {
 
   async function run_material_worker_task(
     worker_name,
-    { merchant_name, item_name, monster_type, quantity, recipient_position },
+    {
+      merchant_name,
+      item_name,
+      monster_type,
+      quantity,
+      recipient_position,
+      purpose = "FISHING_MATERIAL",
+    },
   ) {
     const worker_block = character_manage[worker_name];
     if (!worker_block) {
@@ -2591,6 +2598,7 @@ function migrate_old_storage(path, localStorage) {
         quantity,
         recipient: merchant_name,
         recipient_position,
+        purpose,
       });
       if (!sent) {
         const pending = material_gather_task_requests.get(request_id);
@@ -2605,13 +2613,20 @@ function migrate_old_storage(path, localStorage) {
         };
       }
 
-      emit_supervisor_event("FISHING_MATERIAL_WORKER_DISPATCHED", worker_name, {
-        request_id,
-        merchant: merchant_name,
-        item_name,
-        monster_type,
-        quantity,
-      });
+      emit_supervisor_event(
+        purpose === "COMPOUND_TEST_MATERIAL"
+          ? "COMPOUND_MATERIAL_WORKER_DISPATCHED"
+          : "FISHING_MATERIAL_WORKER_DISPATCHED",
+        worker_name,
+        {
+          request_id,
+          merchant: merchant_name,
+          item_name,
+          monster_type,
+          quantity,
+          purpose,
+        },
+      );
 
       const response = await result_promise;
       if (response.error || !response.result) {
