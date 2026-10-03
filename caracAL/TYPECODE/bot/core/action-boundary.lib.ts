@@ -3133,15 +3133,35 @@ export class ActionBoundary {
         evidence: { result: safeResultEvidence(result) },
       });
     } catch (error) {
+      const reason = structuredReason(error);
+      const afterInventory = this.game.inventory();
+      const afterCharacter = this.game.character();
+      const afterOutputQuantity = totalItemQuantity(
+        afterInventory,
+        recipeName,
+      );
+
+      if (reason) {
+        return this.ledger.reject(transaction.id, {
+          why: "CRAFT_API_REJECTED",
+          after: {
+            gold: afterCharacter.gold,
+            outputQuantity: afterOutputQuantity,
+          },
+          evidence: {
+            reason,
+            result: safeResultEvidence(error),
+          },
+          error: reason,
+        });
+      }
+
       return this.ledger.unknown(transaction.id, {
         why: "CRAFT_OUTCOME_UNCERTAIN",
         error: errorMessage(error),
         after: {
-          gold: this.game.character().gold,
-          outputQuantity: totalItemQuantity(
-            this.game.inventory(),
-            recipeName,
-          ),
+          gold: afterCharacter.gold,
+          outputQuantity: afterOutputQuantity,
         },
       });
     }

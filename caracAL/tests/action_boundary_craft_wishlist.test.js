@@ -280,6 +280,26 @@ test("craft failure response rejects while thrown post-dispatch failure is UNKNO
   assert.equal(unknownSetup.ledger.canRetry(unknownResult.id), false);
 });
 
+test("craft thrown structured rejection is REJECTED with preserved reason", async () => {
+  const setup = makeBoundary(makeState(), {
+    async craft() {
+      throw { reason: "not_close_enough" };
+    },
+  });
+
+  const result = await setup.boundary.craft({
+    recipe: "swordx",
+    itemSlots: [0, 1, 2],
+    module: "Craft",
+    why: "CRAFT_SWORD",
+  });
+
+  assert.equal(result.status, "REJECTED");
+  assert.equal(result.error, "not_close_enough");
+  assert.equal(result.evidence.reason, "not_close_enough");
+  assert.equal(setup.ledger.canRetry(result.id), true);
+});
+
 test("craft can confirm from observable ingredient consumption", async () => {
   const state = makeState();
   const { boundary } = makeBoundary(state, {

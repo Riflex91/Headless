@@ -397,6 +397,49 @@ test("Exchange scheduler plans only and mutation stays explicit one-shot", () =>
   assert.doesNotMatch(schedulerBlock, /executeNext/);
 });
 
+test("Craft scheduler plans only and mutation stays explicit one-shot", () => {
+  const kernel = fs.readFileSync(
+    path.join(
+      __dirname,
+      "..",
+      "TYPECODE",
+      "bot",
+      "core",
+      "runtime-kernel.lib.ts",
+    ),
+    "utf8",
+  );
+  const controller = fs.readFileSync(
+    path.join(
+      __dirname,
+      "..",
+      "TYPECODE",
+      "bot",
+      "core",
+      "craft-controller.lib.ts",
+    ),
+    "utf8",
+  );
+
+  assert.match(kernel, /CRAFT_JOB_ID/);
+  assert.match(kernel, /executeCraftNext/);
+  assert.match(kernel, /this\.craft\.executeNext\(\)/);
+  assert.match(controller, /executionMode: "EXPLICIT_ONE_SHOT"/);
+  assert.match(controller, /CRAFT_UNKNOWN_HOLD_ACTIVE/);
+  assert.match(controller, /CRAFT_POLICY_NO_ALLOWED_RECIPES/);
+
+  const schedulerStart = kernel.indexOf("id: CRAFT_JOB_ID");
+  const schedulerEnd = kernel.indexOf(
+    "id: FARM_INTELLIGENCE_JOB_ID",
+    schedulerStart,
+  );
+  assert.ok(schedulerStart >= 0);
+  assert.ok(schedulerEnd > schedulerStart);
+  const schedulerBlock = kernel.slice(schedulerStart, schedulerEnd);
+  assert.match(schedulerBlock, /this\.craft\.tick\(\)/);
+  assert.doesNotMatch(schedulerBlock, /executeNext/);
+});
+
 test("Upgrade live IPC stays in runner context and exposes one attempt only", () => {
   const thread = fs.readFileSync(
     path.join(__dirname, "..", "src", "CharacterThread.js"),
