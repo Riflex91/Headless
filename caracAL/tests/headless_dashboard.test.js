@@ -81,6 +81,7 @@ test("public character state exposes only dashboard-safe fields", () => {
     inventory_live_test: null,
     gear_scoring_live_test: null,
     account_gear_reservation_live_test: null,
+    upgrade_live_test: null,
     logistics_live_test: null,
     merchant_live_test: null,
     bank_travel_live_test: null,
@@ -398,6 +399,7 @@ test("dashboard module and coordinator remain syntactically valid", () => {
     /\/headless\/api\/characters\/:name\/tests\/class-skill/,
   );
   assert.match(dashboard, /\/headless\/api\/characters\/:name\/tests\/group/);
+  assert.match(dashboard, /\/headless\/api\/characters\/:name\/tests\/upgrade/);
   assert.match(dashboard, /\/headless\/api\/maps\/:name\/scene/);
   assert.match(dashboard, /nearby_entities/);
   assert.match(coordinator, /control_character_config/);
@@ -428,6 +430,8 @@ test("dashboard module and coordinator remain syntactically valid", () => {
   assert.match(coordinator, /inventory_intelligence_runtime/);
   assert.match(coordinator, /gear_scoring_runtime/);
   assert.match(coordinator, /upgrade_runtime/);
+  assert.match(coordinator, /upgrade_live_test/);
+  assert.match(coordinator, /run_upgrade_live_test/);
   assert.match(coordinator, /inventory_live_test/);
   assert.match(coordinator, /merrit_live_test/);
   assert.match(coordinator, /merrit_runtime/);
@@ -448,6 +452,8 @@ test("dashboard module and coordinator remain syntactically valid", () => {
   assert.match(runtimeKernel, /gearScoring/);
   assert.match(runtimeKernel, /upgrade/);
   assert.match(runtimeKernel, /UPGRADE_JOB_ID/);
+  assert.match(runtimeKernel, /runUpgradeLiveTest/);
+  assert.match(runtimeKernel, /UpgradeLiveTestRunner/);
   assert.match(runtimeKernel, /GEAR_SCORING_JOB_ID/);
   assert.match(runtimeKernel, /merchantMerrit/);
   assert.match(runtimeKernel, /merchantFishing/);
@@ -470,6 +476,8 @@ test("dashboard module and coordinator remain syntactically valid", () => {
   assert.match(characterThread, /combat_live_test_result/);
   assert.match(characterThread, /class_skill_live_test/);
   assert.match(characterThread, /class_skill_live_test_result/);
+  assert.match(characterThread, /upgrade_live_test/);
+  assert.match(characterThread, /upgrade_live_test_result/);
   assert.match(characterThread, /merrit_live_test/);
   assert.match(characterThread, /merrit_live_test_result/);
   assert.match(characterThread, /fishing_live_test/);
