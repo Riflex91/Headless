@@ -102,7 +102,11 @@ function expectedValueStatus(estimates = []) {
   };
 }
 
-function makeController({ estimates = [], config = {}, events = [] } = {}) {
+function makeController({
+  estimates = [],
+  config = {},
+  events = [],
+} = {}) {
   const RiskPolicyController = loadController();
   let now = 1000;
   let currentEstimates = estimates;
