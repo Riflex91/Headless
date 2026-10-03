@@ -2981,7 +2981,8 @@ function migrate_old_storage(path, localStorage) {
       upgrade_live_preflight_active ||
       exchange_preflight_active ||
       craft_preflight_active ||
-      exchange_live_test_active
+      exchange_live_test_active ||
+      material_worker_active_count > 0
     ) {
       throw make_control_error(
         "MUTATION_VERIFICATION_ALREADY_RUNNING",
