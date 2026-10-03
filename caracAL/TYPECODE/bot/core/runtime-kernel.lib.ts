@@ -706,9 +706,29 @@ export class BotRuntimeKernel {
     if (runtimeState() !== "RUNNING") {
       throw new Error("runtime must be RUNNING for compound live test");
     }
+    if (
+      this.movementLiveTestRunning ||
+      this.combatLiveTestRunning ||
+      this.classSkillLiveTestRunning ||
+      this.groupLiveTestRunning ||
+      this.bankTravelLiveTestRunning ||
+      this.merritLiveTestRunning ||
+      this.fishingLiveTestRunning
+    ) {
+      throw new Error("movement activity is running during compound live test");
+    }
 
     this.compoundLiveTestRunning = true;
     const requestId = options.requestId || `compound-live-${Date.now()}`;
+    const suspended = {
+      merchantAutonomy: this.scheduler.unregister(MERCHANT_AUTONOMY_JOB_ID),
+      bankTravel: this.scheduler.unregister(BANK_TRAVEL_JOB_ID),
+      merrit: this.scheduler.unregister(MERRIT_AUTONOMY_JOB_ID),
+      fishing: this.scheduler.unregister(FISHING_AUTONOMY_JOB_ID),
+      groupCombat: this.scheduler.unregister(GROUP_COMBAT_JOB_ID),
+      classSkill: this.scheduler.unregister(CLASS_SKILL_JOB_ID),
+      combat: this.scheduler.unregister(COMBAT_JOB_ID),
+    };
     this.eventBus.emit({
       module: "CompoundLiveTest",
       type: "COMPOUND_LIVE_TEST_STARTED",
@@ -720,6 +740,8 @@ export class BotRuntimeKernel {
         itemSlots: options.itemSlots,
         scrollName: options.scrollName,
         irreversibleMutation: true,
+        stationTravelAllowed: true,
+        suspended,
         ...runtimeIdentity(),
       },
     });
@@ -729,6 +751,7 @@ export class BotRuntimeKernel {
         game: this.game,
         inventoryIntelligence: this.inventoryIntelligence,
         compound: this.compound,
+        movement: this.movement,
         characterName: () => character.name,
         runtimePreflight: () => {
           const runtimeCharacter = character as unknown as {
@@ -781,6 +804,13 @@ export class BotRuntimeKernel {
       });
       throw error;
     } finally {
+      if (suspended.merchantAutonomy) this.registerMerchantAutonomyJob();
+      if (suspended.bankTravel) this.registerBankTravelJob();
+      if (suspended.merrit) this.registerMerritJob();
+      if (suspended.fishing) this.registerFishingJob();
+      if (suspended.groupCombat) this.registerGroupCombatJob();
+      if (suspended.classSkill) this.registerClassSkillJob();
+      if (suspended.combat) this.registerCombatJob();
       this.compoundLiveTestRunning = false;
     }
   }
