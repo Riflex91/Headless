@@ -76,10 +76,10 @@ function verifyCraftPreparation(source) {
     ? plan.outcome === "PASS" &&
       plan.reason === "CRAFT_MATERIAL_RECIPE_ALREADY_READY"
     : controlledPlanRefusal
-    ? Array.isArray(plan.candidates) &&
-      plan.candidates.length === 0 &&
-      Array.isArray(plan.rejectedSources)
-    : plan.outcome === "PASS" &&
+      ? Array.isArray(plan.candidates) &&
+        plan.candidates.length === 0 &&
+        Array.isArray(plan.rejectedSources)
+      : plan.outcome === "PASS" &&
       plan.reason === "CRAFT_MATERIAL_TARGET_SELECTED" &&
       typeof selected.recipe === "string" &&
       selected.recipe.length > 0 &&
@@ -96,8 +96,7 @@ function verifyCraftPreparation(source) {
 
   const workerEvidenceValid =
     alreadyReady || controlledPlanRefusal
-      ? (result.workerResult === null ||
-          result.workerResult === undefined) &&
+      ? (result.workerResult === null || result.workerResult === undefined) &&
         evidence.workerAttemptedOnce === false
       : workerResult.outcome === "PASS" &&
       workerResult.reason === "MATERIAL_GATHER_AND_DELIVERY_CONFIRMED" &&
