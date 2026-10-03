@@ -52,9 +52,7 @@ function targetSlots(slotGroup) {
     case "offhand":
       return ["offhand"];
     default:
-      return typeof slotGroup === "string" && slotGroup
-        ? [slotGroup]
-        : [];
+      return typeof slotGroup === "string" && slotGroup ? [slotGroup] : [];
   }
 }
 
