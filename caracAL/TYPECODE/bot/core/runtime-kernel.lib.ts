@@ -957,7 +957,8 @@ export class BotRuntimeKernel {
       this.compoundLiveTestRunning ||
       this.upgradeLiveTestRunning ||
       this.upgradePreflightRunning ||
-      this.exchangePreflightRunning
+      this.exchangePreflightRunning ||
+      this.exchangeLiveTestRunning
     ) {
       throw new Error("mutation verification already running");
     }
