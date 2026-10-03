@@ -89,7 +89,6 @@ TYPECODE\bot\main.ts
 ```
 
 Die Rolle ergibt sich aus Charactername, Klasse, CharacterConfig und AccountStrategy.
-
 Laufende Character-VMs erhalten keinen Hot-Reload. Neuer Code wird durch kontrollierten Character-Restart geladen.
 
 ---
@@ -223,9 +222,7 @@ Der zentrale Supervisor besitzt allein Autorität über:
 - Config-Verteilung
 
 Maximal vier Characters gleichzeitig online.
-
 Alle acht Account-Characters bleiben im Roster registriert.
-
 Lifecycle-Zustände:
 
 ```text
@@ -253,16 +250,19 @@ Jede Character-Karte im Dashboard erhält:
 ```
 
 ## Start
+
 - Offline → Character starten.
 - Pausiert → Autonomie wieder aktivieren.
 
 ## Pause
+
 - Character bleibt verbunden.
 - Keine neue Arbeit starten.
 - Kritische laufende Transaktionen sicher abschließen.
 - Danach idle.
 
 ## Stop
+
 - Autonomie stoppen.
 - Character sauber herunterfahren.
 - CharacterThread beenden.
@@ -283,9 +283,7 @@ Manuelles `STOPPED` hat Vorrang vor AccountStrategy und Full Autonomy.
 # 8. Merchant arbeitet unabhängig
 
 Sobald `My_Merchant` online und RUNNING ist, startet MerchantAutonomy sofort.
-
 Der Merchant wartet nicht auf 4/4.
-
 Unabhängige Merchant-Arbeit:
 
 - Merrit
@@ -402,7 +400,6 @@ Große Telemetrie als JSONL/NDJSON.
 # 11. Character-Konfiguration
 
 Jeder Character erhält eine eigene Config-Seite.
-
 Änderungsfluss:
 
 ```text
@@ -420,10 +417,10 @@ Controller
 ```
 
 Normalerweise innerhalb weniger Sekunden, garantiert spätestens innerhalb von 60 Sekunden. Zusätzlich periodischer Revision-Check als Fallback.
-
 Normale Gameplay-Config benötigt keinen Character-Restart.
 
 ## Allgemein
+
 - Bot aktiv
 - Auto-Reconnect
 - Auto-Respawn
@@ -431,12 +428,15 @@ Normale Gameplay-Config benötigt keinen Character-Restart.
 - bevorzugter Server
 
 ## Skills
+
 Nur Skills der jeweiligen Klasse:
+
 - Skill AN/AUS
 - MP-Reserve
 - minimale MP nach Skill
 
 ## Potion-Beschaffung
+
 - HP-Potion Typ
 - HP Zielbestand
 - HP Nachbestellgrenze
@@ -447,12 +447,14 @@ Nur Skills der jeweiligen Klasse:
 - MP Reserve
 
 ## Potion-Benutzung
+
 - HP Pot unter X %
 - MP Pot unter X %
 - kritische HP-Grenze
 - Skillreserve berücksichtigen
 
 ## Combat
+
 - Combat AN/AUS
 - Auto Target
 - AoE
@@ -465,6 +467,7 @@ Nur Skills der jeweiligen Klasse:
 - gefährliche Targets vermeiden
 
 ## Farming
+
 - Auto Farming
 - Farmziel
 - bevorzugte Monster
@@ -475,6 +478,7 @@ Nur Skills der jeweiligen Klasse:
 - Catch-up Training
 
 ## Party
+
 - Auto Party
 - Account Party bevorzugen
 - Group Focus
@@ -484,6 +488,7 @@ Nur Skills der jeweiligen Klasse:
 - Auto Regroup
 
 ## Inventory
+
 - min. freie Slots
 - Merchant rufen unter X Slots
 - Loot
@@ -492,6 +497,7 @@ Nur Skills der jeweiligen Klasse:
 - Event Items schützen
 
 ## Gear
+
 - Auto Equip
 - Gear Optimierung
 - Future Gear
@@ -499,6 +505,7 @@ Nur Skills der jeweiligen Klasse:
 - Role
 
 ## Safety
+
 - Auto Retreat
 - Auto Respawn
 - UNKNOWN-Verhalten
@@ -506,6 +513,7 @@ Nur Skills der jeweiligen Klasse:
 - Connection Recovery
 
 ## Erweitert
+
 - Tick Rate
 - Timeouts
 - Log Level
@@ -518,6 +526,7 @@ Nur Skills der jeweiligen Klasse:
 Zusätzliche Tabs:
 
 ## Merchant Autonomy
+
 - Merrit
 - Ponty
 - Fishing
@@ -532,6 +541,7 @@ Zusätzliche Tabs:
 - Compound
 
 ## Farmer-Versorgung
+
 - HP-Potions liefern
 - MP-Potions liefern
 - Items abholen
@@ -547,7 +557,6 @@ Der Merchant liest die individuelle Config jedes Farmers.
 # 13. Dashboard V1
 
 Das Dashboard wird früh gebaut und ist Kernbestandteil des Headless-Betriebs.
-
 Adresse:
 
 ```text
@@ -592,6 +601,7 @@ Character-Karte:
 Da der Bot headless läuft, muss Bewegung direkt nachvollziehbar sein.
 
 ## Gemeinsame Live-Karte
+
 Für alle aktiven Characters gleichzeitig:
 
 - aktuelle Position
@@ -604,22 +614,28 @@ Für alle aktiven Characters gleichzeitig:
 - geplanter Weg
 
 ## Blickrichtung
+
 Character-Marker zeigt Heading / Richtungspfeil.
 
 ## Gelaufener Weg
+
 Trail/Breadcrumbs der letzten:
+
 - 30 Sekunden
 - 2 Minuten
 - 5 Minuten
 
 ## Geplanter Weg
+
 - aktueller Path
 - Waypoints
 - nächster Punkt
 - Endziel
 
 ## Overlays
+
 Optional:
+
 - Target-Linie
 - Leader-Linie
 - Attack Range
@@ -634,7 +650,9 @@ Optional:
 - NPC
 
 ## Movement-Telemetrie
+
 Pro Character:
+
 - current x/y
 - previous x/y
 - heading
@@ -683,7 +701,6 @@ Später: Movement Replay für 30 Sekunden / 2 Minuten / 5 Minuten.
 # 15. Live-Inventar- und Ausrüstungsansicht
 
 Pflichtbestandteil von Dashboard V1.
-
 Ziel: Inventar **und** Ausrüstung aller aktuell eingeloggten Characters gleichzeitig beobachten können.
 
 ## Gemeinsame Account-Ansicht
@@ -700,7 +717,6 @@ Vier aktive Characters nebeneinander:
 ## Item-Icons
 
 Inventory und Equipment zeigen die passenden Adventure-Land-Item-Icons.
-
 Icons werden lokal gecacht:
 
 ```text
@@ -710,6 +726,7 @@ D:\caracAL\data\assets\items\
 Kein permanenter externer Asset-Download beim Öffnen des Dashboards.
 
 ## Inventory
+
 - echte Slot-Reihenfolge beibehalten
 - Icon pro Item
 - Stack-Menge direkt am Icon
@@ -717,7 +734,9 @@ Kein permanenter externer Asset-Download beim Öffnen des Dashboards.
 - geänderte Slots kurz hervorheben
 
 ## Equipment
+
 Adventure-Land-Slotlayout mit Icons:
+
 - Helmet
 - Earrings
 - Amulet
@@ -731,6 +750,7 @@ Adventure-Land-Slotlayout mit Icons:
 - weitere vorhandene Slots
 
 ## Itemstatus
+
 Visuelle Marker:
 
 ```text
@@ -748,7 +768,9 @@ UNKNOWN
 ```
 
 ## Itemdetails
+
 Tooltip/Klick zeigt:
+
 - Name
 - Icon
 - Level
@@ -762,21 +784,27 @@ Tooltip/Klick zeigt:
 - letzte Änderung
 
 ## Supply-Status
+
 Pro Character:
+
 - HP-Potion Ist/Ziel/Nachbestellgrenze
 - MP-Potion Ist/Ziel/Nachbestellgrenze
 - Request-Status
 
 Merchant zusätzlich:
+
 - offene Supply Requests der Farmer
 
 ## Accountweite Item-Suche
+
 Suche über:
+
 - aktive Characters
 - später alle Character-Snapshots
 - später Bank
 
 ## Historie
+
 Slot-/Equipment-Historie auf Klick.
 
 ---
@@ -784,7 +812,6 @@ Slot-/Equipment-Historie auf Klick.
 # 16. Log kopieren
 
 Jeder Character erhält **Log kopieren**.
-
 Export enthält:
 
 - Characterdaten
@@ -811,6 +838,7 @@ Export enthält:
 - aktueller Snapshot
 
 Zeitbereiche:
+
 - letzte 5 Minuten
 - letzte 15 Minuten
 - letzte Stunde
@@ -819,6 +847,7 @@ Zeitbereiche:
 - letztes Incident
 
 Zusätzlich:
+
 - Account-Log kopieren
 - Testlog kopieren
 - Deployment-Log kopieren
@@ -830,7 +859,6 @@ Alle Secrets werden vor Export zentral entfernt.
 # 17. Testprinzip
 
 Tests laufen vollständig autonom.
-
 Unzulässig:
 
 - „Geh zur Bank.“
@@ -867,7 +895,6 @@ aufräumen
 ```
 
 Kann ein Test das nicht, wird der Test angepasst.
-
 Normale Testresultate:
 
 ```text
@@ -905,6 +932,7 @@ Bei Fehler wird automatisch Diagnosematerial erzeugt.
 # 19. Entwicklungsphasen
 
 ## Phase 0 – caracAL härten
+
 - PR21-Basis
 - Login-Fix
 - TypeScript
@@ -919,6 +947,7 @@ Bei Fehler wird automatisch Diagnosematerial erzeugt.
 Gate: vier Characters stabil, keine Connection-/Restart-Stürme.
 
 ## Phase 1 – Runtime + Observability + Dashboard V1
+
 - EventBus
 - Scheduler
 - Logger
@@ -941,6 +970,7 @@ Ab hier wird nicht mehr blind entwickelt.
 Diese Subphase ist verbindlicher Bestandteil von Phase 1 und schafft die technische Grundlage für alle späteren Dashboard-Funktionen.
 
 ### Technische Basis
+
 - lokaler Web Server unter `http://localhost:924`
 - Frontend Shell
 - Hauptnavigation und Seitenstruktur
@@ -952,6 +982,7 @@ Diese Subphase ist verbindlicher Bestandteil von Phase 1 und schafft die technis
 - saubere Loading-, Offline-, Error- und Reconnect-Zustände
 
 ### Character- und Account-Komponenten
+
 - Character Cards
 - gemeinsame Account-Übersicht
 - Start / Pause / Stop Controls
@@ -960,6 +991,7 @@ Diese Subphase ist verbindlicher Bestandteil von Phase 1 und schafft die technis
 - wiederverwendbare Character Detail Views
 
 ### Adventure-Land-Visualisierung
+
 - lokaler Adventure-Land Asset Loader
 - lokaler Asset Cache
 - Item Icon Renderer
@@ -972,6 +1004,7 @@ Diese Subphase ist verbindlicher Bestandteil von Phase 1 und schafft die technis
 - Range-/Tether-/Target-Overlays
 
 ### Konfigurationsoberfläche
+
 - wiederverwendbare Config Form Engine
 - klassenspezifische Skill Controls
 - Potion-/Supply-Konfiguration
@@ -981,6 +1014,7 @@ Diese Subphase ist verbindlicher Bestandteil von Phase 1 und schafft die technis
 - Live-Übernahme ohne Character-Restart
 
 ### Diagnose und Bedienung
+
 - Clipboard Diagnostics für Character-, Account-, Test- und Deployment-Logs
 - Filter-/Suchkomponenten
 - Incident-/Fehleranzeige
@@ -989,12 +1023,15 @@ Diese Subphase ist verbindlicher Bestandteil von Phase 1 und schafft die technis
 - klare Kennzeichnung von RUNNING / PAUSED / STOPPED / ERROR / SUSPENDED
 
 ### Layout-Ziel
+
 Die GUI muss so aufgebaut sein, dass die gleichzeitig eingeloggten Characters parallel beobachtet werden können. Insbesondere müssen gemeinsame Ansichten für Bewegung, Inventar und Ausrüstung ohne ständiges Umschalten zwischen Character-Seiten möglich sein.
 
 ### Entwicklungsregel
+
 Jede spätere Bot-Phase liefert ihre zugehörigen GUI-Elemente direkt mit. Neue Runtime-Funktionen gelten erst dann als vollständig integriert, wenn ihre relevanten Zustände, Aktionen, Fehler und Konfigurationsmöglichkeiten im Dashboard sichtbar bzw. bedienbar sind.
 
 ## Phase 2 – Persistence
+
 - SQLite
 - Schema Versioning
 - Migrations
@@ -1004,6 +1041,7 @@ Jede spätere Bot-Phase liefert ihre zugehörigen GUI-Elemente direkt mit. Neue 
 - Config Storage
 
 ## Phase 3 – Account Supervisor + IPC
+
 - alle 8 Characters registrieren
 - max. 4 Slots
 - Desired/Actual State
@@ -1015,7 +1053,9 @@ Jede spätere Bot-Phase liefert ihre zugehörigen GUI-Elemente direkt mit. Neue 
 - Code Revision
 
 ## Phase 4 – GameAdapter + ActionBoundary
+
 GameAdapter liest:
+
 - Character
 - Entities
 - Party
@@ -1031,6 +1071,7 @@ GameAdapter liest:
 - G
 
 ActionBoundary mutiert:
+
 - Move
 - Attack
 - Skills
@@ -1050,6 +1091,7 @@ ActionBoundary mutiert:
 - Lifecycle
 
 ## Phase 5 – Movement
+
 - Direct Move
 - Smart Move
 - Movement Ownership
@@ -1064,6 +1106,7 @@ ActionBoundary mutiert:
 - vollständige Movement-Visualisierung
 
 ## Phase 6 – Ressourcen + Combat
+
 - HP/MP Management
 - Potion Usage
 - Target Selection
@@ -1075,7 +1118,9 @@ ActionBoundary mutiert:
 - Respawn
 
 ## Phase 7 – Class Skills
+
 Separate Controller:
+
 - Warrior
 - Ranger
 - Mage
@@ -1086,6 +1131,7 @@ Separate Controller:
 Skill-Verwendung folgt individueller CharacterConfig.
 
 ## Phase 8 – Party + Group Combat + AoE
+
 - Party Formation
 - Leader
 - Follower
@@ -1100,7 +1146,9 @@ Skill-Verwendung folgt individueller CharacterConfig.
 - Ranger Kiting
 
 ## Phase 9 – Farm Intelligence
+
 Bewertung:
+
 - XP/h
 - Gold/h
 - Drops
@@ -1115,7 +1163,9 @@ Bewertung:
 Dashboard zeigt WHY THIS MONSTER / WHY THIS SPOT.
 
 ## Phase 10 – Inventory Intelligence
+
 Disposition:
+
 ```text
 KEEP
 BANK
@@ -1131,6 +1181,7 @@ UNKNOWN
 ```
 
 Schutz:
+
 - locked
 - event
 - quest
@@ -1140,6 +1191,7 @@ Schutz:
 - valuable
 
 ## Phase 11 – Merchant + Farmer Logistics
+
 - MLuck
 - Potion Delivery
 - Item Delivery
@@ -1177,6 +1229,7 @@ Cooldown
 ```
 
 ## Phase 13 – Bank + Trading
+
 - Bank automatisch finden
 - hinreisen
 - Deposit/Withdraw
@@ -1184,6 +1237,7 @@ Cooldown
 - NPC-/Market-Trading automatisch
 
 ## Phase 14 – Gear / Upgrade / Compound / Exchange / Craft
+
 - Gear Scoring
 - Future Gear
 - Account Gear Reservation
@@ -1197,7 +1251,9 @@ Cooldown
 Wertverändernde UNKNOWN-Aktionen: kein Blind-Retry.
 
 ## Phase 15 – Economy Arbiter
+
 Priorität:
+
 ```text
 SAFETY
 ↓
@@ -1217,7 +1273,9 @@ Ponty / Giveaways / Wishlist / Gathering
 Background-Arbeit später dynamisch scoren.
 
 ## Phase 16 – lokale Market Intelligence
+
 Quellen:
+
 ```text
 LIVE_VISIBLE
 PONTY
@@ -1225,6 +1283,7 @@ LOCAL_HISTORY
 ```
 
 Speichern:
+
 - item
 - level
 - price
@@ -1235,6 +1294,7 @@ Speichern:
 - source
 
 Berechnen:
+
 - Median
 - Preisband
 - Volatilität
@@ -1243,7 +1303,9 @@ Berechnen:
 - Confidence
 
 ## Phase 17 – Account Strategy
+
 Profile aller acht Characters:
+
 - Klasse
 - Level
 - Gear
@@ -1256,6 +1318,7 @@ Profile aller acht Characters:
 - History
 
 Capabilities:
+
 ```text
 TANK
 HEALER
@@ -1271,7 +1334,9 @@ LOGISTICS
 Farm: 3 Combat + Merchant, aber Merchant unabhängig.
 
 ## Phase 18 – Full Autonomy
+
 Verknüpft:
+
 - Account Strategy
 - Lifecycle
 - Farming
@@ -1282,7 +1347,9 @@ Verknüpft:
 Desired State wird automatisch reconciled.
 
 ## Phase 19 – Goals
+
 Beispiele:
+
 - Farme Item X
 - Level Character Y
 - Besorge Gear Z
@@ -1291,6 +1358,7 @@ Beispiele:
 - Boss vorbereiten
 
 ## Phase 20 – Boss / Event / Quest / World
+
 - Boss Detection
 - Event Detection
 - Encounter Catalog
@@ -1302,6 +1370,7 @@ Beispiele:
 - Server Selection
 
 ## Phase 21 – Recovery + 24/7
+
 - Flight Recorder
 - Health Monitor
 - Stall Detection
@@ -1370,6 +1439,7 @@ Giveaways
 ```
 
 ## Phase 23 – Production Hardening
+
 - Long-Run Tests
 - Restart Tests
 - Crash Tests
