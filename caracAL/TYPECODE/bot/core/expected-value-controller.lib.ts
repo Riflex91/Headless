@@ -286,11 +286,9 @@ function intrinsicProbabilityGrade(
   definition: Record<string, unknown>,
 ): number | null {
   const configured = integer(definition.igrade);
-  if (configured !== null && configured >= 0 && configured <= 2) {
-    return configured;
-  }
-  const derived = itemGrade(definition, 0);
-  return derived >= 0 && derived <= 2 ? derived : null;
+  return configured !== null && configured >= 0 && configured <= 2
+    ? configured
+    : null;
 }
 
 function catalogGold(definition: Record<string, unknown> | null): number | null {
