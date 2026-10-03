@@ -309,18 +309,28 @@ async function main() {
       beforeScrollQuantity,
     };
     const classification = classifyCompoundUnknown(secondSnapshot, expected);
+    const firstTimestamp = Number(firstSnapshot.timestamp);
+    const secondTimestamp = Number(secondSnapshot.timestamp);
+    const freshSecondSnapshot =
+      Number.isFinite(firstTimestamp) &&
+      Number.isFinite(secondTimestamp) &&
+      secondTimestamp > firstTimestamp;
     const stable =
+      freshSecondSnapshot &&
       fingerprint(firstSnapshot) === fingerprint(secondSnapshot);
 
     const result = {
       outcome: stable ? "PASS" : "UNKNOWN",
       reason: stable
         ? classification.reason
-        : "COMPOUND_UNKNOWN_RECONCILE_STATE_NOT_STABLE",
+        : freshSecondSnapshot
+          ? "COMPOUND_UNKNOWN_RECONCILE_STATE_NOT_STABLE"
+          : "COMPOUND_UNKNOWN_RECONCILE_SNAPSHOT_NOT_FRESH",
       character: characterName,
       expected,
       first: firstSnapshot,
       second: secondSnapshot,
+      freshSecondSnapshot,
       stable,
       reconciliation: classification,
       readOnly: true,
