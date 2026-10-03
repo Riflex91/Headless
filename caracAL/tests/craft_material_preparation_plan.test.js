@@ -173,30 +173,22 @@ test("Craft material planner rejects unsafe material sources", () => {
   assert.ok(blackSpider);
   assert.equal(normalSpider.sourcePolicy.expectedKills, 1000);
   assert.ok(
-    normalSpider.sourcePolicy.reasons.includes(
-      "EXPECTED_KILLS_OUT_OF_POLICY",
-    ),
+    normalSpider.sourcePolicy.reasons.includes("EXPECTED_KILLS_OUT_OF_POLICY"),
   );
   assert.ok(
     normalSpider.sourcePolicy.reasons.includes(
       "EXPECTED_MONSTER_HP_OUT_OF_POLICY",
     ),
   );
-  assert.ok(
-    blackSpider.sourcePolicy.reasons.includes("NO_SAFE_REGULAR_SPAWN"),
-  );
+  assert.ok(blackSpider.sourcePolicy.reasons.includes("NO_SAFE_REGULAR_SPAWN"));
   assert.ok(
     blackSpider.sourcePolicy.reasons.includes("MONSTER_HP_OUT_OF_POLICY"),
   );
   assert.ok(
-    blackSpider.sourcePolicy.reasons.includes(
-      "MONSTER_ATTACK_OUT_OF_POLICY",
-    ),
+    blackSpider.sourcePolicy.reasons.includes("MONSTER_ATTACK_OUT_OF_POLICY"),
   );
   assert.ok(
-    blackSpider.sourcePolicy.reasons.includes(
-      "STATIONARY_MONSTER_BLOCKED",
-    ),
+    blackSpider.sourcePolicy.reasons.includes("STATIONARY_MONSTER_BLOCKED"),
   );
 });
 
