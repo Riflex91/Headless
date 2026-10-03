@@ -519,6 +519,7 @@ function migrate_old_storage(path, localStorage) {
       bank_gold_live_test_active ||
       upgrade_live_test_active ||
       upgrade_live_preflight_active ||
+      compound_material_preparation_active ||
       npc_trading_live_test_active ||
       market_trading_live_test_active ||
       account_gear_reservation_live_test_active ||
