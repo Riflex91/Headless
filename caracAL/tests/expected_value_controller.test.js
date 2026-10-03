@@ -303,10 +303,7 @@ test("Expected Value stays conservative when model metadata is incomplete", () =
   assert.equal(status.reason, "EXPECTED_VALUE_MODEL_INPUT_UNKNOWN");
   assert.equal(estimate.decision, "UNKNOWN");
   assert.equal(estimate.expectedDeltaGold, null);
-  assert.equal(
-    estimate.reason,
-    "EXPECTED_VALUE_UPGRADE_MODEL_INPUT_UNKNOWN",
-  );
+  assert.equal(estimate.reason, "EXPECTED_VALUE_UPGRADE_MODEL_INPUT_UNKNOWN");
   assert.equal(status.summary.unknown, 1);
   assert.equal(status.summary.evaluated, 0);
 });
