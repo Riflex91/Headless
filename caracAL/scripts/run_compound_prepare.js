@@ -115,19 +115,19 @@ function verifyCompoundPreparation(source) {
     outcome: passed
       ? "PASS"
       : result.outcome === "UNKNOWN"
-        ? "UNKNOWN"
-        : result.outcome === "TIMEOUT"
-          ? "TIMEOUT"
-          : "FAIL",
+      ? "UNKNOWN"
+      : result.outcome === "TIMEOUT"
+      ? "TIMEOUT"
+      : "FAIL",
     reason: passed
       ? "COMPOUND_PREPARATION_E2E_CONFIRMED"
       : sourceFailed && typeof result.reason === "string" && result.reason
-        ? result.reason
-        : verified.preparationConfirmed &&
-            verified.matchingTripleObserved &&
-            !verified.scrollPresent
-          ? "COMPOUND_PREPARATION_SCROLL_MISSING"
-          : "COMPOUND_PREPARATION_EVIDENCE_INCOMPLETE",
+      ? result.reason
+      : verified.preparationConfirmed &&
+        verified.matchingTripleObserved &&
+        !verified.scrollPresent
+      ? "COMPOUND_PREPARATION_SCROLL_MISSING"
+      : "COMPOUND_PREPARATION_EVIDENCE_INCOMPLETE",
     verifier: verified,
   };
 }
