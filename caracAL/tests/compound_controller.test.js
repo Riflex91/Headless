@@ -309,15 +309,13 @@ test("Compound UNKNOWN creates a no-blind-retry hold until observed state change
   assert.equal(setup.calls(), 1);
   assert.equal(second.state, "UNKNOWN_HOLD");
 
-  setup.state.items[0].level = 1;
-  setup.state.items[1].level = 1;
-  setup.state.items[2].level = 1;
+  setup.state.items[3].q = 4;
   setup.advance();
   const reconciled = setup.controller.tick();
 
   assert.equal(reconciled.unknownHold, null);
   assert.equal(reconciled.state, "READY");
-  assert.equal(reconciled.selected.currentLevel, 1);
+  assert.equal(reconciled.selected.currentLevel, 0);
 });
 
 test("Compound can be disabled without dispatching", async () => {
