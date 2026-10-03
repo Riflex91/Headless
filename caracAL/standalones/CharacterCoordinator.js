@@ -2211,26 +2211,31 @@ function migrate_old_storage(path, localStorage) {
     if (!merchant_block) return;
     const baseline = live_item_quantity(merchant_block, item_name);
     const target_quantity = baseline + quantity;
-    const event_position =
+    let event_position = null;
+    if (
       request?.recipientPosition &&
       typeof request.recipientPosition === "object"
-        ? request.recipientPosition
-        : null;
-    const finite_coordinate = (value) =>
-      value !== null &&
-      value !== undefined &&
-      Number.isFinite(Number(value))
-        ? Number(value)
-        : null;
+    ) {
+      event_position = request.recipientPosition;
+    }
+
+    const finite_coordinate = (value) => {
+      if (value === null || value === undefined) return null;
+      const numeric = Number(value);
+      return Number.isFinite(numeric) ? numeric : null;
+    };
     const event_x = finite_coordinate(event_position?.x);
     const event_y = finite_coordinate(event_position?.y);
     const live_x = finite_coordinate(merchant_block.live_state?.x);
     const live_y = finite_coordinate(merchant_block.live_state?.y);
+
+    let event_map = null;
+    if (typeof event_position?.map === "string") {
+      event_map = event_position.map.trim() || null;
+    }
+
     const recipient_position = {
-      map:
-        typeof event_position?.map === "string" && event_position.map.trim()
-          ? event_position.map.trim()
-          : merchant_block.live_state?.map || null,
+      map: event_map || merchant_block.live_state?.map || null,
       x: event_x ?? live_x,
       y: event_y ?? live_y,
     };
