@@ -262,6 +262,11 @@ async function make_runner(upper, CODE_file, version, is_typescript) {
           .runMaterialGatherTask({
             requestId,
             itemName: m.item_name,
+            itemLevel:
+              Number.isInteger(Number(m.item_level)) &&
+              Number(m.item_level) >= 0
+                ? Number(m.item_level)
+                : undefined,
             monsterType: m.monster_type,
             quantity: m.quantity,
             recipient: m.recipient,
