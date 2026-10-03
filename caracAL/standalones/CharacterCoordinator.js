@@ -2750,6 +2750,383 @@ function migrate_old_storage(path, localStorage) {
     }
   }
 
+  async function run_compound_material_preparation(
+    merchant_name,
+    options = {},
+  ) {
+    if (compound_material_preparation_active) {
+      throw make_control_error(
+        "COMPOUND_MATERIAL_PREPARATION_ALREADY_RUNNING",
+        "Compound material preparation is already running",
+        409,
+      );
+    }
+
+    const merchant_block = character_manage[merchant_name];
+    if (!merchant_block) {
+      throw make_control_error(
+        "CHARACTER_NOT_FOUND",
+        `Unknown character: ${merchant_name}`,
+        404,
+      );
+    }
+    if (
+      merchant_block.account_owned !== true ||
+      (merchant_block.account_character_type ||
+        merchant_block.live_state?.ctype) !== "merchant"
+    ) {
+      throw make_control_error(
+        "COMPOUND_PREPARATION_ACCOUNT_MERCHANT_REQUIRED",
+        "Compound preparation requires an account-owned merchant: " +
+          merchant_name,
+        400,
+      );
+    }
+
+    const requested_workers = Array.isArray(options.workers)
+      ? options.workers
+          .filter((name) => typeof name === "string" && name.trim())
+          .map((name) => name.trim())
+      : [];
+    const workers = [
+      ...new Set(
+        requested_workers.length
+          ? requested_workers
+          : DEFAULT_COMPOUND_MATERIAL_WORKERS,
+      ),
+    ];
+    if (workers.length < 3) {
+      throw make_control_error(
+        "COMPOUND_PREPARATION_THREE_RANGERS_REQUIRED",
+        "Compound preparation requires three Ranger workers",
+        400,
+      );
+    }
+
+    const started_at = Date.now();
+    const original_desired_state =
+      merchant_block.desired_runtime_state ||
+      (merchant_block.enabled
+        ? DESIRED_RUNTIME_STATES.RUNNING
+        : DESIRED_RUNTIME_STATES.STOPPED);
+    const runtime_ready =
+      !!merchant_block.instance &&
+      merchant_block.connected &&
+      Number.isFinite(merchant_block.bot_runtime_started_at);
+    let runtime_override_applied = false;
+    let runtime_state_restored = false;
+    let plan_request_id = null;
+    const worker_results = [];
+
+    compound_material_preparation_active = true;
+    emit_supervisor_event(
+      "COMPOUND_MATERIAL_PREPARATION_STARTED",
+      merchant_name,
+      {
+        workers,
+        original_desired_state,
+      },
+    );
+
+    try {
+      if (!runtime_ready) {
+        const bundle_path = path.join(
+          process.cwd(),
+          "TYPECODE.out",
+          MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE,
+        );
+        if (!fs_regular.existsSync(bundle_path)) {
+          return {
+            outcome: "FAIL",
+            reason: "COMPOUND_PREPARATION_RUNTIME_BUNDLE_MISSING",
+            merchant: merchant_name,
+            workers,
+            workerResults: worker_results,
+          };
+        }
+
+        merchant_block.movement_live_test_typescript_override =
+          MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE;
+        runtime_override_applied = true;
+        merchant_block.enabled = true;
+        merchant_block.desired_runtime_state = DESIRED_RUNTIME_STATES.RUNNING;
+        await restart_character_for_movement_runtime(
+          merchant_name,
+          merchant_block,
+        );
+      }
+
+      const ready_merchant = await wait_for_material_worker_runtime(
+        merchant_name,
+      );
+      plan_request_id = `compound-gather-plan-${Date.now()}`;
+      const plan_promise = wait_for_compound_gather_plan_result(
+        merchant_name,
+        plan_request_id,
+      );
+      const plan_sent = safe_send(ready_merchant.instance, {
+        type: "compound_gather_plan",
+        request_id: plan_request_id,
+      });
+      if (!plan_sent) {
+        const pending = compound_gather_plan_requests.get(plan_request_id);
+        if (pending) {
+          clearTimeout(pending.timer);
+          compound_gather_plan_requests.delete(plan_request_id);
+        }
+        return {
+          outcome: "FAIL",
+          reason: "COMPOUND_GATHER_PLAN_DISPATCH_FAILED",
+          merchant: merchant_name,
+          workers,
+          workerResults: worker_results,
+        };
+      }
+
+      const plan_response = await plan_promise;
+      if (
+        plan_response.error ||
+        plan_response.result?.outcome !== "PASS" ||
+        !plan_response.result?.selected
+      ) {
+        return {
+          outcome: "FAIL",
+          reason:
+            plan_response.error ||
+            plan_response.result?.reason ||
+            "COMPOUND_GATHER_TARGET_NOT_FOUND",
+          merchant: merchant_name,
+          workers,
+          plan: plan_response.result || null,
+          workerResults: worker_results,
+        };
+      }
+
+      const plan = plan_response.result;
+      const selected = plan.selected;
+      const item_name = selected.itemName;
+      const monster_type = selected.monsterType;
+      const item_level = 0;
+      const current_merchant = character_manage[merchant_name];
+      const merchant_position = {
+        map: current_merchant?.live_state?.map || null,
+        x: Number(current_merchant?.live_state?.x),
+        y: Number(current_merchant?.live_state?.y),
+      };
+      if (
+        !merchant_position.map ||
+        !Number.isFinite(merchant_position.x) ||
+        !Number.isFinite(merchant_position.y)
+      ) {
+        return {
+          outcome: "FAIL",
+          reason: "COMPOUND_PREPARATION_MERCHANT_POSITION_UNAVAILABLE",
+          merchant: merchant_name,
+          workers,
+          plan,
+          workerResults: worker_results,
+        };
+      }
+
+      const initial_quantity = live_item_quantity_at_level(
+        current_merchant,
+        item_name,
+        item_level,
+      );
+      const target_quantity = Math.max(3, initial_quantity);
+      let current_quantity = initial_quantity;
+
+      for (const worker_name of workers) {
+        if (current_quantity >= 3) break;
+
+        const before_worker_quantity = current_quantity;
+        let worker_result;
+        try {
+          worker_result = await run_material_worker_task(worker_name, {
+            merchant_name,
+            item_name,
+            monster_type,
+            quantity: 1,
+            item_level,
+            recipient_position: merchant_position,
+            purpose: "COMPOUND_TEST_MATERIAL",
+          });
+        } catch (error) {
+          const error_code =
+            error && typeof error === "object" && "code" in error
+              ? String(error.code || "")
+              : "";
+          worker_result = {
+            outcome:
+              error_code === "MATERIAL_GATHER_TASK_TIMEOUT"
+                ? "TIMEOUT"
+                : "FAIL",
+            reason:
+              error_code ||
+              (error instanceof Error ? error.message : String(error)),
+            worker: worker_name,
+          };
+        }
+        worker_results.push(worker_result);
+
+        if (
+          worker_result?.outcome === "UNKNOWN" ||
+          worker_result?.outcome === "TIMEOUT"
+        ) {
+          return {
+            outcome: worker_result.outcome,
+            reason:
+              worker_result.reason ||
+              "COMPOUND_MATERIAL_WORKER_OUTCOME_UNCERTAIN",
+            merchant: merchant_name,
+            workers,
+            plan,
+            initialQuantity: initial_quantity,
+            finalQuantity: current_quantity,
+            targetQuantity: target_quantity,
+            workerResults: worker_results,
+          };
+        }
+
+        const expected_quantity = Math.min(3, before_worker_quantity + 1);
+        const observed = await (async () => {
+          const observed_started = Date.now();
+          while (Date.now() - observed_started < 10000) {
+            const quantity = live_item_quantity_at_level(
+              character_manage[merchant_name],
+              item_name,
+              item_level,
+            );
+            if (quantity >= expected_quantity) return quantity;
+            await sleep(100);
+          }
+          return live_item_quantity_at_level(
+            character_manage[merchant_name],
+            item_name,
+            item_level,
+          );
+        })();
+        current_quantity = observed;
+
+        if (
+          worker_result?.outcome !== "PASS" ||
+          current_quantity < expected_quantity
+        ) {
+          return {
+            outcome: "FAIL",
+            reason:
+              worker_result?.reason ||
+              "COMPOUND_MATERIAL_DELIVERY_NOT_OBSERVED",
+            merchant: merchant_name,
+            workers,
+            plan,
+            initialQuantity: initial_quantity,
+            finalQuantity: current_quantity,
+            targetQuantity: target_quantity,
+            workerResults: worker_results,
+          };
+        }
+      }
+
+      current_quantity = live_item_quantity_at_level(
+        character_manage[merchant_name],
+        item_name,
+        item_level,
+      );
+      if (current_quantity < 3) {
+        return {
+          outcome: "FAIL",
+          reason: "COMPOUND_MATERIAL_TRIPLE_NOT_READY",
+          merchant: merchant_name,
+          workers,
+          plan,
+          initialQuantity: initial_quantity,
+          finalQuantity: current_quantity,
+          targetQuantity: target_quantity,
+          workerResults: worker_results,
+        };
+      }
+
+      const scroll_quantity = live_item_quantity(
+        character_manage[merchant_name],
+        selected.scrollName,
+      );
+      const result = {
+        outcome: "PASS",
+        reason: "COMPOUND_MATERIAL_PREPARATION_CONFIRMED",
+        merchant: merchant_name,
+        workers,
+        startedAt: started_at,
+        completedAt: Date.now(),
+        plan,
+        itemName: item_name,
+        itemLevel: item_level,
+        monsterType: monster_type,
+        itemGrade: selected.itemGrade,
+        scrollName: selected.scrollName,
+        initialQuantity: initial_quantity,
+        finalQuantity: current_quantity,
+        targetQuantity: target_quantity,
+        scrollQuantity: scroll_quantity,
+        readyForCompound: current_quantity >= 3 && scroll_quantity >= 1,
+        workerResults: worker_results,
+        evidence: {
+          gatherPlanReadOnly: true,
+          threeMatchingItemsObserved: current_quantity >= 3,
+          allDeliveredItemsLevelMatched: true,
+          blindRetryUsed: false,
+        },
+      };
+      emit_supervisor_event(
+        "COMPOUND_MATERIAL_PREPARATION_COMPLETED",
+        merchant_name,
+        result,
+      );
+      return result;
+    } finally {
+      if (plan_request_id) {
+        const pending = compound_gather_plan_requests.get(plan_request_id);
+        if (pending) {
+          clearTimeout(pending.timer);
+          compound_gather_plan_requests.delete(plan_request_id);
+        }
+      }
+
+      try {
+        if (runtime_override_applied) {
+          await restore_movement_live_test_execution_source(
+            merchant_name,
+            original_desired_state,
+          );
+        }
+        runtime_state_restored = true;
+      } catch (restore_error) {
+        emit_supervisor_event(
+          "COMPOUND_MATERIAL_PREPARATION_RESTORE_FAILED",
+          merchant_name,
+          {
+            error:
+              restore_error instanceof Error
+                ? restore_error.message
+                : String(restore_error),
+          },
+        );
+      }
+
+      compound_material_preparation_active = false;
+      schedule_merchant_logistics_dispatch();
+      emit_supervisor_event(
+        "COMPOUND_MATERIAL_PREPARATION_RESTORED",
+        merchant_name,
+        {
+          runtime_state_restored,
+          desired_runtime_state: original_desired_state,
+        },
+      );
+      dashboard?.publishSnapshot();
+    }
+  }
+
   async function coordinate_fishing_material_request(merchant_name, request) {
     const item_name =
       typeof request?.itemName === "string" ? request.itemName.trim() : "";
