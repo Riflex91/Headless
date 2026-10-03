@@ -103,6 +103,18 @@ test("account inventory renders all connected live characters together", () => {
               },
             ],
           },
+          gear_scoring_runtime: {
+            state: "READY",
+            entries: [
+              {
+                location: "EQUIPMENT",
+                slot: "mainhand",
+                name: "bow",
+                score: 42.5,
+                why: "GEAR_SCORE_WEIGHTED_ADVENTURE_LAND_STATS",
+              },
+            ],
+          },
         },
         {
           name: "My_Merchant",
@@ -146,6 +158,14 @@ test("account inventory renders all connected live characters together", () => {
     assert.match(
       root.querySelector('[data-disposition="CONSUMABLE"]').title,
       /VALUABLE/,
+    );
+    assert.equal(
+      root.querySelector(".item-gear-score-badge").textContent,
+      "GS 42.5",
+    );
+    assert.match(
+      root.querySelector(".equipment-grid .live-item-slot").title,
+      /Gear score 42.5/,
     );
   } finally {
     global.document = previousDocument;
