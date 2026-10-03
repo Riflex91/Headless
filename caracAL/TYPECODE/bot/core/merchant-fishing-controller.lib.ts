@@ -611,6 +611,22 @@ export class MerchantFishingController {
       );
     }
 
+    if (this.resultAttempted) {
+      if (!this.restored) {
+        const restoreStatus = await this.restoreMainhand(config);
+        if (restoreStatus) return restoreStatus;
+      }
+
+      const complete = this.buildStatus(
+        config,
+        "COMPLETE",
+        "FISHING_ROADMAP_COMPLETE",
+        "alte Waffe restaurieren",
+      );
+      this.sessionActive = false;
+      return this.publish(complete);
+    }
+
     const equipment = this.game.equipment();
     const inventory = this.game.inventory();
     const mainhand = equipment.mainhand || null;
@@ -806,19 +822,6 @@ export class MerchantFishingController {
       return status;
     }
 
-    if (!this.restored) {
-      const restored = await this.restoreMainhand(config);
-      if (restored) return restored;
-    }
-
-    const complete = this.buildStatus(
-      config,
-      "COMPLETE",
-      "FISHING_ROADMAP_COMPLETE",
-      "alte Waffe restaurieren",
-    );
-    this.sessionActive = false;
-    return this.publish(complete);
   }
 
   async cleanupTemporaryState(): Promise<ActionRecord | null> {
