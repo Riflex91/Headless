@@ -50,9 +50,7 @@ function makeSetup({
   itemGrade = () => 0,
   executeNext,
 } = {}) {
-  const {
-    CompoundLiveTestRunner,
-  } = coreModule("compound-live-test.lib.ts");
+  const { CompoundLiveTestRunner } = coreModule("compound-live-test.lib.ts");
 
   const state = {
     items: items.map((item) => (item ? { ...item } : null)),
