@@ -332,7 +332,9 @@ export class LogisticsClaimExecutor {
       return blocked(claim, source, target, "CLAIM_ITEM_INVALID");
     }
     if (
-      claim.metadata?.purpose !== "FISHING_MATERIAL" ||
+      !["FISHING_MATERIAL", "COMPOUND_TEST_MATERIAL"].includes(
+        String(claim.metadata?.purpose || ""),
+      ) ||
       claim.metadata?.authorized !== true
     ) {
       return blocked(
