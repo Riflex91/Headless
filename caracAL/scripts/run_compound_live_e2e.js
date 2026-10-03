@@ -6,8 +6,7 @@ const {
 } = require("../src/MovementLiveTestLauncher");
 const { readState } = require("./run_gear_scoring_live_e2e");
 
-const baseUrl =
-  process.env.CARACAL_HEADLESS_URL || "http://127.0.0.1:924";
+const baseUrl = process.env.CARACAL_HEADLESS_URL || "http://127.0.0.1:924";
 
 function record(value) {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -27,10 +26,7 @@ function normalizedSlots(value) {
   return slots.sort((left, right) => left - right);
 }
 
-function verifyCompoundLiveResult(
-  source,
-  expected = {},
-) {
+function verifyCompoundLiveResult(source, expected = {}) {
   const result = record(source);
   const evidence = record(result.evidence);
   const scope = record(result.scope);
@@ -51,34 +47,26 @@ function verifyCompoundLiveResult(
       !!expectedSlots &&
       !!observedSlots &&
       JSON.stringify(expectedSlots) === JSON.stringify(observedSlots),
-    inventoryIntelligenceReady:
-      evidence.inventoryIntelligenceReady === true,
-    itemDefinitionCompoundable:
-      evidence.itemDefinitionCompoundable === true,
+    inventoryIntelligenceReady: evidence.inventoryIntelligenceReady === true,
+    itemDefinitionCompoundable: evidence.itemDefinitionCompoundable === true,
     exactTripleObserved: evidence.exactTripleObserved === true,
     sameName: evidence.sameName === true,
     sameLevel: evidence.sameLevel === true,
     itemGradesKnown: evidence.itemGradesKnown === true,
     itemGradesMatch: evidence.itemGradesMatch === true,
-    scrollGradeCompatible:
-      evidence.scrollGradeCompatible === true,
-    allItemsUnprotectedBefore:
-      evidence.allItemsUnprotectedBefore === true,
-    scrollUnprotectedBefore:
-      evidence.scrollUnprotectedBefore === true,
-    exactCandidateSelected:
-      evidence.exactCandidateSelected === true,
+    scrollGradeCompatible: evidence.scrollGradeCompatible === true,
+    allItemsUnprotectedBefore: evidence.allItemsUnprotectedBefore === true,
+    scrollUnprotectedBefore: evidence.scrollUnprotectedBefore === true,
+    exactCandidateSelected: evidence.exactCandidateSelected === true,
     actionDispatchedOnce:
       evidence.actionDispatchedOnce === true &&
       typeof lastAction.id === "string" &&
       lastAction.id.length > 0,
     actionConfirmed:
-      evidence.actionConfirmed === true &&
-      lastAction.status === "CONFIRMED",
+      evidence.actionConfirmed === true && lastAction.status === "CONFIRMED",
     mutationObserved: evidence.mutationObserved === true,
     blindRetryAvoided:
-      evidence.blindRetryAvoided === true &&
-      scope.blindRetryAllowed === false,
+      evidence.blindRetryAvoided === true && scope.blindRetryAllowed === false,
     offeringOmitted:
       evidence.offeringOmitted === true &&
       scope.offeringMutationAllowed === false,
@@ -104,8 +92,7 @@ function verifyCompoundLiveResult(
   if (result.outcome === "UNKNOWN") {
     return {
       ...result,
-      reason:
-        result.reason || "COMPOUND_LIVE_OUTCOME_UNKNOWN_NO_RETRY",
+      reason: result.reason || "COMPOUND_LIVE_OUTCOME_UNKNOWN_NO_RETRY",
       verifier: verified,
     };
   }
