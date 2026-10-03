@@ -2977,39 +2977,69 @@ function migrate_old_storage(path, localStorage) {
       const plan = plan_response.result;
       const selected = plan.selected;
       const item_name = selected.itemName;
-      const monster_type = selected.monsterType;
-      const item_level = 0;
-      const current_merchant = character_manage[merchant_name];
-      const observer_position =
-        plan.observerPosition && typeof plan.observerPosition === "object"
-          ? plan.observerPosition
+      const monster_type =
+        typeof selected.monsterType === "string" && selected.monsterType
+          ? selected.monsterType
           : null;
-      const observer_x = Number(observer_position?.x);
-      const observer_y = Number(observer_position?.y);
-      const live_x = Number(current_merchant?.live_state?.x);
-      const live_y = Number(current_merchant?.live_state?.y);
-      const merchant_position = {
-        map:
-          (typeof observer_position?.map === "string" &&
-            observer_position.map.trim()) ||
-          current_merchant?.live_state?.map ||
-          null,
-        x: Number.isFinite(observer_x) ? observer_x : live_x,
-        y: Number.isFinite(observer_y) ? observer_y : live_y,
-      };
-      if (
-        !merchant_position.map ||
-        !Number.isFinite(merchant_position.x) ||
-        !Number.isFinite(merchant_position.y)
-      ) {
-        return {
-          outcome: "FAIL",
-          reason: "COMPOUND_PREPARATION_MERCHANT_POSITION_UNAVAILABLE",
-          merchant: merchant_name,
-          workers,
-          plan,
-          workerResults: worker_results,
+      const item_level = Number.isInteger(Number(selected.itemLevel))
+        ? Math.max(0, Number(selected.itemLevel))
+        : 0;
+      const current_merchant = character_manage[merchant_name];
+      const initial_quantity = live_item_quantity_at_level(
+        current_merchant,
+        item_name,
+        item_level,
+      );
+      const target_quantity = Math.max(3, initial_quantity);
+      let current_quantity = initial_quantity;
+      let merchant_position = null;
+
+      if (current_quantity < 3) {
+        if (!monster_type) {
+          return {
+            outcome: "FAIL",
+            reason: "COMPOUND_EXISTING_TRIPLE_CHANGED_BEFORE_PREPARATION",
+            merchant: merchant_name,
+            workers,
+            plan,
+            initialQuantity: initial_quantity,
+            finalQuantity: current_quantity,
+            targetQuantity: target_quantity,
+            workerResults: worker_results,
+          };
+        }
+
+        const observer_position =
+          plan.observerPosition && typeof plan.observerPosition === "object"
+            ? plan.observerPosition
+            : null;
+        const observer_x = Number(observer_position?.x);
+        const observer_y = Number(observer_position?.y);
+        const live_x = Number(current_merchant?.live_state?.x);
+        const live_y = Number(current_merchant?.live_state?.y);
+        merchant_position = {
+          map:
+            (typeof observer_position?.map === "string" &&
+              observer_position.map.trim()) ||
+            current_merchant?.live_state?.map ||
+            null,
+          x: Number.isFinite(observer_x) ? observer_x : live_x,
+          y: Number.isFinite(observer_y) ? observer_y : live_y,
         };
+        if (
+          !merchant_position.map ||
+          !Number.isFinite(merchant_position.x) ||
+          !Number.isFinite(merchant_position.y)
+        ) {
+          return {
+            outcome: "FAIL",
+            reason: "COMPOUND_PREPARATION_MERCHANT_POSITION_UNAVAILABLE",
+            merchant: merchant_name,
+            workers,
+            plan,
+            workerResults: worker_results,
+          };
+        }
       }
 
       if (
@@ -3022,13 +3052,24 @@ function migrate_old_storage(path, localStorage) {
         await sleep(250);
       }
 
-      const initial_quantity = live_item_quantity_at_level(
-        current_merchant,
+      current_quantity = live_item_quantity_at_level(
+        character_manage[merchant_name],
         item_name,
         item_level,
       );
-      const target_quantity = Math.max(3, initial_quantity);
-      let current_quantity = initial_quantity;
+      if (current_quantity < 3 && !monster_type) {
+        return {
+          outcome: "FAIL",
+          reason: "COMPOUND_EXISTING_TRIPLE_CHANGED_BEFORE_PREPARATION",
+          merchant: merchant_name,
+          workers,
+          plan,
+          initialQuantity: initial_quantity,
+          finalQuantity: current_quantity,
+          targetQuantity: target_quantity,
+          workerResults: worker_results,
+        };
+      }
 
       for (const worker_name of workers) {
         if (current_quantity >= 3) break;
@@ -3163,6 +3204,7 @@ function migrate_old_storage(path, localStorage) {
         startedAt: started_at,
         completedAt: Date.now(),
         plan,
+        source: selected.source || "MONSTER_DROP",
         itemName: item_name,
         itemLevel: item_level,
         monsterType: monster_type,

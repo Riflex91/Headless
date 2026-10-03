@@ -278,6 +278,80 @@ test("Compound gather planner excludes non-regular special spawns when map spawn
   );
 });
 
+test("Compound gather planner prefers an existing Merchant inventory triple", () => {
+  const planCompoundGatherTarget = loadPlanner();
+  const result = planCompoundGatherTarget({
+    gameData() {
+      return {
+        items: {
+          amulet: { type: "amulet", compound: { int: 1 } },
+          ring: { type: "ring", compound: { dex: 1 } },
+        },
+        monsters: {
+          goo: {
+            hp: 100,
+            drop: [[1, "ring"]],
+          },
+        },
+      };
+    },
+    inventory() {
+      return [
+        { slot: 1, item: { name: "amulet", level: 2 } },
+        { slot: 4, item: { name: "amulet", level: 2 } },
+        { slot: 7, item: { name: "amulet", level: 2 } },
+      ];
+    },
+    itemGrade(item) {
+      return item.name === "amulet" ? 0 : 0;
+    },
+  });
+
+  assert.equal(result.outcome, "PASS");
+  assert.equal(result.selected.source, "MERCHANT_INVENTORY");
+  assert.equal(result.selected.itemName, "amulet");
+  assert.equal(result.selected.itemLevel, 2);
+  assert.deepEqual(result.selected.itemSlots, [1, 4, 7]);
+  assert.equal(result.selected.monsterType, null);
+  assert.equal(result.selected.scrollName, "cscroll0");
+});
+
+test("Compound gather planner falls back to monster farming without a full inventory triple", () => {
+  const planCompoundGatherTarget = loadPlanner();
+  const result = planCompoundGatherTarget({
+    gameData() {
+      return {
+        items: {
+          amulet: { type: "amulet", compound: { int: 1 } },
+          ring: { type: "ring", compound: { dex: 1 } },
+        },
+        monsters: {
+          goo: {
+            hp: 100,
+            drop: [[1, "ring"]],
+          },
+        },
+      };
+    },
+    inventory() {
+      return [
+        { slot: 1, item: { name: "amulet", level: 2 } },
+        { slot: 4, item: { name: "amulet", level: 2 } },
+      ];
+    },
+    itemGrade() {
+      return 0;
+    },
+  });
+
+  assert.equal(result.outcome, "PASS");
+  assert.equal(result.selected.source, "MONSTER_DROP");
+  assert.equal(result.selected.itemName, "ring");
+  assert.equal(result.selected.itemLevel, 0);
+  assert.deepEqual(result.selected.itemSlots, []);
+  assert.equal(result.selected.monsterType, "goo");
+});
+
 test("Compound gather planner reports observer position from runtime snapshot", () => {
   const planCompoundGatherTarget = loadPlanner();
   const result = planCompoundGatherTarget({
