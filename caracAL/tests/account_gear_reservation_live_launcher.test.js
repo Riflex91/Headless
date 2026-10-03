@@ -326,6 +326,10 @@ test("Account Gear Reservation live wiring uses the two-character TYPECODE harne
     dashboard,
     /\/headless\/api\/characters\/:name\/tests\/account-gear-reservation/,
   );
+  assert.match(
+    dashboard,
+    /account-gear-reservation"[\s\S]*express\.json\(\{ limit: "8kb" \}\)/,
+  );
   assert.match(launcher, /ACCOUNT_GEAR_RESERVATION_LIVE_E2E_CONFIRMED/);
   assert.match(launcher, /reservationProtectionComplete/);
 });

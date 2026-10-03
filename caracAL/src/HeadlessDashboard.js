@@ -574,6 +574,7 @@ function attachHeadlessDashboard({
 
   router.post(
     "/headless/api/characters/:name/tests/account-gear-reservation",
+    express.json({ limit: "8kb" }),
     async (req, res) => {
       if (!runAccountGearReservationLiveTest) {
         res
