@@ -83,6 +83,7 @@ test("public character state exposes only dashboard-safe fields", () => {
     merchant_live_test: null,
     merrit_live_test: null,
     fishing_live_test: null,
+    fishing_material_request: null,
     combat_runtime: null,
     class_skill_runtime: null,
     group_combat_runtime: null,
@@ -420,6 +421,12 @@ test("dashboard module and coordinator remain syntactically valid", () => {
   assert.match(coordinator, /merrit_runtime/);
   assert.match(coordinator, /fishing_live_test/);
   assert.match(coordinator, /fishing_runtime/);
+  assert.match(coordinator, /fishing_material_request/);
+  assert.match(coordinator, /FISHING_MATERIAL_REQUEST_STARTED/);
+  assert.match(coordinator, /FISHING_MATERIAL_REQUEST_COMPLETED/);
+  assert.match(coordinator, /My_Ranger1/);
+  assert.match(coordinator, /My_Ranger2/);
+  assert.match(coordinator, /My_Ranger3/);
   assert.match(coordinator, /saveCooldown/);
   assert.match(coordinator, /appendFarmStatistic/);
   assert.match(runtimeKernel, /classSkills/);
@@ -432,6 +439,8 @@ test("dashboard module and coordinator remain syntactically valid", () => {
   assert.match(runtimeKernel, /FISHING_AUTONOMY_JOB_ID/);
   assert.match(runtimeKernel, /runMerritLiveTest/);
   assert.match(runtimeKernel, /runFishingLiveTest/);
+  assert.match(runtimeKernel, /runMaterialGatherTask/);
+  assert.match(runtimeKernel, /reportFishingMaterialRequestResult/);
   assert.match(runtimeKernel, /FARM_INTELLIGENCE_JOB_ID/);
   assert.match(runtimeKernel, /INVENTORY_INTELLIGENCE_JOB_ID/);
   assert.match(runtimeKernel, /GROUP_COMBAT_JOB_ID/);
@@ -449,6 +458,9 @@ test("dashboard module and coordinator remain syntactically valid", () => {
   assert.match(characterThread, /merrit_live_test_result/);
   assert.match(characterThread, /fishing_live_test/);
   assert.match(characterThread, /fishing_live_test_result/);
+  assert.match(characterThread, /material_gather_task/);
+  assert.match(characterThread, /material_gather_task_result/);
+  assert.match(characterThread, /fishing_material_request_result/);
 });
 
 test("dashboard public live state keeps nearby entity telemetry but not map scene blobs", () => {
