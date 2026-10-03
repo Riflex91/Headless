@@ -11,6 +11,14 @@ const {
   fishingLiveTestEvidence,
 } = require("../src/FishingLiveTest");
 
+function completedResult(events) {
+  return events.find(
+    (event) =>
+      event.module === "FishingLiveTest" &&
+      event.type === "FISHING_LIVE_TEST_COMPLETED",
+  ).data.result;
+}
+
 function runtimeEvents({ foreignIntent = false } = {}) {
   const result = {
     character: {
@@ -48,8 +56,8 @@ function runtimeEvents({ foreignIntent = false } = {}) {
     },
     scope: {
       movementMutationAllowed: true,
-      combatMutationAllowed: true,
-      lootMutationAllowed: true,
+      combatMutationAllowed: false,
+      lootMutationAllowed: false,
       prerequisitePurchaseAllowed: true,
       craftMutationAllowed: true,
       equipmentMutationAllowed: true,
@@ -145,6 +153,75 @@ test("Fishing supervisor confirms result, weapon restore and mutation isolation"
   assert.equal(combined.reason, "FISHING_LIVE_E2E_CONFIRMED");
 });
 
+test("Fishing supervisor requires confirmed ranger delivery when tool material was missing", () => {
+  const events = runtimeEvents();
+  const completed = completedResult(events);
+  completed.evidence.toolAcquisitionRequired = true;
+  completed.evidence.toolAcquisitionObserved = true;
+
+  const evidence = fishingLiveTestEvidence(
+    events,
+    {
+      account_owned: true,
+      account_character_type: "merchant",
+      fishing_material_request: {
+        outcome: "PASS",
+        activeWorker: "My_Ranger1",
+      },
+    },
+    {
+      dispatcherSuppressedDuringTest: true,
+    },
+  );
+
+  const combined = combineFishingLiveTestResult(
+    {
+      outcome: "PASS",
+      reason: "FISHING_LIVE_RUNTIME_CONFIRMED",
+    },
+    evidence,
+  );
+
+  assert.equal(evidence.materialWorkerDeliveryConfirmed, true);
+  assert.equal(evidence.materialWorker, "My_Ranger1");
+  assert.equal(combined.outcome, "PASS");
+  assert.equal(combined.reason, "FISHING_LIVE_E2E_CONFIRMED");
+});
+
+test("Fishing supervisor rejects tool acquisition without ranger delivery evidence", () => {
+  const events = runtimeEvents();
+  const completed = completedResult(events);
+  completed.evidence.toolAcquisitionRequired = true;
+  completed.evidence.toolAcquisitionObserved = true;
+
+  const evidence = fishingLiveTestEvidence(
+    events,
+    {
+      account_owned: true,
+      account_character_type: "merchant",
+      fishing_material_request: {
+        outcome: "FAIL",
+        activeWorker: "My_Ranger2",
+      },
+    },
+    {
+      dispatcherSuppressedDuringTest: true,
+    },
+  );
+
+  const combined = combineFishingLiveTestResult(
+    {
+      outcome: "PASS",
+      reason: "FISHING_LIVE_RUNTIME_CONFIRMED",
+    },
+    evidence,
+  );
+
+  assert.equal(evidence.materialWorkerDeliveryConfirmed, false);
+  assert.equal(combined.outcome, "FAIL");
+  assert.equal(combined.reason, "SUPERVISOR_FISHING_EVIDENCE_INCOMPLETE");
+});
+
 test("Fishing supervisor rejects a runtime PASS with a foreign action intent", () => {
   const evidence = fishingLiveTestEvidence(
     runtimeEvents({ foreignIntent: true }),
@@ -209,9 +286,9 @@ test("Fishing diagnostics preserve roadmap and cleanup guarantees", () => {
           found: false,
         },
       },
-      evidence: runtimeEvents()[3].data.result.evidence,
-      scope: runtimeEvents()[3].data.result.scope,
-      cleanup: runtimeEvents()[3].data.result.cleanup,
+      evidence: completedResult(runtimeEvents()).evidence,
+      scope: completedResult(runtimeEvents()).scope,
+      cleanup: completedResult(runtimeEvents()).cleanup,
     },
     {
       evidence,
@@ -267,11 +344,18 @@ test("coordinator, runtime, thread, dashboard and launcher expose Fishing live p
   assert.match(coordinator, /run_fishing_live_test/);
   assert.match(coordinator, /FISHING_LIVE_TEST_RESULT_RECEIVED/);
   assert.match(coordinator, /fishing_live_test_active/);
+  assert.match(coordinator, /My_Ranger1/);
+  assert.match(coordinator, /My_Ranger2/);
+  assert.match(coordinator, /My_Ranger3/);
+  assert.match(coordinator, /FISHING_MATERIAL_REQUEST_COMPLETED/);
   assert.match(runtime, /FISHING_AUTONOMY_JOB_ID/);
   assert.match(runtime, /runFishingLiveTest/);
+  assert.match(runtime, /runMaterialGatherTask/);
   assert.match(dashboard, /\/headless\/api\/characters\/:name\/tests\/fishing/);
   assert.match(thread, /case "fishing_live_test"/);
   assert.match(thread, /runFishingLiveTest/);
+  assert.match(thread, /case "material_gather_task"/);
+  assert.match(thread, /material_gather_task_result/);
   assert.match(launcher, /selectMerchantLiveTestCharacter/);
   assert.match(launcher, /Stopping temporary caracAL runtime/);
 });
