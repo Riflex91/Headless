@@ -202,6 +202,46 @@ async function make_runner(upper, CODE_file, version, is_typescript) {
           });
         break;
       }
+      case "material_gather_task": {
+        const requestId =
+          typeof m.request_id === "string" && m.request_id
+            ? m.request_id
+            : "material-gather-" + Date.now();
+        const runtime = runner_context.__caracalBotRuntime;
+        if (!runtime?.runMaterialGatherTask) {
+          sendIpcMessage(process, {
+            type: "material_gather_task_result",
+            request_id: requestId,
+            error: "MATERIAL_GATHER_TASK_RUNTIME_NOT_READY",
+          });
+          break;
+        }
+
+        void runtime
+          .runMaterialGatherTask({
+            requestId,
+            itemName: m.item_name,
+            monsterType: m.monster_type,
+            quantity: m.quantity,
+            recipient: m.recipient,
+            recipientPosition: m.recipient_position,
+          })
+          .then((result) => {
+            sendIpcMessage(process, {
+              type: "material_gather_task_result",
+              request_id: requestId,
+              result,
+            });
+          })
+          .catch((error) => {
+            sendIpcMessage(process, {
+              type: "material_gather_task_result",
+              request_id: requestId,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          });
+        break;
+      }
       case "fishing_live_test": {
         const requestId =
           typeof m.request_id === "string" && m.request_id
