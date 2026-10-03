@@ -678,6 +678,55 @@ async function make_runner(upper, CODE_file, version, is_typescript) {
           });
         break;
       }
+      case "compound_live_test": {
+        const requestId =
+          typeof m.request_id === "string" && m.request_id
+            ? m.request_id
+            : `compound-live-${Date.now()}`;
+        const runtime = runner_context.__caracalBotRuntime;
+        if (!runtime?.runCompoundLiveTest) {
+          sendIpcMessage(process, {
+            type: "compound_live_test_result",
+            request_id: requestId,
+            error: "COMPOUND_LIVE_TEST_RUNTIME_NOT_READY",
+          });
+          break;
+        }
+
+        const itemName =
+          typeof m.itemName === "string" ? m.itemName.trim() : "";
+        const scrollName =
+          typeof m.scrollName === "string" ? m.scrollName.trim() : "";
+        const itemSlots = Array.isArray(m.itemSlots)
+          ? m.itemSlots.map((slot) => Number(slot))
+          : [];
+
+        void runtime
+          .runCompoundLiveTest({
+            requestId,
+            itemName,
+            scrollName,
+            itemSlots:
+              itemSlots.length === 3
+                ? [itemSlots[0], itemSlots[1], itemSlots[2]]
+                : [NaN, NaN, NaN],
+          })
+          .then((result) => {
+            sendIpcMessage(process, {
+              type: "compound_live_test_result",
+              request_id: requestId,
+              result,
+            });
+          })
+          .catch((error) => {
+            sendIpcMessage(process, {
+              type: "compound_live_test_result",
+              request_id: requestId,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          });
+        break;
+      }
       case "bank_gold_live_test": {
         const requestId =
           typeof m.request_id === "string" && m.request_id
