@@ -34,6 +34,8 @@ function passResult(overrides = {}) {
     finalQuantity: 3,
     targetQuantity: 3,
     scrollQuantity: 2,
+    matchingItemSlots: [2, 7, 9],
+    matchingScrollSlots: [12],
     readyForCompound: true,
     workerResults: ["My_Ranger1", "My_Ranger2", "My_Ranger3"].map((worker) => ({
       outcome: "PASS",
@@ -70,6 +72,8 @@ test("Compound preparation launcher confirms Ranger farm and Merchant readiness"
   assert.equal(result.verifier.gatherTargetSelected, true);
   assert.equal(result.verifier.matchingTripleObserved, true);
   assert.equal(result.verifier.workerEvidenceValid, true);
+  assert.equal(result.verifier.matchingItemSlotsObserved, true);
+  assert.equal(result.verifier.matchingScrollSlotsObserved, true);
   assert.equal(result.verifier.scrollPresent, true);
 });
 
