@@ -145,7 +145,13 @@ const NPC_TRADING_LIVE_TEST_RESULT_TIMEOUT_MS = 240000;
 const MARKET_TRADING_LIVE_TEST_RESULT_TIMEOUT_MS = 240000;
 const FISHING_LIVE_TEST_RESULT_TIMEOUT_MS = 20 * 60 * 1000;
 const MATERIAL_GATHER_TASK_RESULT_TIMEOUT_MS = 6 * 60 * 1000;
+const COMPOUND_GATHER_PLAN_TIMEOUT_MS = 30000;
 const DEFAULT_FISHING_MATERIAL_WORKERS = Object.freeze([
+  "My_Ranger1",
+  "My_Ranger2",
+  "My_Ranger3",
+]);
+const DEFAULT_COMPOUND_MATERIAL_WORKERS = Object.freeze([
   "My_Ranger1",
   "My_Ranger2",
   "My_Ranger3",
@@ -315,6 +321,8 @@ function migrate_old_storage(path, localStorage) {
   let fishing_live_test_active = false;
   const material_gather_task_requests = new Map();
   let material_gather_task_sequence = 0;
+  const compound_gather_plan_requests = new Map();
+  let compound_material_preparation_active = false;
   const fishing_material_requests = new Map();
   let material_worker_active_count = 0;
   const logistics_claim_requests = new Map();
@@ -371,6 +379,7 @@ function migrate_old_storage(path, localStorage) {
         runBankGoldLiveTest: run_bank_gold_live_test,
         runUpgradeLiveTest: run_upgrade_live_test,
         runUpgradeLivePreflight: run_upgrade_live_preflight,
+        runCompoundMaterialPreparation: run_compound_material_preparation,
         runNpcTradingLiveTest: run_npc_trading_live_test,
         runMarketTradingLiveTest: run_market_trading_live_test,
         runMerritLiveTest: run_merrit_live_test,
