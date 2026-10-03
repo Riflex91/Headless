@@ -23,9 +23,7 @@ function createHarness(actionStatus = "CONFIRMED") {
       moving: false,
       gold: 100,
     },
-    inventory: [
-      { slot: 7, item: { name: "whiteegg", q: 10 } },
-    ],
+    inventory: [{ slot: 7, item: { name: "whiteegg", q: 10 } }],
   };
 
   const intelligenceStatus = () => ({
@@ -50,9 +48,7 @@ function createHarness(actionStatus = "CONFIRMED") {
     selected: {
       recipe: "cake",
       cost: 5,
-      requirements: [
-        { quantity: 10, name: "whiteegg", level: null },
-      ],
+      requirements: [{ quantity: 10, name: "whiteegg", level: null }],
       itemSlots: [7],
       reason: "CRAFT_POLICY_ELIGIBLE",
     },
