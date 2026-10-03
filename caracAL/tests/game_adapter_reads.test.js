@@ -388,3 +388,22 @@ test("equipment read excludes merchant trade slots", () => {
     mainhand: { name: "broom", level: 0 },
   });
 });
+
+test("item grade read delegates to the Adventure Land runtime helper safely", () => {
+  const GameAdapter = loadGameAdapter();
+  const { source } = makeSource();
+  source.itemGrade = (item) => (item?.level >= 7 ? 1 : 0);
+  const adapter = new GameAdapter(source);
+
+  assert.equal(adapter.itemGrade({ name: "sword", level: 0 }), 0);
+  assert.equal(adapter.itemGrade({ name: "sword", level: 7 }), 1);
+
+  source.itemGrade = () => -1;
+  assert.equal(adapter.itemGrade({ name: "sword", level: 7 }), null);
+
+  source.itemGrade = () => {
+    throw new Error("runtime helper unavailable");
+  };
+  assert.equal(adapter.itemGrade({ name: "sword", level: 7 }), null);
+});
+
