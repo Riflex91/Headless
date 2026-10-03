@@ -288,10 +288,7 @@ test("coordinator and dashboard expose Gear Scoring TYPECODE live path", () => {
   );
 
   assert.match(coordinator, /run_gear_scoring_live_test/);
-  assert.match(
-    coordinator,
-    /GEAR_SCORING_LIVE_TEST_RUNTIME_OVERRIDE_APPLIED/,
-  );
+  assert.match(coordinator, /GEAR_SCORING_LIVE_TEST_RUNTIME_OVERRIDE_APPLIED/);
   assert.match(
     coordinator,
     /movement_live_test_typescript_override\s*=\s*MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE/,
