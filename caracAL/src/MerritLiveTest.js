@@ -21,9 +21,7 @@ function merritLiveTestEvidence(
   const runtimeEvidence = runtimeResult?.evidence || {};
   const scope = runtimeResult?.scope || {};
   const cleanup = runtimeResult?.cleanup || {};
-  const parcelReadyAt = Number(
-    runtimeResult?.finalStatus?.parcel?.readyAt,
-  );
+  const parcelReadyAt = Number(runtimeResult?.finalStatus?.parcel?.readyAt);
   const persistedReadyAt = Number(persistedCooldown?.ready_at);
 
   return {
@@ -56,8 +54,7 @@ function merritLiveTestEvidence(
     gatheringMutationIsolated: scope.gatheringMutationAllowed === false,
     equipmentMutationIsolated: scope.equipmentMutationAllowed === false,
     overrideCleared: cleanup.autonomyOverrideCleared === true,
-    temporaryListingRestored:
-      cleanup.temporaryListingRestored !== false,
+    temporaryListingRestored: cleanup.temporaryListingRestored !== false,
     standRestored: cleanup.standRestored !== false,
   };
 }
