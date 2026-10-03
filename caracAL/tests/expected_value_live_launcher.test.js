@@ -146,9 +146,7 @@ test("Expected Value live verifier accepts a consistent real EMPTY projection", 
 test("Expected Value live verifier independently recomputes estimate arithmetic", () => {
   const status = readyExpectedValue();
   const evidence = expectedValueEvidence({ expectedValue: status });
-  const result = combineExpectedValueSupervisorResult(
-    supervisorResult(status),
-  );
+  const result = combineExpectedValueSupervisorResult(supervisorResult(status));
 
   assert.equal(estimateEvidence(status.estimates[0]).complete, true);
   assert.equal(evidenceComplete(evidence), true);
@@ -179,10 +177,7 @@ test("Expected Value live verifier rejects incorrect expected-value arithmetic",
 
   assert.equal(evidence.allEstimatesRecomputed, false);
   assert.equal(result.outcome, "FAIL");
-  assert.equal(
-    result.reason,
-    "EXPECTED_VALUE_LIVE_E2E_EVIDENCE_INCOMPLETE",
-  );
+  assert.equal(result.reason, "EXPECTED_VALUE_LIVE_E2E_EVIDENCE_INCOMPLETE");
 });
 
 test("Expected Value live verifier rejects model drift that enables dynamic grace", () => {
