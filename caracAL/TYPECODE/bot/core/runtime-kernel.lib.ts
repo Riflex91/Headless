@@ -817,7 +817,8 @@ export class BotRuntimeKernel {
     if (
       this.compoundLiveTestRunning ||
       this.upgradeLiveTestRunning ||
-      this.upgradePreflightRunning
+      this.upgradePreflightRunning ||
+      this.exchangePreflightRunning
     ) {
       throw new Error("mutation verification already running");
     }
@@ -940,7 +941,8 @@ export class BotRuntimeKernel {
     if (
       this.upgradeLiveTestRunning ||
       this.upgradePreflightRunning ||
-      this.compoundLiveTestRunning
+      this.compoundLiveTestRunning ||
+      this.exchangePreflightRunning
     ) {
       throw new Error("mutation verification already running");
     }
@@ -998,7 +1000,8 @@ export class BotRuntimeKernel {
     if (
       this.upgradeLiveTestRunning ||
       this.upgradePreflightRunning ||
-      this.compoundLiveTestRunning
+      this.compoundLiveTestRunning ||
+      this.exchangePreflightRunning
     ) {
       throw new Error("mutation verification already running");
     }
