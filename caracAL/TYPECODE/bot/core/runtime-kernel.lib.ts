@@ -646,8 +646,12 @@ export class BotRuntimeKernel {
   }
 
   async executeUpgradeNext(): Promise<Record<string, unknown>> {
-    if (this.upgradeLiveTestRunning || this.upgradePreflightRunning) {
-      throw new Error("upgrade verification is running");
+    if (
+      this.upgradeLiveTestRunning ||
+      this.upgradePreflightRunning ||
+      this.compoundLiveTestRunning
+    ) {
+      throw new Error("mutation verification is running");
     }
     if (!this.started || this.stopping) {
       throw new Error("runtime is not ready for upgrade execution");
@@ -759,8 +763,12 @@ export class BotRuntimeKernel {
   }
 
   async runUpgradePreflight(): Promise<UpgradePreflightResult> {
-    if (this.upgradeLiveTestRunning || this.upgradePreflightRunning) {
-      throw new Error("upgrade verification already running");
+    if (
+      this.upgradeLiveTestRunning ||
+      this.upgradePreflightRunning ||
+      this.compoundLiveTestRunning
+    ) {
+      throw new Error("mutation verification already running");
     }
     if (!this.started || this.stopping) {
       throw new Error("runtime is not ready for upgrade preflight");
@@ -813,8 +821,12 @@ export class BotRuntimeKernel {
   async runUpgradeLiveTest(
     options: UpgradeLiveTestOptions,
   ): Promise<UpgradeLiveTestResult> {
-    if (this.upgradeLiveTestRunning || this.upgradePreflightRunning) {
-      throw new Error("upgrade verification already running");
+    if (
+      this.upgradeLiveTestRunning ||
+      this.upgradePreflightRunning ||
+      this.compoundLiveTestRunning
+    ) {
+      throw new Error("mutation verification already running");
     }
     if (!this.started || this.stopping) {
       throw new Error("runtime is not ready for upgrade live test");
