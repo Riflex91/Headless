@@ -76,7 +76,7 @@ function openDropReferences(
   if (!Array.isArray(table)) return [];
 
   const weighted = table.filter(
-    (entry) =>
+    (entry): entry is unknown[] =>
       Array.isArray(entry) &&
       entry.length >= 2 &&
       typeof entry[0] === "number" &&
