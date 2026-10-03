@@ -274,7 +274,9 @@ async function make_runner(upper, CODE_file, version, is_typescript) {
             purpose:
               m.purpose === "COMPOUND_TEST_MATERIAL"
                 ? "COMPOUND_TEST_MATERIAL"
-                : "FISHING_MATERIAL",
+                : m.purpose === "CRAFT_TEST_MATERIAL"
+                  ? "CRAFT_TEST_MATERIAL"
+                  : "FISHING_MATERIAL",
           })
           .then((result) => {
             sendIpcMessage(process, {
