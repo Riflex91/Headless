@@ -32,9 +32,7 @@ function validCandidate(entry) {
     return false;
   }
   if (
-    entry.itemSlots.some(
-      (slot) => !Number.isInteger(slot) || slot < 0,
-    ) ||
+    entry.itemSlots.some((slot) => !Number.isInteger(slot) || slot < 0) ||
     new Set(entry.itemSlots).size !== entry.itemSlots.length
   ) {
     return false;
