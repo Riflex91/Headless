@@ -196,6 +196,8 @@ test("combat live E2E is wired through runtime and character IPC", () => {
   assert.match(kernel, /BankTravelLiveTestRunner/);
   assert.match(kernel, /runBankGoldLiveTest/);
   assert.match(kernel, /BankGoldLiveTestRunner/);
+  assert.match(kernel, /runNpcTradingLiveTest/);
+  assert.match(kernel, /NpcTradingLiveTestRunner/);
   assert.match(kernel, /runClassSkillLiveTest/);
   assert.match(kernel, /ClassSkillLiveTestRunner/);
   assert.match(kernel, /runGroupLiveTest/);
@@ -206,6 +208,8 @@ test("combat live E2E is wired through runtime and character IPC", () => {
   assert.match(thread, /bank_travel_live_test_result/);
   assert.match(thread, /bank_gold_live_test/);
   assert.match(thread, /bank_gold_live_test_result/);
+  assert.match(thread, /npc_trading_live_test/);
+  assert.match(thread, /npc_trading_live_test_result/);
   assert.match(thread, /class_skill_live_test/);
   assert.match(thread, /class_skill_live_test_result/);
   assert.match(thread, /group_live_test/);
