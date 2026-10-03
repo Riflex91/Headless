@@ -279,6 +279,26 @@ test("material worker uses CombatController, loots, and delivers acquired spider
   );
 });
 
+test("compound material worker preserves exact level and purpose in delivery claim", async () => {
+  const s = setup({ existingMaterial: true });
+  s.state.inventory[0].item = { name: "ring", level: 0 };
+
+  const result = await s.runner.run({
+    ...options(),
+    itemName: "ring",
+    itemLevel: 0,
+    monsterType: "goo",
+    purpose: "COMPOUND_TEST_MATERIAL",
+  });
+
+  assert.equal(result.outcome, "PASS");
+  assert.equal(result.itemLevel, 0);
+  const delivery = s.calls.find(([name]) => name === "logistics");
+  assert.ok(delivery);
+  assert.equal(delivery[1].metadata.purpose, "COMPOUND_TEST_MATERIAL");
+  assert.equal(delivery[1].metadata.itemLevel, 0);
+});
+
 test("material worker never fails over internally after unreconciled UNKNOWN attack", async () => {
   const s = setup({ unknownAttack: true });
 
