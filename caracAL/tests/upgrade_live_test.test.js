@@ -254,10 +254,7 @@ test("Upgrade live runner refuses a scroll that does not match Adventure Land it
   });
 
   assert.equal(result.outcome, "FAIL");
-  assert.equal(
-    result.reason,
-    "UPGRADE_LIVE_SAFE_TARGET_OR_SCROLL_NOT_FOUND",
-  );
+  assert.equal(result.reason, "UPGRADE_LIVE_SAFE_TARGET_OR_SCROLL_NOT_FOUND");
   assert.equal(result.evidence.itemGradeKnown, false);
   assert.equal(result.evidence.scrollGradeCompatible, false);
   assert.equal(setup.executeCalls(), 0);
