@@ -2233,6 +2233,28 @@ function migrate_old_storage(path, localStorage) {
     });
   }
 
+  function wait_for_upgrade_live_test_result(char_name, request_id) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        upgrade_live_test_requests.delete(request_id);
+        reject(
+          make_control_error(
+            "UPGRADE_LIVE_TEST_TIMEOUT",
+            `Upgrade live test timed out for ${char_name}`,
+            504,
+          ),
+        );
+      }, UPGRADE_LIVE_TEST_RESULT_TIMEOUT_MS);
+
+      upgrade_live_test_requests.set(request_id, {
+        character: char_name,
+        resolve,
+        reject,
+        timer,
+      });
+    });
+  }
+
   function wait_for_bank_gold_live_test_result(char_name, request_id) {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
@@ -9020,6 +9042,37 @@ function migrate_old_storage(path, localStorage) {
           });
           emit_supervisor_event(
             "NPC_TRADING_LIVE_TEST_RESULT_RECEIVED",
+            char_name,
+            {
+              request_id: m.request_id,
+              outcome: m.result?.outcome || null,
+              error: m.error || null,
+            },
+          );
+          break;
+        }
+        case "upgrade_live_test_result": {
+          const pending = upgrade_live_test_requests.get(m.request_id);
+          if (!pending || pending.character !== char_name) {
+            emit_supervisor_event(
+              "UPGRADE_LIVE_TEST_RESULT_IGNORED",
+              char_name,
+              {
+                why: "UNKNOWN_OR_STALE_REQUEST",
+                request_id: m.request_id || null,
+              },
+            );
+            break;
+          }
+
+          clearTimeout(pending.timer);
+          upgrade_live_test_requests.delete(m.request_id);
+          pending.resolve({
+            result: m.result || null,
+            error: m.error || null,
+          });
+          emit_supervisor_event(
+            "UPGRADE_LIVE_TEST_RESULT_RECEIVED",
             char_name,
             {
               request_id: m.request_id,
