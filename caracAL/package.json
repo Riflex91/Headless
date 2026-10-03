@@ -11,6 +11,7 @@
     "test:live:movement": "node scripts/run_movement_live_e2e.js",
     "test:live:combat": "node scripts/run_combat_live_e2e.js",
     "test:live:class-skill": "node scripts/run_class_skill_live_e2e.js",
+    "test:live:merchant-skills": "node scripts/run_class_skill_live_e2e.js --merchant",
     "test:live:group": "node scripts/run_group_live_e2e.js",
     "test:live:farm": "node scripts/run_farm_live_e2e.js",
     "test:live:inventory": "node scripts/run_inventory_live_e2e.js",
