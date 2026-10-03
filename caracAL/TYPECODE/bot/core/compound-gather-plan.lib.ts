@@ -159,6 +159,31 @@ function dropReferences(
       );
     }
   }
+
+  for (const [key, raw] of Object.entries(source)) {
+    if (
+      ["chance", "probability", "rate", "p", "name", "item", "id", "drop", "drops", "items", "loot"].includes(
+        key,
+      )
+    ) {
+      continue;
+    }
+    if (
+      !Object.prototype.hasOwnProperty.call(itemDefinitions, key) &&
+      !Object.prototype.hasOwnProperty.call(dropTables, key)
+    ) {
+      continue;
+    }
+    result.push(
+      ...dropReferences(
+        key,
+        itemDefinitions,
+        dropTables,
+        mergeChance(chance, probability(raw)),
+        visited,
+      ),
+    );
+  }
   return result;
 }
 
