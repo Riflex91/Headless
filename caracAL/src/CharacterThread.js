@@ -470,6 +470,45 @@ async function make_runner(upper, CODE_file, version, is_typescript) {
           });
         break;
       }
+      case "bank_gold_live_test": {
+        const requestId =
+          typeof m.request_id === "string" && m.request_id
+            ? m.request_id
+            : `bank-gold-live-${Date.now()}`;
+        const runtime = runner_context.__caracalBotRuntime;
+        if (!runtime?.runBankGoldLiveTest) {
+          sendIpcMessage(process, {
+            type: "bank_gold_live_test_result",
+            request_id: requestId,
+            error: "BANK_GOLD_LIVE_TEST_RUNTIME_NOT_READY",
+          });
+          break;
+        }
+
+        void runtime
+          .runBankGoldLiveTest({
+            requestId,
+            amount:
+              Number.isInteger(Number(m.amount)) && Number(m.amount) > 0
+                ? Number(m.amount)
+                : 1,
+          })
+          .then((result) => {
+            sendIpcMessage(process, {
+              type: "bank_gold_live_test_result",
+              request_id: requestId,
+              result,
+            });
+          })
+          .catch((error) => {
+            sendIpcMessage(process, {
+              type: "bank_gold_live_test_result",
+              request_id: requestId,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          });
+        break;
+      }
       case "bank_travel_live_test": {
         const requestId =
           typeof m.request_id === "string" && m.request_id
