@@ -81,16 +81,13 @@ test("class skill launcher selects an owned Merchant for Merchant mode", () => {
   assert.equal(merchant.name, "My_Merchant");
 });
 
-test(
-  "class skill launcher parses Merchant live mode without platform-specific env syntax",
-  () => {
-    assert.deepEqual(parseArguments(["--merchant"]), {
-      ctype: "merchant",
-      requested: null,
-    });
-    assert.deepEqual(parseArguments(["--merchant", "My_Merchant"]), {
-      ctype: "merchant",
-      requested: "My_Merchant",
-    });
-  },
-);
+test("class skill launcher parses Merchant live mode", () => {
+  assert.deepEqual(parseArguments(["--merchant"]), {
+    ctype: "merchant",
+    requested: null,
+  });
+  assert.deepEqual(parseArguments(["--merchant", "My_Merchant"]), {
+    ctype: "merchant",
+    requested: "My_Merchant",
+  });
+});
