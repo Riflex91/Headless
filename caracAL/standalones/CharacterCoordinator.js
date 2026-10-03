@@ -4389,8 +4389,7 @@ function migrate_old_storage(path, localStorage) {
     };
     const started_at = Date.now();
     merchant_live_test_sequence += 1;
-    const request_id =
-      `merchant-live-${started_at}-${merchant_live_test_sequence}`;
+    const request_id = `merchant-live-${started_at}-${merchant_live_test_sequence}`;
 
     char_block.merchant_live_test = {
       request_id,
