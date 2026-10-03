@@ -1,8 +1,5 @@
 import type { ActionBoundary } from "./action-boundary.lib";
-import type {
-  CombatController,
-  CombatControllerStatus,
-} from "./combat-controller.lib";
+import type { CombatController } from "./combat-controller.lib";
 import type {
   CharacterSnapshot,
   EntitySnapshot,
@@ -252,6 +249,21 @@ export class MaterialGatheringTaskRunner {
       };
     };
 
+    const cleanup = (): void => {
+      if (!preferredTargetCleared) {
+        this.deps.combat.setPreferredTargetId(null);
+        preferredTargetCleared = true;
+      }
+      if (!combatOverrideCleared) {
+        this.deps.combat.clearConfigOverride();
+        combatOverrideCleared = true;
+      }
+    };
+    const finishClean = (): MaterialGatherTaskResult => {
+      cleanup();
+      return finish();
+    };
+
     if (
       !options.itemName?.trim() ||
       !options.monsterType?.trim() ||
@@ -278,7 +290,7 @@ export class MaterialGatheringTaskRunner {
         const character = this.deps.game.character();
         if (character.rip) {
           reason = "MATERIAL_WORKER_DEAD";
-          return finish();
+          return finishClean();
         }
 
         let target = nearestMonster(
@@ -298,11 +310,11 @@ export class MaterialGatheringTaskRunner {
           if (moved.status === "UNKNOWN") {
             outcome = "UNKNOWN";
             reason = "MATERIAL_MONSTER_TRAVEL_UNKNOWN";
-            return finish();
+            return finishClean();
           }
           if (moved.status !== "CONFIRMED") {
             reason = `MATERIAL_MONSTER_TRAVEL_${moved.status || "FAILED"}`;
-            return finish();
+            return finishClean();
           }
           await this.sleep(pollMs);
           target = nearestMonster(
@@ -327,7 +339,7 @@ export class MaterialGatheringTaskRunner {
             !target.map
           ) {
             reason = "MATERIAL_TARGET_POSITION_UNKNOWN";
-            return finish();
+            return finishClean();
           }
           const moved = await this.deps.movement.smart({
             owner: OWNER,
@@ -343,11 +355,11 @@ export class MaterialGatheringTaskRunner {
           if (moved.status === "UNKNOWN") {
             outcome = "UNKNOWN";
             reason = "MATERIAL_APPROACH_UNKNOWN";
-            return finish();
+            return finishClean();
           }
           if (moved.status !== "CONFIRMED") {
             reason = `MATERIAL_APPROACH_${moved.status || "FAILED"}`;
-            return finish();
+            return finishClean();
           }
         }
 
@@ -374,7 +386,7 @@ export class MaterialGatheringTaskRunner {
           ) {
             outcome = "UNKNOWN";
             reason = "MATERIAL_ATTACK_OUTCOME_UNKNOWN";
-            return finish();
+            return finishClean();
           }
           attackUnknownReconciled = true;
         }
@@ -384,7 +396,7 @@ export class MaterialGatheringTaskRunner {
           combatStatus.reason !== "ATTACK_COOLDOWN"
         ) {
           reason = `MATERIAL_COMBAT_BLOCKED:${combatStatus.reason}`;
-          return finish();
+          return finishClean();
         }
 
         await this.sleep(pollMs);
@@ -410,14 +422,14 @@ export class MaterialGatheringTaskRunner {
             ) {
               outcome = "UNKNOWN";
               reason = "MATERIAL_LOOT_OUTCOME_UNKNOWN";
-              return finish();
+              return finishClean();
             }
           } else if (
             loot.status === "BLOCKED" ||
             loot.status === "REJECTED"
           ) {
             reason = `MATERIAL_LOOT_${loot.status}`;
-            return finish();
+            return finishClean();
           } else {
             lootConfirmed = true;
           }
@@ -441,7 +453,7 @@ export class MaterialGatheringTaskRunner {
       ) {
         outcome = "TIMEOUT";
         reason = "MATERIAL_GATHER_TIMEOUT";
-        return finish();
+        return finishClean();
       }
 
       const toRecipient = await this.deps.movement.smart({
@@ -458,13 +470,13 @@ export class MaterialGatheringTaskRunner {
       if (toRecipient.status === "UNKNOWN") {
         outcome = "UNKNOWN";
         reason = "MATERIAL_DELIVERY_TRAVEL_UNKNOWN";
-        return finish();
+        return finishClean();
       }
       if (toRecipient.status !== "CONFIRMED") {
         reason = `MATERIAL_DELIVERY_TRAVEL_${
           toRecipient.status || "FAILED"
         }`;
-        return finish();
+        return finishClean();
       }
 
       const delivery: LogisticsExecutionResult =
@@ -489,25 +501,22 @@ export class MaterialGatheringTaskRunner {
       if (delivery.outcome === "UNKNOWN") {
         outcome = "UNKNOWN";
         reason = "MATERIAL_DELIVERY_OUTCOME_UNKNOWN";
-        return finish();
+        return finishClean();
       }
       if (
         delivery.outcome !== "CONFIRMED" ||
         delivery.fulfilled !== true
       ) {
         reason = `MATERIAL_DELIVERY_${delivery.outcome}:${delivery.reason}`;
-        return finish();
+        return finishClean();
       }
 
       deliveredQuantity = delivery.executedQuantity || 0;
       outcome = "PASS";
       reason = "MATERIAL_GATHER_AND_DELIVERY_CONFIRMED";
-      return finish();
+      return finishClean();
     } finally {
-      this.deps.combat.setPreferredTargetId(null);
-      preferredTargetCleared = true;
-      this.deps.combat.clearConfigOverride();
-      combatOverrideCleared = true;
+      cleanup();
     }
   }
 }
