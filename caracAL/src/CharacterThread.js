@@ -202,6 +202,41 @@ async function make_runner(upper, CODE_file, version, is_typescript) {
           });
         break;
       }
+      case "merrit_live_test": {
+        const requestId =
+          typeof m.request_id === "string" && m.request_id
+            ? m.request_id
+            : "merrit-live-" + Date.now();
+        const runtime = runner_context.__caracalBotRuntime;
+        if (!runtime?.runMerritLiveTest) {
+          sendIpcMessage(process, {
+            type: "merrit_live_test_result",
+            request_id: requestId,
+            error: "MERRIT_LIVE_TEST_RUNTIME_NOT_READY",
+          });
+          break;
+        }
+
+        void runtime
+          .runMerritLiveTest({
+            requestId,
+          })
+          .then((result) => {
+            sendIpcMessage(process, {
+              type: "merrit_live_test_result",
+              request_id: requestId,
+              result,
+            });
+          })
+          .catch((error) => {
+            sendIpcMessage(process, {
+              type: "merrit_live_test_result",
+              request_id: requestId,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          });
+        break;
+      }
       case "merchant_live_test": {
         const requestId =
           typeof m.request_id === "string" && m.request_id
