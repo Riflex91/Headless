@@ -5471,9 +5471,7 @@ function migrate_old_storage(path, localStorage) {
       );
     }
     if (
-      ["STARTING", "RUNNING"].includes(
-        char_block.bank_travel_live_test?.status,
-      )
+      ["STARTING", "RUNNING"].includes(char_block.bank_travel_live_test?.status)
     ) {
       throw make_control_error(
         "BANK_TRAVEL_LIVE_TEST_ALREADY_RUNNING",
