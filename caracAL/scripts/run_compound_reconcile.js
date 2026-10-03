@@ -84,11 +84,21 @@ function itemSnapshot(items, slot) {
     slot,
     name: present ? item.name : null,
     level:
-      present && Number.isInteger(level) && level >= 0 ? level : present ? 0 : null,
+      present && Number.isInteger(level) && level >= 0
+        ? level
+        : present
+        ? 0
+        : null,
     quantity:
-      present && Number.isFinite(quantity) && quantity > 0 ? quantity : present ? 1 : 0,
+      present && Number.isFinite(quantity) && quantity > 0
+        ? quantity
+        : present
+        ? 1
+        : 0,
     property:
-      present && typeof item.p === "string" && item.p.length > 0 ? item.p : null,
+      present && typeof item.p === "string" && item.p.length > 0
+        ? item.p
+        : null,
     present,
   };
 }
@@ -190,9 +200,7 @@ async function waitForCharacterInventory(
     timeoutMs = Number(
       process.env.CARACAL_COMPOUND_RECONCILE_TIMEOUT_MS || 60000,
     ),
-    pollMs = Number(
-      process.env.CARACAL_COMPOUND_RECONCILE_POLL_MS || 500,
-    ),
+    pollMs = Number(process.env.CARACAL_COMPOUND_RECONCILE_POLL_MS || 500),
     now = Date.now,
     sleepImpl = sleep,
   } = {},
@@ -324,8 +332,8 @@ async function main() {
       reason: stable
         ? classification.reason
         : freshSecondSnapshot
-          ? "COMPOUND_UNKNOWN_RECONCILE_STATE_NOT_STABLE"
-          : "COMPOUND_UNKNOWN_RECONCILE_SNAPSHOT_NOT_FRESH",
+        ? "COMPOUND_UNKNOWN_RECONCILE_STATE_NOT_STABLE"
+        : "COMPOUND_UNKNOWN_RECONCILE_SNAPSHOT_NOT_FRESH",
       character: characterName,
       expected,
       first: firstSnapshot,
