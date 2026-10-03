@@ -953,6 +953,14 @@ function migrate_old_storage(path, localStorage) {
 
     if (
       char_block &&
+      normalized.data?.expectedValue &&
+      typeof normalized.data.expectedValue === "object"
+    ) {
+      char_block.expected_value_runtime = normalized.data.expectedValue;
+    }
+
+    if (
+      char_block &&
       normalized.data?.upgrade &&
       typeof normalized.data.upgrade === "object"
     ) {
@@ -1232,6 +1240,8 @@ function migrate_old_storage(path, localStorage) {
       char_block.inventory_intelligence_runtime || null;
     char_block.gear_scoring_runtime = char_block.gear_scoring_runtime || null;
     char_block.future_gear_runtime = char_block.future_gear_runtime || null;
+    char_block.expected_value_runtime =
+      char_block.expected_value_runtime || null;
     char_block.upgrade_runtime = char_block.upgrade_runtime || null;
     char_block.account_gear_reservation_runtime =
       char_block.account_gear_reservation_runtime || null;
@@ -1719,6 +1729,9 @@ function migrate_old_storage(path, localStorage) {
       ),
       futureGear: JSON.parse(
         JSON.stringify(char_block?.future_gear_runtime || null),
+      ),
+      expectedValue: JSON.parse(
+        JSON.stringify(char_block?.expected_value_runtime || null),
       ),
       inventoryIntelligence: JSON.parse(
         JSON.stringify(char_block?.inventory_intelligence_runtime || null),
