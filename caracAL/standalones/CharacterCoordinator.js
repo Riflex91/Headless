@@ -812,6 +812,20 @@ function migrate_old_storage(path, localStorage) {
     }
 
     if (
+      char_block &&
+      normalized.module === "MerchantFishingController" &&
+      normalized.type === "FISHING_MATERIAL_REQUESTED"
+    ) {
+      void coordinate_fishing_material_request(char_name, {
+        itemName: normalized.data?.itemName,
+        quantity: normalized.data?.quantity,
+        recipient: normalized.data?.recipient,
+        purpose: normalized.data?.purpose,
+      });
+    }
+
+
+    if (
       normalized.module === "MerchantMerritController" &&
       normalized.type === "MERRIT_PARCEL_CONFIRMED" &&
       Number.isFinite(Number(normalized.data?.readyAt))
@@ -1048,6 +1062,8 @@ function migrate_old_storage(path, localStorage) {
     char_block.group_combat_runtime = char_block.group_combat_runtime || null;
     char_block.farm_intelligence_runtime =
       char_block.farm_intelligence_runtime || null;
+    char_block.fishing_material_request =
+      char_block.fishing_material_request || null;
     char_block.inventory_intelligence_runtime =
       char_block.inventory_intelligence_runtime || null;
     char_block.movement_live_test_typescript_override = null;
