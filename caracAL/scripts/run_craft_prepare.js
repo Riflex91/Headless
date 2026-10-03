@@ -63,10 +63,22 @@ function verifyCraftPreparation(source) {
   const scope = record(result.scope);
   const cleanup = record(result.cleanup);
   const alreadyReady = result.reason === "CRAFT_MATERIAL_ALREADY_READY";
+  const controlledPlanRefusal =
+    result.outcome === "FAIL" &&
+    plan.outcome === "FAIL" &&
+    [
+      "CRAFT_MATERIAL_SAFE_SOURCE_NOT_FOUND",
+      "CRAFT_MATERIAL_TARGET_NOT_FOUND",
+    ].includes(plan.reason) &&
+    plan.selected === null;
 
   const planEvidenceValid = alreadyReady
     ? plan.outcome === "PASS" &&
       plan.reason === "CRAFT_MATERIAL_RECIPE_ALREADY_READY"
+    : controlledPlanRefusal
+    ? Array.isArray(plan.candidates) &&
+      plan.candidates.length === 0 &&
+      Array.isArray(plan.rejectedSources)
     : plan.outcome === "PASS" &&
       plan.reason === "CRAFT_MATERIAL_TARGET_SELECTED" &&
       typeof selected.recipe === "string" &&
@@ -82,9 +94,12 @@ function verifyCraftPreparation(source) {
       typeof sourceInfo.monsterType === "string" &&
       sourceInfo.monsterType.length > 0;
 
-  const workerEvidenceValid = alreadyReady
-    ? result.workerResult === null && evidence.workerAttemptedOnce === false
-    : workerResult.outcome === "PASS" &&
+  const workerEvidenceValid =
+    alreadyReady || controlledPlanRefusal
+      ? (result.workerResult === null ||
+          result.workerResult === undefined) &&
+        evidence.workerAttemptedOnce === false
+      : workerResult.outcome === "PASS" &&
       workerResult.reason === "MATERIAL_GATHER_AND_DELIVERY_CONFIRMED" &&
       workerEvidence.combatControllerUsed === true &&
       workerEvidence.materialObserved === true &&
@@ -107,18 +122,14 @@ function verifyCraftPreparation(source) {
     scope.craftMutationAllowed === false &&
     scope.blindRetryAllowed === false;
 
-  const scopeRestricted = alreadyReady
-    ? scope.movementMutationAllowed === false &&
-      scope.combatMutationAllowed === false &&
-      scope.lootMutationAllowed === false &&
-      scope.deliveryMutationAllowed === false &&
-      noCraftMutation
-    : scope.movementMutationAllowed === true &&
-      scope.combatMutationAllowed === true &&
-      scope.lootMutationAllowed === true &&
-      scope.deliveryMutationAllowed === true &&
-      scope.mutationScope === "single-craft-material-preparation-only" &&
-      noCraftMutation;
+  const workerAttempted = evidence.workerAttemptedOnce === true;
+  const scopeRestricted =
+    scope.mutationScope === "single-craft-material-preparation-only" &&
+    scope.movementMutationAllowed === workerAttempted &&
+    scope.combatMutationAllowed === workerAttempted &&
+    scope.lootMutationAllowed === workerAttempted &&
+    scope.deliveryMutationAllowed === workerAttempted &&
+    noCraftMutation;
 
   const cleanupComplete =
     cleanup.runtimeStateRestored === true &&
