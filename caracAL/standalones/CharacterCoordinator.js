@@ -7069,7 +7069,10 @@ function migrate_old_storage(path, localStorage) {
       ["FARM", char_block.farm_live_test],
       ["INVENTORY", char_block.inventory_live_test],
       ["GEAR_SCORING", char_block.gear_scoring_live_test],
-      ["ACCOUNT_GEAR_RESERVATION", char_block.account_gear_reservation_live_test],
+      [
+        "ACCOUNT_GEAR_RESERVATION",
+        char_block.account_gear_reservation_live_test,
+      ],
       ["LOGISTICS", char_block.logistics_live_test],
       ["MERCHANT", char_block.merchant_live_test],
       ["BANK_TRAVEL", char_block.bank_travel_live_test],
@@ -7095,8 +7098,7 @@ function migrate_old_storage(path, localStorage) {
         : DESIRED_RUNTIME_STATES.STOPPED);
     const started_at = Date.now();
     upgrade_live_test_sequence += 1;
-    const request_id =
-      `upgrade-live-${started_at}-${upgrade_live_test_sequence}`;
+    const request_id = `upgrade-live-${started_at}-${upgrade_live_test_sequence}`;
 
     char_block.upgrade_live_test = {
       request_id,
@@ -7200,8 +7202,8 @@ function migrate_old_storage(path, localStorage) {
           runtime_result.outcome === "PASS"
             ? "COMPLETED"
             : runtime_result.outcome === "UNKNOWN"
-              ? "UNKNOWN"
-              : "FAILED",
+            ? "UNKNOWN"
+            : "FAILED",
         started_at,
         completed_at: Date.now(),
         cleanup: {
