@@ -266,6 +266,7 @@ export interface MutationDriver {
     quantity?: number,
   ): Promise<unknown> | unknown;
   tradeUnlist(slot: string): Promise<unknown> | unknown;
+  requestMerritStatus(): unknown;
   wishlist(
     slot: string | number,
     itemName: string,
@@ -394,6 +395,8 @@ export function createRuntimeMutationDriver(): MutationDriver {
         ? runtimeFunction("trade")(inventorySlot, slot, price)
         : runtimeFunction("trade")(inventorySlot, slot, price, quantity),
     tradeUnlist: (slot) => runtimeFunction("unequip")(slot),
+    requestMerritStatus: () =>
+      runtimeSocketEmit("interaction", { type: "merrit_info" }),
     wishlist: (slot, itemName, price, level, quantity) =>
       runtimeFunction("wishlist")(slot, itemName, price, level, quantity),
     pontyBuy: (rid) => runtimeSocketEmit("sbuy", { rid }),
@@ -691,6 +694,7 @@ export const ACTION_BOUNDARY_MUTATION_CAPABILITIES = [
   "CLOSE_STAND",
   "TRADE_LIST",
   "TRADE_UNLIST",
+  "MERRIT_STATUS_REQUEST",
   "WISHLIST",
   "PONTY_BUY",
   "PARTY_INVITE",
@@ -3086,6 +3090,35 @@ export class ActionBoundary {
             recipeName,
           ),
         },
+      });
+    }
+  }
+
+  requestMerritStatus(request: BoundaryRequest): ActionRecord {
+    const transaction = this.ledger.create({
+      module: request.module,
+      action: "MERRIT_STATUS_REQUEST",
+      why: request.why,
+      correlationId: request.correlationId,
+      expectedEffect: { serverStatusRefreshRequested: true },
+    });
+
+    if (transaction.status === "BLOCKED") return transaction;
+    this.ledger.dispatch(transaction.id, {
+      mutation: "interaction",
+      type: "merrit_info",
+    });
+
+    try {
+      this.driver.requestMerritStatus();
+      return this.ledger.confirm(transaction.id, {
+        why: "MERRIT_STATUS_REQUEST_DISPATCHED",
+        evidence: { requestDispatched: true },
+      });
+    } catch (error) {
+      return this.ledger.unknown(transaction.id, {
+        why: "MERRIT_STATUS_REQUEST_UNCERTAIN",
+        error: errorMessage(error),
       });
     }
   }
