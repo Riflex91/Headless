@@ -1694,9 +1694,7 @@ function migrate_old_storage(path, localStorage) {
             block.connected &&
             Number.isFinite(block.bot_runtime_started_at) &&
             block.gear_scoring_runtime?.state === "READY" &&
-            ["READY", "EMPTY"].includes(
-              block.future_gear_runtime?.state,
-            ) &&
+            ["READY", "EMPTY"].includes(block.future_gear_runtime?.state) &&
             ["READY", "EMPTY"].includes(
               block.inventory_intelligence_runtime?.state,
             ) &&
