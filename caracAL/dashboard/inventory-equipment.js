@@ -223,8 +223,7 @@
       gearEntries
         .filter(
           (entry) =>
-            entry?.location === "EQUIPMENT" &&
-            typeof entry?.slot === "string",
+            entry?.location === "EQUIPMENT" && typeof entry?.slot === "string",
         )
         .map((entry) => [entry.slot, entry]),
     );
@@ -292,8 +291,7 @@
       gearEntries
         .filter(
           (entry) =>
-            entry?.location === "INVENTORY" &&
-            Number.isInteger(entry?.slot),
+            entry?.location === "INVENTORY" && Number.isInteger(entry?.slot),
         )
         .map((entry) => [entry.slot, entry]),
     );
