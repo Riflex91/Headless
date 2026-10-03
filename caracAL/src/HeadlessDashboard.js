@@ -595,8 +595,7 @@ function attachHeadlessDashboard({
         });
       } catch (error) {
         res.status(Number(error.statusCode) || 500).json({
-          error:
-            error.code || "ACCOUNT_GEAR_RESERVATION_LIVE_TEST_FAILED",
+          error: error.code || "ACCOUNT_GEAR_RESERVATION_LIVE_TEST_FAILED",
           message: error.message,
         });
       }
