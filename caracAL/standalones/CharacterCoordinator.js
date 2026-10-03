@@ -4834,6 +4834,15 @@ function migrate_old_storage(path, localStorage) {
         409,
       );
     }
+    if (
+      ["STARTING", "RUNNING"].includes(char_block.merrit_live_test?.status)
+    ) {
+      throw make_control_error(
+        "MERRIT_LIVE_TEST_ALREADY_RUNNING",
+        "Merrit live test already running for " + char_name,
+        409,
+      );
+    }
     for (const active of [
       ["MOVEMENT", char_block.movement_live_test],
       ["COMBAT", char_block.combat_live_test],
