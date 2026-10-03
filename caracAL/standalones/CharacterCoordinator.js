@@ -8304,6 +8304,7 @@ function migrate_old_storage(path, localStorage) {
         started_at,
         completed_at: Date.now(),
         cleanup: {
+          ...(runtime_result.cleanup || {}),
           runtimeStateRestored: false,
           dispatcherRestored: false,
         },
