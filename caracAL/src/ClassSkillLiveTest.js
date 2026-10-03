@@ -150,7 +150,11 @@ function classSkillLiveTestDiagnostics(
       class: expectedClass,
       skill: expectedSkill,
       action_confirmed: true,
-      cooldown_observed: true,
+      cooldown_required: runtime.scope?.cooldownEvidenceRequired !== false,
+      cooldown_observed:
+        runtime.scope?.cooldownEvidenceRequired === false
+          ? null
+          : true,
       mp_cost_observed: true,
       resource_telemetry_visible: true,
       consumable_mutation_forced: false,
