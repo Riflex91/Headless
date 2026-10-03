@@ -74,6 +74,7 @@ function verifyCompoundLiveResult(source, expected = {}) {
           evidence.stationTravelStatus === "CONFIRMED")),
     localPreflightReady:
       evidence.localPreflightReadOnly === true &&
+      evidence.movementIdleBeforeDispatch === true &&
       evidence.compoundOperationIdle === true &&
       evidence.itemLocksClear === true &&
       evidence.scrollLocksClear === true &&
