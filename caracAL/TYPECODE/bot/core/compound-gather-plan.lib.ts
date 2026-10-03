@@ -25,7 +25,11 @@ export interface CompoundGatherPlan {
 interface CompoundGatherGame {
   gameData(): Record<string, unknown>;
   itemGrade(item: Record<string, unknown>): number | null;
-  character?(): Record<string, unknown>;
+  character?(): {
+    map?: unknown;
+    x?: unknown;
+    y?: unknown;
+  };
 }
 
 interface DropReference {
@@ -292,7 +296,7 @@ function regularSpawnMonsterTypes(
 function observerPosition(
   game: CompoundGatherGame,
 ): CompoundGatherPlan["observerPosition"] {
-  const character = game.character ? record(game.character()) : {};
+  const character = game.character ? game.character() : {};
   const map = text(character.map);
   const x = finite(character.x);
   const y = finite(character.y);
