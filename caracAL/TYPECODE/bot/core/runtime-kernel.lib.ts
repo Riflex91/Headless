@@ -50,6 +50,10 @@ import {
   ExchangeEvent,
 } from "./exchange-controller.lib";
 import {
+  CraftController,
+  CraftEvent,
+} from "./craft-controller.lib";
+import {
   ExchangePreflightResult,
   ExchangePreflightRunner,
 } from "./exchange-preflight.lib";
@@ -189,6 +193,8 @@ const COMPOUND_JOB_ID = "compound-loop";
 const COMPOUND_INTERVAL_MS = 1000;
 const EXCHANGE_JOB_ID = "exchange-loop";
 const EXCHANGE_INTERVAL_MS = 1000;
+const CRAFT_JOB_ID = "craft-loop";
+const CRAFT_INTERVAL_MS = 1000;
 const FARM_INTELLIGENCE_JOB_ID = "farm-intelligence-loop";
 const FARM_INTELLIGENCE_INTERVAL_MS = 1000;
 const MERCHANT_AUTONOMY_JOB_ID = "merchant-autonomy-loop";
@@ -262,6 +268,7 @@ export class BotRuntimeKernel {
   readonly upgrade: UpgradeController;
   readonly compound: CompoundController;
   readonly exchange: ExchangeController;
+  readonly craft: CraftController;
   readonly merchantAutonomy: MerchantAutonomyController;
   readonly bankTravel: BankTravelController;
   readonly bankGoldSettlement: BankGoldSettlementController;
@@ -411,6 +418,15 @@ export class BotRuntimeKernel {
         onEvent: (event) => this.handleExchangeEvent(event),
       },
     );
+    this.craft = new CraftController(
+      this.game,
+      this.actions,
+      this.inventoryIntelligence,
+      {
+        config: () => runtimeConfig?.config || {},
+        onEvent: (event) => this.handleCraftEvent(event),
+      },
+    );
     this.merchantAutonomy = new MerchantAutonomyController(
       this.game,
       this.actions,
@@ -514,6 +530,15 @@ export class BotRuntimeKernel {
       priority: 81,
       tick: () => {
         this.exchange.tick();
+      },
+    });
+
+    this.scheduler.register({
+      id: CRAFT_JOB_ID,
+      intervalMs: CRAFT_INTERVAL_MS,
+      priority: 80,
+      tick: () => {
+        this.craft.tick();
       },
     });
 
@@ -669,6 +694,7 @@ export class BotRuntimeKernel {
       upgrade: this.upgrade.status(),
       compound: this.compound.status(),
       exchange: this.exchange.status(),
+      craft: this.craft.status(),
       merchantAutonomy: this.merchantAutonomy.status(),
       bankTravel: this.bankTravel.status(),
       merchantMerrit: this.merchantMerrit.status(),
@@ -737,6 +763,25 @@ export class BotRuntimeKernel {
       throw new Error("runtime must be RUNNING for exchange execution");
     }
     return this.exchange.executeNext() as unknown as Record<string, unknown>;
+  }
+
+  async executeCraftNext(): Promise<Record<string, unknown>> {
+    if (
+      this.upgradeLiveTestRunning ||
+      this.upgradePreflightRunning ||
+      this.compoundLiveTestRunning ||
+      this.exchangePreflightRunning ||
+      this.exchangeLiveTestRunning
+    ) {
+      throw new Error("mutation verification is running");
+    }
+    if (!this.started || this.stopping) {
+      throw new Error("runtime is not ready for craft execution");
+    }
+    if (runtimeState() !== "RUNNING") {
+      throw new Error("runtime must be RUNNING for craft execution");
+    }
+    return this.craft.executeNext() as unknown as Record<string, unknown>;
   }
 
   async runExchangePreflight(): Promise<ExchangePreflightResult> {
@@ -2942,6 +2987,18 @@ export class BotRuntimeKernel {
       ...(event.actionId && { actionId: event.actionId }),
       data: {
         exchange: event.status,
+      },
+    });
+  }
+
+  private handleCraftEvent(event: CraftEvent): void {
+    this.eventBus.emit({
+      module: "CraftController",
+      type: event.type,
+      why: event.reason,
+      ...(event.actionId && { actionId: event.actionId }),
+      data: {
+        craft: event.status,
       },
     });
   }
