@@ -11,6 +11,7 @@ export const INVENTORY_DISPOSITIONS = [
   "CRAFT",
   "GEAR",
   "UPGRADE",
+  "COMPOUND",
   "CONSUMABLE",
   "QUEST",
   "RESERVED",
