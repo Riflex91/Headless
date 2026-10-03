@@ -55,6 +55,84 @@ test("Compound gather planner selects a compoundable direct monster drop", () =>
   assert.equal(result.selected.dropChance, 0.2);
 });
 
+test("Compound gather planner reads real G.drops.monsters shape", () => {
+  const planCompoundGatherTarget = loadPlanner();
+  const result = planCompoundGatherTarget({
+    gameData() {
+      return {
+        items: {
+          intearring: {
+            type: "earring",
+            compound: { int: 2 },
+          },
+          firestaff: {
+            type: "staff",
+            upgrade: { attack: 1 },
+          },
+        },
+        monsters: {
+          mvampire: {
+            hp: 240000,
+          },
+        },
+        drops: {
+          monsters: {
+            mvampire: [
+              [0.1, "intearring"],
+              [0.05, "firestaff"],
+            ],
+          },
+        },
+      };
+    },
+    itemGrade(item) {
+      return item.name === "intearring" ? 0 : null;
+    },
+  });
+
+  assert.equal(result.outcome, "PASS");
+  assert.equal(result.reason, "COMPOUND_GATHER_TARGET_SELECTED");
+  assert.equal(result.selected.itemName, "intearring");
+  assert.equal(result.selected.monsterType, "mvampire");
+  assert.equal(result.selected.dropChance, 0.1);
+  assert.equal(result.selected.scrollName, "cscroll0");
+});
+
+test("Compound gather planner resolves open tables from G.drops.monsters", () => {
+  const planCompoundGatherTarget = loadPlanner();
+  const result = planCompoundGatherTarget({
+    gameData() {
+      return {
+        items: {
+          hpamulet: {
+            type: "amulet",
+            compound: { hp: 20 },
+          },
+        },
+        monsters: {
+          fvampire: {
+            hp: 120000,
+          },
+        },
+        drops: {
+          monsters: {
+            fvampire: [[0.3, "open", "statamulet"]],
+          },
+          statamulet: [[0.25, "hpamulet"]],
+        },
+      };
+    },
+    itemGrade(item) {
+      return item.name === "hpamulet" ? 0 : null;
+    },
+  });
+
+  assert.equal(result.outcome, "PASS");
+  assert.equal(result.selected.itemName, "hpamulet");
+  assert.equal(result.selected.monsterType, "fvampire");
+  assert.equal(result.selected.dropChance, 0.075);
+});
+
 test("Compound gather planner resolves named drop tables", () => {
   const planCompoundGatherTarget = loadPlanner();
   const game = {
