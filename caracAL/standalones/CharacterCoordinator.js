@@ -961,6 +961,14 @@ function migrate_old_storage(path, localStorage) {
 
     if (
       char_block &&
+      normalized.data?.riskPolicy &&
+      typeof normalized.data.riskPolicy === "object"
+    ) {
+      char_block.risk_policy_runtime = normalized.data.riskPolicy;
+    }
+
+    if (
+      char_block &&
       normalized.data?.upgrade &&
       typeof normalized.data.upgrade === "object"
     ) {
@@ -1242,6 +1250,7 @@ function migrate_old_storage(path, localStorage) {
     char_block.future_gear_runtime = char_block.future_gear_runtime || null;
     char_block.expected_value_runtime =
       char_block.expected_value_runtime || null;
+    char_block.risk_policy_runtime = char_block.risk_policy_runtime || null;
     char_block.upgrade_runtime = char_block.upgrade_runtime || null;
     char_block.account_gear_reservation_runtime =
       char_block.account_gear_reservation_runtime || null;
@@ -1732,6 +1741,9 @@ function migrate_old_storage(path, localStorage) {
       ),
       expectedValue: JSON.parse(
         JSON.stringify(char_block?.expected_value_runtime || null),
+      ),
+      riskPolicy: JSON.parse(
+        JSON.stringify(char_block?.risk_policy_runtime || null),
       ),
       inventoryIntelligence: JSON.parse(
         JSON.stringify(char_block?.inventory_intelligence_runtime || null),
