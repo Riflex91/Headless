@@ -164,7 +164,9 @@ test("account inventory renders all connected live characters together", () => {
       "GS 42.5",
     );
     assert.match(
-      root.querySelector(".equipment-grid .live-item-slot").title,
+      root
+        .querySelector(".item-gear-score-badge")
+        .closest(".live-item-slot").title,
       /Gear score 42.5/,
     );
   } finally {
