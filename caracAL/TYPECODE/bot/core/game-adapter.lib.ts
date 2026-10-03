@@ -153,6 +153,7 @@ export interface GameAdapterSource {
   gameData(): unknown;
   nextSkill(): unknown;
   bankPacks(): unknown;
+  itemGrade?(item: unknown): unknown;
   now(): number;
 }
 
@@ -264,6 +265,12 @@ export function createRuntimeGameAdapterSource(): GameAdapterSource {
     gameData: () => runtimeValue("G"),
     nextSkill: () => runtimeValue("next_skill"),
     bankPacks: () => runtimeValue("bank_packs"),
+    itemGrade: (item: unknown) => {
+      const candidate = runtimeValue("item_grade");
+      return typeof candidate === "function"
+        ? (candidate as (value: unknown) => unknown)(item)
+        : null;
+    },
     now: () => Date.now(),
   };
 }
@@ -282,6 +289,7 @@ export const GAME_ADAPTER_READ_CAPABILITIES = [
   "MAP",
   "ZONES",
   "G",
+  "ITEM_GRADE",
 ] as const;
 
 export class GameAdapter {
@@ -649,5 +657,18 @@ export class GameAdapter {
 
   gameData(): Record<string, unknown> {
     return record(cloneJsonValue(this.source.gameData()));
+  }
+
+  itemGrade(item: Record<string, unknown>): number | null {
+    if (!this.source.itemGrade) return null;
+    try {
+      const value = this.source.itemGrade(cloneJsonValue(item));
+      const grade = numberOrNull(value);
+      return grade !== null && Number.isInteger(grade) && grade >= 0
+        ? grade
+        : null;
+    } catch {
+      return null;
+    }
   }
 }
