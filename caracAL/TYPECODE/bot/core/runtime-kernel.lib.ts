@@ -46,6 +46,10 @@ import {
   CompoundEvent,
 } from "./compound-controller.lib";
 import {
+  CompoundGatherPlan,
+  planCompoundGatherTarget as buildCompoundGatherPlan,
+} from "./compound-gather-plan.lib";
+import {
   UpgradeLiveTestOptions,
   UpgradeLiveTestResult,
   UpgradeLiveTestRunner,
@@ -659,6 +663,10 @@ export class BotRuntimeKernel {
       throw new Error("runtime must be RUNNING for compound execution");
     }
     return this.compound.executeNext() as unknown as Record<string, unknown>;
+  }
+
+  compoundGatherPlan(): CompoundGatherPlan {
+    return buildCompoundGatherPlan(this.game);
   }
 
   async runUpgradePreflight(): Promise<UpgradePreflightResult> {
