@@ -2815,6 +2815,7 @@ function migrate_old_storage(path, localStorage) {
       merchant_block.connected &&
       Number.isFinite(merchant_block.bot_runtime_started_at);
     let runtime_override_applied = false;
+    let merchant_paused_by_preparation = false;
     let runtime_state_restored = false;
     let plan_request_id = null;
     const worker_results = [];
@@ -2905,6 +2906,17 @@ function migrate_old_storage(path, localStorage) {
 
       const plan = plan_response.result;
       const selected = plan.selected;
+
+      if (
+        original_desired_state === DESIRED_RUNTIME_STATES.RUNNING &&
+        character_manage[merchant_name]?.desired_runtime_state ===
+          DESIRED_RUNTIME_STATES.RUNNING
+      ) {
+        await control_character(merchant_name, CONTROL_ACTIONS.PAUSE);
+        merchant_paused_by_preparation = true;
+        await sleep(250);
+      }
+
       const item_name = selected.itemName;
       const monster_type = selected.monsterType;
       const item_level = 0;
@@ -3096,6 +3108,11 @@ function migrate_old_storage(path, localStorage) {
       try {
         if (runtime_override_applied) {
           await restore_movement_live_test_execution_source(
+            merchant_name,
+            original_desired_state,
+          );
+        } else if (merchant_paused_by_preparation) {
+          await restore_movement_live_test_state(
             merchant_name,
             original_desired_state,
           );
