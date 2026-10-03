@@ -23,7 +23,10 @@ export interface MaterialGatherTaskOptions {
     x: number;
     y: number;
   };
-  purpose?: "FISHING_MATERIAL" | "COMPOUND_TEST_MATERIAL";
+  purpose?:
+    | "FISHING_MATERIAL"
+    | "COMPOUND_TEST_MATERIAL"
+    | "CRAFT_TEST_MATERIAL";
   timeoutMs?: number;
   pollMs?: number;
 }
