@@ -549,6 +549,7 @@ function migrate_old_storage(path, localStorage) {
       craft_preflight_active ||
       exchange_live_test_active ||
       compound_live_test_active ||
+      craft_material_preparation_active ||
       compound_material_preparation_active ||
       npc_trading_live_test_active ||
       market_trading_live_test_active ||
@@ -2887,7 +2888,9 @@ function migrate_old_storage(path, localStorage) {
       emit_supervisor_event(
         purpose === "COMPOUND_TEST_MATERIAL"
           ? "COMPOUND_MATERIAL_WORKER_DISPATCHED"
-          : "FISHING_MATERIAL_WORKER_DISPATCHED",
+          : purpose === "CRAFT_TEST_MATERIAL"
+            ? "CRAFT_MATERIAL_WORKER_DISPATCHED"
+            : "FISHING_MATERIAL_WORKER_DISPATCHED",
         worker_name,
         {
           request_id,
@@ -2950,11 +2953,19 @@ function migrate_old_storage(path, localStorage) {
         material_worker_active_count - 1,
       );
       schedule_merchant_logistics_dispatch();
-      emit_supervisor_event("FISHING_MATERIAL_WORKER_RESTORED", worker_name, {
-        request_id,
-        runtime_state_restored,
-        desired_runtime_state: original_desired_state,
-      });
+      emit_supervisor_event(
+        purpose === "COMPOUND_TEST_MATERIAL"
+          ? "COMPOUND_MATERIAL_WORKER_RESTORED"
+          : purpose === "CRAFT_TEST_MATERIAL"
+            ? "CRAFT_MATERIAL_WORKER_RESTORED"
+            : "FISHING_MATERIAL_WORKER_RESTORED",
+        worker_name,
+        {
+          request_id,
+          runtime_state_restored,
+          desired_runtime_state: original_desired_state,
+        },
+      );
     }
   }
 
@@ -3449,6 +3460,7 @@ function migrate_old_storage(path, localStorage) {
     options = {},
   ) {
     if (
+      craft_material_preparation_active ||
       compound_material_preparation_active ||
       compound_live_test_active ||
       upgrade_live_test_active ||
@@ -8681,6 +8693,7 @@ function migrate_old_storage(path, localStorage) {
       upgrade_live_preflight_active ||
       upgrade_live_test_active ||
       compound_live_test_active ||
+      craft_material_preparation_active ||
       compound_material_preparation_active
     ) {
       throw make_control_error(
@@ -8952,6 +8965,7 @@ function migrate_old_storage(path, localStorage) {
       upgrade_live_preflight_active ||
       upgrade_live_test_active ||
       compound_live_test_active ||
+      craft_material_preparation_active ||
       compound_material_preparation_active
     ) {
       throw make_control_error(
@@ -9236,6 +9250,7 @@ function migrate_old_storage(path, localStorage) {
       craft_preflight_active ||
       exchange_live_test_active ||
       compound_live_test_active ||
+      craft_material_preparation_active ||
       compound_material_preparation_active
     ) {
       throw make_control_error(
@@ -9546,6 +9561,7 @@ function migrate_old_storage(path, localStorage) {
       exchange_preflight_active ||
       craft_preflight_active ||
       compound_live_test_active ||
+      craft_material_preparation_active ||
       compound_material_preparation_active ||
       upgrade_live_test_active ||
       upgrade_live_preflight_active
@@ -9862,6 +9878,7 @@ function migrate_old_storage(path, localStorage) {
 
     if (
       compound_live_test_active ||
+      craft_material_preparation_active ||
       compound_material_preparation_active ||
       upgrade_live_test_active ||
       upgrade_live_preflight_active ||
