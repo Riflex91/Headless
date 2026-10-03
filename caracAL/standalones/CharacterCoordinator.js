@@ -2471,6 +2471,27 @@ function migrate_old_storage(path, localStorage) {
     }, 0);
   }
 
+  function live_item_quantity_at_level(
+    char_block,
+    item_name,
+    item_level = 0,
+  ) {
+    const level = Math.max(0, Math.floor(Number(item_level) || 0));
+    const items = Array.isArray(char_block?.live_state?.items)
+      ? char_block.live_state.items
+      : [];
+    return items.reduce((sum, item) => {
+      if (!item || item.name !== item_name) return sum;
+      const current_level = Math.max(
+        0,
+        Math.floor(Number(item.level) || 0),
+      );
+      if (current_level !== level) return sum;
+      const quantity = Number(item.q);
+      return sum + (Number.isFinite(quantity) && quantity > 0 ? quantity : 1);
+    }, 0);
+  }
+
   function fishing_material_worker_names(merchant_block) {
     const config = logistics_record(merchant_block?.runtime_config);
     const autonomy = logistics_record(
