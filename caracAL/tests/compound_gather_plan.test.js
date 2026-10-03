@@ -300,6 +300,7 @@ test("Compound gather planner prefers an existing Merchant inventory triple", ()
         { slot: 1, item: { name: "amulet", level: 2 } },
         { slot: 4, item: { name: "amulet", level: 2 } },
         { slot: 7, item: { name: "amulet", level: 2 } },
+        { slot: 12, item: { name: "cscroll0", q: 40 } },
       ];
     },
     itemGrade(item) {
@@ -314,6 +315,8 @@ test("Compound gather planner prefers an existing Merchant inventory triple", ()
   assert.deepEqual(result.selected.itemSlots, [1, 4, 7]);
   assert.equal(result.selected.monsterType, null);
   assert.equal(result.selected.scrollName, "cscroll0");
+  assert.deepEqual(result.selected.scrollSlots, [12]);
+  assert.equal(result.selected.scrollQuantity, 40);
 });
 
 test("Compound gather planner falls back to monster farming without a full inventory triple", () => {
