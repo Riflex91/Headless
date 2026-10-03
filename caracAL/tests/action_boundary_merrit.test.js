@@ -114,6 +114,7 @@ function driver(overrides = {}) {
     closeStand() {},
     tradeList() {},
     tradeUnlist() {},
+    requestMerritStatus() {},
     wishlist() {},
     pontyBuy() {},
     partyInvite() {},
@@ -233,13 +234,27 @@ test("trade listing and reversible unlisting confirm from own trade slot", async
   assert.equal(state.character.slots.trade1, undefined);
 });
 
-test("Merrit mutation capabilities are advertised", () => {
-  const capabilities = boundary(stateFixture()).value.capabilities();
+test("Merrit status request is audited and capabilities are advertised", () => {
+  let requested = 0;
+  const setup = boundary(stateFixture(), {
+    requestMerritStatus() {
+      requested += 1;
+    },
+  });
+  const statusRequest = setup.value.requestMerritStatus({
+    module: "MerchantMerrit",
+    why: "MERRIT_STATUS_REFRESH",
+  });
+  assert.equal(statusRequest.status, "CONFIRMED");
+  assert.equal(requested, 1);
+
+  const capabilities = setup.value.capabilities();
   for (const capability of [
     "OPEN_STAND",
     "CLOSE_STAND",
     "TRADE_LIST",
     "TRADE_UNLIST",
+    "MERRIT_STATUS_REQUEST",
   ]) {
     assert.equal(capabilities.includes(capability), true, capability);
   }
