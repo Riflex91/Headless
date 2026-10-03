@@ -54,6 +54,10 @@ import {
   CraftEvent,
 } from "./craft-controller.lib";
 import {
+  ExpectedValueController,
+  ExpectedValueEvent,
+} from "./expected-value-controller.lib";
+import {
   CraftPreflightResult,
   CraftPreflightRunner,
 } from "./craft-preflight.lib";
@@ -208,6 +212,8 @@ const EXCHANGE_JOB_ID = "exchange-loop";
 const EXCHANGE_INTERVAL_MS = 1000;
 const CRAFT_JOB_ID = "craft-loop";
 const CRAFT_INTERVAL_MS = 1000;
+const EXPECTED_VALUE_JOB_ID = "expected-value-loop";
+const EXPECTED_VALUE_INTERVAL_MS = 1000;
 const FARM_INTELLIGENCE_JOB_ID = "farm-intelligence-loop";
 const FARM_INTELLIGENCE_INTERVAL_MS = 1000;
 const MERCHANT_AUTONOMY_JOB_ID = "merchant-autonomy-loop";
@@ -282,6 +288,7 @@ export class BotRuntimeKernel {
   readonly compound: CompoundController;
   readonly exchange: ExchangeController;
   readonly craft: CraftController;
+  readonly expectedValue: ExpectedValueController;
   readonly merchantAutonomy: MerchantAutonomyController;
   readonly bankTravel: BankTravelController;
   readonly bankGoldSettlement: BankGoldSettlementController;
@@ -442,6 +449,15 @@ export class BotRuntimeKernel {
         onEvent: (event) => this.handleCraftEvent(event),
       },
     );
+    this.expectedValue = new ExpectedValueController(
+      this.game,
+      this.upgrade,
+      this.compound,
+      {
+        config: () => runtimeConfig?.config || {},
+        onEvent: (event) => this.handleExpectedValueEvent(event),
+      },
+    );
     this.merchantAutonomy = new MerchantAutonomyController(
       this.game,
       this.actions,
@@ -558,6 +574,15 @@ export class BotRuntimeKernel {
     });
 
     this.scheduler.register({
+      id: EXPECTED_VALUE_JOB_ID,
+      intervalMs: EXPECTED_VALUE_INTERVAL_MS,
+      priority: 79,
+      tick: () => {
+        this.expectedValue.tick();
+      },
+    });
+
+    this.scheduler.register({
       id: FARM_INTELLIGENCE_JOB_ID,
       intervalMs: FARM_INTELLIGENCE_INTERVAL_MS,
       priority: 80,
@@ -611,6 +636,7 @@ export class BotRuntimeKernel {
             inventoryIntelligence: this.inventoryIntelligence.status(),
             gearScoring: this.gearScoring.status(),
             futureGear: this.futureGear.status(),
+            expectedValue: this.expectedValue.status(),
             merchantAutonomy: this.merchantAutonomy.status(),
             bankTravel: this.bankTravel.status(),
             merchantMerrit: this.merchantMerrit.status(),
@@ -710,6 +736,7 @@ export class BotRuntimeKernel {
       compound: this.compound.status(),
       exchange: this.exchange.status(),
       craft: this.craft.status(),
+      expectedValue: this.expectedValue.status(),
       merchantAutonomy: this.merchantAutonomy.status(),
       bankTravel: this.bankTravel.status(),
       merchantMerrit: this.merchantMerrit.status(),
@@ -3296,6 +3323,17 @@ export class BotRuntimeKernel {
       ...(event.actionId && { actionId: event.actionId }),
       data: {
         craft: event.status,
+      },
+    });
+  }
+
+  private handleExpectedValueEvent(event: ExpectedValueEvent): void {
+    this.eventBus.emit({
+      module: "ExpectedValueController",
+      type: event.type,
+      why: event.reason,
+      data: {
+        expectedValue: event.status,
       },
     });
   }
