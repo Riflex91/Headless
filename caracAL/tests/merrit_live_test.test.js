@@ -290,6 +290,6 @@ test("Merrit live runner fails a PASS candidate when cleanup cannot restore stat
   });
 
   assert.equal(result.outcome, "FAIL");
-  assert.equal(result.reason, "MERRIT_LIVE_EVIDENCE_INCOMPLETE");
+  assert.equal(result.reason, "MERRIT_LIVE_CLEANUP_FAILED");
   assert.equal(result.cleanup.temporaryListingRestored, false);
 });
