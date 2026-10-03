@@ -1152,7 +1152,9 @@ Schutz:
 Merchant bleibt unabhängig.
 
 ## Phase 12 – Merchant Autonomy
+
 Aus ALFinal 0.26.57-h26 übernehmen/neu strukturieren:
+
 - Merrit
 - Wishlist
 - Merchant Skills
@@ -1160,6 +1162,7 @@ Aus ALFinal 0.26.57-h26 übernehmen/neu strukturieren:
 Giveaways, Ponty, Fishing und Mining werden in Phase 12 nicht weitergeführt. Bereits vorhandene Implementierung, Tests und Live-Evidence bleiben unverändert erhalten; die weitere Umsetzung und Live-Verifikation wird nach Phase 12 in Phase 22 fortgeführt.
 
 ### Merrit
+
 ```text
 Cooldown
 → Zone
@@ -1309,6 +1312,7 @@ Beispiele:
 - Incident Recorder
 
 ## Phase 22 – Dashboard V2
+
 - komplette Account-Ansicht
 - Goals
 - Economy
@@ -1322,12 +1326,15 @@ Beispiele:
 - erweiterte Inventory-/Equipment-Historie
 
 ### Abschluss von Phase 22 – Giveaways / Ponty / Fishing / Mining
+
 Giveaways, Ponty, Fishing und Mining werden erst nach Abschluss der übrigen Phase-22-Arbeiten weitergeführt und live verifiziert.
 
 #### Giveaways
+
 Nur `join_giveaway`, niemals Giveaway erstellen.
 
 #### Ponty
+
 ```text
 finden
 → Travel
@@ -1340,6 +1347,7 @@ finden
 ```
 
 #### Fishing / Mining
+
 ```text
 Skill
 → Tool
@@ -1353,6 +1361,7 @@ Skill
 ```
 
 Reihenfolge am Ende von Phase 22:
+
 ```text
 Giveaways
 → Ponty
