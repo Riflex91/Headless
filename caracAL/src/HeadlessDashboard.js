@@ -110,6 +110,7 @@ function publicCharacterState(name, charBlock = {}) {
       charBlock.account_gear_reservation_live_test || null,
     upgrade_live_test: charBlock.upgrade_live_test || null,
     upgrade_live_preflight: charBlock.upgrade_live_preflight || null,
+    compound_live_test: charBlock.compound_live_test || null,
     logistics_live_test: charBlock.logistics_live_test || null,
     merchant_live_test: charBlock.merchant_live_test || null,
     bank_travel_live_test: charBlock.bank_travel_live_test || null,
@@ -322,6 +323,7 @@ function attachHeadlessDashboard({
   runUpgradeLiveTest,
   runUpgradeLivePreflight,
   runCompoundMaterialPreparation,
+  runCompoundLiveTest,
   runLogisticsLiveTest,
   runMerchantLiveTest,
   runBankTravelLiveTest,
@@ -656,6 +658,35 @@ function attachHeadlessDashboard({
       } catch (error) {
         res.status(Number(error.statusCode) || 500).json({
           error: error.code || "COMPOUND_MATERIAL_PREPARATION_FAILED",
+          message: error.message,
+        });
+      }
+    },
+  );
+
+  router.post(
+    "/headless/api/characters/:name/tests/compound",
+    express.json({ limit: "8kb" }),
+    async (req, res) => {
+      if (!runCompoundLiveTest) {
+        res.status(503).json({ error: "COMPOUND_LIVE_TEST_UNAVAILABLE" });
+        return;
+      }
+
+      try {
+        const result = await runCompoundLiveTest(req.params.name, {
+          itemName: req.body?.itemName,
+          itemSlots: req.body?.itemSlots,
+          scrollName: req.body?.scrollName,
+        });
+        res.json({
+          ok: result?.outcome === "PASS",
+          result,
+          snapshot: getSnapshot(),
+        });
+      } catch (error) {
+        res.status(Number(error.statusCode) || 500).json({
+          error: error.code || "COMPOUND_LIVE_TEST_FAILED",
           message: error.message,
         });
       }
