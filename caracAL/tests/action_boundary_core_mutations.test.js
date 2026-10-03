@@ -130,6 +130,47 @@ function makeBoundary(state, driver, ledger = makeLedger()) {
   };
 }
 
+test("attack treats structured API rejection as retryable rejection while preserving unstructured UNKNOWN safety", async () => {
+  const rejectedState = makeState();
+  const rejected = makeBoundary(rejectedState, {
+    resolveEntity(id) {
+      return rejectedState.entities[id] || null;
+    },
+    async attack() {
+      throw { reason: "too_far", distance: 60 };
+    },
+  });
+
+  const rejectedResult = await rejected.boundary.attack({
+    targetId: "target",
+    module: "CombatController",
+    why: "TARGET_IN_RANGE_AND_READY",
+  });
+
+  assert.equal(rejectedResult.status, "REJECTED");
+  assert.equal(rejectedResult.evidence.reason, "too_far");
+  assert.equal(rejected.ledger.canRetry(rejectedResult.id), true);
+
+  const unknownState = makeState();
+  const unknown = makeBoundary(unknownState, {
+    resolveEntity(id) {
+      return unknownState.entities[id] || null;
+    },
+    async attack() {
+      throw new Error("socket timeout");
+    },
+  });
+
+  const unknownResult = await unknown.boundary.attack({
+    targetId: "target",
+    module: "CombatController",
+    why: "TARGET_IN_RANGE_AND_READY",
+  });
+
+  assert.equal(unknownResult.status, "UNKNOWN");
+  assert.equal(unknown.ledger.canRetry(unknownResult.id), false);
+});
+
 test("skill is blocked before dispatch during emergency stop", async () => {
   const state = makeState();
   let calls = 0;

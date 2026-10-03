@@ -1117,6 +1117,18 @@ export class ActionBoundary {
         },
       });
     } catch (error) {
+      const reason = structuredReason(error);
+      if (reason) {
+        return this.ledger.reject(transaction.id, {
+          why: "ATTACK_REJECTED",
+          after: {
+            character: this.game.character(),
+            target: this.game.entity(request.targetId),
+          },
+          evidence: { reason },
+        });
+      }
+
       return this.ledger.unknown(transaction.id, {
         why: "ATTACK_OUTCOME_UNCERTAIN",
         error: errorMessage(error),
