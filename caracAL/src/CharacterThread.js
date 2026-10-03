@@ -356,6 +356,30 @@ async function make_runner(upper, CODE_file, version, is_typescript) {
         }
         break;
       }
+      case "account_gear_reservations": {
+        const runtime = runner_context.__caracalBotRuntime;
+        const slots = Array.isArray(m.slots)
+          ? m.slots
+              .map((slot) => Number(slot))
+              .filter((slot) => Number.isInteger(slot) && slot >= 0)
+          : [];
+
+        if (!runtime?.setAccountGearReservedSlots) {
+          sendIpcMessage(process, {
+            type: "account_gear_reservations_rejected",
+            slots,
+            reason: "ACCOUNT_GEAR_RESERVATION_RUNTIME_NOT_READY",
+          });
+          break;
+        }
+
+        runtime.setAccountGearReservedSlots(slots);
+        sendIpcMessage(process, {
+          type: "account_gear_reservations_applied",
+          slots,
+        });
+        break;
+      }
       case "inventory_live_test": {
         const requestId =
           typeof m.request_id === "string" && m.request_id
@@ -935,30 +959,6 @@ async function make_game(proc_args) {
           });
         }
         break;
-      case "account_gear_reservations": {
-        const runtime = runner_context.__caracalBotRuntime;
-        const slots = Array.isArray(m.slots)
-          ? m.slots
-              .map((slot) => Number(slot))
-              .filter((slot) => Number.isInteger(slot) && slot >= 0)
-          : [];
-
-        if (!runtime?.setAccountGearReservedSlots) {
-          sendIpcMessage(process, {
-            type: "account_gear_reservations_rejected",
-            slots,
-            reason: "ACCOUNT_GEAR_RESERVATION_RUNTIME_NOT_READY",
-          });
-          break;
-        }
-
-        runtime.setAccountGearReservedSlots(slots);
-        sendIpcMessage(process, {
-          type: "account_gear_reservations_applied",
-          slots,
-        });
-        break;
-      }
       case "config_push":
         try {
           const nextConfig = prepareConfigPush(

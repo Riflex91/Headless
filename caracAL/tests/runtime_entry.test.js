@@ -253,6 +253,15 @@ test("account Gear Reservation sync stays classification-only", () => {
   assert.match(inventory, /protections\.push\("RESERVED"\)/);
   assert.match(thread, /account_gear_reservations/);
   assert.match(thread, /account_gear_reservations_applied/);
+
+  const runnerReturn = thread.indexOf("return runner_context;");
+  const reservationCase = thread.indexOf('case "account_gear_reservations"');
+  assert.ok(reservationCase >= 0);
+  assert.ok(runnerReturn > reservationCase);
+  assert.equal(
+    thread.indexOf('case "account_gear_reservations"', runnerReturn),
+    -1,
+  );
   assert.doesNotMatch(kernel, /\bsend_item\s*\(/);
   assert.doesNotMatch(kernel, /\bequip\s*\(/);
   assert.doesNotMatch(kernel, /\bupgrade\s*\(/);
