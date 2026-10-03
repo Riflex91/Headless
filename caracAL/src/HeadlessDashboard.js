@@ -106,6 +106,8 @@ function publicCharacterState(name, charBlock = {}) {
     farm_live_test: charBlock.farm_live_test || null,
     inventory_live_test: charBlock.inventory_live_test || null,
     gear_scoring_live_test: charBlock.gear_scoring_live_test || null,
+    account_gear_reservation_live_test:
+      charBlock.account_gear_reservation_live_test || null,
     logistics_live_test: charBlock.logistics_live_test || null,
     merchant_live_test: charBlock.merchant_live_test || null,
     bank_travel_live_test: charBlock.bank_travel_live_test || null,
@@ -313,6 +315,7 @@ function attachHeadlessDashboard({
   runFarmLiveTest,
   runInventoryLiveTest,
   runGearScoringLiveTest,
+  runAccountGearReservationLiveTest,
   runLogisticsLiveTest,
   runMerchantLiveTest,
   runBankTravelLiveTest,
@@ -563,6 +566,36 @@ function attachHeadlessDashboard({
       } catch (error) {
         res.status(Number(error.statusCode) || 500).json({
           error: error.code || "GEAR_SCORING_LIVE_TEST_FAILED",
+          message: error.message,
+        });
+      }
+    },
+  );
+
+  router.post(
+    "/headless/api/characters/:name/tests/account-gear-reservation",
+    async (req, res) => {
+      if (!runAccountGearReservationLiveTest) {
+        res
+          .status(503)
+          .json({ error: "ACCOUNT_GEAR_RESERVATION_LIVE_TEST_UNAVAILABLE" });
+        return;
+      }
+
+      try {
+        const result = await runAccountGearReservationLiveTest(
+          req.params.name,
+          req.body?.targetCharacter,
+          Number(req.body?.sampleMs) || 1200,
+        );
+        res.json({
+          ok: result?.outcome === "PASS",
+          result,
+          snapshot: getSnapshot(),
+        });
+      } catch (error) {
+        res.status(Number(error.statusCode) || 500).json({
+          error: error.code || "ACCOUNT_GEAR_RESERVATION_LIVE_TEST_FAILED",
           message: error.message,
         });
       }
