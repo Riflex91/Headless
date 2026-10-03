@@ -38,6 +38,8 @@ function selectClassSkillCharacter(snapshot, requested = null, ctype = "ranger")
     throw new Error(`Unsupported class-skill live E2E class: ${ctype}`);
   }
 
+  const classLabel = ctype === "merchant" ? "Merchant" : "Ranger";
+
   if (requested) {
     const exact = characters.find((character) => character.name === requested);
     if (!exact) {
@@ -45,7 +47,7 @@ function selectClassSkillCharacter(snapshot, requested = null, ctype = "ranger")
     }
     if (exact.ctype !== ctype) {
       throw new Error(
-        `Class-skill live E2E currently requires a ${ctype}: ${requested}`,
+        `Class-skill live E2E currently requires a ${classLabel}: ${requested}`,
       );
     }
     return exact;
@@ -108,12 +110,12 @@ async function main() {
     );
     if (!character) {
       throw new Error(
-        `No ${ctype} is available for the class-skill live test`,
+        `No ${ctype === "merchant" ? "Merchant" : "Ranger"} is available for the class-skill live test`,
       );
     }
 
     process.stdout.write(
-      `Running autonomous ${ctype} class-skill E2E for ${character.name} via ${baseUrl}\n`,
+      `Running autonomous ${ctype === "merchant" ? "Merchant" : "Ranger"} class-skill E2E for ${character.name} via ${baseUrl}\n`,
     );
 
     const payload = await readJson(
