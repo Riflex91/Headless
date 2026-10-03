@@ -336,6 +336,14 @@ export class ClassSkillController {
           lastReason = "SKILL_NOT_AVAILABLE_FOR_CLASS";
           continue;
         }
+        if (
+          skill.level !== null &&
+          character.level !== null &&
+          character.level < skill.level
+        ) {
+          lastReason = "SKILL_LEVEL_INSUFFICIENT";
+          continue;
+        }
         if ((this.blockedUntil.get(policy.skill) || 0) > this.now()) {
           lastReason = "SKILL_RETRY_BACKOFF";
           continue;
