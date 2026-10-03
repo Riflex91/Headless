@@ -89,6 +89,18 @@ function verifyCompoundPreparation(source) {
       record(result.evidence).allDeliveredItemsLevelMatched === true,
     workerEvidenceValid,
     blindRetryAvoided: record(result.evidence).blindRetryUsed === false,
+    matchingItemSlotsObserved:
+      Array.isArray(result.matchingItemSlots) &&
+      result.matchingItemSlots.length >= 3 &&
+      result.matchingItemSlots.every(
+        (slot) => Number.isInteger(Number(slot)) && Number(slot) >= 0,
+      ),
+    matchingScrollSlotsObserved:
+      Array.isArray(result.matchingScrollSlots) &&
+      result.matchingScrollSlots.length >= 1 &&
+      result.matchingScrollSlots.every(
+        (slot) => Number.isInteger(Number(slot)) && Number(slot) >= 0,
+      ),
     scrollPresent:
       Number(result.scrollQuantity) >= 1 && result.readyForCompound === true,
   };
