@@ -54,6 +54,11 @@ import {
   ExchangePreflightRunner,
 } from "./exchange-preflight.lib";
 import {
+  ExchangeLiveTestOptions,
+  ExchangeLiveTestResult,
+  ExchangeLiveTestRunner,
+} from "./exchange-live-test.lib";
+import {
   CompoundGatherPlan,
   planCompoundGatherTarget as buildCompoundGatherPlan,
 } from "./compound-gather-plan.lib";
@@ -277,6 +282,7 @@ export class BotRuntimeKernel {
   private upgradePreflightRunning = false;
   private compoundLiveTestRunning = false;
   private exchangePreflightRunning = false;
+  private exchangeLiveTestRunning = false;
   private logisticsLiveTestRunning = false;
   private merchantLiveTestRunning = false;
   private bankTravelLiveTestRunning = false;
@@ -681,7 +687,8 @@ export class BotRuntimeKernel {
       this.upgradeLiveTestRunning ||
       this.upgradePreflightRunning ||
       this.compoundLiveTestRunning ||
-      this.exchangePreflightRunning
+      this.exchangePreflightRunning ||
+      this.exchangeLiveTestRunning
     ) {
       throw new Error("mutation verification is running");
     }
@@ -699,7 +706,8 @@ export class BotRuntimeKernel {
       this.upgradeLiveTestRunning ||
       this.upgradePreflightRunning ||
       this.compoundLiveTestRunning ||
-      this.exchangePreflightRunning
+      this.exchangePreflightRunning ||
+      this.exchangeLiveTestRunning
     ) {
       throw new Error("mutation verification is running");
     }
@@ -717,7 +725,8 @@ export class BotRuntimeKernel {
       this.upgradeLiveTestRunning ||
       this.upgradePreflightRunning ||
       this.compoundLiveTestRunning ||
-      this.exchangePreflightRunning
+      this.exchangePreflightRunning ||
+      this.exchangeLiveTestRunning
     ) {
       throw new Error("mutation verification is running");
     }
@@ -733,6 +742,7 @@ export class BotRuntimeKernel {
   async runExchangePreflight(): Promise<ExchangePreflightResult> {
     if (
       this.exchangePreflightRunning ||
+      this.exchangeLiveTestRunning ||
       this.upgradeLiveTestRunning ||
       this.upgradePreflightRunning ||
       this.compoundLiveTestRunning
@@ -797,6 +807,135 @@ export class BotRuntimeKernel {
       throw error;
     } finally {
       this.exchangePreflightRunning = false;
+    }
+  }
+
+  async runExchangeLiveTest(
+    options: ExchangeLiveTestOptions,
+  ): Promise<ExchangeLiveTestResult> {
+    if (
+      this.exchangeLiveTestRunning ||
+      this.exchangePreflightRunning ||
+      this.compoundLiveTestRunning ||
+      this.upgradeLiveTestRunning ||
+      this.upgradePreflightRunning
+    ) {
+      throw new Error("mutation verification already running");
+    }
+    if (!this.started || this.stopping) {
+      throw new Error("runtime is not ready for exchange live test");
+    }
+    if (runtimeState() !== "RUNNING") {
+      throw new Error("runtime must be RUNNING for exchange live test");
+    }
+    if (
+      this.movementLiveTestRunning ||
+      this.combatLiveTestRunning ||
+      this.classSkillLiveTestRunning ||
+      this.groupLiveTestRunning ||
+      this.bankTravelLiveTestRunning ||
+      this.merritLiveTestRunning ||
+      this.fishingLiveTestRunning
+    ) {
+      throw new Error("movement activity is running during exchange live test");
+    }
+
+    this.exchangeLiveTestRunning = true;
+    const requestId = options.requestId || `exchange-live-${Date.now()}`;
+    const suspended = {
+      merchantAutonomy: this.scheduler.unregister(MERCHANT_AUTONOMY_JOB_ID),
+      bankTravel: this.scheduler.unregister(BANK_TRAVEL_JOB_ID),
+      merrit: this.scheduler.unregister(MERRIT_AUTONOMY_JOB_ID),
+      fishing: this.scheduler.unregister(FISHING_AUTONOMY_JOB_ID),
+      groupCombat: this.scheduler.unregister(GROUP_COMBAT_JOB_ID),
+      classSkill: this.scheduler.unregister(CLASS_SKILL_JOB_ID),
+      combat: this.scheduler.unregister(COMBAT_JOB_ID),
+    };
+
+    this.eventBus.emit({
+      module: "ExchangeLiveTest",
+      type: "EXCHANGE_LIVE_TEST_STARTED",
+      why: "EXPLICIT_SINGLE_EXCHANGE_E2E",
+      correlationId: requestId,
+      data: {
+        requestId,
+        itemName: options.itemName,
+        itemSlot: options.itemSlot,
+        irreversibleMutation: true,
+        stationTravelAllowed: true,
+        blindRetryAllowed: false,
+        suspended,
+        ...runtimeIdentity(),
+      },
+    });
+
+    try {
+      const runner = new ExchangeLiveTestRunner({
+        game: this.game,
+        inventoryIntelligence: this.inventoryIntelligence,
+        exchange: this.exchange,
+        movement: this.movement,
+        characterName: () => character.name,
+        runtimePreflight: () => {
+          const runtimeCharacter = character as unknown as {
+            map?: unknown;
+            q?: {
+              exchange?: unknown;
+            };
+          };
+          return {
+            map:
+              typeof runtimeCharacter.map === "string" &&
+              runtimeCharacter.map.trim().length > 0
+                ? runtimeCharacter.map
+                : null,
+            exchangeInProgress: !!runtimeCharacter.q?.exchange,
+          };
+        },
+      });
+
+      const result = await runner.run({
+        ...options,
+        requestId,
+      });
+      this.eventBus.emit({
+        module: "ExchangeLiveTest",
+        type:
+          result.outcome === "PASS"
+            ? "EXCHANGE_LIVE_TEST_COMPLETED"
+            : "EXCHANGE_LIVE_TEST_FAILED",
+        why: result.reason,
+        correlationId: requestId,
+        ...(result.exchange?.lastAction?.id && {
+          actionId: result.exchange.lastAction.id,
+        }),
+        data: {
+          result,
+          exchange: this.exchange.status(),
+        },
+      });
+      return result;
+    } catch (error) {
+      this.eventBus.emit({
+        module: "ExchangeLiveTest",
+        type: "EXCHANGE_LIVE_TEST_FAILED",
+        why: "EXCHANGE_LIVE_TEST_RUNTIME_ERROR",
+        correlationId: requestId,
+        data: {
+          error: error instanceof Error ? error.message : String(error),
+          exchange: this.exchange.status(),
+        },
+      });
+      throw error;
+    } finally {
+      if (suspended.merchantAutonomy) this.registerMerchantAutonomyJob();
+      if (suspended.bankTravel) this.registerBankTravelJob();
+      if (suspended.merrit) this.registerMerritJob();
+      if (suspended.fishing) this.registerFishingJob();
+      if (suspended.groupCombat) this.registerGroupCombatJob();
+      if (suspended.classSkill) this.registerClassSkillJob();
+      if (suspended.combat) this.registerCombatJob();
+      this.exchangeLiveTestRunning = false;
     }
   }
 
@@ -942,7 +1081,8 @@ export class BotRuntimeKernel {
       this.upgradeLiveTestRunning ||
       this.upgradePreflightRunning ||
       this.compoundLiveTestRunning ||
-      this.exchangePreflightRunning
+      this.exchangePreflightRunning ||
+      this.exchangeLiveTestRunning
     ) {
       throw new Error("mutation verification already running");
     }
@@ -1001,7 +1141,8 @@ export class BotRuntimeKernel {
       this.upgradeLiveTestRunning ||
       this.upgradePreflightRunning ||
       this.compoundLiveTestRunning ||
-      this.exchangePreflightRunning
+      this.exchangePreflightRunning ||
+      this.exchangeLiveTestRunning
     ) {
       throw new Error("mutation verification already running");
     }
