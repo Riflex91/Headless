@@ -4,9 +4,7 @@ const {
   ensureDashboardAvailable,
   stopManagedRuntime,
 } = require("../src/MovementLiveTestLauncher");
-const {
-  selectMerchantLiveTestCharacter,
-} = require("./run_merchant_live_e2e");
+const { selectMerchantLiveTestCharacter } = require("./run_merchant_live_e2e");
 
 const baseUrl = String(
   process.env.CARACAL_HEADLESS_URL || "http://127.0.0.1:924",
@@ -63,9 +61,7 @@ async function main() {
       requestedCharacter,
     );
     if (!merchant) {
-      throw new Error(
-        "An account-owned merchant is required for Fishing E2E",
-      );
+      throw new Error("An account-owned merchant is required for Fishing E2E");
     }
 
     process.stdout.write(
