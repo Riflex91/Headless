@@ -9,36 +9,65 @@ import type {
 } from "./class-skill-controller.lib";
 import type { CombatController } from "./combat-controller.lib";
 
-const SAFE_CLASS = "ranger";
-const SAFE_SKILL = "track";
+type SafeClass = "ranger" | "merchant";
+type SafeSkill = "track" | "massproduction";
+
+interface SafeLiveProfile {
+  className: SafeClass;
+  skill: SafeSkill;
+  module: "RangerSkillController" | "MerchantSkillController";
+  unavailableReason: string;
+}
+
+const SAFE_LIVE_PROFILES: Record<SafeClass, SafeLiveProfile> = {
+  ranger: {
+    className: "ranger",
+    skill: "track",
+    module: "RangerSkillController",
+    unavailableReason: "SAFE_RANGER_SKILL_UNAVAILABLE",
+  },
+  merchant: {
+    className: "merchant",
+    skill: "massproduction",
+    module: "MerchantSkillController",
+    unavailableReason: "SAFE_MERCHANT_SKILL_UNAVAILABLE",
+  },
+};
+
+function safeProfile(ctype: string | null): SafeLiveProfile | null {
+  return ctype === "ranger" || ctype === "merchant"
+    ? SAFE_LIVE_PROFILES[ctype]
+    : null;
+}
+
+function classSkillConfig(
+  className: string | null,
+  skill: SafeSkill | null,
+  enabled: boolean,
+): Record<string, unknown> {
+  const key = className || "unknown";
+  return {
+    classSkills: {
+      [key]: {
+        enabled,
+        skills:
+          enabled && skill
+            ? {
+                [skill]: {
+                  enabled: true,
+                  priority: 1000,
+                },
+              }
+            : {},
+      },
+    },
+  };
+}
 
 const DISABLED_COMBAT_CONFIG = {
   combat: { enabled: false },
   potionUsage: { enabled: false },
   safety: { autoRespawn: false },
-};
-
-const DISABLED_CLASS_SKILL_CONFIG = {
-  classSkills: {
-    ranger: {
-      enabled: false,
-      skills: {},
-    },
-  },
-};
-
-const ENABLED_CLASS_SKILL_CONFIG = {
-  classSkills: {
-    ranger: {
-      enabled: true,
-      skills: {
-        track: {
-          enabled: true,
-          priority: 1000,
-        },
-      },
-    },
-  },
 };
 
 export type ClassSkillLiveTestOutcome =
@@ -90,8 +119,8 @@ export interface ClassSkillLiveTestResult {
     projectionVisible: boolean;
   };
   scope: {
-    testedClass: "ranger";
-    safeSkill: "track";
+    testedClass: SafeClass | null;
+    safeSkill: SafeSkill | null;
     consumableMutationForced: false;
     combatMutationForced: false;
     targetMutationForced: false;
@@ -162,6 +191,15 @@ export class ClassSkillLiveTestRunner {
     const pollIntervalMs = Math.max(25, options.pollIntervalMs || 50);
     const startedAt = this.now();
     const first = this.deps.character();
+    const profile = safeProfile(first.ctype);
+    const disabledClassSkillConfig = classSkillConfig(
+      first.ctype,
+      null,
+      false,
+    );
+    const enabledClassSkillConfig = profile
+      ? classSkillConfig(profile.className, profile.skill, true)
+      : disabledClassSkillConfig;
 
     const result: ClassSkillLiveTestResult = {
       requestId,
@@ -198,8 +236,8 @@ export class ClassSkillLiveTestRunner {
         projectionVisible: false,
       },
       scope: {
-        testedClass: SAFE_CLASS,
-        safeSkill: SAFE_SKILL,
+        testedClass: profile?.className || null,
+        safeSkill: profile?.skill || null,
         consumableMutationForced: false,
         combatMutationForced: false,
         targetMutationForced: false,
@@ -211,7 +249,7 @@ export class ClassSkillLiveTestRunner {
       },
     };
 
-    this.deps.classSkills.setConfigOverride(DISABLED_CLASS_SKILL_CONFIG);
+    this.deps.classSkills.setConfigOverride(disabledClassSkillConfig);
     this.deps.combat.setConfigOverride(DISABLED_COMBAT_CONFIG);
 
     try {
@@ -239,16 +277,23 @@ export class ClassSkillLiveTestRunner {
       }
 
       const character = this.deps.character();
-      if (character.ctype !== SAFE_CLASS) {
-        result.reason = "CLASS_SKILL_LIVE_E2E_REQUIRES_RANGER";
+      if (!profile || character.ctype !== profile.className) {
+        result.reason = "CLASS_SKILL_LIVE_E2E_UNSUPPORTED_CLASS";
         return result;
       }
 
       const skill = this.deps
         .skills()
-        .find((candidate) => candidate.key === SAFE_SKILL);
-      if (!skill || skill.passive || !skill.classes.includes(SAFE_CLASS)) {
-        result.reason = "SAFE_RANGER_SKILL_UNAVAILABLE";
+        .find((candidate) => candidate.key === profile.skill);
+      if (
+        !skill ||
+        skill.passive ||
+        !skill.classes.includes(profile.className) ||
+        (skill.level !== null &&
+          character.level !== null &&
+          character.level < skill.level)
+      ) {
+        result.reason = profile.unavailableReason;
         return result;
       }
 
@@ -256,7 +301,7 @@ export class ClassSkillLiveTestRunner {
       result.preparation.skillMp = skill.mp;
       result.preparation.initialCooldownMs = cooldownRemaining(
         this.deps.cooldowns(),
-        SAFE_SKILL,
+        profile.skill,
       );
 
       const ready = await this.waitFor(
@@ -265,7 +310,7 @@ export class ClassSkillLiveTestRunner {
           const mpReady =
             skill.mp === null || current.mp === null || current.mp >= skill.mp;
           const cooldownReady =
-            cooldownRemaining(this.deps.cooldowns(), SAFE_SKILL) <= 0;
+            cooldownRemaining(this.deps.cooldowns(), profile.skill) <= 0;
           return mpReady && cooldownReady && !current.rip;
         },
         readyTimeoutMs,
@@ -280,21 +325,21 @@ export class ClassSkillLiveTestRunner {
 
       const baseline = this.deps.classSkills.status().lastAction?.id || null;
       const beforeAction = this.deps.character();
-      this.deps.classSkills.setConfigOverride(ENABLED_CLASS_SKILL_CONFIG);
+      this.deps.classSkills.setConfigOverride(enabledClassSkillConfig);
 
       const actionSeen = await this.waitFor(
         async () => {
           const tickStatus = await this.deps.classSkills.tick();
           const action = tickStatus.lastAction;
           return (
-            !!action && action.id !== baseline && action.skill === SAFE_SKILL
+            !!action && action.id !== baseline && action.skill === profile.skill
           );
         },
         actionTimeoutMs,
         pollIntervalMs,
       );
 
-      this.deps.classSkills.setConfigOverride(DISABLED_CLASS_SKILL_CONFIG);
+      this.deps.classSkills.setConfigOverride(disabledClassSkillConfig);
       const status = this.deps.classSkills.status();
 
       if (!actionSeen || !status.lastAction) {
@@ -304,12 +349,12 @@ export class ClassSkillLiveTestRunner {
       }
 
       result.classSkill.module = status.module;
-      result.classSkill.selectedSkill = SAFE_SKILL;
+      result.classSkill.selectedSkill = profile.skill;
       result.classSkill.actionId = status.lastAction.id;
       result.classSkill.actionStatus = status.lastAction.status;
       result.classSkill.projectionVisible =
-        status.className === SAFE_CLASS &&
-        status.module === "RangerSkillController";
+        status.className === profile.className &&
+        status.module === profile.module;
 
       if (status.lastAction.status === "UNKNOWN") {
         result.outcome = "UNKNOWN";
@@ -327,7 +372,7 @@ export class ClassSkillLiveTestRunner {
         () => {
           const current = this.deps.character();
           result.classSkill.cooldownObserved =
-            cooldownRemaining(this.deps.cooldowns(), SAFE_SKILL) > 0;
+            cooldownRemaining(this.deps.cooldowns(), profile.skill) > 0;
           result.classSkill.mpCostObserved =
             beforeAction.mp !== null &&
             current.mp !== null &&
@@ -357,7 +402,7 @@ export class ClassSkillLiveTestRunner {
       result.reason = "CLASS_SKILL_LIVE_E2E_CONFIRMED";
       return result;
     } finally {
-      this.deps.classSkills.setConfigOverride(DISABLED_CLASS_SKILL_CONFIG);
+      this.deps.classSkills.setConfigOverride(disabledClassSkillConfig);
       this.deps.combat.setConfigOverride(DISABLED_COMBAT_CONFIG);
       this.deps.classSkills.clearConfigOverride();
       result.cleanup.classSkillOverrideCleared = true;
