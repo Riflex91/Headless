@@ -257,4 +257,3 @@ test("account Gear Reservation sync stays classification-only", () => {
   assert.doesNotMatch(kernel, /\bequip\s*\(/);
   assert.doesNotMatch(kernel, /\bupgrade\s*\(/);
 });
-
