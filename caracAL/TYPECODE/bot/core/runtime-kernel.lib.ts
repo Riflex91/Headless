@@ -50,6 +50,11 @@ import {
   planCompoundGatherTarget as buildCompoundGatherPlan,
 } from "./compound-gather-plan.lib";
 import {
+  CompoundLiveTestOptions,
+  CompoundLiveTestResult,
+  CompoundLiveTestRunner,
+} from "./compound-live-test.lib";
+import {
   UpgradeLiveTestOptions,
   UpgradeLiveTestResult,
   UpgradeLiveTestRunner,
@@ -259,6 +264,7 @@ export class BotRuntimeKernel {
   private inventoryLiveTestRunning = false;
   private upgradeLiveTestRunning = false;
   private upgradePreflightRunning = false;
+  private compoundLiveTestRunning = false;
   private logisticsLiveTestRunning = false;
   private merchantLiveTestRunning = false;
   private bankTravelLiveTestRunning = false;
@@ -640,8 +646,12 @@ export class BotRuntimeKernel {
   }
 
   async executeUpgradeNext(): Promise<Record<string, unknown>> {
-    if (this.upgradeLiveTestRunning || this.upgradePreflightRunning) {
-      throw new Error("upgrade verification is running");
+    if (
+      this.upgradeLiveTestRunning ||
+      this.upgradePreflightRunning ||
+      this.compoundLiveTestRunning
+    ) {
+      throw new Error("mutation verification is running");
     }
     if (!this.started || this.stopping) {
       throw new Error("runtime is not ready for upgrade execution");
@@ -653,8 +663,12 @@ export class BotRuntimeKernel {
   }
 
   async executeCompoundNext(): Promise<Record<string, unknown>> {
-    if (this.upgradeLiveTestRunning || this.upgradePreflightRunning) {
-      throw new Error("upgrade verification is running");
+    if (
+      this.upgradeLiveTestRunning ||
+      this.upgradePreflightRunning ||
+      this.compoundLiveTestRunning
+    ) {
+      throw new Error("mutation verification is running");
     }
     if (!this.started || this.stopping) {
       throw new Error("runtime is not ready for compound execution");
@@ -669,9 +683,92 @@ export class BotRuntimeKernel {
     return buildCompoundGatherPlan(this.game);
   }
 
+  async runCompoundLiveTest(
+    options: CompoundLiveTestOptions,
+  ): Promise<CompoundLiveTestResult> {
+    if (
+      this.compoundLiveTestRunning ||
+      this.upgradeLiveTestRunning ||
+      this.upgradePreflightRunning
+    ) {
+      throw new Error("mutation verification already running");
+    }
+    if (!this.started || this.stopping) {
+      throw new Error("runtime is not ready for compound live test");
+    }
+    if (runtimeState() !== "RUNNING") {
+      throw new Error("runtime must be RUNNING for compound live test");
+    }
+
+    this.compoundLiveTestRunning = true;
+    const requestId = options.requestId || `compound-live-${Date.now()}`;
+    this.eventBus.emit({
+      module: "CompoundLiveTest",
+      type: "COMPOUND_LIVE_TEST_STARTED",
+      why: "EXPLICIT_SINGLE_COMPOUND_E2E",
+      correlationId: requestId,
+      data: {
+        requestId,
+        itemName: options.itemName,
+        itemSlots: options.itemSlots,
+        scrollName: options.scrollName,
+        irreversibleMutation: true,
+        ...runtimeIdentity(),
+      },
+    });
+
+    try {
+      const runner = new CompoundLiveTestRunner({
+        game: this.game,
+        inventoryIntelligence: this.inventoryIntelligence,
+        compound: this.compound,
+        characterName: () => character.name,
+      });
+      const result = await runner.run({
+        ...options,
+        requestId,
+      });
+      this.eventBus.emit({
+        module: "CompoundLiveTest",
+        type:
+          result.outcome === "PASS"
+            ? "COMPOUND_LIVE_TEST_COMPLETED"
+            : "COMPOUND_LIVE_TEST_FAILED",
+        why: result.reason,
+        correlationId: requestId,
+        ...(result.compound?.lastAction?.id && {
+          actionId: result.compound.lastAction.id,
+        }),
+        data: {
+          result,
+          compound: this.compound.status(),
+        },
+      });
+      return result;
+    } catch (error) {
+      this.eventBus.emit({
+        module: "CompoundLiveTest",
+        type: "COMPOUND_LIVE_TEST_FAILED",
+        why: "COMPOUND_LIVE_TEST_RUNTIME_ERROR",
+        correlationId: requestId,
+        data: {
+          error: error instanceof Error ? error.message : String(error),
+          compound: this.compound.status(),
+        },
+      });
+      throw error;
+    } finally {
+      this.compoundLiveTestRunning = false;
+    }
+  }
+
   async runUpgradePreflight(): Promise<UpgradePreflightResult> {
-    if (this.upgradeLiveTestRunning || this.upgradePreflightRunning) {
-      throw new Error("upgrade verification already running");
+    if (
+      this.upgradeLiveTestRunning ||
+      this.upgradePreflightRunning ||
+      this.compoundLiveTestRunning
+    ) {
+      throw new Error("mutation verification already running");
     }
     if (!this.started || this.stopping) {
       throw new Error("runtime is not ready for upgrade preflight");
@@ -724,8 +821,12 @@ export class BotRuntimeKernel {
   async runUpgradeLiveTest(
     options: UpgradeLiveTestOptions,
   ): Promise<UpgradeLiveTestResult> {
-    if (this.upgradeLiveTestRunning || this.upgradePreflightRunning) {
-      throw new Error("upgrade verification already running");
+    if (
+      this.upgradeLiveTestRunning ||
+      this.upgradePreflightRunning ||
+      this.compoundLiveTestRunning
+    ) {
+      throw new Error("mutation verification already running");
     }
     if (!this.started || this.stopping) {
       throw new Error("runtime is not ready for upgrade live test");
