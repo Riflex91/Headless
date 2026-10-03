@@ -2912,14 +2912,28 @@ export class ActionBoundary {
         evidence: { result: safeResultEvidence(result) },
       });
     } catch (error) {
+      const reason = structuredReason(error);
+      const afterInventory = this.game.inventory();
+
+      if (reason) {
+        return this.ledger.reject(transaction.id, {
+          why: "EXCHANGE_API_REJECTED",
+          after: {
+            item: relevantInventoryState(afterInventory, request.itemSlot),
+          },
+          evidence: {
+            reason,
+            result: safeResultEvidence(error),
+          },
+          error: reason,
+        });
+      }
+
       return this.ledger.unknown(transaction.id, {
         why: "EXCHANGE_OUTCOME_UNCERTAIN",
         error: errorMessage(error),
         after: {
-          item: relevantInventoryState(
-            this.game.inventory(),
-            request.itemSlot,
-          ),
+          item: relevantInventoryState(afterInventory, request.itemSlot),
         },
       });
     }

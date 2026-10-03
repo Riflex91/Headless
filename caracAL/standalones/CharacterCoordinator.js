@@ -314,6 +314,9 @@ function migrate_old_storage(path, localStorage) {
   const exchange_preflight_requests = new Map();
   let exchange_preflight_sequence = 0;
   let exchange_preflight_active = false;
+  const exchange_live_test_requests = new Map();
+  let exchange_live_test_sequence = 0;
+  let exchange_live_test_active = false;
   const npc_trading_live_test_requests = new Map();
   let npc_trading_live_test_sequence = 0;
   let npc_trading_live_test_active = false;
@@ -386,6 +389,7 @@ function migrate_old_storage(path, localStorage) {
         runUpgradeLiveTest: run_upgrade_live_test,
         runUpgradeLivePreflight: run_upgrade_live_preflight,
         runExchangePreflight: run_exchange_preflight,
+        runExchangeLiveTest: run_exchange_live_test,
         runCompoundMaterialPreparation: run_compound_material_preparation,
         runCompoundLiveTest: run_compound_live_test,
         runNpcTradingLiveTest: run_npc_trading_live_test,
@@ -528,6 +532,7 @@ function migrate_old_storage(path, localStorage) {
       upgrade_live_test_active ||
       upgrade_live_preflight_active ||
       exchange_preflight_active ||
+      exchange_live_test_active ||
       compound_live_test_active ||
       compound_material_preparation_active ||
       npc_trading_live_test_active ||
@@ -1216,6 +1221,7 @@ function migrate_old_storage(path, localStorage) {
     char_block.upgrade_live_preflight =
       char_block.upgrade_live_preflight || null;
     char_block.exchange_preflight = char_block.exchange_preflight || null;
+    char_block.exchange_live_test = char_block.exchange_live_test || null;
     char_block.movement_live_test_typescript_override = null;
     char_block.running_code_revision = char_block.running_code_revision || null;
     char_block.running_config_revision =
@@ -1822,6 +1828,31 @@ function migrate_old_storage(path, localStorage) {
     );
   }
 
+  async function wait_for_exchange_live_test_runtime(
+    char_name,
+    timeout_ms = MOVEMENT_LIVE_TEST_RUNTIME_TIMEOUT_MS,
+  ) {
+    const started_at = Date.now();
+    while (Date.now() - started_at < timeout_ms) {
+      const char_block = character_manage[char_name];
+      if (
+        char_block?.instance &&
+        char_block.connected &&
+        Number.isFinite(char_block.bot_runtime_started_at) &&
+        char_block.inventory_intelligence_runtime
+      ) {
+        return char_block;
+      }
+      await sleep(100);
+    }
+
+    throw make_control_error(
+      "EXCHANGE_LIVE_TEST_RUNTIME_TIMEOUT",
+      `Exchange runtime did not become ready for ${char_name}`,
+      504,
+    );
+  }
+
   async function wait_for_compound_live_test_runtime(
     char_name,
     timeout_ms = MOVEMENT_LIVE_TEST_RUNTIME_TIMEOUT_MS,
@@ -2365,6 +2396,28 @@ function migrate_old_storage(path, localStorage) {
     });
   }
 
+  function wait_for_exchange_live_test_result(char_name, request_id) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        exchange_live_test_requests.delete(request_id);
+        reject(
+          make_control_error(
+            "EXCHANGE_LIVE_TEST_TIMEOUT",
+            `Exchange live test timed out for ${char_name}`,
+            504,
+          ),
+        );
+      }, UPGRADE_LIVE_TEST_RESULT_TIMEOUT_MS);
+
+      exchange_live_test_requests.set(request_id, {
+        character: char_name,
+        resolve,
+        reject,
+        timer,
+      });
+    });
+  }
+
   function wait_for_upgrade_live_test_result(char_name, request_id) {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
@@ -2854,7 +2907,8 @@ function migrate_old_storage(path, localStorage) {
       compound_live_test_active ||
       upgrade_live_test_active ||
       upgrade_live_preflight_active ||
-      exchange_preflight_active
+      exchange_preflight_active ||
+      exchange_live_test_active
     ) {
       throw make_control_error(
         "MUTATION_VERIFICATION_ALREADY_RUNNING",
@@ -7812,7 +7866,8 @@ function migrate_old_storage(path, localStorage) {
     if (
       upgrade_live_preflight_active ||
       upgrade_live_test_active ||
-      exchange_preflight_active
+      exchange_preflight_active ||
+      exchange_live_test_active
     ) {
       throw make_control_error(
         "UPGRADE_VERIFICATION_ALREADY_RUNNING",
@@ -8073,6 +8128,7 @@ function migrate_old_storage(path, localStorage) {
     }
     if (
       exchange_preflight_active ||
+      exchange_live_test_active ||
       upgrade_live_preflight_active ||
       upgrade_live_test_active ||
       compound_live_test_active ||
@@ -8357,6 +8413,7 @@ function migrate_old_storage(path, localStorage) {
       upgrade_live_test_active ||
       upgrade_live_preflight_active ||
       exchange_preflight_active ||
+      exchange_live_test_active ||
       compound_live_test_active ||
       compound_material_preparation_active
     ) {
@@ -8624,6 +8681,315 @@ function migrate_old_storage(path, localStorage) {
     return character_manage[char_name]?.upgrade_live_test;
   }
 
+  async function run_exchange_live_test(char_name, options = {}) {
+    const char_block = character_manage[char_name];
+    if (!char_block) {
+      throw make_control_error(
+        "CHARACTER_NOT_FOUND",
+        `Unknown character: ${char_name}`,
+        404,
+      );
+    }
+    if (char_block.account_owned !== true) {
+      throw make_control_error(
+        "EXCHANGE_LIVE_TEST_ACCOUNT_CHARACTER_REQUIRED",
+        "Exchange live test requires an account-owned character: " + char_name,
+        400,
+      );
+    }
+    if (
+      (char_block.account_character_type || char_block.live_state?.ctype) !==
+      "merchant"
+    ) {
+      throw make_control_error(
+        "EXCHANGE_LIVE_TEST_MERCHANT_REQUIRED",
+        "Exchange live test requires a merchant: " + char_name,
+        400,
+      );
+    }
+
+    const item_name =
+      typeof options.itemName === "string" ? options.itemName.trim() : "";
+    const item_slot = Number(options.itemSlot);
+
+    if (!item_name || !Number.isInteger(item_slot) || item_slot < 0) {
+      throw make_control_error(
+        "EXCHANGE_LIVE_TEST_EXPLICIT_TARGET_REQUIRED",
+        "Exchange live test requires explicit itemName and non-negative itemSlot",
+        400,
+      );
+    }
+
+    if (
+      exchange_live_test_active ||
+      exchange_preflight_active ||
+      compound_live_test_active ||
+      compound_material_preparation_active ||
+      upgrade_live_test_active ||
+      upgrade_live_preflight_active
+    ) {
+      throw make_control_error(
+        "MUTATION_VERIFICATION_ALREADY_RUNNING",
+        "A mutation verification or Compound preparation is already running",
+        409,
+      );
+    }
+
+    for (const active of [
+      ["MOVEMENT", char_block.movement_live_test],
+      ["COMBAT", char_block.combat_live_test],
+      ["CLASS_SKILL", char_block.class_skill_live_test],
+      ["GROUP", char_block.group_live_test],
+      ["FARM", char_block.farm_live_test],
+      ["INVENTORY", char_block.inventory_live_test],
+      ["GEAR_SCORING", char_block.gear_scoring_live_test],
+      [
+        "ACCOUNT_GEAR_RESERVATION",
+        char_block.account_gear_reservation_live_test,
+      ],
+      ["UPGRADE", char_block.upgrade_live_test],
+      ["COMPOUND", char_block.compound_live_test],
+      ["LOGISTICS", char_block.logistics_live_test],
+      ["MERCHANT", char_block.merchant_live_test],
+      ["BANK_TRAVEL", char_block.bank_travel_live_test],
+      ["BANK_GOLD", char_block.bank_gold_live_test],
+      ["NPC_TRADING", char_block.npc_trading_live_test],
+      ["MARKET_TRADING", char_block.market_trading_live_test],
+      ["MERRIT", char_block.merrit_live_test],
+      ["FISHING", char_block.fishing_live_test],
+    ]) {
+      if (["STARTING", "RUNNING"].includes(active[1]?.status)) {
+        throw make_control_error(
+          active[0] + "_LIVE_TEST_ALREADY_RUNNING",
+          active[0] + " live test already running for " + char_name,
+          409,
+        );
+      }
+    }
+
+    const original_desired_state =
+      char_block.desired_runtime_state ||
+      (char_block.enabled
+        ? DESIRED_RUNTIME_STATES.RUNNING
+        : DESIRED_RUNTIME_STATES.STOPPED);
+    const started_at = Date.now();
+    exchange_live_test_sequence += 1;
+    const request_id = `exchange-live-${started_at}-${exchange_live_test_sequence}`;
+
+    char_block.exchange_live_test = {
+      request_id,
+      status: "STARTING",
+      outcome: null,
+      reason: null,
+      started_at,
+      completed_at: null,
+      target: {
+        itemName: item_name,
+        itemSlot: item_slot,
+      },
+    };
+    exchange_live_test_active = true;
+    emit_supervisor_event("EXCHANGE_LIVE_TEST_REQUESTED", char_name, {
+      request_id,
+      itemName: item_name,
+      itemSlot: item_slot,
+      irreversibleMutation: true,
+      blindRetryAllowed: false,
+      original_desired_state,
+    });
+    dashboard?.publishSnapshot();
+
+    let runtime_state_restored = false;
+    let runtime_override_applied = false;
+
+    try {
+      const bundle_path = path.join(
+        process.cwd(),
+        "TYPECODE.out",
+        MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE,
+      );
+      if (!fs_regular.existsSync(bundle_path)) {
+        throw make_control_error(
+          "EXCHANGE_LIVE_TEST_RUNTIME_BUNDLE_MISSING",
+          `Exchange runtime bundle is missing: ${bundle_path}`,
+          503,
+        );
+      }
+
+      char_block.movement_live_test_typescript_override =
+        MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE;
+      char_block.inventory_intelligence_runtime = null;
+      runtime_override_applied = true;
+
+      if (original_desired_state !== DESIRED_RUNTIME_STATES.RUNNING) {
+        char_block.enabled = true;
+        char_block.desired_runtime_state = DESIRED_RUNTIME_STATES.RUNNING;
+      }
+
+      await restart_character_for_movement_runtime(char_name, char_block);
+      const ready_block = await wait_for_exchange_live_test_runtime(char_name);
+      const result_promise = wait_for_exchange_live_test_result(
+        char_name,
+        request_id,
+      );
+
+      ready_block.exchange_live_test = {
+        ...ready_block.exchange_live_test,
+        status: "RUNNING",
+      };
+      dashboard?.publishSnapshot();
+
+      const sent = safe_send(ready_block.instance, {
+        type: "exchange_live_test",
+        request_id,
+        itemName: item_name,
+        itemSlot: item_slot,
+      });
+      if (!sent) {
+        const pending = exchange_live_test_requests.get(request_id);
+        if (pending) {
+          clearTimeout(pending.timer);
+          exchange_live_test_requests.delete(request_id);
+        }
+        throw make_control_error(
+          "EXCHANGE_LIVE_TEST_DISPATCH_FAILED",
+          `Could not dispatch Exchange live test to ${char_name}`,
+          503,
+        );
+      }
+
+      const child_response = await result_promise;
+      if (child_response.error || !child_response.result) {
+        throw make_control_error(
+          "EXCHANGE_LIVE_TEST_RUNTIME_FAILED",
+          child_response.error || "Exchange live test returned no result",
+          500,
+        );
+      }
+
+      const runtime_result = child_response.result;
+      ready_block.exchange_live_test = {
+        ...runtime_result,
+        request_id,
+        status:
+          runtime_result.outcome === "PASS"
+            ? "COMPLETED"
+            : runtime_result.outcome === "UNKNOWN"
+            ? "UNKNOWN"
+            : "FAILED",
+        started_at,
+        completed_at: Date.now(),
+        cleanup: {
+          ...(runtime_result.cleanup || {}),
+          runtimeStateRestored: false,
+          dispatcherRestored: false,
+        },
+      };
+      emit_supervisor_event("EXCHANGE_LIVE_TEST_COMPLETED", char_name, {
+        request_id,
+        outcome: runtime_result.outcome,
+        reason: runtime_result.reason,
+        action_id: runtime_result.exchange?.lastAction?.id || null,
+        evidence: runtime_result.evidence || null,
+      });
+    } catch (error) {
+      char_block.exchange_live_test = {
+        request_id,
+        outcome:
+          error.code === "EXCHANGE_LIVE_TEST_TIMEOUT" ||
+          error.code === "EXCHANGE_LIVE_TEST_RUNTIME_TIMEOUT"
+            ? "TIMEOUT"
+            : "FAIL",
+        reason: error.code || error.message || "EXCHANGE_LIVE_TEST_FAILED",
+        error: error.message || String(error),
+        status: "FAILED",
+        started_at,
+        completed_at: Date.now(),
+        durationMs: Date.now() - started_at,
+        target: {
+          itemName: item_name,
+          itemSlot: item_slot,
+        },
+        scope: {
+          movementMutationAllowed: true,
+          upgradeMutationAllowed: false,
+          compoundMutationAllowed: false,
+          exchangeMutationAllowed: true,
+          craftMutationAllowed: false,
+          irreversibleMutation: true,
+          blindRetryAllowed: false,
+          mutationScope: "single-exchange-attempt-only",
+        },
+        cleanup: {
+          runtimeStateRestored: false,
+          dispatcherRestored: false,
+        },
+      };
+      emit_supervisor_event(
+        "EXCHANGE_LIVE_TEST_FAILED",
+        char_name,
+        char_block.exchange_live_test,
+      );
+    } finally {
+      const pending = exchange_live_test_requests.get(request_id);
+      if (pending) {
+        clearTimeout(pending.timer);
+        exchange_live_test_requests.delete(request_id);
+      }
+
+      try {
+        if (runtime_override_applied) {
+          await restore_movement_live_test_execution_source(
+            char_name,
+            original_desired_state,
+          );
+        } else {
+          await restore_movement_live_test_state(
+            char_name,
+            original_desired_state,
+          );
+        }
+        runtime_state_restored = true;
+      } catch (restore_error) {
+        emit_supervisor_event(
+          "EXCHANGE_LIVE_TEST_STATE_RESTORE_FAILED",
+          char_name,
+          {
+            request_id,
+            desired_runtime_state: original_desired_state,
+            error:
+              restore_error instanceof Error
+                ? restore_error.message
+                : String(restore_error),
+          },
+        );
+      }
+
+      exchange_live_test_active = false;
+      schedule_merchant_logistics_dispatch();
+      const final_block = character_manage[char_name];
+      if (final_block?.exchange_live_test) {
+        final_block.exchange_live_test.cleanup = {
+          ...(final_block.exchange_live_test.cleanup || {}),
+          runtimeStateRestored: runtime_state_restored,
+          dispatcherRestored: true,
+        };
+        if (
+          !runtime_state_restored &&
+          final_block.exchange_live_test.outcome === "PASS"
+        ) {
+          final_block.exchange_live_test.outcome = "FAIL";
+          final_block.exchange_live_test.reason =
+            "EXCHANGE_LIVE_E2E_STATE_RESTORE_FAILED";
+          final_block.exchange_live_test.status = "FAILED";
+        }
+      }
+      dashboard?.publishSnapshot();
+    }
+
+    return character_manage[char_name]?.exchange_live_test;
+  }
+
   async function run_compound_live_test(char_name, options = {}) {
     const char_block = character_manage[char_name];
     if (!char_block) {
@@ -8677,7 +9043,8 @@ function migrate_old_storage(path, localStorage) {
       compound_material_preparation_active ||
       upgrade_live_test_active ||
       upgrade_live_preflight_active ||
-      exchange_preflight_active
+      exchange_preflight_active ||
+      exchange_live_test_active
     ) {
       throw make_control_error(
         "MUTATION_VERIFICATION_ALREADY_RUNNING",
@@ -11031,6 +11398,37 @@ function migrate_old_storage(path, localStorage) {
           });
           emit_supervisor_event(
             "NPC_TRADING_LIVE_TEST_RESULT_RECEIVED",
+            char_name,
+            {
+              request_id: m.request_id,
+              outcome: m.result?.outcome || null,
+              error: m.error || null,
+            },
+          );
+          break;
+        }
+        case "exchange_live_test_result": {
+          const pending = exchange_live_test_requests.get(m.request_id);
+          if (!pending || pending.character !== char_name) {
+            emit_supervisor_event(
+              "EXCHANGE_LIVE_TEST_RESULT_IGNORED",
+              char_name,
+              {
+                why: "UNKNOWN_OR_STALE_REQUEST",
+                request_id: m.request_id || null,
+              },
+            );
+            break;
+          }
+
+          clearTimeout(pending.timer);
+          exchange_live_test_requests.delete(m.request_id);
+          pending.resolve({
+            result: m.result || null,
+            error: m.error || null,
+          });
+          emit_supervisor_event(
+            "EXCHANGE_LIVE_TEST_RESULT_RECEIVED",
             char_name,
             {
               request_id: m.request_id,

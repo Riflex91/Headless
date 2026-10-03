@@ -632,6 +632,49 @@ async function make_runner(upper, CODE_file, version, is_typescript) {
           });
         break;
       }
+      case "exchange_live_test": {
+        const requestId =
+          typeof m.request_id === "string" && m.request_id
+            ? m.request_id
+            : `exchange-live-${Date.now()}`;
+        const runtime = runner_context.__caracalBotRuntime;
+        if (!runtime?.runExchangeLiveTest) {
+          sendIpcMessage(process, {
+            type: "exchange_live_test_result",
+            request_id: requestId,
+            error: "EXCHANGE_LIVE_TEST_RUNTIME_NOT_READY",
+          });
+          break;
+        }
+
+        const itemName =
+          typeof m.itemName === "string" ? m.itemName.trim() : "";
+        const itemSlot = Number.isInteger(Number(m.itemSlot))
+          ? Number(m.itemSlot)
+          : -1;
+
+        void runtime
+          .runExchangeLiveTest({
+            requestId,
+            itemName,
+            itemSlot,
+          })
+          .then((result) => {
+            sendIpcMessage(process, {
+              type: "exchange_live_test_result",
+              request_id: requestId,
+              result,
+            });
+          })
+          .catch((error) => {
+            sendIpcMessage(process, {
+              type: "exchange_live_test_result",
+              request_id: requestId,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          });
+        break;
+      }
       case "upgrade_live_preflight": {
         const requestId =
           typeof m.request_id === "string" && m.request_id
