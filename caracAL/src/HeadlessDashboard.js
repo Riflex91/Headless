@@ -327,6 +327,7 @@ function attachHeadlessDashboard({
   runUpgradeLivePreflight,
   runExchangePreflight,
   runCraftPreflight,
+  runCraftMaterialPlanReadOnly,
   runCraftMaterialPreparation,
   runExchangeLiveTest,
   runCompoundMaterialPreparation,
@@ -660,6 +661,33 @@ function attachHeadlessDashboard({
       } catch (error) {
         res.status(Number(error.statusCode) || 500).json({
           error: error.code || "CRAFT_PREFLIGHT_FAILED",
+          message: error.message,
+        });
+      }
+    },
+  );
+
+  router.post(
+    "/headless/api/characters/:name/tests/craft-material-plan",
+    express.json({ limit: "8kb" }),
+    async (req, res) => {
+      if (!runCraftMaterialPlanReadOnly) {
+        res.status(503).json({ error: "CRAFT_MATERIAL_PLAN_UNAVAILABLE" });
+        return;
+      }
+
+      try {
+        const result = await runCraftMaterialPlanReadOnly(req.params.name, {
+          recipe: req.body?.recipe,
+        });
+        res.json({
+          ok: result?.outcome === "PASS",
+          result,
+          snapshot: getSnapshot(),
+        });
+      } catch (error) {
+        res.status(Number(error.statusCode) || 500).json({
+          error: error.code || "CRAFT_MATERIAL_PLAN_FAILED",
           message: error.message,
         });
       }
