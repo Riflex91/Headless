@@ -131,9 +131,7 @@ function gearScoringEvidence(character) {
   const scoring = record(character?.gear_scoring_runtime);
   const entries = Array.isArray(scoring.entries) ? scoring.entries : [];
   const weights = record(scoring.weights);
-  const equipment = entries.filter(
-    (entry) => entry?.location === "EQUIPMENT",
-  );
+  const equipment = entries.filter((entry) => entry?.location === "EQUIPMENT");
   const scoredEquipment = equipment.filter(
     (entry) => entry?.definitionKnown === true && finite(entry?.score),
   );
@@ -197,7 +195,9 @@ async function waitForGearScoringProjection(
       (entry) => entry.name === characterName,
     );
     if (!character) {
-      throw new Error(`Character disappeared from dashboard state: ${characterName}`);
+      throw new Error(
+        `Character disappeared from dashboard state: ${characterName}`,
+      );
     }
     latest = character;
 
@@ -219,9 +219,7 @@ async function runGearScoringLiveVerification(
   {
     readStateImpl = readState,
     sleepImpl = sleep,
-    settleMs = Number(
-      process.env.CARACAL_GEAR_SCORING_LIVE_SETTLE_MS || 1200,
-    ),
+    settleMs = Number(process.env.CARACAL_GEAR_SCORING_LIVE_SETTLE_MS || 1200),
   } = {},
 ) {
   const startedAt = Date.now();
@@ -240,7 +238,9 @@ async function runGearScoringLiveVerification(
     (entry) => entry.name === characterName,
   );
   if (!finalCharacter) {
-    throw new Error(`Character disappeared from dashboard state: ${characterName}`);
+    throw new Error(
+      `Character disappeared from dashboard state: ${characterName}`,
+    );
   }
 
   const finalEvidence = gearScoringEvidence(finalCharacter);
