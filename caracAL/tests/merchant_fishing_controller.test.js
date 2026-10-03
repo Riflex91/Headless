@@ -51,18 +51,15 @@ function fixture(options = {}) {
       rip: false,
       moving: false,
     },
-    inventory:
-      options.inventory ||
-      [
-        { slot: 0, item: { name: "rod" } },
-        { slot: 1, item: null },
-        { slot: 2, item: null },
-        { slot: 3, item: null },
-      ],
-    equipment:
-      options.equipment || {
-        mainhand: { name: "sword", level: 3, rid: "OLD-WEAPON" },
-      },
+    inventory: options.inventory || [
+      { slot: 0, item: { name: "rod" } },
+      { slot: 1, item: null },
+      { slot: 2, item: null },
+      { slot: 3, item: null },
+    ],
+    equipment: options.equipment || {
+      mainhand: { name: "sword", level: 3, rid: "OLD-WEAPON" },
+    },
     entities: options.entities || [],
     gameData: {
       items: {
@@ -146,7 +143,8 @@ function fixture(options = {}) {
         evidence: {
           result: {
             success: true,
-            response: options.found === true ? "fishing_success" : "fishing_none",
+            response:
+              options.found === true ? "fishing_success" : "fishing_none",
             found: options.found === true,
           },
         },
@@ -167,7 +165,9 @@ function fixture(options = {}) {
       calls.push(["unequip", request.slot]);
       const empty = firstEmptySlot();
       if (empty === null) return record("UNEQUIP", "BLOCKED");
-      const entry = state.inventory.find((candidate) => candidate.slot === empty);
+      const entry = state.inventory.find(
+        (candidate) => candidate.slot === empty,
+      );
       entry.item = state.equipment[request.slot] || null;
       state.equipment[request.slot] = null;
       return record("UNEQUIP");
@@ -345,13 +345,22 @@ test("Fishing acquires staff and spidersilk, crafts rod, then completes autonomo
     s.calls.some(([name, item]) => name === "buy" && item === "staff"),
     true,
   );
-  assert.equal(s.calls.some(([name]) => name === "attack"), true);
-  assert.equal(s.calls.some(([name]) => name === "loot"), true);
+  assert.equal(
+    s.calls.some(([name]) => name === "attack"),
+    true,
+  );
+  assert.equal(
+    s.calls.some(([name]) => name === "loot"),
+    true,
+  );
   assert.equal(
     s.calls.some(([name, recipe]) => name === "craft" && recipe === "rod"),
     true,
   );
-  assert.equal(s.calls.some(([name]) => name === "useSkill"), true);
+  assert.equal(
+    s.calls.some(([name]) => name === "useSkill"),
+    true,
+  );
   assert.equal(s.state.equipment.mainhand.name, "sword");
   assert.equal(s.state.equipment.mainhand.rid, "OLD-WEAPON");
 });
@@ -366,10 +375,7 @@ test("Fishing stops permanently after UNKNOWN equipment mutation", async () => {
   assert.equal(first.state, "UNKNOWN");
   assert.equal(second.state, "UNKNOWN");
   assert.match(second.reason, /REQUIRES_RECONCILIATION/);
-  assert.equal(
-    s.calls.filter(([name]) => name === "equip").length,
-    1,
-  );
+  assert.equal(s.calls.filter(([name]) => name === "equip").length, 1);
   assert.equal(
     s.events.some((event) => event.type === "FISHING_ACTION_UNKNOWN"),
     true,
