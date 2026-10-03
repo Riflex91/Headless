@@ -5508,8 +5508,7 @@ function migrate_old_storage(path, localStorage) {
         : DESIRED_RUNTIME_STATES.STOPPED);
     const started_at = Date.now();
     bank_travel_live_test_sequence += 1;
-    const request_id =
-      `bank-travel-live-${started_at}-${bank_travel_live_test_sequence}`;
+    const request_id = `bank-travel-live-${started_at}-${bank_travel_live_test_sequence}`;
 
     char_block.bank_travel_live_test = {
       request_id,
