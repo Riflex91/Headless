@@ -2538,6 +2538,27 @@ function migrate_old_storage(path, localStorage) {
     }, 0);
   }
 
+  function live_item_slots_at_level(char_block, item_name, item_level = 0) {
+    const level = Math.max(0, Math.floor(Number(item_level) || 0));
+    const items = Array.isArray(char_block?.live_state?.items)
+      ? char_block.live_state.items
+      : [];
+    return items.flatMap((item, slot) => {
+      if (!item || item.name !== item_name) return [];
+      const current_level = Math.max(0, Math.floor(Number(item.level) || 0));
+      return current_level === level ? [slot] : [];
+    });
+  }
+
+  function live_item_slots(char_block, item_name) {
+    const items = Array.isArray(char_block?.live_state?.items)
+      ? char_block.live_state.items
+      : [];
+    return items.flatMap((item, slot) =>
+      item?.name === item_name ? [slot] : [],
+    );
+  }
+
   function fishing_material_worker_names(merchant_block) {
     const config = logistics_record(merchant_block?.runtime_config);
     const autonomy = logistics_record(
@@ -3108,6 +3129,16 @@ function migrate_old_storage(path, localStorage) {
         character_manage[merchant_name],
         selected.scrollName,
       );
+      const matching_item_slots = live_item_slots_at_level(
+        character_manage[merchant_name],
+        item_name,
+        item_level,
+      );
+      const matching_scroll_slots = live_item_slots(
+        character_manage[merchant_name],
+        selected.scrollName,
+      );
+
       const result = {
         outcome: "PASS",
         reason: "COMPOUND_MATERIAL_PREPARATION_CONFIRMED",
@@ -3125,6 +3156,8 @@ function migrate_old_storage(path, localStorage) {
         finalQuantity: current_quantity,
         targetQuantity: target_quantity,
         scrollQuantity: scroll_quantity,
+        matchingItemSlots: matching_item_slots,
+        matchingScrollSlots: matching_scroll_slots,
         readyForCompound: current_quantity >= 3 && scroll_quantity >= 1,
         workerResults: worker_results,
         evidence: {
