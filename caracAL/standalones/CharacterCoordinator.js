@@ -89,6 +89,11 @@ const {
   merritLiveTestDiagnostics,
   merritLiveTestEvidence,
 } = require("../src/MerritLiveTest");
+const {
+  combineFishingLiveTestResult,
+  fishingLiveTestDiagnostics,
+  fishingLiveTestEvidence,
+} = require("../src/FishingLiveTest");
 const { PersistenceService } = require("../src/PersistenceService");
 const { CharacterConfigService } = require("../src/CharacterConfigService");
 const { MerchantLogisticsPlanner } = require("../src/MerchantLogisticsPlanner");
@@ -128,6 +133,7 @@ const INVENTORY_LIVE_TEST_RESULT_TIMEOUT_MS = 120000;
 const LOGISTICS_LIVE_TEST_RESULT_TIMEOUT_MS = 120000;
 const MERCHANT_LIVE_TEST_RESULT_TIMEOUT_MS = 120000;
 const MERRIT_LIVE_TEST_RESULT_TIMEOUT_MS = 420000;
+const FISHING_LIVE_TEST_RESULT_TIMEOUT_MS = 20 * 60 * 1000;
 const LOGISTICS_CLAIM_RESULT_TIMEOUT_MS = 30000;
 
 //TODO check for invalid session
@@ -264,6 +270,9 @@ function migrate_old_storage(path, localStorage) {
   let merchant_live_test_sequence = 0;
   const merrit_live_test_requests = new Map();
   let merrit_live_test_sequence = 0;
+  const fishing_live_test_requests = new Map();
+  let fishing_live_test_sequence = 0;
+  let fishing_live_test_active = false;
   const logistics_claim_requests = new Map();
   let logistics_claim_sequence = 0;
   let logistics_dispatch_scheduled = false;
@@ -312,6 +321,7 @@ function migrate_old_storage(path, localStorage) {
         runLogisticsLiveTest: run_logistics_live_test,
         runMerchantLiveTest: run_merchant_live_test,
         runMerritLiveTest: run_merrit_live_test,
+        runFishingLiveTest: run_fishing_live_test,
         controlEmergencyStop: control_emergency_stop,
         getEmergencyStopState: () => emergency_stop.snapshot(),
         getRevisionSummary: revision_summary,
@@ -437,7 +447,7 @@ function migrate_old_storage(path, localStorage) {
 
   function dispatch_merchant_logistics_claim() {
     if (coordinator_shutting_down) return false;
-    if (logistics_live_test_active) return false;
+    if (logistics_live_test_active || fishing_live_test_active) return false;
     if (emergency_stop.snapshot().active) return false;
     if (logistics_claim_requests.size > 0) return false;
 
