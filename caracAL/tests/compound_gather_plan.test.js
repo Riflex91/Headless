@@ -108,6 +108,8 @@ test("Compound gather planner resolves open tables from G.drops.monsters", () =>
             type: "amulet",
             compound: { hp: 20 },
           },
+          junk1: { type: "material" },
+          junk2: { type: "material" },
         },
         monsters: {
           fvampire: {
@@ -118,7 +120,11 @@ test("Compound gather planner resolves open tables from G.drops.monsters", () =>
           monsters: {
             fvampire: [[0.3, "open", "statamulet"]],
           },
-          statamulet: [[0.25, "hpamulet"]],
+          statamulet: [
+            [1, "hpamulet"],
+            [1, "junk1"],
+            [2, "junk2"],
+          ],
         },
       };
     },
@@ -191,6 +197,117 @@ test("Compound gather planner accepts object-mapped monster drops", () => {
   assert.equal(result.outcome, "PASS");
   assert.equal(result.selected.itemName, "ring");
   assert.equal(result.selected.dropChance, 0.4);
+});
+
+test("Compound gather planner ignores drop metadata after direct item name", () => {
+  const planCompoundGatherTarget = loadPlanner();
+  const result = planCompoundGatherTarget({
+    gameData() {
+      return {
+        items: {
+          direct: { compound: { dex: 1 } },
+          metadata_item: { compound: { int: 1 } },
+        },
+        monsters: {
+          goo: {
+            hp: 100,
+          },
+        },
+        drops: {
+          monsters: {
+            goo: [[0.5, "direct", 1, "metadata_item"]],
+          },
+        },
+      };
+    },
+    itemGrade() {
+      return 0;
+    },
+  });
+
+  assert.equal(result.outcome, "PASS");
+  assert.equal(result.selected.itemName, "direct");
+  assert.equal(
+    result.candidates.some((entry) => entry.itemName === "metadata_item"),
+    false,
+  );
+});
+
+test("Compound gather planner excludes non-regular special spawns when map spawns exist", () => {
+  const planCompoundGatherTarget = loadPlanner();
+  const result = planCompoundGatherTarget({
+    gameData() {
+      return {
+        items: {
+          rare_ring: { compound: { dex: 1 } },
+          farm_ring: { compound: { dex: 1 } },
+        },
+        monsters: {
+          cutebee: { hp: 300 },
+          bat: { hp: 9600 },
+        },
+        maps: {
+          cave: {
+            monsters: [
+              {
+                type: "bat",
+                count: 4,
+              },
+            ],
+          },
+        },
+        drops: {
+          monsters: {
+            cutebee: [[1, "rare_ring"]],
+            bat: [[0.004, "farm_ring"]],
+          },
+        },
+      };
+    },
+    itemGrade() {
+      return 0;
+    },
+  });
+
+  assert.equal(result.outcome, "PASS");
+  assert.equal(result.selected.monsterType, "bat");
+  assert.equal(result.selected.itemName, "farm_ring");
+  assert.equal(
+    result.candidates.some((entry) => entry.monsterType === "cutebee"),
+    false,
+  );
+});
+
+test("Compound gather planner reports observer position from runtime snapshot", () => {
+  const planCompoundGatherTarget = loadPlanner();
+  const result = planCompoundGatherTarget({
+    gameData() {
+      return {
+        items: {
+          ring: { compound: { dex: 1 } },
+        },
+        monsters: {
+          goo: { hp: 100, drop: [[1, "ring"]] },
+        },
+      };
+    },
+    itemGrade() {
+      return 0;
+    },
+    character() {
+      return {
+        map: "main",
+        x: 123,
+        y: -45,
+      };
+    },
+  });
+
+  assert.deepEqual(result.observerPosition, {
+    map: "main",
+    x: 123,
+    y: -45,
+  });
 });
 
 test("Compound gather planner prefers better expected farming yield", () => {
