@@ -485,6 +485,7 @@ export class MerchantMerritController {
   private temporaryListingSlot: string | null = null;
   private openedStandByController = false;
   private lastAction: ActionRecord | null = null;
+  private unknownAction: ActionRecord | null = null;
   private parcelConfirmedAt: number | null = null;
   private parcelReadyAt: number | null = null;
   private sessionEnabled = false;
@@ -540,6 +541,16 @@ export class MerchantMerritController {
 
     if (!this.sessionEnabled) {
       this.beginSession(character);
+    }
+    if (this.unknownAction) {
+      return this.publish(
+        this.buildStatus(
+          config,
+          "UNKNOWN",
+          "MERRIT_ACTION_OUTCOME_UNKNOWN_REQUIRES_RECONCILIATION",
+          "Handoff",
+        ),
+      );
     }
 
     this.requestStatusIfDue(config);
@@ -945,6 +956,7 @@ export class MerchantMerritController {
     this.parcelReadyAt = null;
     this.lastMutationAt = 0;
     this.lastAction = null;
+    this.unknownAction = null;
     this.temporaryListingSlot = null;
     this.openedStandByController = false;
     this.candidateIndex = 0;
@@ -1198,7 +1210,10 @@ export class MerchantMerritController {
   private recordMutation(action: ActionRecord): void {
     this.lastAction = action;
     if (action.status === "CONFIRMED") this.lastMutationAt = this.now();
-    if (action.status === "UNKNOWN") this.emitUnknown(action);
+    if (action.status === "UNKNOWN") {
+      this.unknownAction = action;
+      this.emitUnknown(action);
+    }
   }
 
   private actionFailureStatus(
