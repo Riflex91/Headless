@@ -105,6 +105,101 @@ test("Craft material planner chooses the cheapest near-ready gatherable recipe",
   assert.equal(result.selected.source.dropChance, 1);
 });
 
+test("Craft material planner carries the runtime observer position", () => {
+  const { planCraftMaterialPreparation } = core(
+    "craft-material-preparation-plan.lib.ts",
+  );
+
+  const result = planCraftMaterialPreparation(gameData(), craftStatus(), {
+    recipe: "rod",
+    observerPosition: { map: "main", x: -25, y: -478 },
+  });
+
+  assert.deepEqual(result.observerPosition, {
+    map: "main",
+    x: -25,
+    y: -478,
+  });
+  assert.equal(result.selected.sourcePolicy.safe, true);
+  assert.deepEqual(result.selected.sourcePolicy.spawnMaps, ["main"]);
+  assert.equal(result.selected.sourcePolicy.expectedKills, 1);
+  assert.equal(result.selected.sourcePolicy.expectedMonsterHp, 120);
+});
+
+test("Craft material planner rejects boss and statistically excessive sources", () => {
+  const { planCraftMaterialPreparation } = core(
+    "craft-material-preparation-plan.lib.ts",
+  );
+  const data = gameData();
+  data.monsters = {
+    spider: { hp: 18000, attack: 80 },
+    spiderbl: {
+      hp: 4500000,
+      attack: 1200,
+      stationary: true,
+      respawn: -1,
+    },
+  };
+  data.drops.monsters = {
+    spider: [[0.001, "spidersilk"]],
+    spiderbl: [[1, "spidersilk"]],
+  };
+  data.maps = {
+    main: { monsters: [{ type: "spider" }] },
+    spider_instance: {
+      instance: true,
+      monsters: [{ type: "spiderbl" }],
+    },
+  };
+
+  const result = planCraftMaterialPreparation(data, craftStatus(), {
+    recipe: "rod",
+    observerPosition: { map: "main", x: 1, y: 2 },
+  });
+
+  assert.equal(result.outcome, "FAIL");
+  assert.equal(result.reason, "CRAFT_MATERIAL_SAFE_SOURCE_NOT_FOUND");
+  assert.equal(result.selected, null);
+  assert.equal(result.candidates.length, 0);
+  assert.equal(result.rejectedSources.length, 2);
+
+  const normalSpider = result.rejectedSources.find(
+    (entry) => entry.source.monsterType === "spider",
+  );
+  const blackSpider = result.rejectedSources.find(
+    (entry) => entry.source.monsterType === "spiderbl",
+  );
+  assert.ok(normalSpider);
+  assert.ok(blackSpider);
+  assert.equal(normalSpider.sourcePolicy.expectedKills, 1000);
+  assert.ok(
+    normalSpider.sourcePolicy.reasons.includes(
+      "EXPECTED_KILLS_OUT_OF_POLICY",
+    ),
+  );
+  assert.ok(
+    normalSpider.sourcePolicy.reasons.includes(
+      "EXPECTED_MONSTER_HP_OUT_OF_POLICY",
+    ),
+  );
+  assert.ok(
+    blackSpider.sourcePolicy.reasons.includes("NO_SAFE_REGULAR_SPAWN"),
+  );
+  assert.ok(
+    blackSpider.sourcePolicy.reasons.includes("MONSTER_HP_OUT_OF_POLICY"),
+  );
+  assert.ok(
+    blackSpider.sourcePolicy.reasons.includes(
+      "MONSTER_ATTACK_OUT_OF_POLICY",
+    ),
+  );
+  assert.ok(
+    blackSpider.sourcePolicy.reasons.includes(
+      "STATIONARY_MONSTER_BLOCKED",
+    ),
+  );
+});
+
 test("Craft material planner honors an explicit recipe", () => {
   const { planCraftMaterialPreparation } = core(
     "craft-material-preparation-plan.lib.ts",
