@@ -36,12 +36,7 @@ function setup(options = {}) {
         server_now: now,
         next_at: now,
       },
-      items: [
-        { name: "stand0" },
-        { name: "hpot0", q: 10 },
-        null,
-        null,
-      ],
+      items: [{ name: "stand0" }, { name: "hpot0", q: 10 }, null, null],
       slots: {},
     },
     entities: {},
@@ -361,10 +356,7 @@ test("UNKNOWN stand outcome becomes terminal until a new controller session", as
   assert.equal(first.state, "UNKNOWN");
   assert.equal(second.state, "UNKNOWN");
   assert.match(second.reason, /REQUIRES_RECONCILIATION/);
-  assert.equal(
-    s.calls.filter(([name]) => name === "openStand").length,
-    1,
-  );
+  assert.equal(s.calls.filter(([name]) => name === "openStand").length, 1);
   assert.equal(
     s.events.some((event) => event.type === "MERRIT_ACTION_UNKNOWN"),
     true,
