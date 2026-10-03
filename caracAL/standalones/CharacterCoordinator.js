@@ -11144,10 +11144,15 @@ function migrate_old_storage(path, localStorage) {
           //check for existing charblock, adjust parameters and kill it
           //or not find any, make a new one and start it
           const new_char_name = m.character || char_name;
+          const existing_candidate = character_manage[new_char_name] || {};
+          const active_typescript_override =
+            existing_candidate.movement_live_test_typescript_override || null;
           const candidate = initialize_char_block(
             new_char_name,
-            character_manage[new_char_name] || {},
+            existing_candidate,
           );
+          candidate.movement_live_test_typescript_override =
+            active_typescript_override;
           character_manage[new_char_name] = candidate;
           candidate.enabled = true;
           candidate.desired_runtime_state = DESIRED_RUNTIME_STATES.RUNNING;
