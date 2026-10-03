@@ -58,6 +58,20 @@ function verifyCompoundLiveResult(source, expected = {}) {
     allItemsUnprotectedBefore: evidence.allItemsUnprotectedBefore === true,
     scrollUnprotectedBefore: evidence.scrollUnprotectedBefore === true,
     exactCandidateSelected: evidence.exactCandidateSelected === true,
+    stationReady:
+      evidence.stationLocated === true &&
+      evidence.stationId === "newupgrade" &&
+      evidence.stationMap === "main" &&
+      Number.isFinite(evidence.stationX) &&
+      Number.isFinite(evidence.stationY) &&
+      evidence.stationTravelConfirmed === true &&
+      evidence.stationProximityReady === true &&
+      Number.isFinite(evidence.stationDistanceAfter) &&
+      evidence.stationDistanceAfter <= 60 &&
+      (evidence.stationTravelRequired !== true ||
+        (typeof evidence.stationTravelActionId === "string" &&
+          evidence.stationTravelActionId.length > 0 &&
+          evidence.stationTravelStatus === "CONFIRMED")),
     localPreflightReady:
       evidence.localPreflightReadOnly === true &&
       evidence.compoundOperationIdle === true &&
@@ -84,6 +98,7 @@ function verifyCompoundLiveResult(source, expected = {}) {
       cleanup.runtimeStateRestored === true &&
       cleanup.dispatcherRestored === true,
     scopeRestricted:
+      scope.movementMutationAllowed === true &&
       scope.upgradeMutationAllowed === false &&
       scope.compoundMutationAllowed === true &&
       scope.irreversibleMutation === true &&
