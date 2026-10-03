@@ -1200,6 +1200,7 @@ function migrate_old_storage(path, localStorage) {
     );
     persist_character_runtime_state(char_name, "initialize");
     refresh_merchant_logistics("CHARACTER_INITIALIZED");
+    refresh_account_gear_reservations("CHARACTER_INITIALIZED");
     return char_block;
   }
 
@@ -8035,6 +8036,7 @@ function migrate_old_storage(path, localStorage) {
       char_block.connected = false;
       char_block.bot_runtime_started_at = null;
       char_block.watchdog_recovery_in_progress = false;
+      refresh_account_gear_reservations("CHARACTER_DISCONNECTED");
       reject_movement_live_tests_for_character(
         char_name,
         "CHARACTER_PROCESS_EXITED_DURING_MOVEMENT_LIVE_TEST",
