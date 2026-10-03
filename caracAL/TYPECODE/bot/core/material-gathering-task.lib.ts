@@ -235,6 +235,7 @@ export class MaterialGatheringTaskRunner {
       const currentQuantity = inventoryQuantity(
         this.deps.game.inventory(),
         options.itemName,
+        requiredLevel,
       );
       return {
         requestId,
