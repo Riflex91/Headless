@@ -163,12 +163,8 @@ test("account inventory renders all connected live characters together", () => {
       root.querySelector(".item-gear-score-badge").textContent,
       "GS 42.5",
     );
-    assert.match(
-      root
-        .querySelector(".item-gear-score-badge")
-        .closest(".live-item-slot").title,
-      /Gear score 42.5/,
-    );
+    const scoredSlot = root.querySelector(".item-gear-score-badge").parentElement;
+    assert.match(scoredSlot.title, /Gear score 42.5/);
   } finally {
     global.document = previousDocument;
     dom.window.close();
