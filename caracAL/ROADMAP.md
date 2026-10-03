@@ -1156,10 +1156,9 @@ Aus ALFinal 0.26.57-h26 übernehmen/neu strukturieren:
 - Merrit
 - Wishlist
 - Giveaways
-- Ponty
 - Merchant Skills
 
-Fishing und Mining werden in Phase 12 nicht weitergeführt. Bereits vorhandene Implementierung, Tests und Live-Evidence bleiben unverändert erhalten; die weitere Umsetzung und Live-Verifikation wird ans Ende von Phase 22 verschoben.
+Fishing, Mining und Ponty werden in Phase 12 nicht weitergeführt. Bereits vorhandene Implementierung, Tests und Live-Evidence bleiben unverändert erhalten; die weitere Umsetzung und Live-Verifikation wird nach Phase 12 in Phase 22 fortgeführt.
 
 ### Merrit
 ```text
@@ -1177,18 +1176,6 @@ Cooldown
 
 ### Giveaways
 Nur `join_giveaway`, niemals Giveaway erstellen.
-
-### Ponty
-```text
-finden
-→ Travel
-→ Scan
-→ bewerten
-→ Budget
-→ revalidieren
-→ kaufen
-→ Gold/Inventory bestätigen
-```
 
 ## Phase 13 – Bank + Trading
 - Bank automatisch finden
@@ -1338,9 +1325,22 @@ Beispiele:
 - Decision Inspector
 - erweiterte Inventory-/Equipment-Historie
 
-### Abschluss von Phase 22 – Fishing / Mining
-Fishing und Mining werden erst nach Abschluss der übrigen Phase-22-Arbeiten weitergeführt und live verifiziert.
+### Abschluss von Phase 22 – Ponty / Fishing / Mining
+Ponty, Fishing und Mining werden erst nach Abschluss der übrigen Phase-22-Arbeiten weitergeführt und live verifiziert.
 
+#### Ponty
+```text
+finden
+→ Travel
+→ Scan
+→ bewerten
+→ Budget
+→ revalidieren
+→ kaufen
+→ Gold/Inventory bestätigen
+```
+
+#### Fishing / Mining
 ```text
 Skill
 → Tool
@@ -1355,7 +1355,8 @@ Skill
 
 Reihenfolge am Ende von Phase 22:
 ```text
-Fishing
+Ponty
+→ Fishing
 → Mining
 ```
 
@@ -1401,7 +1402,7 @@ Fishing
 19 Goals
 20 Boss/Event/Quest
 21 Recovery
-22 Dashboard V2 → Fishing → Mining
+22 Dashboard V2 → Ponty → Fishing → Mining
 23 Production Hardening
 ```
 
