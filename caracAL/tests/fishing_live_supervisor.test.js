@@ -348,6 +348,13 @@ test("coordinator, runtime, thread, dashboard and launcher expose Fishing live p
   assert.match(coordinator, /My_Ranger2/);
   assert.match(coordinator, /My_Ranger3/);
   assert.match(coordinator, /FISHING_MATERIAL_REQUEST_COMPLETED/);
+  assert.match(
+    coordinator,
+    /recipientPosition: normalized\.data\?\.merchantFishing\?\.character/,
+  );
+  assert.match(coordinator, /request\?\.recipientPosition/);
+  assert.match(coordinator, /event_x \?\? live_x/);
+  assert.match(runtime, /merchantFishing: event\.status/);
   assert.match(runtime, /FISHING_AUTONOMY_JOB_ID/);
   assert.match(runtime, /runFishingLiveTest/);
   assert.match(runtime, /runMaterialGatherTask/);
