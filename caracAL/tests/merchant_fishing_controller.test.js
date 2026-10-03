@@ -353,7 +353,10 @@ test("Fishing requests spidersilk from workers, crafts rod, and never attacks as
     s.calls.some(([name, recipe]) => name === "craft" && recipe === "rod"),
     true,
   );
-  assert.equal(s.calls.some(([name]) => name === "useSkill"), true);
+  assert.equal(
+    s.calls.some(([name]) => name === "useSkill"),
+    true,
+  );
   assert.equal(
     s.calls.some(([name]) => name === "attack" || name === "loot"),
     false,
