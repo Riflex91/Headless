@@ -601,6 +601,39 @@ async function make_runner(upper, CODE_file, version, is_typescript) {
           });
         break;
       }
+      case "craft_material_plan": {
+        const requestId =
+          typeof m.request_id === "string" && m.request_id
+            ? m.request_id
+            : `craft-material-plan-${Date.now()}`;
+        const runtime = runner_context.__caracalBotRuntime;
+        if (!runtime?.runCraftMaterialPlan) {
+          sendIpcMessage(process, {
+            type: "craft_material_plan_result",
+            request_id: requestId,
+            error: "CRAFT_MATERIAL_PLAN_RUNTIME_NOT_READY",
+          });
+          break;
+        }
+
+        try {
+          const result = runtime.runCraftMaterialPlan(
+            typeof m.recipe === "string" ? m.recipe : null,
+          );
+          sendIpcMessage(process, {
+            type: "craft_material_plan_result",
+            request_id: requestId,
+            result,
+          });
+        } catch (error) {
+          sendIpcMessage(process, {
+            type: "craft_material_plan_result",
+            request_id: requestId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+        break;
+      }
       case "craft_preflight": {
         const requestId =
           typeof m.request_id === "string" && m.request_id
