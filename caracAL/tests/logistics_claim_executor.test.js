@@ -420,6 +420,36 @@ test("authorized fishing material delivery sends ranger item to merchant", async
   ]);
 });
 
+test("authorized Compound material delivery selects the exact requested level", async () => {
+  const { executor, calls } = setup({
+    character: "My_Ranger1",
+    items: [
+      { name: "ring", level: 1, locked: false },
+      { name: "ring", level: 0, locked: false },
+    ],
+  });
+  const result = await executor.execute({
+    id: "compound-material-1",
+    type: "MATERIAL_DELIVERY",
+    farmer: "My_Ranger1",
+    merchant: { name: "My_Merchant", live: true },
+    itemName: "ring",
+    quantity: 1,
+    reason: "COMPOUND_TEST_MATERIAL_DELIVERY",
+    metadata: {
+      purpose: "COMPOUND_TEST_MATERIAL",
+      authorized: true,
+      itemLevel: 0,
+    },
+  });
+
+  assert.equal(result.outcome, "CONFIRMED");
+  assert.equal(result.fulfilled, true);
+  assert.equal(calls[0][0], "sendItem");
+  assert.equal(calls[0][1].inventorySlot, 1);
+  assert.equal(calls[0][1].quantity, 1);
+});
+
 test("material delivery blocks without explicit fishing authorization", async () => {
   const { executor, calls } = setup({
     character: "My_Ranger1",
