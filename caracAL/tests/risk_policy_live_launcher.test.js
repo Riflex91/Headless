@@ -3,6 +3,7 @@
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
+const prettier = require("prettier");
 const test = require("node:test");
 
 const {
@@ -302,3 +303,20 @@ test("Risk Policy live launcher stays on the read-only Gear Scoring probe", () =
   assert.match(launcher, /riskPolicyMutationForced: false/);
   assert.doesNotMatch(launcher, /executeNext/);
 });
+
+// PRETTIER_RISK_LIVE_PROBE_START
+test("temporary Risk Policy live Prettier probe", async () => {
+  const targetPath = path.join(
+    __dirname,
+    "..",
+    "scripts",
+    "run_risk_policy_live_e2e.js",
+  );
+  const source = fs.readFileSync(targetPath, "utf8");
+  const formatted = await prettier.format(source, { filepath: targetPath });
+  console.log("RISK_LIVE_PRETTIER_START");
+  console.log(formatted);
+  console.log("RISK_LIVE_PRETTIER_END");
+  assert.ok(formatted.length > 0);
+});
+// PRETTIER_RISK_LIVE_PROBE_END
