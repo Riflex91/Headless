@@ -111,6 +111,7 @@ function publicCharacterState(name, charBlock = {}) {
     upgrade_live_test: charBlock.upgrade_live_test || null,
     upgrade_live_preflight: charBlock.upgrade_live_preflight || null,
     exchange_preflight: charBlock.exchange_preflight || null,
+    craft_preflight: charBlock.craft_preflight || null,
     exchange_live_test: charBlock.exchange_live_test || null,
     compound_live_test: charBlock.compound_live_test || null,
     logistics_live_test: charBlock.logistics_live_test || null,
@@ -325,6 +326,7 @@ function attachHeadlessDashboard({
   runUpgradeLiveTest,
   runUpgradeLivePreflight,
   runExchangePreflight,
+  runCraftPreflight,
   runExchangeLiveTest,
   runCompoundMaterialPreparation,
   runCompoundLiveTest,
@@ -633,6 +635,30 @@ function attachHeadlessDashboard({
       } catch (error) {
         res.status(Number(error.statusCode) || 500).json({
           error: error.code || "UPGRADE_PREFLIGHT_FAILED",
+          message: error.message,
+        });
+      }
+    },
+  );
+
+  router.post(
+    "/headless/api/characters/:name/tests/craft-preflight",
+    async (req, res) => {
+      if (!runCraftPreflight) {
+        res.status(503).json({ error: "CRAFT_PREFLIGHT_UNAVAILABLE" });
+        return;
+      }
+
+      try {
+        const result = await runCraftPreflight(req.params.name);
+        res.json({
+          ok: result?.outcome === "PASS",
+          result,
+          snapshot: getSnapshot(),
+        });
+      } catch (error) {
+        res.status(Number(error.statusCode) || 500).json({
+          error: error.code || "CRAFT_PREFLIGHT_FAILED",
           message: error.message,
         });
       }
