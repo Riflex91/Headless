@@ -53,6 +53,7 @@ function passResult() {
       stationTravelStatus: null,
       stationDistanceAfter: 0,
       stationProximityReady: true,
+      movementIdleBeforeDispatch: true,
       localPreflightReadOnly: true,
       compoundOperationIdle: true,
       itemLocksClear: true,
