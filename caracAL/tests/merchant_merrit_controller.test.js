@@ -315,6 +315,31 @@ test("Merrit roadmap progresses stand -> listing -> settle -> handoff -> parcel"
   assert.equal(parcelEvents[0].data.cooldownMs, 3600000);
 });
 
+test("Merrit waits for server cooldown status before any mutation", async () => {
+  const s = setup();
+  s.state.character.merrit = null;
+
+  const result = await s.controller.tick();
+
+  assert.equal(result.state, "SYNCING");
+  assert.equal(result.roadmapStage, "Cooldown");
+  assert.equal(result.reason, "MERRIT_WAITING_FOR_SERVER_STATUS");
+  assert.equal(
+    s.calls.some(
+      ([name]) =>
+        name === "openStand" ||
+        name === "tradeList" ||
+        name === "buy" ||
+        name === "smart",
+    ),
+    false,
+  );
+  assert.equal(
+    s.calls.some(([name]) => name === "requestMerritStatus"),
+    true,
+  );
+});
+
 test("Merrit honors real account cooldown before any stand mutation", async () => {
   const s = setup();
   s.state.character.merrit.reasons = [
