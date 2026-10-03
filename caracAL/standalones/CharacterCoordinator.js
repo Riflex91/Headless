@@ -5688,7 +5688,8 @@ function migrate_old_storage(path, localStorage) {
       if (child_response.error || !child_response.result) {
         throw make_control_error(
           "MARKET_TRADING_LIVE_TEST_RUNTIME_FAILED",
-          child_response.error || "Market trading live test returned no result",
+          child_response.error ||
+            "Market trading live test returned no result",
           500,
         );
       }
