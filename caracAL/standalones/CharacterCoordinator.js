@@ -5527,9 +5527,7 @@ function migrate_old_storage(path, localStorage) {
       );
     }
     if (
-      ["STARTING", "RUNNING"].includes(
-        char_block.npc_trading_live_test?.status,
-      )
+      ["STARTING", "RUNNING"].includes(char_block.npc_trading_live_test?.status)
     ) {
       throw make_control_error(
         "NPC_TRADING_LIVE_TEST_ALREADY_RUNNING",
@@ -5568,8 +5566,7 @@ function migrate_old_storage(path, localStorage) {
         : DESIRED_RUNTIME_STATES.STOPPED);
     const started_at = Date.now();
     npc_trading_live_test_sequence += 1;
-    const request_id =
-      `npc-trading-live-${started_at}-${npc_trading_live_test_sequence}`;
+    const request_id = `npc-trading-live-${started_at}-${npc_trading_live_test_sequence}`;
 
     char_block.npc_trading_live_test = {
       request_id,
@@ -5690,8 +5687,7 @@ function migrate_old_storage(path, localStorage) {
           error.code === "MERCHANT_LIVE_TEST_RUNTIME_TIMEOUT"
             ? "TIMEOUT"
             : "FAIL",
-        reason:
-          error.code || error.message || "NPC_TRADING_LIVE_TEST_FAILED",
+        reason: error.code || error.message || "NPC_TRADING_LIVE_TEST_FAILED",
         error: error.message || String(error),
         status: "FAILED",
         started_at,
