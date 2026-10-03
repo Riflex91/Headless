@@ -55,12 +55,19 @@ function verifyCompoundPreparation(source) {
     ? result.workerResults
     : [];
 
+  const resultItemLevel = Number(result.itemLevel);
+  const selectedItemLevel = Number(selected.itemLevel);
+  const selectedSource =
+    selected.source === "MERCHANT_INVENTORY"
+      ? "MERCHANT_INVENTORY"
+      : "MONSTER_DROP";
+
   const workerEvidenceValid = workerResults.every((entry) => {
     const evidence = record(entry?.evidence);
     return (
       entry?.outcome === "PASS" &&
       entry?.reason === "MATERIAL_GATHER_AND_DELIVERY_CONFIRMED" &&
-      entry?.itemLevel === 0 &&
+      Number(entry?.itemLevel) === resultItemLevel &&
       evidence.combatControllerUsed === true &&
       evidence.materialObserved === true &&
       evidence.deliveryConfirmed === true &&
@@ -70,6 +77,17 @@ function verifyCompoundPreparation(source) {
     );
   });
 
+  const selectedSourceValid =
+    selectedSource === "MERCHANT_INVENTORY"
+      ? selected.monsterType === null &&
+        Number.isInteger(selectedItemLevel) &&
+        selectedItemLevel >= 0 &&
+        Array.isArray(selected.itemSlots) &&
+        selected.itemSlots.length >= 3
+      : typeof selected.monsterType === "string" &&
+        selected.monsterType.length > 0 &&
+        (!Number.isFinite(selectedItemLevel) || selectedItemLevel === 0);
+
   const verified = {
     preparationConfirmed:
       result.outcome === "PASS" &&
@@ -78,12 +96,13 @@ function verifyCompoundPreparation(source) {
       plan.outcome === "PASS" &&
       plan.reason === "COMPOUND_GATHER_TARGET_SELECTED" &&
       typeof selected.itemName === "string" &&
-      typeof selected.monsterType === "string" &&
+      selectedSourceValid &&
       Number.isInteger(selected.itemGrade) &&
       selected.itemGrade >= 0 &&
       selected.scrollName === `cscroll${selected.itemGrade}`,
     matchingTripleObserved:
-      result.itemLevel === 0 &&
+      Number.isInteger(resultItemLevel) &&
+      resultItemLevel >= 0 &&
       Number(result.finalQuantity) >= 3 &&
       record(result.evidence).threeMatchingItemsObserved === true &&
       record(result.evidence).allDeliveredItemsLevelMatched === true,
