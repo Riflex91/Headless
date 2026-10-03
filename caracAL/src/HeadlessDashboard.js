@@ -120,6 +120,7 @@ function publicCharacterState(name, charBlock = {}) {
     farm_intelligence_runtime: charBlock.farm_intelligence_runtime || null,
     inventory_intelligence_runtime:
       charBlock.inventory_intelligence_runtime || null,
+    gear_scoring_runtime: charBlock.gear_scoring_runtime || null,
     merrit_runtime: charBlock.merrit_runtime || null,
     fishing_runtime: charBlock.fishing_runtime || null,
     game: publicLiveState(charBlock.live_state),
