@@ -118,10 +118,7 @@ test("gear scoring character selection prefers connected owned gear", () => {
   };
 
   assert.equal(selectGearScoringCharacter(snapshot).name, "Ready");
-  assert.equal(
-    selectGearScoringCharacter(snapshot, "Offline").name,
-    "Offline",
-  );
+  assert.equal(selectGearScoringCharacter(snapshot, "Offline").name, "Offline");
 });
 
 test("equipment signature ignores trade slots but detects gear changes", () => {
@@ -200,10 +197,7 @@ test("live verification stays read-only and requires stable equipment", async ()
 test("live verification fails when equipment changes during the read-only window", async () => {
   const changed = character();
   changed.game.slots.mainhand = { name: "bow", level: 3 };
-  const snapshots = [
-    { characters: [character()] },
-    { characters: [changed] },
-  ];
+  const snapshots = [{ characters: [character()] }, { characters: [changed] }];
   let index = 0;
   const result = await runGearScoringLiveVerification("My_Ranger1", {
     readStateImpl: async () =>
