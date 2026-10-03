@@ -247,10 +247,6 @@ export class LogisticsClaimExecutor {
   ): Promise<LogisticsExecutionResult> {
     const name = text(claim.itemName);
     const requestedQuantity = positiveInteger(claim.quantity) || 1;
-    const requiredLevel =
-      claim.metadata?.purpose === "COMPOUND_TEST_MATERIAL"
-        ? Math.max(0, Math.floor(Number(claim.metadata?.itemLevel) || 0))
-        : null;
     if (!name) {
       return blocked(claim, source, target, "CLAIM_ITEM_INVALID");
     }
@@ -337,6 +333,10 @@ export class LogisticsClaimExecutor {
   ): Promise<LogisticsExecutionResult> {
     const name = text(claim.itemName);
     const requestedQuantity = positiveInteger(claim.quantity) || 1;
+    const requiredLevel =
+      claim.metadata?.purpose === "COMPOUND_TEST_MATERIAL"
+        ? Math.max(0, Math.floor(Number(claim.metadata?.itemLevel) || 0))
+        : null;
     if (!name) {
       return blocked(claim, source, target, "CLAIM_ITEM_INVALID");
     }
