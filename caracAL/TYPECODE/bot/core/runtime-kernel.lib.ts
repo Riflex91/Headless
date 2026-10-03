@@ -1142,9 +1142,6 @@ export class BotRuntimeKernel {
     if (this.merritLiveTestRunning) {
       throw new Error("Merrit live test already running");
     }
-    if (this.fishingLiveTestRunning) {
-      throw new Error("Fishing live test already running");
-    }
     if (this.merchantLiveTestRunning) {
       throw new Error("merchant live test already running");
     }
@@ -1253,6 +1250,9 @@ export class BotRuntimeKernel {
     if (this.merritLiveTestRunning) {
       throw new Error("Merrit live test already running");
     }
+    if (this.fishingLiveTestRunning) {
+      throw new Error("Fishing live test already running");
+    }
     if (this.merchantLiveTestRunning) {
       throw new Error("merchant live test already running");
     }
@@ -1348,6 +1348,12 @@ export class BotRuntimeKernel {
   ): MerchantLiveTestResult {
     if (this.merchantLiveTestRunning) {
       throw new Error("merchant live test already running");
+    }
+    if (this.merritLiveTestRunning) {
+      throw new Error("Merrit live test already running");
+    }
+    if (this.fishingLiveTestRunning) {
+      throw new Error("Fishing live test already running");
     }
     if (this.movementLiveTestRunning) {
       throw new Error("movement live test already running");
