@@ -93,6 +93,7 @@ test("public character state exposes only dashboard-safe fields", () => {
     group_combat_runtime: null,
     farm_intelligence_runtime: null,
     inventory_intelligence_runtime: null,
+    gear_scoring_runtime: null,
     merrit_runtime: null,
     fishing_runtime: null,
     game: null,
@@ -420,6 +421,7 @@ test("dashboard module and coordinator remain syntactically valid", () => {
   assert.match(coordinator, /group_combat_runtime/);
   assert.match(coordinator, /farm_intelligence_runtime/);
   assert.match(coordinator, /inventory_intelligence_runtime/);
+  assert.match(coordinator, /gear_scoring_runtime/);
   assert.match(coordinator, /inventory_live_test/);
   assert.match(coordinator, /merrit_live_test/);
   assert.match(coordinator, /merrit_runtime/);
@@ -437,6 +439,8 @@ test("dashboard module and coordinator remain syntactically valid", () => {
   assert.match(runtimeKernel, /groupCombat/);
   assert.match(runtimeKernel, /farmIntelligence/);
   assert.match(runtimeKernel, /inventoryIntelligence/);
+  assert.match(runtimeKernel, /gearScoring/);
+  assert.match(runtimeKernel, /GEAR_SCORING_JOB_ID/);
   assert.match(runtimeKernel, /merchantMerrit/);
   assert.match(runtimeKernel, /merchantFishing/);
   assert.match(runtimeKernel, /MERRIT_AUTONOMY_JOB_ID/);

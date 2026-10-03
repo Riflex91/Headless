@@ -821,6 +821,14 @@ function migrate_old_storage(path, localStorage) {
 
     if (
       char_block &&
+      normalized.data?.gearScoring &&
+      typeof normalized.data.gearScoring === "object"
+    ) {
+      char_block.gear_scoring_runtime = normalized.data.gearScoring;
+    }
+
+    if (
+      char_block &&
       normalized.data?.merchantMerrit &&
       typeof normalized.data.merchantMerrit === "object"
     ) {
@@ -1090,6 +1098,7 @@ function migrate_old_storage(path, localStorage) {
       char_block.fishing_material_request || null;
     char_block.inventory_intelligence_runtime =
       char_block.inventory_intelligence_runtime || null;
+    char_block.gear_scoring_runtime = char_block.gear_scoring_runtime || null;
     char_block.movement_live_test_typescript_override = null;
     char_block.running_code_revision = char_block.running_code_revision || null;
     char_block.running_config_revision =
