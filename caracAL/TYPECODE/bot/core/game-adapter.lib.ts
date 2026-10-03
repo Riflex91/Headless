@@ -2,6 +2,9 @@ export interface CharacterSnapshot {
   name: string | null;
   ctype: string | null;
   map: string | null;
+  instance?: string | null;
+  stand?: string | boolean | null;
+  merrit?: Record<string, unknown> | null;
   x: number | null;
   y: number | null;
   hp: number | null;
@@ -295,6 +298,17 @@ export class GameAdapter {
       name: stringOrNull(current.name),
       ctype: stringOrNull(current.ctype),
       map: stringOrNull(current.map),
+      instance: stringOrNull(current.in),
+      stand:
+        typeof current.stand === "string"
+          ? current.stand
+          : typeof current.stand === "boolean"
+            ? current.stand
+            : null,
+      merrit:
+        current.merrit && typeof current.merrit === "object"
+          ? ((cloneJsonValue(current.merrit) as Record<string, unknown>) || null)
+          : null,
       x: numberOrNull(current.x),
       y: numberOrNull(current.y),
       hp: numberOrNull(current.hp),
