@@ -140,6 +140,21 @@ test("account inventory renders all connected live characters together", () => {
               },
             ],
           },
+          account_gear_reservation_runtime: {
+            state: "READY",
+            sourceReservations: [
+              {
+                sourceCharacter: "My_Ranger1",
+                sourceInventorySlot: 1,
+                itemName: "better_bow",
+                reservedForCharacter: "My_Ranger2",
+                targetSlot: "mainhand",
+                scoreDelta: 9,
+                reason: "ACCOUNT_GEAR_RESERVATION_SCORE_IMPROVEMENT",
+              },
+            ],
+            targetReservations: [],
+          },
         },
         {
           name: "My_Merchant",
@@ -199,6 +214,16 @@ test("account inventory renders all connected live characters together", () => {
     const futureSlot = root.querySelector('[data-future-gear="true"]');
     assert.match(futureSlot.title, /Future Gear \+7\.5 vs mainhand/);
     assert.match(futureSlot.title, /FUTURE_GEAR_SCORE_IMPROVEMENT/);
+    assert.equal(
+      root.querySelector(".item-account-reservation-badge").textContent,
+      "AR",
+    );
+    const reservedSlot = root.querySelector('[data-account-reserved="true"]');
+    assert.match(reservedSlot.title, /Account Reserved for My_Ranger2 \+9/);
+    assert.match(
+      reservedSlot.title,
+      /ACCOUNT_GEAR_RESERVATION_SCORE_IMPROVEMENT/,
+    );
   } finally {
     global.document = previousDocument;
     dom.window.close();

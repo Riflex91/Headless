@@ -98,6 +98,11 @@ const { PersistenceService } = require("../src/PersistenceService");
 const { CharacterConfigService } = require("../src/CharacterConfigService");
 const { MerchantLogisticsPlanner } = require("../src/MerchantLogisticsPlanner");
 const {
+  buildAccountGearReservationPlan,
+  reservationProjectionForCharacter,
+  reservedSlotsForCharacter,
+} = require("../src/AccountGearReservation");
+const {
   beginSnapshotPersist,
   buildCharacterProfile,
   completeSnapshotPersist,
@@ -245,6 +250,9 @@ function migrate_old_storage(path, localStorage) {
   let merchant_logistics_board =
     merchant_logistics_planner.plan(character_manage);
   let merchant_logistics_signature = null;
+  let account_gear_reservation_plan =
+    buildAccountGearReservationPlan(character_manage);
+  let account_gear_reservation_signature = null;
   const diagnostic_store = new DiagnosticEventStore({ maxEvents: 20000 });
   const emergency_stop = new EmergencyStopState();
   const structured_logger = new StructuredLogger({
@@ -602,6 +610,47 @@ function migrate_old_storage(path, localStorage) {
     return board;
   }
 
+  function refresh_account_gear_reservations(reason = "STATE_CHANGED") {
+    const plan = buildAccountGearReservationPlan(character_manage);
+    const comparable = {
+      sameClassOnly: plan.sameClassOnly,
+      reservations: plan.reservations,
+      summary: plan.summary,
+    };
+    const signature = JSON.stringify(comparable);
+    const changed = signature !== account_gear_reservation_signature;
+    account_gear_reservation_signature = signature;
+    account_gear_reservation_plan = plan;
+
+    for (const [char_name, char_block] of Object.entries(character_manage)) {
+      if (char_block?.account_owned !== true) continue;
+
+      char_block.account_gear_reservation_runtime =
+        reservationProjectionForCharacter(plan, char_name);
+
+      if (
+        char_block.instance &&
+        char_block.connected &&
+        Number.isFinite(char_block.bot_runtime_started_at)
+      ) {
+        safe_send(char_block.instance, {
+          type: "account_gear_reservations",
+          slots: reservedSlotsForCharacter(plan, char_name),
+        });
+      }
+    }
+
+    if (changed) {
+      emit_supervisor_event("ACCOUNT_GEAR_RESERVATION_UPDATED", null, {
+        why: reason,
+        summary: plan.summary,
+      });
+      dashboard?.publishSnapshot();
+    }
+
+    return plan;
+  }
+
   function safe_send(target, data) {
     return sendIpcMessage(target, data, (e) => {
       //This can occur due to node closing ipc
@@ -827,6 +876,7 @@ function migrate_old_storage(path, localStorage) {
       typeof normalized.data.gearScoring === "object"
     ) {
       char_block.gear_scoring_runtime = normalized.data.gearScoring;
+      refresh_account_gear_reservations("GEAR_SCORING_UPDATED");
     }
 
     if (
@@ -835,6 +885,7 @@ function migrate_old_storage(path, localStorage) {
       typeof normalized.data.futureGear === "object"
     ) {
       char_block.future_gear_runtime = normalized.data.futureGear;
+      refresh_account_gear_reservations("FUTURE_GEAR_UPDATED");
     }
 
     if (
@@ -1110,6 +1161,8 @@ function migrate_old_storage(path, localStorage) {
       char_block.inventory_intelligence_runtime || null;
     char_block.gear_scoring_runtime = char_block.gear_scoring_runtime || null;
     char_block.future_gear_runtime = char_block.future_gear_runtime || null;
+    char_block.account_gear_reservation_runtime =
+      char_block.account_gear_reservation_runtime || null;
     char_block.gear_scoring_live_test =
       char_block.gear_scoring_live_test || null;
     char_block.movement_live_test_typescript_override = null;
@@ -1147,6 +1200,7 @@ function migrate_old_storage(path, localStorage) {
     );
     persist_character_runtime_state(char_name, "initialize");
     refresh_merchant_logistics("CHARACTER_INITIALIZED");
+    refresh_account_gear_reservations("CHARACTER_INITIALIZED");
     return char_block;
   }
 
@@ -7982,6 +8036,7 @@ function migrate_old_storage(path, localStorage) {
       char_block.connected = false;
       char_block.bot_runtime_started_at = null;
       char_block.watchdog_recovery_in_progress = false;
+      refresh_account_gear_reservations("CHARACTER_DISCONNECTED");
       reject_movement_live_tests_for_character(
         char_name,
         "CHARACTER_PROCESS_EXITED_DURING_MOVEMENT_LIVE_TEST",

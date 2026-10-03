@@ -403,6 +403,7 @@ export class InventoryIntelligenceController {
   private readonly onEvent?: (event: InventoryIntelligenceEvent) => void;
   private configOverride: unknown | undefined;
   private dynamicFutureGearSlots = new Set<number>();
+  private dynamicReservedSlots = new Set<number>();
   private lastEventSignature: string | null = null;
   private lastStatus: InventoryIntelligenceStatus;
 
@@ -431,6 +432,12 @@ export class InventoryIntelligenceController {
 
   setDynamicFutureGearSlots(slots: Iterable<number>): void {
     this.dynamicFutureGearSlots = new Set(
+      Array.from(slots).filter((slot) => Number.isInteger(slot) && slot >= 0),
+    );
+  }
+
+  setDynamicReservedSlots(slots: Iterable<number>): void {
+    this.dynamicReservedSlots = new Set(
       Array.from(slots).filter((slot) => Number.isInteger(slot) && slot >= 0),
     );
   }
@@ -490,6 +497,12 @@ export class InventoryIntelligenceController {
         !protections.includes("FUTURE_GEAR")
       ) {
         protections.push("FUTURE_GEAR");
+      }
+      if (
+        this.dynamicReservedSlots.has(inventorySlot.slot) &&
+        !protections.includes("RESERVED")
+      ) {
+        protections.push("RESERVED");
       }
       const configured =
         !!name && config.explicitDispositionByItem.has(name);

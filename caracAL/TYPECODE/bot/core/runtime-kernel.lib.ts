@@ -1157,6 +1157,25 @@ export class BotRuntimeKernel {
     }
   }
 
+  setAccountGearReservedSlots(slots: unknown): void {
+    const normalized = Array.isArray(slots)
+      ? slots.filter(
+          (slot): slot is number =>
+            Number.isInteger(slot) && Number(slot) >= 0,
+        )
+      : [];
+
+    this.inventoryIntelligence.setDynamicReservedSlots(normalized);
+    this.eventBus.emit({
+      module: "AccountGearReservation",
+      type: "ACCOUNT_GEAR_RESERVATIONS_APPLIED",
+      why: "SUPERVISOR_ACCOUNT_GEAR_RESERVATION_SYNC",
+      data: {
+        reservedSlots: [...normalized],
+      },
+    });
+  }
+
   runInventoryIntelligenceLiveTest(
     options: InventoryLiveTestOptions = {},
   ): InventoryLiveTestResult {
