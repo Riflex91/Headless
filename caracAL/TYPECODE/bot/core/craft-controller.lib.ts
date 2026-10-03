@@ -98,7 +98,7 @@ interface CraftGameAdapter {
 }
 
 interface CraftActionBoundary {
-  craft(request: CraftRequest): Promise<ActionRecord>;
+  ["craft"]: (request: CraftRequest) => Promise<ActionRecord>;
 }
 
 interface CraftInventoryIntelligence {
