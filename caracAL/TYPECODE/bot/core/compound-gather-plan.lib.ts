@@ -15,11 +15,17 @@ export interface CompoundGatherPlan {
     | "COMPOUND_GATHER_TARGET_NOT_FOUND";
   selected: CompoundGatherCandidate | null;
   candidates: CompoundGatherCandidate[];
+  observerPosition: {
+    map: string;
+    x: number;
+    y: number;
+  } | null;
 }
 
 interface CompoundGatherGame {
   gameData(): Record<string, unknown>;
   itemGrade(item: Record<string, unknown>): number | null;
+  character?(): Record<string, unknown>;
 }
 
 interface DropReference {
@@ -54,6 +60,57 @@ function mergeChance(
   if (parent === null) return child;
   if (child === null) return parent;
   return parent * child;
+}
+
+function openDropReferences(
+  tableName: string,
+  itemDefinitions: Record<string, unknown>,
+  dropTables: Record<string, unknown>,
+  inheritedChance: number | null,
+  visited: Set<string>,
+): DropReference[] {
+  const visitKey = `open:${tableName}`;
+  if (visited.has(visitKey)) return [];
+
+  const table = dropTables[tableName];
+  if (!Array.isArray(table)) return [];
+
+  const weighted = table.filter(
+    (entry) =>
+      Array.isArray(entry) &&
+      entry.length >= 2 &&
+      typeof entry[0] === "number" &&
+      entry[0] >= 0 &&
+      typeof entry[1] === "string",
+  );
+  const total = weighted.reduce((sum, entry) => sum + Number(entry[0]), 0);
+  if (!(total > 0)) return [];
+
+  const nextVisited = new Set(visited);
+  nextVisited.add(visitKey);
+
+  return weighted.flatMap((entry) => {
+    const chance = mergeChance(
+      inheritedChance,
+      Number(entry[0]) / total,
+    );
+    if (entry[1] === "open" && typeof entry[2] === "string") {
+      return openDropReferences(
+        entry[2],
+        itemDefinitions,
+        dropTables,
+        chance,
+        nextVisited,
+      );
+    }
+    return dropReferences(
+      entry[1],
+      itemDefinitions,
+      dropTables,
+      chance,
+      nextVisited,
+    );
+  });
 }
 
 function dropReferences(
@@ -91,25 +148,22 @@ function dropReferences(
       typeof value[1] === "string"
     ) {
       const chance = mergeChance(inheritedChance, probability(value[0]));
-      const direct = dropReferences(
+      if (value[1] === "open" && typeof value[2] === "string") {
+        return openDropReferences(
+          value[2],
+          itemDefinitions,
+          dropTables,
+          chance,
+          visited,
+        );
+      }
+      return dropReferences(
         value[1],
         itemDefinitions,
         dropTables,
         chance,
         visited,
       );
-      const nested = value
-        .slice(2)
-        .flatMap((entry) =>
-          dropReferences(
-            entry,
-            itemDefinitions,
-            dropTables,
-            chance,
-            visited,
-          ),
-        );
-      return [...direct, ...nested];
     }
     return value.flatMap((entry) =>
       dropReferences(
@@ -195,6 +249,56 @@ function bestDropChance(refs: DropReference[], itemName: string): number | null 
   return chances.length ? Math.max(...chances) : null;
 }
 
+function spawnTypes(value: unknown): string[] {
+  const spawn = record(value);
+  const direct = spawn.type;
+  if (typeof direct === "string" && direct.trim()) {
+    return [direct.trim()];
+  }
+  if (Array.isArray(direct)) {
+    return direct.filter(
+      (entry): entry is string =>
+        typeof entry === "string" && !!entry.trim(),
+    );
+  }
+
+  for (const key of ["types", "monsters"]) {
+    if (!Array.isArray(spawn[key])) continue;
+    const result = (spawn[key] as unknown[]).filter(
+      (entry): entry is string =>
+        typeof entry === "string" && !!entry.trim(),
+    );
+    if (result.length) return result;
+  }
+  return [];
+}
+
+function regularSpawnMonsterTypes(
+  maps: Record<string, unknown>,
+): Set<string> {
+  const result = new Set<string>();
+  for (const rawMap of Object.values(maps)) {
+    const map = record(rawMap);
+    const spawns = Array.isArray(map.monsters) ? map.monsters : [];
+    for (const spawn of spawns) {
+      for (const monsterType of spawnTypes(spawn)) {
+        result.add(monsterType);
+      }
+    }
+  }
+  return result;
+}
+
+function observerPosition(
+  game: CompoundGatherGame,
+): CompoundGatherPlan["observerPosition"] {
+  const character = game.character ? record(game.character()) : {};
+  const map = text(character.map);
+  const x = finite(character.x);
+  const y = finite(character.y);
+  return map && x !== null && y !== null ? { map, x, y } : null;
+}
+
 function compoundableItemNames(
   itemDefinitions: Record<string, unknown>,
 ): string[] {
@@ -215,9 +319,13 @@ export function planCompoundGatherTarget(
   const dropTables = record(gameData.drops);
   const monsterDropTables = record(dropTables.monsters);
   const compoundable = new Set(compoundableItemNames(itemDefinitions));
+  const regularSpawns = regularSpawnMonsterTypes(record(gameData.maps));
+  const restrictToRegularSpawns = regularSpawns.size > 0;
+  const position = observerPosition(game);
   const candidates: CompoundGatherCandidate[] = [];
 
   for (const [monsterType, rawMonster] of Object.entries(monsters)) {
+    if (restrictToRegularSpawns && !regularSpawns.has(monsterType)) continue;
     const monster = record(rawMonster);
     const refs = dropReferences(
       monsterDropTables[monsterType] ??
@@ -275,11 +383,13 @@ export function planCompoundGatherTarget(
         reason: "COMPOUND_GATHER_TARGET_SELECTED",
         selected: { ...candidates[0] },
         candidates: candidates.map((entry) => ({ ...entry })),
+        observerPosition: position,
       }
     : {
         outcome: "FAIL",
         reason: "COMPOUND_GATHER_TARGET_NOT_FOUND",
         selected: null,
         candidates: [],
+        observerPosition: position,
       };
 }
