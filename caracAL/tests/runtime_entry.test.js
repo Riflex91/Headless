@@ -355,6 +355,48 @@ test("Compound scheduler plans only and mutation stays explicit one-shot", () =>
   assert.doesNotMatch(schedulerBlock, /executeNext/);
 });
 
+test("Exchange scheduler plans only and mutation stays explicit one-shot", () => {
+  const kernel = fs.readFileSync(
+    path.join(
+      __dirname,
+      "..",
+      "TYPECODE",
+      "bot",
+      "core",
+      "runtime-kernel.lib.ts",
+    ),
+    "utf8",
+  );
+  const controller = fs.readFileSync(
+    path.join(
+      __dirname,
+      "..",
+      "TYPECODE",
+      "bot",
+      "core",
+      "exchange-controller.lib.ts",
+    ),
+    "utf8",
+  );
+
+  assert.match(kernel, /EXCHANGE_JOB_ID/);
+  assert.match(kernel, /executeExchangeNext/);
+  assert.match(kernel, /this\.exchange\.executeNext\(\)/);
+  assert.match(controller, /executionMode: "EXPLICIT_ONE_SHOT"/);
+  assert.match(controller, /EXCHANGE_UNKNOWN_HOLD_ACTIVE/);
+
+  const schedulerStart = kernel.indexOf("id: EXCHANGE_JOB_ID");
+  const schedulerEnd = kernel.indexOf(
+    "id: FARM_INTELLIGENCE_JOB_ID",
+    schedulerStart,
+  );
+  assert.ok(schedulerStart >= 0);
+  assert.ok(schedulerEnd > schedulerStart);
+  const schedulerBlock = kernel.slice(schedulerStart, schedulerEnd);
+  assert.match(schedulerBlock, /this\.exchange\.tick\(\)/);
+  assert.doesNotMatch(schedulerBlock, /executeNext/);
+});
+
 test("Upgrade live IPC stays in runner context and exposes one attempt only", () => {
   const thread = fs.readFileSync(
     path.join(__dirname, "..", "src", "CharacterThread.js"),
