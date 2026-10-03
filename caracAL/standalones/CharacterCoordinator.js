@@ -767,6 +767,34 @@ function migrate_old_storage(path, localStorage) {
     }
 
     if (
+      char_block &&
+      normalized.data?.merchantMerrit &&
+      typeof normalized.data.merchantMerrit === "object"
+    ) {
+      char_block.merrit_runtime = normalized.data.merchantMerrit;
+    }
+
+    if (
+      normalized.module === "MerchantMerritController" &&
+      normalized.type === "MERRIT_PARCEL_CONFIRMED" &&
+      Number.isFinite(Number(normalized.data?.readyAt))
+    ) {
+      const readyAt = Number(normalized.data.readyAt);
+      void observe_persistence(
+        persistence.saveCooldown("account", "merrit", {
+          readyAt,
+          state: {
+            character: char_name,
+            receiptAt: Number(normalized.data?.receiptAt) || null,
+            shells: Number(normalized.data?.shells) || 0,
+          },
+        }),
+        "merrit_cooldown",
+        char_name,
+      );
+    }
+
+    if (
       normalized.module === "FarmIntelligenceController" &&
       normalized.type === "FARM_INTELLIGENCE_SAMPLE" &&
       normalized.data?.sample &&
@@ -817,7 +845,8 @@ function migrate_old_storage(path, localStorage) {
         normalized.data?.classSkills ||
         normalized.data?.groupCombat ||
         normalized.data?.farmIntelligence ||
-        normalized.data?.inventoryIntelligence)
+        normalized.data?.inventoryIntelligence ||
+        normalized.data?.merchantMerrit)
     ) {
       dashboard?.publishSnapshot();
     }
