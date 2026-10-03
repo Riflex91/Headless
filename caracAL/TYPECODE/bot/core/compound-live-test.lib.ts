@@ -17,6 +17,11 @@ export interface CompoundLiveTestOptions {
   settlePollMs?: number;
 }
 
+export interface CompoundLiveRuntimePreflight {
+  map: string | null;
+  compoundInProgress: boolean;
+}
+
 export interface CompoundLiveItemState {
   slot: number;
   name: string | null;
@@ -63,6 +68,12 @@ export interface CompoundLiveTestResult {
     allItemsUnprotectedBefore: boolean;
     scrollUnprotectedBefore: boolean;
     exactCandidateSelected: boolean;
+    localPreflightReadOnly: boolean;
+    compoundOperationIdle: boolean;
+    itemLocksClear: boolean;
+    scrollLocksClear: boolean;
+    mapAllowsCompound: boolean;
+    runtimeMap: string | null;
     actionDispatchedOnce: boolean;
     actionConfirmed: boolean;
     compoundSucceeded: boolean | null;
@@ -105,6 +116,7 @@ interface CompoundLiveTestDependencies {
     "status" | "tick" | "executeNext" | "setConfigOverride" | "clearConfigOverride"
   >;
   characterName?: () => string | null;
+  runtimePreflight: () => CompoundLiveRuntimePreflight;
   now?: () => number;
   sleep?: (ms: number) => Promise<void>;
 }
@@ -145,6 +157,11 @@ function inventoryItem(
 ): Record<string, unknown> | null {
   const raw = inventory.find((entry) => entry.slot === slot)?.item;
   return raw ? record(raw) : null;
+}
+
+function itemLocked(item: Record<string, unknown> | null): boolean {
+  if (!item) return false;
+  return item.locked === true || (typeof item.l === "string" && item.l.length > 0);
 }
 
 function itemState(
@@ -312,6 +329,12 @@ function baseEvidence(): CompoundLiveTestResult["evidence"] {
     allItemsUnprotectedBefore: false,
     scrollUnprotectedBefore: false,
     exactCandidateSelected: false,
+    localPreflightReadOnly: false,
+    compoundOperationIdle: false,
+    itemLocksClear: false,
+    scrollLocksClear: false,
+    mapAllowsCompound: false,
+    runtimeMap: null,
     actionDispatchedOnce: false,
     actionConfirmed: false,
     compoundSucceeded: null,
@@ -518,6 +541,33 @@ export class CompoundLiveTestRunner {
         compoundStatus = planned;
         reason =
           planned.reason || "COMPOUND_LIVE_EXACT_CANDIDATE_NOT_READY";
+        return (finalResult = finish());
+      }
+
+      const runtimePreflight = this.deps.runtimePreflight();
+      const dispatchInventory = this.deps.game.inventory();
+      evidence.localPreflightReadOnly = true;
+      evidence.runtimeMap = text(runtimePreflight.map);
+      evidence.compoundOperationIdle =
+        runtimePreflight.compoundInProgress !== true;
+      evidence.itemLocksClear = selected.itemSlots.every(
+        (slot) => !itemLocked(inventoryItem(dispatchInventory, slot)),
+      );
+      evidence.scrollLocksClear = !itemLocked(
+        inventoryItem(dispatchInventory, selected.scrollSlot),
+      );
+      evidence.mapAllowsCompound =
+        !!evidence.runtimeMap &&
+        !evidence.runtimeMap.toLowerCase().startsWith("bank");
+
+      if (
+        !evidence.compoundOperationIdle ||
+        !evidence.itemLocksClear ||
+        !evidence.scrollLocksClear ||
+        !evidence.mapAllowsCompound
+      ) {
+        compoundStatus = planned;
+        reason = "COMPOUND_LIVE_LOCAL_PREFLIGHT_BLOCKED";
         return (finalResult = finish());
       }
 
