@@ -1828,6 +1828,31 @@ function migrate_old_storage(path, localStorage) {
     );
   }
 
+  async function wait_for_exchange_live_test_runtime(
+    char_name,
+    timeout_ms = MOVEMENT_LIVE_TEST_RUNTIME_TIMEOUT_MS,
+  ) {
+    const started_at = Date.now();
+    while (Date.now() - started_at < timeout_ms) {
+      const char_block = character_manage[char_name];
+      if (
+        char_block?.instance &&
+        char_block.connected &&
+        Number.isFinite(char_block.bot_runtime_started_at) &&
+        char_block.inventory_intelligence_runtime
+      ) {
+        return char_block;
+      }
+      await sleep(100);
+    }
+
+    throw make_control_error(
+      "EXCHANGE_LIVE_TEST_RUNTIME_TIMEOUT",
+      `Exchange runtime did not become ready for ${char_name}`,
+      504,
+    );
+  }
+
   async function wait_for_compound_live_test_runtime(
     char_name,
     timeout_ms = MOVEMENT_LIVE_TEST_RUNTIME_TIMEOUT_MS,
@@ -8802,7 +8827,7 @@ function migrate_old_storage(path, localStorage) {
       }
 
       await restart_character_for_movement_runtime(char_name, char_block);
-      const ready_block = await wait_for_compound_live_test_runtime(char_name);
+      const ready_block = await wait_for_exchange_live_test_runtime(char_name);
       const result_promise = wait_for_exchange_live_test_result(
         char_name,
         request_id,
@@ -8872,7 +8897,7 @@ function migrate_old_storage(path, localStorage) {
         request_id,
         outcome:
           error.code === "EXCHANGE_LIVE_TEST_TIMEOUT" ||
-          error.code === "COMPOUND_LIVE_TEST_RUNTIME_TIMEOUT"
+          error.code === "EXCHANGE_LIVE_TEST_RUNTIME_TIMEOUT"
             ? "TIMEOUT"
             : "FAIL",
         reason: error.code || error.message || "EXCHANGE_LIVE_TEST_FAILED",
