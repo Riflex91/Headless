@@ -363,6 +363,13 @@ test("Account Gear Reservation live wiring uses the two-character TYPECODE harne
 
   assert.match(coordinator, /run_account_gear_reservation_live_test/);
   assert.match(coordinator, /wait_for_account_gear_reservation_live_runtime/);
+  assert.match(coordinator, /gear_scoring_projection_equipment_signature/);
+  assert.match(
+    coordinator,
+    /gear_scoring_live_state_equipment_projection_signature/,
+  );
+  assert.match(coordinator, /minimum_scoring_timestamps/);
+  assert.match(coordinator, /scoring_timestamp > minimum_scoring_timestamp/);
   assert.match(coordinator, /\["READY", "EMPTY"\]\.includes/);
   assert.match(launcher, /\["READY", "EMPTY"\]\.includes/);
   assert.match(

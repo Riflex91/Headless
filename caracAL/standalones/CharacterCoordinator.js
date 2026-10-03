@@ -1594,6 +1594,42 @@ function migrate_old_storage(path, localStorage) {
     );
   }
 
+  function gear_scoring_projection_equipment_signature(char_block) {
+    const entries = Array.isArray(char_block?.gear_scoring_runtime?.entries)
+      ? char_block.gear_scoring_runtime.entries
+      : [];
+    return JSON.stringify(
+      entries
+        .filter((entry) => entry?.location === "EQUIPMENT")
+        .sort((left, right) =>
+          String(left?.slot || "").localeCompare(String(right?.slot || "")),
+        )
+        .map((entry) => [
+          entry?.slot || null,
+          entry?.name || null,
+          Number.isFinite(entry?.level) ? entry.level : 0,
+        ]),
+    );
+  }
+
+  function gear_scoring_live_state_equipment_projection_signature(char_block) {
+    const slots =
+      char_block?.live_state?.slots &&
+      typeof char_block.live_state.slots === "object"
+        ? char_block.live_state.slots
+        : {};
+    return JSON.stringify(
+      Object.entries(slots)
+        .filter(([slot, item]) => !slot.startsWith("trade") && !!item)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([slot, item]) => [
+          slot,
+          item?.name || null,
+          Number.isFinite(item?.level) ? item.level : 0,
+        ]),
+    );
+  }
+
   function gear_scoring_live_snapshot(char_block) {
     return {
       scoring: JSON.parse(
@@ -1683,23 +1719,41 @@ function migrate_old_storage(path, localStorage) {
   async function wait_for_account_gear_reservation_live_runtime(
     character_names,
     timeout_ms = MOVEMENT_LIVE_TEST_RUNTIME_TIMEOUT_MS,
+    minimum_scoring_timestamps = null,
   ) {
     const started_at = Date.now();
     while (Date.now() - started_at < timeout_ms) {
       const blocks = character_names.map((name) => character_manage[name]);
       if (
-        blocks.every(
-          (block) =>
+        blocks.every((block, index) => {
+          const scoring_timestamp = Number(
+            block?.gear_scoring_runtime?.timestamp,
+          );
+          const minimum_scoring_timestamp = Number(
+            minimum_scoring_timestamps?.[character_names[index]],
+          );
+          const scoring_is_fresh =
+            !Number.isFinite(minimum_scoring_timestamp) ||
+            (Number.isFinite(scoring_timestamp) &&
+              scoring_timestamp > minimum_scoring_timestamp);
+          const equipment_projection_synchronized =
+            gear_scoring_projection_equipment_signature(block) ===
+            gear_scoring_live_state_equipment_projection_signature(block);
+
+          return (
             block?.instance &&
             block.connected &&
             Number.isFinite(block.bot_runtime_started_at) &&
             block.gear_scoring_runtime?.state === "READY" &&
+            scoring_is_fresh &&
             ["READY", "EMPTY"].includes(block.future_gear_runtime?.state) &&
             ["READY", "EMPTY"].includes(
               block.inventory_intelligence_runtime?.state,
             ) &&
-            block.account_gear_reservation_runtime?.state === "READY",
-        )
+            block.account_gear_reservation_runtime?.state === "READY" &&
+            equipment_projection_synchronized
+          );
+        })
       ) {
         return blocks;
       }
@@ -5369,6 +5423,12 @@ function migrate_old_storage(path, localStorage) {
 
       await wait_for_account_gear_reservation_live_runtime(names);
 
+      const baseline_scoring_timestamps = Object.fromEntries(
+        names.map((name) => [
+          name,
+          Number(character_manage[name]?.gear_scoring_runtime?.timestamp),
+        ]),
+      );
       const baseline_equipment = Object.fromEntries(
         names.map((name) => [
           name,
@@ -5392,7 +5452,11 @@ function migrate_old_storage(path, localStorage) {
       dashboard?.publishSnapshot();
 
       await sleep(bounded_sample_ms);
-      await wait_for_account_gear_reservation_live_runtime(names, 5000);
+      await wait_for_account_gear_reservation_live_runtime(
+        names,
+        5000,
+        baseline_scoring_timestamps,
+      );
 
       const after = account_gear_reservation_live_snapshot();
       const equipment_baseline_restored = names.every(
