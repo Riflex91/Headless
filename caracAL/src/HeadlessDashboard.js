@@ -109,6 +109,7 @@ function publicCharacterState(name, charBlock = {}) {
     merchant_live_test: charBlock.merchant_live_test || null,
     bank_travel_live_test: charBlock.bank_travel_live_test || null,
     bank_gold_live_test: charBlock.bank_gold_live_test || null,
+    npc_trading_live_test: charBlock.npc_trading_live_test || null,
     merrit_live_test: charBlock.merrit_live_test || null,
     fishing_live_test: charBlock.fishing_live_test || null,
     fishing_material_request: charBlock.fishing_material_request || null,
@@ -309,6 +310,7 @@ function attachHeadlessDashboard({
   runMerchantLiveTest,
   runBankTravelLiveTest,
   runBankGoldLiveTest,
+  runNpcTradingLiveTest,
   runMerritLiveTest,
   runFishingLiveTest,
   controlEmergencyStop,
@@ -574,6 +576,30 @@ function attachHeadlessDashboard({
       } catch (error) {
         res.status(Number(error.statusCode) || 500).json({
           error: error.code || "FISHING_LIVE_TEST_FAILED",
+          message: error.message,
+        });
+      }
+    },
+  );
+
+  router.post(
+    "/headless/api/characters/:name/tests/npc-trading",
+    async (req, res) => {
+      if (!runNpcTradingLiveTest) {
+        res.status(503).json({ error: "NPC_TRADING_LIVE_TEST_UNAVAILABLE" });
+        return;
+      }
+
+      try {
+        const result = await runNpcTradingLiveTest(req.params.name);
+        res.json({
+          ok: result?.outcome === "PASS",
+          result,
+          snapshot: getSnapshot(),
+        });
+      } catch (error) {
+        res.status(Number(error.statusCode) || 500).json({
+          error: error.code || "NPC_TRADING_LIVE_TEST_FAILED",
           message: error.message,
         });
       }
