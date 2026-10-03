@@ -77,6 +77,38 @@ test("Compound preparation launcher confirms Ranger farm and Merchant readiness"
   assert.equal(result.verifier.scrollPresent, true);
 });
 
+test("Compound preparation launcher accepts an existing Merchant triple without Ranger work", () => {
+  const result = verifyCompoundPreparation(
+    passResult({
+      source: "MERCHANT_INVENTORY",
+      initialQuantity: 3,
+      finalQuantity: 3,
+      workerResults: [],
+      plan: {
+        outcome: "PASS",
+        reason: "COMPOUND_GATHER_TARGET_SELECTED",
+        selected: {
+          source: "MERCHANT_INVENTORY",
+          itemName: "amulet",
+          itemLevel: 0,
+          itemSlots: [2, 7, 9],
+          monsterType: null,
+          itemGrade: 0,
+          scrollName: "cscroll0",
+        },
+      },
+      itemName: "amulet",
+      monsterType: null,
+    }),
+  );
+
+  assert.equal(result.outcome, "PASS");
+  assert.equal(result.reason, "COMPOUND_PREPARATION_E2E_CONFIRMED");
+  assert.equal(result.verifier.workerEvidenceValid, true);
+  assert.equal(result.verifier.matchingTripleObserved, true);
+  assert.equal(result.verifier.scrollPresent, true);
+});
+
 test("Compound preparation launcher preserves planner failure reason", () => {
   const result = verifyCompoundPreparation({
     outcome: "FAIL",
