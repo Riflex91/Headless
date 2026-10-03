@@ -5953,6 +5953,10 @@ function migrate_old_storage(path, localStorage) {
         char_name,
         "CHARACTER_PROCESS_EXITED_DURING_MERRIT_LIVE_TEST",
       );
+      reject_fishing_live_tests_for_character(
+        char_name,
+        "CHARACTER_PROCESS_EXITED_DURING_FISHING_LIVE_TEST",
+      );
       emit_supervisor_event("CHARACTER_PROCESS_EXITED", char_name, {
         code,
         signal,
@@ -6262,6 +6266,37 @@ function migrate_old_storage(path, localStorage) {
           });
           emit_supervisor_event(
             "LOGISTICS_LIVE_TEST_RESULT_RECEIVED",
+            char_name,
+            {
+              request_id: m.request_id,
+              outcome: m.result?.outcome || null,
+              error: m.error || null,
+            },
+          );
+          break;
+        }
+        case "fishing_live_test_result": {
+          const pending = fishing_live_test_requests.get(m.request_id);
+          if (!pending || pending.character !== char_name) {
+            emit_supervisor_event(
+              "FISHING_LIVE_TEST_RESULT_IGNORED",
+              char_name,
+              {
+                why: "UNKNOWN_OR_STALE_REQUEST",
+                request_id: m.request_id || null,
+              },
+            );
+            break;
+          }
+
+          clearTimeout(pending.timer);
+          fishing_live_test_requests.delete(m.request_id);
+          pending.resolve({
+            result: m.result || null,
+            error: m.error || null,
+          });
+          emit_supervisor_event(
+            "FISHING_LIVE_TEST_RESULT_RECEIVED",
             char_name,
             {
               request_id: m.request_id,
