@@ -2821,10 +2821,15 @@ function migrate_old_storage(path, localStorage) {
     merchant_name,
     options = {},
   ) {
-    if (compound_material_preparation_active) {
+    if (
+      compound_material_preparation_active ||
+      compound_live_test_active ||
+      upgrade_live_test_active ||
+      upgrade_live_preflight_active
+    ) {
       throw make_control_error(
-        "COMPOUND_MATERIAL_PREPARATION_ALREADY_RUNNING",
-        "Compound material preparation is already running",
+        "MUTATION_VERIFICATION_ALREADY_RUNNING",
+        "A mutation verification or Compound preparation is already running",
         409,
       );
     }
@@ -7891,10 +7896,15 @@ function migrate_old_storage(path, localStorage) {
         400,
       );
     }
-    if (upgrade_live_test_active || upgrade_live_preflight_active) {
+    if (
+      upgrade_live_test_active ||
+      upgrade_live_preflight_active ||
+      compound_live_test_active ||
+      compound_material_preparation_active
+    ) {
       throw make_control_error(
-        "UPGRADE_VERIFICATION_ALREADY_RUNNING",
-        "An Upgrade verification is already running",
+        "MUTATION_VERIFICATION_ALREADY_RUNNING",
+        "A mutation verification or Compound preparation is already running",
         409,
       );
     }
