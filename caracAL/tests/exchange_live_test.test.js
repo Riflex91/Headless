@@ -43,10 +43,7 @@ function makeSetup({
     character: { ...startPosition },
     inventory: Array.from({ length: 42 }, (_, slot) => ({
       slot,
-      item:
-        slot === itemSlot
-          ? { name: itemName, q: quantity, level: 0 }
-          : null,
+      item: slot === itemSlot ? { name: itemName, q: quantity, level: 0 } : null,
     })),
   };
 
@@ -331,28 +328,4 @@ test("Exchange live runner requires explicit exact item and slot", async () => {
   assert.equal(result.reason, "EXCHANGE_LIVE_EXPLICIT_ITEM_AND_SLOT_REQUIRED");
   assert.equal(setup.travelCalls(), 0);
   assert.equal(setup.exchangeCalls(), 0);
-});
-
-
-test("Exchange live formatting diagnostic", async () => {
-  const fs = require("node:fs");
-  const prettier = require("prettier");
-  const source = fs.readFileSync(__filename, "utf8");
-  const formatted = await prettier.format(source, {
-    parser: "babel",
-  });
-  const before = source.split("\n");
-  const after = formatted.split("\n");
-  const limit = Math.max(before.length, after.length);
-  for (let index = 0; index < limit; index += 1) {
-    if (before[index] !== after[index]) {
-      console.log(
-        "PRETTIER_DIFF",
-        index + 1,
-        JSON.stringify(before[index] ?? null),
-        "=>",
-        JSON.stringify(after[index] ?? null),
-      );
-    }
-  }
 });
