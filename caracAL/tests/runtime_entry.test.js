@@ -483,10 +483,7 @@ test("Expected Value runtime remains read-only and exposes scheduler status", ()
   assert.doesNotMatch(controller, /executeNext/);
   assert.doesNotMatch(controller, /\.upgrade\s*\(/);
   assert.doesNotMatch(controller, /\.compound\s*\(/);
-  assert.match(
-    controller,
-    /OFFICIAL_BASE_NO_DYNAMIC_GRACE_NO_OFFERING/,
-  );
+  assert.match(controller, /OFFICIAL_BASE_NO_DYNAMIC_GRACE_NO_OFFERING/);
 });
 
 test("Upgrade live IPC stays in runner context and exposes one attempt only", () => {
