@@ -246,16 +246,22 @@ function futureGearEvidence(snapshot) {
   };
 }
 
-function evidenceComplete(evidence) {
+function decisionEvidenceComplete(evidence) {
   return (
     evidence.gearScoringReady === true &&
     evidence.futureGearProjectionVisible === true &&
-    evidence.inventoryIntelligenceReady === true &&
     evidence.decisionEntriesObserved === true &&
     evidence.inventoryGearCountMatches === true &&
     evidence.allDecisionsRecomputed === true &&
-    evidence.candidateProtectionComplete === true &&
     evidence.summaryMatches === true
+  );
+}
+
+function evidenceComplete(evidence) {
+  return (
+    decisionEvidenceComplete(evidence) &&
+    evidence.inventoryIntelligenceReady === true &&
+    evidence.candidateProtectionComplete === true
   );
 }
 
@@ -268,7 +274,7 @@ function combineFutureGearSupervisorResult(source) {
   const runtimeStateRestored = result.cleanup?.runtimeStateRestored === true;
   const evidence = {
     ...afterEvidence,
-    projectionWasReadyBeforeSettle: evidenceComplete(beforeEvidence),
+    projectionWasReadyBeforeSettle: decisionEvidenceComplete(beforeEvidence),
     equipmentBaselineRestored,
     runtimeStateRestored,
   };
@@ -352,6 +358,7 @@ if (require.main === module) {
 module.exports = {
   combineFutureGearSupervisorResult,
   decisionMatches,
+  decisionEvidenceComplete,
   evidenceComplete,
   expectedFutureGearDecision,
   futureGearEvidence,
