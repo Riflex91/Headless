@@ -87,9 +87,13 @@ test("account inventory renders all connected live characters together", () => {
           game: {
             ctype: "ranger",
             map: "main",
-            isize: 2,
+            isize: 3,
             esize: 1,
-            items: [item, null],
+            items: [
+              item,
+              { ...item, name: "better_bow", q: 1, level: 3 },
+              null,
+            ],
             slots: { mainhand: { ...item, name: "bow", q: 1, level: 8 } },
           },
           inventory_intelligence_runtime: {
@@ -112,6 +116,27 @@ test("account inventory renders all connected live characters together", () => {
                 name: "bow",
                 score: 42.5,
                 why: "GEAR_SCORE_WEIGHTED_ADVENTURE_LAND_STATS",
+              },
+              {
+                location: "INVENTORY",
+                slot: 1,
+                name: "better_bow",
+                score: 50,
+                why: "GEAR_SCORE_WEIGHTED_ADVENTURE_LAND_STATS",
+              },
+            ],
+          },
+          future_gear_runtime: {
+            state: "READY",
+            entries: [
+              {
+                inventorySlot: 1,
+                name: "better_bow",
+                candidate: true,
+                scoreDelta: 7.5,
+                baselineSlot: "mainhand",
+                baselineScore: 42.5,
+                reason: "FUTURE_GEAR_SCORE_IMPROVEMENT",
               },
             ],
           },
@@ -143,7 +168,7 @@ test("account inventory renders all connected live characters together", () => {
     assert.doesNotMatch(root.textContent, /Offline/);
     assert.equal(
       root.querySelectorAll(".inventory-slot-grid .live-item-slot").length,
-      3,
+      4,
     );
     assert.equal(
       root.querySelectorAll(".equipment-grid .live-item-slot").length,
@@ -167,6 +192,13 @@ test("account inventory renders all connected live characters together", () => {
       ".item-gear-score-badge",
     ).parentElement;
     assert.match(scoredSlot.title, /Gear score 42.5/);
+    assert.equal(
+      root.querySelector(".item-future-gear-badge").textContent,
+      "FG +7.5",
+    );
+    const futureSlot = root.querySelector('[data-future-gear="true"]');
+    assert.match(futureSlot.title, /Future Gear \+7\.5 vs mainhand/);
+    assert.match(futureSlot.title, /FUTURE_GEAR_SCORE_IMPROVEMENT/);
   } finally {
     global.document = previousDocument;
     dom.window.close();

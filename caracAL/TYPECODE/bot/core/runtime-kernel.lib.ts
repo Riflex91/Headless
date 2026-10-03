@@ -34,6 +34,10 @@ import {
   GearScoringEvent,
 } from "./gear-scoring-controller.lib";
 import {
+  FutureGearController,
+  FutureGearEvent,
+} from "./future-gear-controller.lib";
+import {
   MerchantAutonomyController,
   MerchantAutonomyEvent,
 } from "./merchant-autonomy-controller.lib";
@@ -141,6 +145,8 @@ const INVENTORY_INTELLIGENCE_JOB_ID = "inventory-intelligence-loop";
 const INVENTORY_INTELLIGENCE_INTERVAL_MS = 1000;
 const GEAR_SCORING_JOB_ID = "gear-scoring-loop";
 const GEAR_SCORING_INTERVAL_MS = 1000;
+const FUTURE_GEAR_JOB_ID = "future-gear-loop";
+const FUTURE_GEAR_INTERVAL_MS = 1000;
 const FARM_INTELLIGENCE_JOB_ID = "farm-intelligence-loop";
 const FARM_INTELLIGENCE_INTERVAL_MS = 1000;
 const MERCHANT_AUTONOMY_JOB_ID = "merchant-autonomy-loop";
@@ -210,6 +216,7 @@ export class BotRuntimeKernel {
   readonly farmIntelligence: FarmIntelligenceController;
   readonly inventoryIntelligence: InventoryIntelligenceController;
   readonly gearScoring: GearScoringController;
+  readonly futureGear: FutureGearController;
   readonly merchantAutonomy: MerchantAutonomyController;
   readonly bankTravel: BankTravelController;
   readonly bankGoldSettlement: BankGoldSettlementController;
@@ -312,6 +319,14 @@ export class BotRuntimeKernel {
       config: () => runtimeConfig?.config || {},
       onEvent: (event) => this.handleFarmIntelligenceEvent(event),
     });
+    this.gearScoring = new GearScoringController(this.game, {
+      config: () => runtimeConfig?.config || {},
+      onEvent: (event) => this.handleGearScoringEvent(event),
+    });
+    this.futureGear = new FutureGearController(this.game, this.gearScoring, {
+      config: () => runtimeConfig?.config || {},
+      onEvent: (event) => this.handleFutureGearEvent(event),
+    });
     this.inventoryIntelligence = new InventoryIntelligenceController(
       this.game,
       {
@@ -319,10 +334,6 @@ export class BotRuntimeKernel {
         onEvent: (event) => this.handleInventoryIntelligenceEvent(event),
       },
     );
-    this.gearScoring = new GearScoringController(this.game, {
-      config: () => runtimeConfig?.config || {},
-      onEvent: (event) => this.handleGearScoringEvent(event),
-    });
     this.merchantAutonomy = new MerchantAutonomyController(
       this.game,
       this.actions,
@@ -373,20 +384,32 @@ export class BotRuntimeKernel {
     );
 
     this.scheduler.register({
-      id: INVENTORY_INTELLIGENCE_JOB_ID,
-      intervalMs: INVENTORY_INTELLIGENCE_INTERVAL_MS,
-      priority: 85,
+      id: GEAR_SCORING_JOB_ID,
+      intervalMs: GEAR_SCORING_INTERVAL_MS,
+      priority: 86,
       tick: () => {
-        this.inventoryIntelligence.tick();
+        this.gearScoring.tick();
       },
     });
 
     this.scheduler.register({
-      id: GEAR_SCORING_JOB_ID,
-      intervalMs: GEAR_SCORING_INTERVAL_MS,
+      id: FUTURE_GEAR_JOB_ID,
+      intervalMs: FUTURE_GEAR_INTERVAL_MS,
+      priority: 85,
+      tick: () => {
+        this.futureGear.tick();
+        this.inventoryIntelligence.setDynamicFutureGearSlots(
+          this.futureGear.candidateSlots(),
+        );
+      },
+    });
+
+    this.scheduler.register({
+      id: INVENTORY_INTELLIGENCE_JOB_ID,
+      intervalMs: INVENTORY_INTELLIGENCE_INTERVAL_MS,
       priority: 84,
       tick: () => {
-        this.gearScoring.tick();
+        this.inventoryIntelligence.tick();
       },
     });
 
@@ -443,6 +466,7 @@ export class BotRuntimeKernel {
             farmIntelligence: this.farmIntelligence.status(),
             inventoryIntelligence: this.inventoryIntelligence.status(),
             gearScoring: this.gearScoring.status(),
+            futureGear: this.futureGear.status(),
             merchantAutonomy: this.merchantAutonomy.status(),
             bankTravel: this.bankTravel.status(),
             merchantMerrit: this.merchantMerrit.status(),
@@ -537,6 +561,7 @@ export class BotRuntimeKernel {
       farmIntelligence: this.farmIntelligence.status(),
       inventoryIntelligence: this.inventoryIntelligence.status(),
       gearScoring: this.gearScoring.status(),
+      futureGear: this.futureGear.status(),
       merchantAutonomy: this.merchantAutonomy.status(),
       bankTravel: this.bankTravel.status(),
       merchantMerrit: this.merchantMerrit.status(),
@@ -2210,6 +2235,17 @@ export class BotRuntimeKernel {
       why: event.reason,
       data: {
         gearScoring: event.status,
+      },
+    });
+  }
+
+  private handleFutureGearEvent(event: FutureGearEvent): void {
+    this.eventBus.emit({
+      module: "FutureGearController",
+      type: event.type,
+      why: event.reason,
+      data: {
+        futureGear: event.status,
       },
     });
   }
