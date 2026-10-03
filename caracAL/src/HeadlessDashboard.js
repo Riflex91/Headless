@@ -111,6 +111,7 @@ function publicCharacterState(name, charBlock = {}) {
     upgrade_live_test: charBlock.upgrade_live_test || null,
     upgrade_live_preflight: charBlock.upgrade_live_preflight || null,
     exchange_preflight: charBlock.exchange_preflight || null,
+    exchange_live_test: charBlock.exchange_live_test || null,
     compound_live_test: charBlock.compound_live_test || null,
     logistics_live_test: charBlock.logistics_live_test || null,
     merchant_live_test: charBlock.merchant_live_test || null,
@@ -324,6 +325,7 @@ function attachHeadlessDashboard({
   runUpgradeLiveTest,
   runUpgradeLivePreflight,
   runExchangePreflight,
+  runExchangeLiveTest,
   runCompoundMaterialPreparation,
   runCompoundLiveTest,
   runLogisticsLiveTest,
@@ -655,6 +657,34 @@ function attachHeadlessDashboard({
       } catch (error) {
         res.status(Number(error.statusCode) || 500).json({
           error: error.code || "EXCHANGE_PREFLIGHT_FAILED",
+          message: error.message,
+        });
+      }
+    },
+  );
+
+  router.post(
+    "/headless/api/characters/:name/tests/exchange",
+    express.json({ limit: "8kb" }),
+    async (req, res) => {
+      if (!runExchangeLiveTest) {
+        res.status(503).json({ error: "EXCHANGE_LIVE_TEST_UNAVAILABLE" });
+        return;
+      }
+
+      try {
+        const result = await runExchangeLiveTest(req.params.name, {
+          itemName: req.body?.itemName,
+          itemSlot: req.body?.itemSlot,
+        });
+        res.json({
+          ok: result?.outcome === "PASS",
+          result,
+          snapshot: getSnapshot(),
+        });
+      } catch (error) {
+        res.status(Number(error.statusCode) || 500).json({
+          error: error.code || "EXCHANGE_LIVE_TEST_FAILED",
           message: error.message,
         });
       }
