@@ -50,6 +50,10 @@ import {
   ExchangeEvent,
 } from "./exchange-controller.lib";
 import {
+  ExchangePreflightResult,
+  ExchangePreflightRunner,
+} from "./exchange-preflight.lib";
+import {
   CompoundGatherPlan,
   planCompoundGatherTarget as buildCompoundGatherPlan,
 } from "./compound-gather-plan.lib";
@@ -272,6 +276,7 @@ export class BotRuntimeKernel {
   private upgradeLiveTestRunning = false;
   private upgradePreflightRunning = false;
   private compoundLiveTestRunning = false;
+  private exchangePreflightRunning = false;
   private logisticsLiveTestRunning = false;
   private merchantLiveTestRunning = false;
   private bankTravelLiveTestRunning = false;
@@ -675,7 +680,8 @@ export class BotRuntimeKernel {
     if (
       this.upgradeLiveTestRunning ||
       this.upgradePreflightRunning ||
-      this.compoundLiveTestRunning
+      this.compoundLiveTestRunning ||
+      this.exchangePreflightRunning
     ) {
       throw new Error("mutation verification is running");
     }
@@ -692,7 +698,8 @@ export class BotRuntimeKernel {
     if (
       this.upgradeLiveTestRunning ||
       this.upgradePreflightRunning ||
-      this.compoundLiveTestRunning
+      this.compoundLiveTestRunning ||
+      this.exchangePreflightRunning
     ) {
       throw new Error("mutation verification is running");
     }
@@ -709,7 +716,8 @@ export class BotRuntimeKernel {
     if (
       this.upgradeLiveTestRunning ||
       this.upgradePreflightRunning ||
-      this.compoundLiveTestRunning
+      this.compoundLiveTestRunning ||
+      this.exchangePreflightRunning
     ) {
       throw new Error("mutation verification is running");
     }
@@ -720,6 +728,76 @@ export class BotRuntimeKernel {
       throw new Error("runtime must be RUNNING for exchange execution");
     }
     return this.exchange.executeNext() as unknown as Record<string, unknown>;
+  }
+
+  async runExchangePreflight(): Promise<ExchangePreflightResult> {
+    if (
+      this.exchangePreflightRunning ||
+      this.upgradeLiveTestRunning ||
+      this.upgradePreflightRunning ||
+      this.compoundLiveTestRunning
+    ) {
+      throw new Error("mutation verification already running");
+    }
+    if (!this.started || this.stopping) {
+      throw new Error("runtime is not ready for exchange preflight");
+    }
+    if (runtimeState() !== "RUNNING") {
+      throw new Error("runtime must be RUNNING for exchange preflight");
+    }
+
+    this.exchangePreflightRunning = true;
+    const requestId = `exchange-preflight-${Date.now()}`;
+    this.eventBus.emit({
+      module: "ExchangePreflight",
+      type: "EXCHANGE_PREFLIGHT_STARTED",
+      why: "READ_ONLY_EXCHANGE_SCAN",
+      correlationId: requestId,
+      data: {
+        requestId,
+        readOnly: true,
+        ...runtimeIdentity(),
+      },
+    });
+
+    try {
+      const runner = new ExchangePreflightRunner({
+        game: this.game,
+        inventoryIntelligence: this.inventoryIntelligence,
+        exchange: this.exchange,
+        characterName: () => character.name,
+      });
+      const result = runner.run();
+      this.eventBus.emit({
+        module: "ExchangePreflight",
+        type:
+          result.outcome === "PASS"
+            ? "EXCHANGE_PREFLIGHT_COMPLETED"
+            : "EXCHANGE_PREFLIGHT_FAILED",
+        why: result.reason,
+        correlationId: requestId,
+        data: {
+          requestId,
+          result,
+          exchange: this.exchange.status(),
+        },
+      });
+      return result;
+    } catch (error) {
+      this.eventBus.emit({
+        module: "ExchangePreflight",
+        type: "EXCHANGE_PREFLIGHT_FAILED",
+        why: "EXCHANGE_PREFLIGHT_RUNTIME_ERROR",
+        correlationId: requestId,
+        data: {
+          error: error instanceof Error ? error.message : String(error),
+          exchange: this.exchange.status(),
+        },
+      });
+      throw error;
+    } finally {
+      this.exchangePreflightRunning = false;
+    }
   }
 
   compoundGatherPlan(): CompoundGatherPlan {
