@@ -634,6 +634,50 @@ async function make_runner(upper, CODE_file, version, is_typescript) {
         }
         break;
       }
+      case "craft_live_test": {
+        const requestId =
+          typeof m.request_id === "string" && m.request_id
+            ? m.request_id
+            : `craft-live-${Date.now()}`;
+        const runtime = runner_context.__caracalBotRuntime;
+        if (!runtime?.runCraftLiveTest) {
+          sendIpcMessage(process, {
+            type: "craft_live_test_result",
+            request_id: requestId,
+            error: "CRAFT_LIVE_TEST_RUNTIME_NOT_READY",
+          });
+          break;
+        }
+
+        const recipe = typeof m.recipe === "string" ? m.recipe.trim() : "";
+        const itemSlots = Array.isArray(m.itemSlots)
+          ? m.itemSlots
+              .map((slot) => Number(slot))
+              .filter((slot) => Number.isInteger(slot) && slot >= 0)
+          : [];
+
+        void runtime
+          .runCraftLiveTest({
+            requestId,
+            recipe,
+            itemSlots,
+          })
+          .then((result) => {
+            sendIpcMessage(process, {
+              type: "craft_live_test_result",
+              request_id: requestId,
+              result,
+            });
+          })
+          .catch((error) => {
+            sendIpcMessage(process, {
+              type: "craft_live_test_result",
+              request_id: requestId,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          });
+        break;
+      }
       case "craft_preflight": {
         const requestId =
           typeof m.request_id === "string" && m.request_id

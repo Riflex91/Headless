@@ -326,6 +326,9 @@ function migrate_old_storage(path, localStorage) {
   const exchange_live_test_requests = new Map();
   let exchange_live_test_sequence = 0;
   let exchange_live_test_active = false;
+  const craft_live_test_requests = new Map();
+  let craft_live_test_sequence = 0;
+  let craft_live_test_active = false;
   const npc_trading_live_test_requests = new Map();
   let npc_trading_live_test_sequence = 0;
   let npc_trading_live_test_active = false;
@@ -402,6 +405,7 @@ function migrate_old_storage(path, localStorage) {
         runUpgradeLivePreflight: run_upgrade_live_preflight,
         runExchangePreflight: run_exchange_preflight,
         runCraftPreflight: run_craft_preflight,
+        runCraftLiveTest: run_craft_live_test,
         runCraftMaterialPlanReadOnly: run_craft_material_plan_readonly,
         runCraftMaterialPreparation: run_craft_material_preparation,
         runExchangeLiveTest: run_exchange_live_test,
@@ -549,6 +553,7 @@ function migrate_old_storage(path, localStorage) {
       exchange_preflight_active ||
       craft_preflight_active ||
       exchange_live_test_active ||
+      craft_live_test_active ||
       compound_live_test_active ||
       craft_material_preparation_active ||
       compound_material_preparation_active ||
@@ -2414,6 +2419,28 @@ function migrate_old_storage(path, localStorage) {
     });
   }
 
+  function wait_for_craft_live_test_result(char_name, request_id) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        craft_live_test_requests.delete(request_id);
+        reject(
+          make_control_error(
+            "CRAFT_LIVE_TEST_TIMEOUT",
+            `Craft live test timed out for ${char_name}`,
+            504,
+          ),
+        );
+      }, UPGRADE_LIVE_TEST_RESULT_TIMEOUT_MS);
+
+      craft_live_test_requests.set(request_id, {
+        character: char_name,
+        resolve,
+        reject,
+        timer,
+      });
+    });
+  }
+
   function wait_for_exchange_preflight_result(char_name, request_id) {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
@@ -2980,6 +3007,7 @@ function migrate_old_storage(path, localStorage) {
       upgrade_live_preflight_active ||
       exchange_preflight_active ||
       exchange_live_test_active ||
+      craft_live_test_active ||
       material_worker_active_count > 0
     ) {
       throw make_control_error(
@@ -3221,6 +3249,7 @@ function migrate_old_storage(path, localStorage) {
       exchange_preflight_active ||
       craft_preflight_active ||
       exchange_live_test_active ||
+      craft_live_test_active ||
       material_worker_active_count > 0
     ) {
       throw make_control_error(
@@ -8931,6 +8960,7 @@ function migrate_old_storage(path, localStorage) {
       craft_preflight_active ||
       exchange_preflight_active ||
       exchange_live_test_active ||
+      craft_live_test_active ||
       upgrade_live_preflight_active ||
       upgrade_live_test_active ||
       compound_live_test_active ||
@@ -9183,6 +9213,335 @@ function migrate_old_storage(path, localStorage) {
     return character_manage[char_name]?.craft_preflight;
   }
 
+  async function run_craft_live_test(char_name, options = {}) {
+    const char_block = character_manage[char_name];
+    if (!char_block) {
+      throw make_control_error(
+        "CHARACTER_NOT_FOUND",
+        `Unknown character: ${char_name}`,
+        404,
+      );
+    }
+    if (
+      char_block.account_owned !== true ||
+      (char_block.account_character_type || char_block.live_state?.ctype) !==
+        "merchant"
+    ) {
+      throw make_control_error(
+        "CRAFT_LIVE_TEST_ACCOUNT_MERCHANT_REQUIRED",
+        "Craft live test requires an account-owned merchant: " + char_name,
+        400,
+      );
+    }
+
+    const recipe =
+      typeof options.recipe === "string" ? options.recipe.trim() : "";
+    const item_slots = Array.isArray(options.itemSlots)
+      ? options.itemSlots.map((slot) => Number(slot))
+      : [];
+    if (
+      !recipe ||
+      item_slots.length < 1 ||
+      item_slots.length > 9 ||
+      item_slots.some((slot) => !Number.isInteger(slot) || slot < 0) ||
+      new Set(item_slots).size !== item_slots.length
+    ) {
+      throw make_control_error(
+        "CRAFT_LIVE_TEST_EXPLICIT_TARGET_REQUIRED",
+        "Craft live test requires an explicit recipe and distinct ingredient slots",
+        400,
+      );
+    }
+
+    if (
+      craft_live_test_active ||
+      craft_preflight_active ||
+      exchange_preflight_active ||
+      exchange_live_test_active ||
+      upgrade_live_preflight_active ||
+      upgrade_live_test_active ||
+      compound_live_test_active ||
+      craft_material_preparation_active ||
+      compound_material_preparation_active
+    ) {
+      throw make_control_error(
+        "MUTATION_VERIFICATION_ALREADY_RUNNING",
+        "A mutation verification or material preparation is already running",
+        409,
+      );
+    }
+
+    for (const active of [
+      ["MOVEMENT", char_block.movement_live_test],
+      ["COMBAT", char_block.combat_live_test],
+      ["CLASS_SKILL", char_block.class_skill_live_test],
+      ["GROUP", char_block.group_live_test],
+      ["FARM", char_block.farm_live_test],
+      ["INVENTORY", char_block.inventory_live_test],
+      ["GEAR_SCORING", char_block.gear_scoring_live_test],
+      [
+        "ACCOUNT_GEAR_RESERVATION",
+        char_block.account_gear_reservation_live_test,
+      ],
+      ["UPGRADE", char_block.upgrade_live_test],
+      ["COMPOUND", char_block.compound_live_test],
+      ["EXCHANGE", char_block.exchange_live_test],
+      ["CRAFT", char_block.craft_live_test],
+      ["LOGISTICS", char_block.logistics_live_test],
+      ["MERCHANT", char_block.merchant_live_test],
+      ["BANK_TRAVEL", char_block.bank_travel_live_test],
+      ["BANK_GOLD", char_block.bank_gold_live_test],
+      ["NPC_TRADING", char_block.npc_trading_live_test],
+      ["MARKET_TRADING", char_block.market_trading_live_test],
+      ["MERRIT", char_block.merrit_live_test],
+      ["FISHING", char_block.fishing_live_test],
+    ]) {
+      if (["STARTING", "RUNNING"].includes(active[1]?.status)) {
+        throw make_control_error(
+          active[0] + "_LIVE_TEST_ALREADY_RUNNING",
+          active[0] + " live test already running for " + char_name,
+          409,
+        );
+      }
+    }
+
+    const original_desired_state =
+      char_block.desired_runtime_state ||
+      (char_block.enabled
+        ? DESIRED_RUNTIME_STATES.RUNNING
+        : DESIRED_RUNTIME_STATES.STOPPED);
+    const started_at = Date.now();
+    craft_live_test_sequence += 1;
+    const request_id = `craft-live-${started_at}-${craft_live_test_sequence}`;
+
+    char_block.craft_live_test = {
+      request_id,
+      status: "STARTING",
+      outcome: null,
+      reason: null,
+      started_at,
+      completed_at: null,
+      target: {
+        recipe,
+        itemSlots: [...item_slots],
+      },
+      scope: {
+        movementMutationAllowed: true,
+        upgradeMutationAllowed: false,
+        compoundMutationAllowed: false,
+        exchangeMutationAllowed: false,
+        craftMutationAllowed: true,
+        irreversibleMutation: true,
+        blindRetryAllowed: false,
+        mutationScope: "single-craft-attempt-only",
+      },
+    };
+    craft_live_test_active = true;
+    emit_supervisor_event("CRAFT_LIVE_TEST_REQUESTED", char_name, {
+      request_id,
+      recipe,
+      itemSlots: [...item_slots],
+      original_desired_state,
+      irreversibleMutation: true,
+      blindRetryAllowed: false,
+    });
+    dashboard?.publishSnapshot();
+
+    let runtime_state_restored = false;
+    let runtime_override_applied = false;
+
+    try {
+      const bundle_path = path.join(
+        process.cwd(),
+        "TYPECODE.out",
+        MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE,
+      );
+      if (!fs_regular.existsSync(bundle_path)) {
+        throw make_control_error(
+          "CRAFT_LIVE_TEST_RUNTIME_BUNDLE_MISSING",
+          `Craft live test runtime bundle is missing: ${bundle_path}`,
+          503,
+        );
+      }
+
+      char_block.movement_live_test_typescript_override =
+        MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE;
+      char_block.inventory_intelligence_runtime = null;
+      runtime_override_applied = true;
+
+      if (original_desired_state !== DESIRED_RUNTIME_STATES.RUNNING) {
+        char_block.enabled = true;
+        char_block.desired_runtime_state = DESIRED_RUNTIME_STATES.RUNNING;
+      }
+
+      await restart_character_for_movement_runtime(char_name, char_block);
+      const ready_block = await wait_for_inventory_live_test_runtime(char_name);
+      const result_promise = wait_for_craft_live_test_result(
+        char_name,
+        request_id,
+      );
+
+      ready_block.craft_live_test = {
+        ...ready_block.craft_live_test,
+        status: "RUNNING",
+      };
+      dashboard?.publishSnapshot();
+
+      const sent = safe_send(ready_block.instance, {
+        type: "craft_live_test",
+        request_id,
+        recipe,
+        itemSlots: [...item_slots],
+      });
+      if (!sent) {
+        const pending = craft_live_test_requests.get(request_id);
+        if (pending) {
+          clearTimeout(pending.timer);
+          craft_live_test_requests.delete(request_id);
+        }
+        throw make_control_error(
+          "CRAFT_LIVE_TEST_DISPATCH_FAILED",
+          `Could not dispatch Craft live test to ${char_name}`,
+          503,
+        );
+      }
+
+      const child_response = await result_promise;
+      if (child_response.error || !child_response.result) {
+        throw make_control_error(
+          "CRAFT_LIVE_TEST_RUNTIME_FAILED",
+          child_response.error || "Craft live test returned no result",
+          500,
+        );
+      }
+
+      const runtime_result = child_response.result;
+      ready_block.craft_live_test = {
+        ...runtime_result,
+        request_id,
+        status:
+          runtime_result.outcome === "PASS"
+            ? "COMPLETED"
+            : runtime_result.outcome === "UNKNOWN"
+            ? "UNKNOWN"
+            : runtime_result.outcome === "TIMEOUT"
+            ? "TIMEOUT"
+            : "FAILED",
+        started_at,
+        completed_at: Date.now(),
+        cleanup: {
+          ...(runtime_result.cleanup || {}),
+          runtimeStateRestored: false,
+          dispatcherRestored: false,
+        },
+      };
+      emit_supervisor_event("CRAFT_LIVE_TEST_COMPLETED", char_name, {
+        request_id,
+        outcome: runtime_result.outcome,
+        reason: runtime_result.reason,
+        recipe,
+        itemSlots: [...item_slots],
+        action_id: runtime_result.craft?.lastAction?.id || null,
+        evidence: runtime_result.evidence || null,
+      });
+    } catch (error) {
+      char_block.craft_live_test = {
+        request_id,
+        outcome:
+          error.code === "CRAFT_LIVE_TEST_TIMEOUT" ||
+          error.code === "INVENTORY_LIVE_TEST_RUNTIME_TIMEOUT"
+            ? "TIMEOUT"
+            : "FAIL",
+        reason: error.code || error.message || "CRAFT_LIVE_TEST_FAILED",
+        error: error.message || String(error),
+        status: "FAILED",
+        started_at,
+        completed_at: Date.now(),
+        durationMs: Date.now() - started_at,
+        target: {
+          recipe,
+          itemSlots: [...item_slots],
+        },
+        scope: {
+          movementMutationAllowed: true,
+          upgradeMutationAllowed: false,
+          compoundMutationAllowed: false,
+          exchangeMutationAllowed: false,
+          craftMutationAllowed: true,
+          irreversibleMutation: true,
+          blindRetryAllowed: false,
+          mutationScope: "single-craft-attempt-only",
+        },
+        cleanup: {
+          runtimeStateRestored: false,
+          dispatcherRestored: false,
+        },
+      };
+      emit_supervisor_event(
+        "CRAFT_LIVE_TEST_FAILED",
+        char_name,
+        char_block.craft_live_test,
+      );
+    } finally {
+      const pending = craft_live_test_requests.get(request_id);
+      if (pending) {
+        clearTimeout(pending.timer);
+        craft_live_test_requests.delete(request_id);
+      }
+
+      try {
+        if (runtime_override_applied) {
+          await restore_movement_live_test_execution_source(
+            char_name,
+            original_desired_state,
+          );
+        } else {
+          await restore_movement_live_test_state(
+            char_name,
+            original_desired_state,
+          );
+        }
+        runtime_state_restored = true;
+      } catch (restore_error) {
+        emit_supervisor_event(
+          "CRAFT_LIVE_TEST_STATE_RESTORE_FAILED",
+          char_name,
+          {
+            request_id,
+            desired_runtime_state: original_desired_state,
+            error:
+              restore_error instanceof Error
+                ? restore_error.message
+                : String(restore_error),
+          },
+        );
+      }
+
+      craft_live_test_active = false;
+      schedule_merchant_logistics_dispatch();
+      const final_block = character_manage[char_name];
+      if (final_block?.craft_live_test) {
+        final_block.craft_live_test.cleanup = {
+          ...(final_block.craft_live_test.cleanup || {}),
+          runtimeStateRestored: runtime_state_restored,
+          dispatcherRestored: true,
+        };
+        if (
+          !runtime_state_restored &&
+          final_block.craft_live_test.outcome === "PASS"
+        ) {
+          final_block.craft_live_test.outcome = "FAIL";
+          final_block.craft_live_test.reason =
+            "CRAFT_LIVE_TEST_STATE_RESTORE_FAILED";
+          final_block.craft_live_test.status = "FAILED";
+        }
+      }
+      dashboard?.publishSnapshot();
+    }
+
+    return character_manage[char_name]?.craft_live_test;
+  }
+
   async function run_exchange_preflight(char_name) {
     const char_block = character_manage[char_name];
     if (!char_block) {
@@ -9203,6 +9562,7 @@ function migrate_old_storage(path, localStorage) {
       exchange_preflight_active ||
       craft_preflight_active ||
       exchange_live_test_active ||
+      craft_live_test_active ||
       upgrade_live_preflight_active ||
       upgrade_live_test_active ||
       compound_live_test_active ||
@@ -9490,6 +9850,7 @@ function migrate_old_storage(path, localStorage) {
       exchange_preflight_active ||
       craft_preflight_active ||
       exchange_live_test_active ||
+      craft_live_test_active ||
       compound_live_test_active ||
       craft_material_preparation_active ||
       compound_material_preparation_active
@@ -9799,6 +10160,7 @@ function migrate_old_storage(path, localStorage) {
 
     if (
       exchange_live_test_active ||
+      craft_live_test_active ||
       exchange_preflight_active ||
       craft_preflight_active ||
       compound_live_test_active ||
@@ -12548,6 +12910,29 @@ function migrate_old_storage(path, localStorage) {
               error: m.error || null,
             },
           );
+          break;
+        }
+        case "craft_live_test_result": {
+          const pending = craft_live_test_requests.get(m.request_id);
+          if (!pending || pending.character !== char_name) {
+            emit_supervisor_event("CRAFT_LIVE_TEST_RESULT_IGNORED", char_name, {
+              why: "UNKNOWN_OR_STALE_REQUEST",
+              request_id: m.request_id || null,
+            });
+            break;
+          }
+
+          clearTimeout(pending.timer);
+          craft_live_test_requests.delete(m.request_id);
+          pending.resolve({
+            result: m.result || null,
+            error: m.error || null,
+          });
+          emit_supervisor_event("CRAFT_LIVE_TEST_RESULT_RECEIVED", char_name, {
+            request_id: m.request_id,
+            outcome: m.result?.outcome || null,
+            error: m.error || null,
+          });
           break;
         }
         case "craft_preflight_result": {

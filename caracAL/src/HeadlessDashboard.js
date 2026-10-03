@@ -327,6 +327,7 @@ function attachHeadlessDashboard({
   runUpgradeLivePreflight,
   runExchangePreflight,
   runCraftPreflight,
+  runCraftLiveTest,
   runCraftMaterialPlanReadOnly,
   runCraftMaterialPreparation,
   runExchangeLiveTest,
@@ -661,6 +662,34 @@ function attachHeadlessDashboard({
       } catch (error) {
         res.status(Number(error.statusCode) || 500).json({
           error: error.code || "CRAFT_PREFLIGHT_FAILED",
+          message: error.message,
+        });
+      }
+    },
+  );
+
+  router.post(
+    "/headless/api/characters/:name/tests/craft",
+    express.json({ limit: "8kb" }),
+    async (req, res) => {
+      if (!runCraftLiveTest) {
+        res.status(503).json({ error: "CRAFT_LIVE_TEST_UNAVAILABLE" });
+        return;
+      }
+
+      try {
+        const result = await runCraftLiveTest(req.params.name, {
+          recipe: req.body?.recipe,
+          itemSlots: req.body?.itemSlots,
+        });
+        res.json({
+          ok: result?.outcome === "PASS",
+          result,
+          snapshot: getSnapshot(),
+        });
+      } catch (error) {
+        res.status(Number(error.statusCode) || 500).json({
+          error: error.code || "CRAFT_LIVE_TEST_FAILED",
           message: error.message,
         });
       }
