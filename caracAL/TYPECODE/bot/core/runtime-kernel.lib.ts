@@ -30,6 +30,10 @@ import {
   InventoryIntelligenceEvent,
 } from "./inventory-intelligence-controller.lib";
 import {
+  MerchantAutonomyController,
+  MerchantAutonomyEvent,
+} from "./merchant-autonomy-controller.lib";
+import {
   LogisticsClaim,
   LogisticsClaimExecutor,
   LogisticsExecutionResult,
@@ -44,6 +48,11 @@ import {
   LogisticsLiveTestResult,
   LogisticsLiveTestRunner,
 } from "./logistics-live-test.lib";
+import {
+  MerchantLiveTestOptions,
+  MerchantLiveTestResult,
+  MerchantLiveTestRunner,
+} from "./merchant-live-test.lib";
 import {
   FarmLiveTestOptions,
   FarmLiveTestResult,
@@ -78,6 +87,8 @@ const INVENTORY_INTELLIGENCE_JOB_ID = "inventory-intelligence-loop";
 const INVENTORY_INTELLIGENCE_INTERVAL_MS = 1000;
 const FARM_INTELLIGENCE_JOB_ID = "farm-intelligence-loop";
 const FARM_INTELLIGENCE_INTERVAL_MS = 1000;
+const MERCHANT_AUTONOMY_JOB_ID = "merchant-autonomy-loop";
+const MERCHANT_AUTONOMY_INTERVAL_MS = 1000;
 const GROUP_COMBAT_JOB_ID = "group-combat-loop";
 const GROUP_COMBAT_INTERVAL_MS = 250;
 const CLASS_SKILL_JOB_ID = "class-skill-loop";
@@ -136,6 +147,7 @@ export class BotRuntimeKernel {
   readonly groupCombat: GroupCombatController;
   readonly farmIntelligence: FarmIntelligenceController;
   readonly inventoryIntelligence: InventoryIntelligenceController;
+  readonly merchantAutonomy: MerchantAutonomyController;
 
   private started = false;
   private stopping = false;
@@ -146,6 +158,7 @@ export class BotRuntimeKernel {
   private farmLiveTestRunning = false;
   private inventoryLiveTestRunning = false;
   private logisticsLiveTestRunning = false;
+  private merchantLiveTestRunning = false;
   private logisticsClaimRunning = false;
   private lastLogisticsExecution: LogisticsExecutionResult | null = null;
 
@@ -230,6 +243,14 @@ export class BotRuntimeKernel {
         onEvent: (event) => this.handleInventoryIntelligenceEvent(event),
       },
     );
+    this.merchantAutonomy = new MerchantAutonomyController(
+      this.game,
+      this.actions,
+      {
+        config: () => runtimeConfig?.config || {},
+        onEvent: (event) => this.handleMerchantAutonomyEvent(event),
+      },
+    );
     this.logisticsClaims = new LogisticsClaimExecutor(
       this.actions,
       this.game,
@@ -251,6 +272,15 @@ export class BotRuntimeKernel {
       priority: 80,
       tick: () => {
         this.farmIntelligence.tick();
+      },
+    });
+
+    this.scheduler.register({
+      id: MERCHANT_AUTONOMY_JOB_ID,
+      intervalMs: MERCHANT_AUTONOMY_INTERVAL_MS,
+      priority: 75,
+      tick: () => {
+        this.merchantAutonomy.tick();
       },
     });
 
@@ -318,6 +348,7 @@ export class BotRuntimeKernel {
             groupCombat: this.groupCombat.status(),
             farmIntelligence: this.farmIntelligence.status(),
             inventoryIntelligence: this.inventoryIntelligence.status(),
+            merchantAutonomy: this.merchantAutonomy.status(),
             logisticsExecution: {
               busy: this.logisticsClaimRunning,
               last: this.lastLogisticsExecution,
@@ -407,6 +438,7 @@ export class BotRuntimeKernel {
       groupCombat: this.groupCombat.status(),
       farmIntelligence: this.farmIntelligence.status(),
       inventoryIntelligence: this.inventoryIntelligence.status(),
+      merchantAutonomy: this.merchantAutonomy.status(),
       logisticsExecution: {
         busy: this.logisticsClaimRunning,
         last: this.lastLogisticsExecution,
@@ -1075,6 +1107,108 @@ export class BotRuntimeKernel {
     } finally {
       this.inventoryLiveTestRunning = false;
     }
+  }
+
+  runMerchantLiveTest(
+    options: MerchantLiveTestOptions = {},
+  ): MerchantLiveTestResult {
+    if (this.merchantLiveTestRunning) {
+      throw new Error("merchant live test already running");
+    }
+    if (this.movementLiveTestRunning) {
+      throw new Error("movement live test already running");
+    }
+    if (this.combatLiveTestRunning) {
+      throw new Error("combat live test already running");
+    }
+    if (this.classSkillLiveTestRunning) {
+      throw new Error("class skill live test already running");
+    }
+    if (this.groupLiveTestRunning) {
+      throw new Error("group live test already running");
+    }
+    if (this.farmLiveTestRunning) {
+      throw new Error("farm live test already running");
+    }
+    if (this.inventoryLiveTestRunning) {
+      throw new Error("inventory live test already running");
+    }
+    if (this.logisticsLiveTestRunning) {
+      throw new Error("logistics live test already running");
+    }
+    if (!this.started || this.stopping) {
+      throw new Error("runtime is not ready for merchant live test");
+    }
+    if (runtimeState() !== "RUNNING") {
+      throw new Error("runtime must be RUNNING for merchant live test");
+    }
+
+    const character = this.game.character();
+    if (character.ctype !== "merchant") {
+      throw new Error("merchant live test requires merchant character");
+    }
+
+    this.merchantLiveTestRunning = true;
+    const requestId = options.requestId || `merchant-live-${Date.now()}`;
+    this.eventBus.emit({
+      module: "MerchantLiveTest",
+      type: "MERCHANT_LIVE_TEST_STARTED",
+      why: "AUTONOMOUS_MERCHANT_NON_FORCING_E2E",
+      correlationId: requestId,
+      data: {
+        requestId,
+        merchantAutonomy: this.merchantAutonomy.status(),
+        ...runtimeIdentity(),
+      },
+    });
+
+    try {
+      const runner = new MerchantLiveTestRunner({
+        merchantAutonomy: this.merchantAutonomy,
+      });
+      const result = runner.run({
+        ...options,
+        requestId,
+      });
+      this.eventBus.emit({
+        module: "MerchantLiveTest",
+        type: "MERCHANT_LIVE_TEST_COMPLETED",
+        why: result.reason,
+        correlationId: requestId,
+        data: {
+          result,
+          merchantAutonomy: this.merchantAutonomy.status(),
+        },
+      });
+      return result;
+    } catch (error) {
+      this.eventBus.emit({
+        module: "MerchantLiveTest",
+        type: "MERCHANT_LIVE_TEST_FAILED",
+        why: "MERCHANT_LIVE_TEST_RUNTIME_ERROR",
+        correlationId: requestId,
+        data: {
+          error: error instanceof Error ? error.message : String(error),
+          merchantAutonomy: this.merchantAutonomy.status(),
+        },
+      });
+      throw error;
+    } finally {
+      this.merchantLiveTestRunning = false;
+    }
+  }
+
+  private handleMerchantAutonomyEvent(
+    event: MerchantAutonomyEvent,
+  ): void {
+    this.eventBus.emit({
+      module: "MerchantAutonomyController",
+      type: event.type,
+      why: event.reason,
+      data: {
+        merchantAutonomy: event.status,
+      },
+    });
   }
 
   private handleInventoryIntelligenceEvent(
