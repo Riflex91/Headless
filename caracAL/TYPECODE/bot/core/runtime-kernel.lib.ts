@@ -105,6 +105,15 @@ import {
   MovementLiveTestResult,
   MovementLiveTestRunner,
 } from "./movement-live-test.lib";
+import {
+  BankTravelController,
+  BankTravelEvent,
+} from "./bank-travel-controller.lib";
+import {
+  BankTravelLiveTestOptions,
+  BankTravelLiveTestResult,
+  BankTravelLiveTestRunner,
+} from "./bank-travel-live-test.lib";
 
 const INVENTORY_INTELLIGENCE_JOB_ID = "inventory-intelligence-loop";
 const INVENTORY_INTELLIGENCE_INTERVAL_MS = 1000;
@@ -112,6 +121,8 @@ const FARM_INTELLIGENCE_JOB_ID = "farm-intelligence-loop";
 const FARM_INTELLIGENCE_INTERVAL_MS = 1000;
 const MERCHANT_AUTONOMY_JOB_ID = "merchant-autonomy-loop";
 const MERCHANT_AUTONOMY_INTERVAL_MS = 1000;
+const BANK_TRAVEL_JOB_ID = "bank-travel-loop";
+const BANK_TRAVEL_INTERVAL_MS = 1000;
 const MERRIT_AUTONOMY_JOB_ID = "merchant-merrit-loop";
 const MERRIT_AUTONOMY_INTERVAL_MS = 1000;
 const FISHING_AUTONOMY_JOB_ID = "merchant-fishing-loop";
@@ -175,6 +186,7 @@ export class BotRuntimeKernel {
   readonly farmIntelligence: FarmIntelligenceController;
   readonly inventoryIntelligence: InventoryIntelligenceController;
   readonly merchantAutonomy: MerchantAutonomyController;
+  readonly bankTravel: BankTravelController;
   readonly merchantMerrit: MerchantMerritController;
   readonly merchantFishing: MerchantFishingController;
 
@@ -188,6 +200,7 @@ export class BotRuntimeKernel {
   private inventoryLiveTestRunning = false;
   private logisticsLiveTestRunning = false;
   private merchantLiveTestRunning = false;
+  private bankTravelLiveTestRunning = false;
   private merritLiveTestRunning = false;
   private fishingLiveTestRunning = false;
   private materialGatherTaskRunning = false;
@@ -283,6 +296,10 @@ export class BotRuntimeKernel {
         onEvent: (event) => this.handleMerchantAutonomyEvent(event),
       },
     );
+    this.bankTravel = new BankTravelController(this.game, this.movement, {
+      config: () => runtimeConfig?.config || {},
+      onEvent: (event) => this.handleBankTravelEvent(event),
+    });
     this.merchantMerrit = new MerchantMerritController(
       this.game,
       this.actions,
@@ -333,6 +350,7 @@ export class BotRuntimeKernel {
         this.merchantAutonomy.tick();
       },
     });
+    this.registerBankTravelJob();
     this.registerMerritJob();
     this.registerFishingJob();
     this.registerGroupCombatJob();
@@ -375,6 +393,7 @@ export class BotRuntimeKernel {
             farmIntelligence: this.farmIntelligence.status(),
             inventoryIntelligence: this.inventoryIntelligence.status(),
             merchantAutonomy: this.merchantAutonomy.status(),
+            bankTravel: this.bankTravel.status(),
             merchantMerrit: this.merchantMerrit.status(),
             merchantFishing: this.merchantFishing.status(),
             logisticsExecution: {
@@ -467,6 +486,7 @@ export class BotRuntimeKernel {
       farmIntelligence: this.farmIntelligence.status(),
       inventoryIntelligence: this.inventoryIntelligence.status(),
       merchantAutonomy: this.merchantAutonomy.status(),
+      bankTravel: this.bankTravel.status(),
       merchantMerrit: this.merchantMerrit.status(),
       merchantFishing: this.merchantFishing.status(),
       logisticsExecution: {
@@ -1356,6 +1376,106 @@ export class BotRuntimeKernel {
     }
   }
 
+  async runBankTravelLiveTest(
+    options: BankTravelLiveTestOptions = {},
+  ): Promise<BankTravelLiveTestResult> {
+    if (this.bankTravelLiveTestRunning) {
+      throw new Error("bank travel live test already running");
+    }
+    if (this.merritLiveTestRunning || this.fishingLiveTestRunning) {
+      throw new Error("merchant travel activity is running");
+    }
+    if (
+      this.movementLiveTestRunning ||
+      this.combatLiveTestRunning ||
+      this.classSkillLiveTestRunning ||
+      this.groupLiveTestRunning
+    ) {
+      throw new Error("movement or combat live test is running");
+    }
+    if (
+      this.farmLiveTestRunning ||
+      this.inventoryLiveTestRunning ||
+      this.logisticsLiveTestRunning ||
+      this.logisticsClaimRunning
+    ) {
+      throw new Error("another live or logistics test is running");
+    }
+    if (!this.started || this.stopping) {
+      throw new Error("runtime is not ready for bank travel live test");
+    }
+    if (runtimeState() !== "RUNNING") {
+      throw new Error("runtime must be RUNNING for bank travel live test");
+    }
+
+    this.bankTravelLiveTestRunning = true;
+    const requestId = options.requestId || `bank-travel-live-${Date.now()}`;
+    const suspended = {
+      bankTravel: this.scheduler.unregister(BANK_TRAVEL_JOB_ID),
+      fishing: this.scheduler.unregister(FISHING_AUTONOMY_JOB_ID),
+      merrit: this.scheduler.unregister(MERRIT_AUTONOMY_JOB_ID),
+      groupCombat: this.scheduler.unregister(GROUP_COMBAT_JOB_ID),
+      classSkill: this.scheduler.unregister(CLASS_SKILL_JOB_ID),
+      combat: this.scheduler.unregister(COMBAT_JOB_ID),
+    };
+
+    this.eventBus.emit({
+      module: "BankTravelLiveTest",
+      type: "BANK_TRAVEL_LIVE_TEST_STARTED",
+      why: "PHASE13_BANK_TRAVEL_E2E",
+      correlationId: requestId,
+      data: {
+        requestId,
+        bankTravel: this.bankTravel.status(),
+        suspended,
+        ...runtimeIdentity(),
+      },
+    });
+
+    try {
+      const runner = new BankTravelLiveTestRunner({
+        bankTravel: this.bankTravel,
+      });
+      const result = await runner.run({
+        ...options,
+        requestId,
+      });
+      this.eventBus.emit({
+        module: "BankTravelLiveTest",
+        type: "BANK_TRAVEL_LIVE_TEST_COMPLETED",
+        why: result.reason,
+        correlationId: requestId,
+        data: {
+          result,
+          bankTravel: this.bankTravel.status(),
+          suspended,
+        },
+      });
+      return result;
+    } catch (error) {
+      this.eventBus.emit({
+        module: "BankTravelLiveTest",
+        type: "BANK_TRAVEL_LIVE_TEST_FAILED",
+        why: "BANK_TRAVEL_LIVE_TEST_RUNTIME_ERROR",
+        correlationId: requestId,
+        data: {
+          error: error instanceof Error ? error.message : String(error),
+          bankTravel: this.bankTravel.status(),
+          suspended,
+        },
+      });
+      throw error;
+    } finally {
+      if (suspended.bankTravel) this.registerBankTravelJob();
+      if (suspended.merrit) this.registerMerritJob();
+      if (suspended.fishing) this.registerFishingJob();
+      if (suspended.groupCombat) this.registerGroupCombatJob();
+      if (suspended.classSkill) this.registerClassSkillJob();
+      if (suspended.combat) this.registerCombatJob();
+      this.bankTravelLiveTestRunning = false;
+    }
+  }
+
   async runMerritLiveTest(
     options: MerritLiveTestOptions = {},
   ): Promise<MerritLiveTestResult> {
@@ -1550,6 +1670,18 @@ export class BotRuntimeKernel {
     }
   }
 
+  private registerBankTravelJob(): void {
+    if (this.scheduler.has(BANK_TRAVEL_JOB_ID)) return;
+    this.scheduler.register({
+      id: BANK_TRAVEL_JOB_ID,
+      intervalMs: BANK_TRAVEL_INTERVAL_MS,
+      priority: 76,
+      tick: async () => {
+        await this.bankTravel.tick();
+      },
+    });
+  }
+
   private registerFishingJob(): void {
     if (this.scheduler.has(FISHING_AUTONOMY_JOB_ID)) return;
     this.scheduler.register({
@@ -1632,6 +1764,17 @@ export class BotRuntimeKernel {
       data: {
         merchantMerrit: event.status,
         ...(event.data || {}),
+      },
+    });
+  }
+
+  private handleBankTravelEvent(event: BankTravelEvent): void {
+    this.eventBus.emit({
+      module: "BankTravelController",
+      type: event.type,
+      why: event.reason,
+      data: {
+        bankTravel: event.status,
       },
     });
   }

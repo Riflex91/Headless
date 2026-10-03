@@ -470,6 +470,39 @@ async function make_runner(upper, CODE_file, version, is_typescript) {
           });
         break;
       }
+      case "bank_travel_live_test": {
+        const requestId =
+          typeof m.request_id === "string" && m.request_id
+            ? m.request_id
+            : `bank-travel-live-${Date.now()}`;
+        const runtime = runner_context.__caracalBotRuntime;
+        if (!runtime?.runBankTravelLiveTest) {
+          sendIpcMessage(process, {
+            type: "bank_travel_live_test_result",
+            request_id: requestId,
+            error: "BANK_TRAVEL_LIVE_TEST_RUNTIME_NOT_READY",
+          });
+          break;
+        }
+
+        void runtime
+          .runBankTravelLiveTest({ requestId })
+          .then((result) => {
+            sendIpcMessage(process, {
+              type: "bank_travel_live_test_result",
+              request_id: requestId,
+              result,
+            });
+          })
+          .catch((error) => {
+            sendIpcMessage(process, {
+              type: "bank_travel_live_test_result",
+              request_id: requestId,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          });
+        break;
+      }
       case "class_skill_live_test": {
         const requestId =
           typeof m.request_id === "string" && m.request_id
