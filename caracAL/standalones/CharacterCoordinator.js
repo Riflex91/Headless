@@ -2554,6 +2554,7 @@ function migrate_old_storage(path, localStorage) {
       item_name,
       monster_type,
       quantity,
+      item_level = null,
       recipient_position,
       purpose = "FISHING_MATERIAL",
     },
@@ -2636,6 +2637,7 @@ function migrate_old_storage(path, localStorage) {
         item_name,
         monster_type,
         quantity,
+        item_level,
         recipient: merchant_name,
         recipient_position,
         purpose,
@@ -2664,6 +2666,7 @@ function migrate_old_storage(path, localStorage) {
           item_name,
           monster_type,
           quantity,
+          item_level,
           purpose,
         },
       );
