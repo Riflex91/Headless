@@ -57,18 +57,18 @@ function expectedValueStatus(estimates = []) {
       estimates.length === 0
         ? "EMPTY"
         : unknown > 0
-          ? evaluated > 0
-            ? "PARTIAL"
-            : "EMPTY"
-          : "READY",
+        ? evaluated > 0
+          ? "PARTIAL"
+          : "EMPTY"
+        : "READY",
     reason:
       estimates.length === 0
         ? "EXPECTED_VALUE_NO_CANDIDATES"
         : unknown > 0
-          ? evaluated > 0
-            ? "EXPECTED_VALUE_PARTIAL"
-            : "EXPECTED_VALUE_MODEL_INPUT_UNKNOWN"
-          : "EXPECTED_VALUE_READY",
+        ? evaluated > 0
+          ? "EXPECTED_VALUE_PARTIAL"
+          : "EXPECTED_VALUE_MODEL_INPUT_UNKNOWN"
+        : "EXPECTED_VALUE_READY",
     model: {
       valueModel: "ADVENTURE_LAND_INTRINSIC_GOLD_VALUE",
       probabilityModel: "OFFICIAL_BASE_NO_DYNAMIC_GRACE_NO_OFFERING",
@@ -167,10 +167,7 @@ test("Risk Policy blocks negative EV by default", () => {
   assert.equal(status.state, "BLOCKED");
   assert.equal(status.reason, "RISK_POLICY_ALL_CANDIDATES_BLOCKED");
   assert.equal(decision.decision, "BLOCK");
-  assert.equal(
-    decision.reason,
-    "RISK_POLICY_EXPECTED_DELTA_BELOW_MINIMUM",
-  );
+  assert.equal(decision.reason, "RISK_POLICY_EXPECTED_DELTA_BELOW_MINIMUM");
   assert.equal(status.selected, null);
 });
 
