@@ -645,12 +645,9 @@ function attachHeadlessDashboard({
       }
 
       try {
-        const result = await runCompoundMaterialPreparation(
-          req.params.name,
-          {
-            workers: req.body?.workers,
-          },
-        );
+        const result = await runCompoundMaterialPreparation(req.params.name, {
+          workers: req.body?.workers,
+        });
         res.json({
           ok: result?.outcome === "PASS",
           result,
@@ -658,8 +655,7 @@ function attachHeadlessDashboard({
         });
       } catch (error) {
         res.status(Number(error.statusCode) || 500).json({
-          error:
-            error.code || "COMPOUND_MATERIAL_PREPARATION_FAILED",
+          error: error.code || "COMPOUND_MATERIAL_PREPARATION_FAILED",
           message: error.message,
         });
       }
