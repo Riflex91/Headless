@@ -111,6 +111,7 @@ interface NormalizedUpgradeConfig {
   maxLevel: number | null;
   maxLevelByItem: Map<string, number>;
   scrollByCurrentLevel: Map<number, string>;
+  allowedSlots: Set<number> | null;
 }
 
 function record(value: unknown): Record<string, unknown> {
@@ -162,6 +163,15 @@ function normalizeItemMaxLevels(value: unknown): Map<string, number> {
   return result;
 }
 
+function normalizeAllowedSlots(value: unknown): Set<number> | null {
+  if (!Array.isArray(value)) return null;
+  return new Set(
+    value
+      .map((slot) => nonNegativeInteger(slot))
+      .filter((slot): slot is number => slot !== null),
+  );
+}
+
 function normalizeConfig(value: unknown): NormalizedUpgradeConfig {
   const root = record(value);
   const upgrade = record(root.upgrade);
@@ -174,6 +184,7 @@ function normalizeConfig(value: unknown): NormalizedUpgradeConfig {
     scrollByCurrentLevel: normalizeLevelMap(
       upgrade.scrollByCurrentLevel ?? upgrade.scrollsByCurrentLevel,
     ),
+    allowedSlots: normalizeAllowedSlots(upgrade.allowedSlots),
   };
 }
 
@@ -368,7 +379,9 @@ export class UpgradeController {
       intelligence.entries.map((entry) => [entry.slot, entry]),
     );
     const upgradeEntries = intelligence.entries.filter(
-      (entry) => entry.disposition === "UPGRADE",
+      (entry) =>
+        entry.disposition === "UPGRADE" &&
+        (!config.allowedSlots || config.allowedSlots.has(entry.slot)),
     );
     const decisions: UpgradeDecision[] = [];
     const candidates: UpgradeCandidate[] = [];

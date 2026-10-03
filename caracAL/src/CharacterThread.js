@@ -560,6 +560,52 @@ async function make_runner(upper, CODE_file, version, is_typescript) {
           });
         break;
       }
+      case "upgrade_live_test": {
+        const requestId =
+          typeof m.request_id === "string" && m.request_id
+            ? m.request_id
+            : `upgrade-live-${Date.now()}`;
+        const runtime = runner_context.__caracalBotRuntime;
+        if (!runtime?.runUpgradeLiveTest) {
+          sendIpcMessage(process, {
+            type: "upgrade_live_test_result",
+            request_id: requestId,
+            error: "UPGRADE_LIVE_TEST_RUNTIME_NOT_READY",
+          });
+          break;
+        }
+
+        const itemName =
+          typeof m.itemName === "string" ? m.itemName.trim() : "";
+        const scrollName =
+          typeof m.scrollName === "string" ? m.scrollName.trim() : "";
+        const itemSlot = Number.isInteger(Number(m.itemSlot))
+          ? Number(m.itemSlot)
+          : undefined;
+
+        void runtime
+          .runUpgradeLiveTest({
+            requestId,
+            itemName,
+            scrollName,
+            ...(itemSlot !== undefined && { itemSlot }),
+          })
+          .then((result) => {
+            sendIpcMessage(process, {
+              type: "upgrade_live_test_result",
+              request_id: requestId,
+              result,
+            });
+          })
+          .catch((error) => {
+            sendIpcMessage(process, {
+              type: "upgrade_live_test_result",
+              request_id: requestId,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          });
+        break;
+      }
       case "bank_gold_live_test": {
         const requestId =
           typeof m.request_id === "string" && m.request_id

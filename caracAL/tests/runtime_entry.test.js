@@ -196,6 +196,8 @@ test("combat live E2E is wired through runtime and character IPC", () => {
   assert.match(kernel, /BankTravelLiveTestRunner/);
   assert.match(kernel, /runBankGoldLiveTest/);
   assert.match(kernel, /BankGoldLiveTestRunner/);
+  assert.match(kernel, /runUpgradeLiveTest/);
+  assert.match(kernel, /UpgradeLiveTestRunner/);
   assert.match(kernel, /runNpcTradingLiveTest/);
   assert.match(kernel, /NpcTradingLiveTestRunner/);
   assert.match(kernel, /runMarketTradingLiveTest/);
@@ -210,6 +212,8 @@ test("combat live E2E is wired through runtime and character IPC", () => {
   assert.match(thread, /bank_travel_live_test_result/);
   assert.match(thread, /bank_gold_live_test/);
   assert.match(thread, /bank_gold_live_test_result/);
+  assert.match(thread, /upgrade_live_test/);
+  assert.match(thread, /upgrade_live_test_result/);
   assert.match(thread, /npc_trading_live_test/);
   assert.match(thread, /npc_trading_live_test_result/);
   assert.match(thread, /market_trading_live_test/);
@@ -307,4 +311,35 @@ test("Upgrade scheduler plans only and mutation stays explicit one-shot", () => 
   const schedulerBlock = kernel.slice(schedulerStart, schedulerEnd);
   assert.match(schedulerBlock, /this\.upgrade\.tick\(\)/);
   assert.doesNotMatch(schedulerBlock, /executeNext/);
+});
+
+test("Upgrade live IPC stays in runner context and exposes one attempt only", () => {
+  const thread = fs.readFileSync(
+    path.join(__dirname, "..", "src", "CharacterThread.js"),
+    "utf8",
+  );
+  const liveTest = fs.readFileSync(
+    path.join(
+      __dirname,
+      "..",
+      "TYPECODE",
+      "bot",
+      "core",
+      "upgrade-live-test.lib.ts",
+    ),
+    "utf8",
+  );
+
+  const runnerReturn = thread.indexOf("return runner_context;");
+  const upgradeCase = thread.indexOf('case "upgrade_live_test"');
+  assert.ok(upgradeCase >= 0);
+  assert.ok(runnerReturn > upgradeCase);
+  assert.equal(thread.indexOf('case "upgrade_live_test"', runnerReturn), -1);
+
+  assert.match(liveTest, /executionAttempts \+= 1/);
+  assert.match(liveTest, /UPGRADE_LIVE_OUTCOME_UNKNOWN_NO_RETRY/);
+  assert.match(liveTest, /single-upgrade-attempt-only/);
+  assert.doesNotMatch(liveTest, /\bcompound\s*\(/);
+  assert.doesNotMatch(liveTest, /\bexchange\s*\(/);
+  assert.doesNotMatch(liveTest, /\bcraft\s*\(/);
 });
