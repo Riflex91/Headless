@@ -324,7 +324,9 @@
         )
         .map((entry) => [entry.slot, entry]),
     );
-    const futureGearEntries = Array.isArray(character.future_gear_runtime?.entries)
+    const futureGearEntries = Array.isArray(
+      character.future_gear_runtime?.entries,
+    )
       ? character.future_gear_runtime.entries
       : [];
     const futureGearBySlot = new Map(
