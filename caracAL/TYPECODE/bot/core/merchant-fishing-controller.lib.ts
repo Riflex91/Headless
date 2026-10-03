@@ -530,6 +530,7 @@ export class MerchantFishingController {
   private resultResponse: string | null = null;
   private materialRequestPending = false;
   private materialRequestQuantity = 0;
+  private materialRequestFailureReason: string | null = null;
 
   constructor(
     private readonly game: MerchantFishingGame,
@@ -549,6 +550,23 @@ export class MerchantFishingController {
   clearConfigOverride(): void {
     this.configOverride = undefined;
   }
+
+  reportMaterialRequestResult(result: {
+    itemName: string;
+    success: boolean;
+    reason?: string | null;
+  }): void {
+    if (result.itemName !== MATERIAL) return;
+    if (result.success) {
+      this.materialRequestFailureReason = null;
+      return;
+    }
+    this.materialRequestFailureReason =
+      typeof result.reason === "string" && result.reason.trim()
+        ? result.reason.trim()
+        : "MATERIAL_REQUEST_FAILED";
+  }
+
 
   status(): MerchantFishingStatus {
     const config = normalizeConfig(this.effectiveConfig());
@@ -855,6 +873,7 @@ export class MerchantFishingController {
     this.resultResponse = null;
     this.materialRequestPending = false;
     this.materialRequestQuantity = 0;
+    this.materialRequestFailureReason = null;
   }
 
   private async acquireTool(
@@ -945,6 +964,13 @@ export class MerchantFishingController {
     if (silkRequirement && currentSilk < silkRequirement.quantity) {
       const missingQuantity = silkRequirement.quantity - currentSilk;
       this.materialRequestQuantity = missingQuantity;
+      if (this.materialRequestFailureReason) {
+        return this.block(
+          config,
+          `FISHING_MATERIAL_REQUEST_FAILED:${this.materialRequestFailureReason}`,
+          "Tool beschaffen",
+        );
+      }
       if (!this.materialRequestPending) {
         this.materialRequestPending = true;
         const status = this.buildStatus(
@@ -978,6 +1004,7 @@ export class MerchantFishingController {
     }
     this.materialRequestPending = false;
     this.materialRequestQuantity = 0;
+    this.materialRequestFailureReason = null;
 
     const craftCost = recipeCost(gameData);
     const gold = this.game.character().gold;
