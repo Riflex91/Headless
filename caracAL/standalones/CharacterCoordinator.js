@@ -89,6 +89,11 @@ const {
   merritLiveTestDiagnostics,
   merritLiveTestEvidence,
 } = require("../src/MerritLiveTest");
+const {
+  combineFishingLiveTestResult,
+  fishingLiveTestDiagnostics,
+  fishingLiveTestEvidence,
+} = require("../src/FishingLiveTest");
 const { PersistenceService } = require("../src/PersistenceService");
 const { CharacterConfigService } = require("../src/CharacterConfigService");
 const { MerchantLogisticsPlanner } = require("../src/MerchantLogisticsPlanner");
@@ -128,6 +133,7 @@ const INVENTORY_LIVE_TEST_RESULT_TIMEOUT_MS = 120000;
 const LOGISTICS_LIVE_TEST_RESULT_TIMEOUT_MS = 120000;
 const MERCHANT_LIVE_TEST_RESULT_TIMEOUT_MS = 120000;
 const MERRIT_LIVE_TEST_RESULT_TIMEOUT_MS = 420000;
+const FISHING_LIVE_TEST_RESULT_TIMEOUT_MS = 20 * 60 * 1000;
 const LOGISTICS_CLAIM_RESULT_TIMEOUT_MS = 30000;
 
 //TODO check for invalid session
@@ -264,6 +270,9 @@ function migrate_old_storage(path, localStorage) {
   let merchant_live_test_sequence = 0;
   const merrit_live_test_requests = new Map();
   let merrit_live_test_sequence = 0;
+  const fishing_live_test_requests = new Map();
+  let fishing_live_test_sequence = 0;
+  let fishing_live_test_active = false;
   const logistics_claim_requests = new Map();
   let logistics_claim_sequence = 0;
   let logistics_dispatch_scheduled = false;
@@ -312,6 +321,7 @@ function migrate_old_storage(path, localStorage) {
         runLogisticsLiveTest: run_logistics_live_test,
         runMerchantLiveTest: run_merchant_live_test,
         runMerritLiveTest: run_merrit_live_test,
+        runFishingLiveTest: run_fishing_live_test,
         controlEmergencyStop: control_emergency_stop,
         getEmergencyStopState: () => emergency_stop.snapshot(),
         getRevisionSummary: revision_summary,
@@ -437,7 +447,7 @@ function migrate_old_storage(path, localStorage) {
 
   function dispatch_merchant_logistics_claim() {
     if (coordinator_shutting_down) return false;
-    if (logistics_live_test_active) return false;
+    if (logistics_live_test_active || fishing_live_test_active) return false;
     if (emergency_stop.snapshot().active) return false;
     if (logistics_claim_requests.size > 0) return false;
 
@@ -775,6 +785,14 @@ function migrate_old_storage(path, localStorage) {
     }
 
     if (
+      char_block &&
+      normalized.data?.merchantFishing &&
+      typeof normalized.data.merchantFishing === "object"
+    ) {
+      char_block.fishing_runtime = normalized.data.merchantFishing;
+    }
+
+    if (
       normalized.module === "MerchantMerritController" &&
       normalized.type === "MERRIT_PARCEL_CONFIRMED" &&
       Number.isFinite(Number(normalized.data?.readyAt))
@@ -846,7 +864,8 @@ function migrate_old_storage(path, localStorage) {
         normalized.data?.groupCombat ||
         normalized.data?.farmIntelligence ||
         normalized.data?.inventoryIntelligence ||
-        normalized.data?.merchantMerrit)
+        normalized.data?.merchantMerrit ||
+        normalized.data?.merchantFishing)
     ) {
       dashboard?.publishSnapshot();
     }
@@ -1356,6 +1375,15 @@ function migrate_old_storage(path, localStorage) {
     }
   }
 
+  function reject_fishing_live_tests_for_character(char_name, reason) {
+    for (const [request_id, pending] of fishing_live_test_requests) {
+      if (pending.character !== char_name) continue;
+      clearTimeout(pending.timer);
+      fishing_live_test_requests.delete(request_id);
+      pending.reject(new Error(reason));
+    }
+  }
+
   async function wait_for_logistics_claim_idle(
     timeout_ms = LOGISTICS_CLAIM_RESULT_TIMEOUT_MS + 5000,
   ) {
@@ -1440,6 +1468,30 @@ function migrate_old_storage(path, localStorage) {
     throw make_control_error(
       "MERCHANT_LIVE_TEST_RUNTIME_TIMEOUT",
       `Merchant runtime did not become ready for ${char_name}`,
+      504,
+    );
+  }
+
+  async function wait_for_fishing_live_test_runtime(
+    char_name,
+    timeout_ms = MOVEMENT_LIVE_TEST_RUNTIME_TIMEOUT_MS,
+  ) {
+    const started_at = Date.now();
+    while (Date.now() - started_at < timeout_ms) {
+      const char_block = character_manage[char_name];
+      if (
+        char_block?.instance &&
+        char_block.connected &&
+        Number.isFinite(char_block.bot_runtime_started_at)
+      ) {
+        return char_block;
+      }
+      await sleep(100);
+    }
+
+    throw make_control_error(
+      "FISHING_LIVE_TEST_RUNTIME_TIMEOUT",
+      `Fishing runtime did not become ready for ${char_name}`,
       504,
     );
   }
@@ -1790,6 +1842,28 @@ function migrate_old_storage(path, localStorage) {
       }, MERRIT_LIVE_TEST_RESULT_TIMEOUT_MS);
 
       merrit_live_test_requests.set(request_id, {
+        character: char_name,
+        resolve,
+        reject,
+        timer,
+      });
+    });
+  }
+
+  function wait_for_fishing_live_test_result(char_name, request_id) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        fishing_live_test_requests.delete(request_id);
+        reject(
+          make_control_error(
+            "FISHING_LIVE_TEST_TIMEOUT",
+            `Fishing live test timed out for ${char_name}`,
+            504,
+          ),
+        );
+      }, FISHING_LIVE_TEST_RESULT_TIMEOUT_MS);
+
+      fishing_live_test_requests.set(request_id, {
         character: char_name,
         resolve,
         reject,
@@ -2233,6 +2307,36 @@ function migrate_old_storage(path, localStorage) {
         path.join("logs", "incidents", incident.incident_id),
       ),
       "merrit_live_test_incident",
+      char_name,
+    );
+    return incident.incident_id;
+  }
+
+  function capture_fishing_live_test_incident(char_name, test_result) {
+    const incident = incident_recorder.capture({
+      reason: test_result.reason || "FISHING_LIVE_TEST_FAILED",
+      severity: test_result.outcome === "TIMEOUT" ? "HIGH" : "ERROR",
+      character: char_name,
+      event: {
+        type: "fishing_live_test",
+        event: "FISHING_LIVE_TEST_FAILED",
+        character: char_name,
+        timestamp: Date.now(),
+        request_id: test_result.request_id || test_result.requestId || null,
+        outcome: test_result.outcome || "FAIL",
+        reason: test_result.reason || "FISHING_LIVE_TEST_FAILED",
+      },
+      extra: {
+        test: test_result,
+      },
+    });
+
+    void observe_persistence(
+      persistence.indexIncident(
+        incident,
+        path.join("logs", "incidents", incident.incident_id),
+      ),
+      "fishing_live_test_incident",
       char_name,
     );
     return incident.incident_id;
@@ -4414,6 +4518,381 @@ function migrate_old_storage(path, localStorage) {
     return character_manage[char_name]?.logistics_live_test;
   }
 
+  async function run_fishing_live_test(char_name) {
+    const char_block = character_manage[char_name];
+    if (!char_block) {
+      throw make_control_error(
+        "CHARACTER_NOT_FOUND",
+        `Unknown character: ${char_name}`,
+        404,
+      );
+    }
+    if (
+      (char_block.account_character_type || char_block.live_state?.ctype) !==
+      "merchant"
+    ) {
+      throw make_control_error(
+        "FISHING_LIVE_TEST_MERCHANT_REQUIRED",
+        "Fishing live test requires a merchant: " + char_name,
+        400,
+      );
+    }
+    if (char_block.account_owned !== true) {
+      throw make_control_error(
+        "FISHING_LIVE_TEST_ACCOUNT_MERCHANT_REQUIRED",
+        "Fishing live test requires an account-owned merchant: " + char_name,
+        400,
+      );
+    }
+    if (
+      ["STARTING", "RUNNING"].includes(char_block.fishing_live_test?.status) ||
+      fishing_live_test_active
+    ) {
+      throw make_control_error(
+        "FISHING_LIVE_TEST_ALREADY_RUNNING",
+        "A Fishing live test is already running",
+        409,
+      );
+    }
+
+    for (const active of [
+      ["MOVEMENT", char_block.movement_live_test],
+      ["COMBAT", char_block.combat_live_test],
+      ["CLASS_SKILL", char_block.class_skill_live_test],
+      ["GROUP", char_block.group_live_test],
+      ["FARM", char_block.farm_live_test],
+      ["INVENTORY", char_block.inventory_live_test],
+      ["LOGISTICS", char_block.logistics_live_test],
+      ["MERCHANT", char_block.merchant_live_test],
+      ["MERRIT", char_block.merrit_live_test],
+    ]) {
+      if (["STARTING", "RUNNING"].includes(active[1]?.status)) {
+        throw make_control_error(
+          active[0] + "_LIVE_TEST_ALREADY_RUNNING",
+          active[0] + " live test already running for " + char_name,
+          409,
+        );
+      }
+    }
+
+    const original_desired_state =
+      char_block.desired_runtime_state ||
+      (char_block.enabled
+        ? DESIRED_RUNTIME_STATES.RUNNING
+        : DESIRED_RUNTIME_STATES.STOPPED);
+    const start_state = {
+      lifecycle_state: char_block.lifecycle_state || null,
+      desired_runtime_state: original_desired_state,
+      enabled: !!char_block.enabled,
+      connected: !!char_block.connected,
+      map: char_block.live_state?.map || null,
+      gold: Number.isFinite(char_block.live_state?.gold)
+        ? char_block.live_state.gold
+        : null,
+      inventory_slots: Array.isArray(char_block.live_state?.items)
+        ? char_block.live_state.items.filter(Boolean).length
+        : null,
+      mainhand: char_block.live_state?.slots?.mainhand || null,
+    };
+    const started_at = Date.now();
+    fishing_live_test_sequence += 1;
+    const request_id = `fishing-live-${started_at}-${fishing_live_test_sequence}`;
+
+    char_block.fishing_live_test = {
+      request_id,
+      status: "STARTING",
+      outcome: null,
+      reason: null,
+      started_at,
+      completed_at: null,
+    };
+    emit_supervisor_event("FISHING_LIVE_TEST_REQUESTED", char_name, {
+      request_id,
+      original_desired_state,
+    });
+    dashboard?.publishSnapshot();
+
+    let runtime_override_applied = false;
+    let runtime_state_restored = false;
+    fishing_live_test_active = true;
+
+    try {
+      await wait_for_logistics_claim_idle();
+
+      const runtime_ready =
+        !!char_block.instance &&
+        char_block.connected &&
+        Number.isFinite(char_block.bot_runtime_started_at);
+
+      if (!runtime_ready) {
+        const bundle_path = path.join(
+          process.cwd(),
+          "TYPECODE.out",
+          MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE,
+        );
+        if (!fs_regular.existsSync(bundle_path)) {
+          throw make_control_error(
+            "FISHING_LIVE_TEST_RUNTIME_BUNDLE_MISSING",
+            `Fishing runtime bundle is missing: ${bundle_path}`,
+            503,
+          );
+        }
+
+        char_block.movement_live_test_typescript_override =
+          MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE;
+        runtime_override_applied = true;
+        emit_supervisor_event(
+          "FISHING_LIVE_TEST_RUNTIME_OVERRIDE_APPLIED",
+          char_name,
+          {
+            typescript_file: MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE,
+          },
+        );
+      }
+
+      if (original_desired_state !== DESIRED_RUNTIME_STATES.RUNNING) {
+        char_block.enabled = true;
+        char_block.desired_runtime_state = DESIRED_RUNTIME_STATES.RUNNING;
+      }
+
+      if (runtime_override_applied) {
+        await restart_character_for_movement_runtime(char_name, char_block);
+      } else if (!char_block.instance) {
+        await control_character(char_name, CONTROL_ACTIONS.START);
+      }
+
+      await wait_for_fishing_live_test_runtime(char_name);
+      const ready_block = character_manage[char_name];
+      const result_promise = wait_for_fishing_live_test_result(
+        char_name,
+        request_id,
+      );
+
+      ready_block.fishing_live_test = {
+        ...ready_block.fishing_live_test,
+        status: "RUNNING",
+      };
+      dashboard?.publishSnapshot();
+
+      const sent = safe_send(ready_block.instance, {
+        type: "fishing_live_test",
+        request_id,
+      });
+      if (!sent) {
+        const pending = fishing_live_test_requests.get(request_id);
+        if (pending) {
+          clearTimeout(pending.timer);
+          fishing_live_test_requests.delete(request_id);
+        }
+        throw make_control_error(
+          "FISHING_LIVE_TEST_DISPATCH_FAILED",
+          `Could not dispatch Fishing live test to ${char_name}`,
+          503,
+        );
+      }
+
+      const child_response = await result_promise;
+      if (child_response.error || !child_response.result) {
+        throw make_control_error(
+          "FISHING_LIVE_TEST_RUNTIME_FAILED",
+          child_response.error || "Fishing live test returned no result",
+          500,
+        );
+      }
+
+      const events = diagnostic_store.getEvents({
+        character: char_name,
+        since: started_at,
+      });
+      const evidence = fishingLiveTestEvidence(events, ready_block, {
+        dispatcherSuppressedDuringTest: fishing_live_test_active,
+      });
+      const combined = combineFishingLiveTestResult(
+        child_response.result,
+        evidence,
+      );
+      const cooldown_blocked =
+        combined.reason === "FISHING_LIVE_COOLDOWN_ACTIVE";
+      const incident_id =
+        combined.outcome === "PASS" || cooldown_blocked
+          ? null
+          : capture_fishing_live_test_incident(char_name, {
+              ...combined,
+              request_id,
+            });
+      const diagnostics = fishingLiveTestDiagnostics(combined, {
+        character: char_name,
+        originalDesiredState: original_desired_state,
+        startState: start_state,
+        evidence,
+        incidentId: incident_id,
+      });
+
+      ready_block.fishing_live_test = {
+        ...combined,
+        request_id,
+        status: combined.outcome === "PASS" ? "COMPLETED" : "FAILED",
+        started_at,
+        completed_at: Date.now(),
+        incident_id,
+        diagnostics,
+        cleanup: {
+          ...(combined.cleanup || {}),
+          runtimeStateRestored: false,
+          dispatcherRestored: false,
+        },
+      };
+      emit_supervisor_event("FISHING_LIVE_TEST_COMPLETED", char_name, {
+        request_id,
+        outcome: combined.outcome,
+        reason: combined.reason,
+        incident_id,
+        supervisor: evidence,
+      });
+    } catch (error) {
+      const failed_result = {
+        request_id,
+        outcome:
+          error.code === "FISHING_LIVE_TEST_TIMEOUT" ||
+          error.code === "FISHING_LIVE_TEST_RUNTIME_TIMEOUT"
+            ? "TIMEOUT"
+            : "FAIL",
+        reason: error.code || error.message || "FISHING_LIVE_TEST_FAILED",
+        error: error.message || String(error),
+        started_at,
+        completed_at: Date.now(),
+        durationMs: Date.now() - started_at,
+        scope: {
+          movementMutationAllowed: true,
+          combatMutationAllowed: true,
+          lootMutationAllowed: true,
+          prerequisitePurchaseAllowed: true,
+          craftMutationAllowed: true,
+          equipmentMutationAllowed: true,
+          fishingSkillMutationAllowed: true,
+          blindRetryAllowed: false,
+          standMutationAllowed: false,
+          wishlistMutationAllowed: false,
+          pontyPurchaseAllowed: false,
+          giveawayMutationAllowed: false,
+          miningMutationAllowed: false,
+          mutationScope: "fishing-only",
+        },
+      };
+      const failure_events = diagnostic_store.getEvents({
+        character: char_name,
+        since: started_at,
+      });
+      const failure_evidence = fishingLiveTestEvidence(
+        failure_events,
+        char_block,
+        {
+          dispatcherSuppressedDuringTest: fishing_live_test_active,
+        },
+      );
+      const incident_id = capture_fishing_live_test_incident(
+        char_name,
+        failed_result,
+      );
+      char_block.fishing_live_test = {
+        ...failed_result,
+        status: "FAILED",
+        incident_id,
+        diagnostics: fishingLiveTestDiagnostics(failed_result, {
+          character: char_name,
+          originalDesiredState: original_desired_state,
+          startState: start_state,
+          evidence: failure_evidence,
+          incidentId: incident_id,
+        }),
+        cleanup: {
+          runtimeStateRestored: false,
+          dispatcherRestored: false,
+        },
+      };
+      emit_supervisor_event(
+        "FISHING_LIVE_TEST_FAILED",
+        char_name,
+        char_block.fishing_live_test,
+      );
+    } finally {
+      const pending = fishing_live_test_requests.get(request_id);
+      if (pending) {
+        clearTimeout(pending.timer);
+        fishing_live_test_requests.delete(request_id);
+      }
+
+      try {
+        if (runtime_override_applied) {
+          await restore_movement_live_test_execution_source(
+            char_name,
+            original_desired_state,
+          );
+        } else {
+          await restore_movement_live_test_state(
+            char_name,
+            original_desired_state,
+          );
+        }
+        runtime_state_restored = true;
+      } catch (restore_error) {
+        emit_supervisor_event(
+          "FISHING_LIVE_TEST_STATE_RESTORE_FAILED",
+          char_name,
+          {
+            request_id,
+            desired_runtime_state: original_desired_state,
+            error:
+              restore_error instanceof Error
+                ? restore_error.message
+                : String(restore_error),
+          },
+        );
+      }
+
+      fishing_live_test_active = false;
+      schedule_merchant_logistics_dispatch();
+
+      const final_block = character_manage[char_name];
+      if (final_block?.fishing_live_test) {
+        final_block.fishing_live_test.cleanup = {
+          ...(final_block.fishing_live_test.cleanup || {}),
+          runtimeStateRestored: runtime_state_restored,
+          dispatcherRestored: true,
+        };
+        if (
+          !runtime_state_restored &&
+          final_block.fishing_live_test.outcome === "PASS"
+        ) {
+          final_block.fishing_live_test.outcome = "FAIL";
+          final_block.fishing_live_test.reason =
+            "FISHING_LIVE_E2E_STATE_RESTORE_FAILED";
+          final_block.fishing_live_test.status = "FAILED";
+          const incident_id = capture_fishing_live_test_incident(
+            char_name,
+            final_block.fishing_live_test,
+          );
+          final_block.fishing_live_test.incident_id = incident_id;
+          if (final_block.fishing_live_test.diagnostics) {
+            final_block.fishing_live_test.diagnostics.incident_id = incident_id;
+            final_block.fishing_live_test.diagnostics.result = {
+              outcome: "FAIL",
+              reason: "FISHING_LIVE_E2E_STATE_RESTORE_FAILED",
+            };
+            final_block.fishing_live_test.diagnostics.cleanup =
+              final_block.fishing_live_test.cleanup;
+          }
+        } else if (final_block.fishing_live_test.diagnostics) {
+          final_block.fishing_live_test.diagnostics.cleanup =
+            final_block.fishing_live_test.cleanup;
+        }
+      }
+      dashboard?.publishSnapshot();
+    }
+
+    return character_manage[char_name]?.fishing_live_test;
+  }
+
   async function run_merrit_live_test(char_name) {
     const char_block = character_manage[char_name];
     if (!char_block) {
@@ -5471,6 +5950,10 @@ function migrate_old_storage(path, localStorage) {
         char_name,
         "CHARACTER_PROCESS_EXITED_DURING_MERRIT_LIVE_TEST",
       );
+      reject_fishing_live_tests_for_character(
+        char_name,
+        "CHARACTER_PROCESS_EXITED_DURING_FISHING_LIVE_TEST",
+      );
       emit_supervisor_event("CHARACTER_PROCESS_EXITED", char_name, {
         code,
         signal,
@@ -5780,6 +6263,37 @@ function migrate_old_storage(path, localStorage) {
           });
           emit_supervisor_event(
             "LOGISTICS_LIVE_TEST_RESULT_RECEIVED",
+            char_name,
+            {
+              request_id: m.request_id,
+              outcome: m.result?.outcome || null,
+              error: m.error || null,
+            },
+          );
+          break;
+        }
+        case "fishing_live_test_result": {
+          const pending = fishing_live_test_requests.get(m.request_id);
+          if (!pending || pending.character !== char_name) {
+            emit_supervisor_event(
+              "FISHING_LIVE_TEST_RESULT_IGNORED",
+              char_name,
+              {
+                why: "UNKNOWN_OR_STALE_REQUEST",
+                request_id: m.request_id || null,
+              },
+            );
+            break;
+          }
+
+          clearTimeout(pending.timer);
+          fishing_live_test_requests.delete(m.request_id);
+          pending.resolve({
+            result: m.result || null,
+            error: m.error || null,
+          });
+          emit_supervisor_event(
+            "FISHING_LIVE_TEST_RESULT_RECEIVED",
             char_name,
             {
               request_id: m.request_id,

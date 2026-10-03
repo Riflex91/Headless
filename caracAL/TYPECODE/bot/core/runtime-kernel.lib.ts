@@ -43,6 +43,15 @@ import {
   MerritLiveTestRunner,
 } from "./merrit-live-test.lib";
 import {
+  MerchantFishingController,
+  MerchantFishingEvent,
+} from "./merchant-fishing-controller.lib";
+import {
+  FishingLiveTestOptions,
+  FishingLiveTestResult,
+  FishingLiveTestRunner,
+} from "./fishing-live-test.lib";
+import {
   LogisticsClaim,
   LogisticsClaimExecutor,
   LogisticsExecutionResult,
@@ -100,6 +109,8 @@ const MERCHANT_AUTONOMY_JOB_ID = "merchant-autonomy-loop";
 const MERCHANT_AUTONOMY_INTERVAL_MS = 1000;
 const MERRIT_AUTONOMY_JOB_ID = "merchant-merrit-loop";
 const MERRIT_AUTONOMY_INTERVAL_MS = 1000;
+const FISHING_AUTONOMY_JOB_ID = "merchant-fishing-loop";
+const FISHING_AUTONOMY_INTERVAL_MS = 1000;
 const GROUP_COMBAT_JOB_ID = "group-combat-loop";
 const GROUP_COMBAT_INTERVAL_MS = 250;
 const CLASS_SKILL_JOB_ID = "class-skill-loop";
@@ -160,6 +171,7 @@ export class BotRuntimeKernel {
   readonly inventoryIntelligence: InventoryIntelligenceController;
   readonly merchantAutonomy: MerchantAutonomyController;
   readonly merchantMerrit: MerchantMerritController;
+  readonly merchantFishing: MerchantFishingController;
 
   private started = false;
   private stopping = false;
@@ -172,6 +184,7 @@ export class BotRuntimeKernel {
   private logisticsLiveTestRunning = false;
   private merchantLiveTestRunning = false;
   private merritLiveTestRunning = false;
+  private fishingLiveTestRunning = false;
   private logisticsClaimRunning = false;
   private lastLogisticsExecution: LogisticsExecutionResult | null = null;
 
@@ -273,6 +286,15 @@ export class BotRuntimeKernel {
         onEvent: (event) => this.handleMerchantMerritEvent(event),
       },
     );
+    this.merchantFishing = new MerchantFishingController(
+      this.game,
+      this.actions,
+      this.movement,
+      {
+        config: () => runtimeConfig?.config || {},
+        onEvent: (event) => this.handleMerchantFishingEvent(event),
+      },
+    );
     this.logisticsClaims = new LogisticsClaimExecutor(
       this.actions,
       this.game,
@@ -306,35 +328,10 @@ export class BotRuntimeKernel {
       },
     });
     this.registerMerritJob();
-
-    this.scheduler.register({
-      id: GROUP_COMBAT_JOB_ID,
-      intervalMs: GROUP_COMBAT_INTERVAL_MS,
-      priority: 70,
-      tick: async () => {
-        await this.groupCombat.tick();
-      },
-    });
-
-    if (this.classSkills) {
-      this.scheduler.register({
-        id: CLASS_SKILL_JOB_ID,
-        intervalMs: CLASS_SKILL_INTERVAL_MS,
-        priority: 60,
-        tick: async () => {
-          await this.classSkills?.tick();
-        },
-      });
-    }
-
-    this.scheduler.register({
-      id: COMBAT_JOB_ID,
-      intervalMs: COMBAT_INTERVAL_MS,
-      priority: 50,
-      tick: async () => {
-        await this.combat.tick();
-      },
-    });
+    this.registerFishingJob();
+    this.registerGroupCombatJob();
+    this.registerClassSkillJob();
+    this.registerCombatJob();
     this.scheduler.register({
       id: MOVEMENT_SETTLEMENT_JOB_ID,
       intervalMs: MOVEMENT_SETTLEMENT_INTERVAL_MS,
@@ -373,6 +370,7 @@ export class BotRuntimeKernel {
             inventoryIntelligence: this.inventoryIntelligence.status(),
             merchantAutonomy: this.merchantAutonomy.status(),
             merchantMerrit: this.merchantMerrit.status(),
+            merchantFishing: this.merchantFishing.status(),
             logisticsExecution: {
               busy: this.logisticsClaimRunning,
               last: this.lastLogisticsExecution,
@@ -464,6 +462,7 @@ export class BotRuntimeKernel {
       inventoryIntelligence: this.inventoryIntelligence.status(),
       merchantAutonomy: this.merchantAutonomy.status(),
       merchantMerrit: this.merchantMerrit.status(),
+      merchantFishing: this.merchantFishing.status(),
       logisticsExecution: {
         busy: this.logisticsClaimRunning,
         last: this.lastLogisticsExecution,
@@ -1134,11 +1133,125 @@ export class BotRuntimeKernel {
     }
   }
 
+  async runFishingLiveTest(
+    options: FishingLiveTestOptions = {},
+  ): Promise<FishingLiveTestResult> {
+    if (this.fishingLiveTestRunning) {
+      throw new Error("Fishing live test already running");
+    }
+    if (this.merritLiveTestRunning) {
+      throw new Error("Merrit live test already running");
+    }
+    if (this.merchantLiveTestRunning) {
+      throw new Error("merchant live test already running");
+    }
+    if (this.movementLiveTestRunning) {
+      throw new Error("movement live test already running");
+    }
+    if (this.combatLiveTestRunning) {
+      throw new Error("combat live test already running");
+    }
+    if (this.classSkillLiveTestRunning) {
+      throw new Error("class skill live test already running");
+    }
+    if (this.groupLiveTestRunning) {
+      throw new Error("group live test already running");
+    }
+    if (this.farmLiveTestRunning) {
+      throw new Error("farm live test already running");
+    }
+    if (this.inventoryLiveTestRunning) {
+      throw new Error("inventory live test already running");
+    }
+    if (this.logisticsLiveTestRunning || this.logisticsClaimRunning) {
+      throw new Error("logistics activity is running");
+    }
+    if (!this.started || this.stopping) {
+      throw new Error("runtime is not ready for Fishing live test");
+    }
+    if (runtimeState() !== "RUNNING") {
+      throw new Error("runtime must be RUNNING for Fishing live test");
+    }
+
+    const character = this.game.character();
+    if (character.ctype !== "merchant") {
+      throw new Error("Fishing live test requires merchant character");
+    }
+
+    this.fishingLiveTestRunning = true;
+    const requestId = options.requestId || `fishing-live-${Date.now()}`;
+    const suspended = {
+      fishing: this.scheduler.unregister(FISHING_AUTONOMY_JOB_ID),
+      merrit: this.scheduler.unregister(MERRIT_AUTONOMY_JOB_ID),
+      groupCombat: this.scheduler.unregister(GROUP_COMBAT_JOB_ID),
+      classSkill: this.scheduler.unregister(CLASS_SKILL_JOB_ID),
+      combat: this.scheduler.unregister(COMBAT_JOB_ID),
+    };
+
+    this.eventBus.emit({
+      module: "FishingLiveTest",
+      type: "FISHING_LIVE_TEST_STARTED",
+      why: "PHASE12_FISHING_ROADMAP_E2E",
+      correlationId: requestId,
+      data: {
+        requestId,
+        fishing: this.merchantFishing.status(),
+        suspended,
+        ...runtimeIdentity(),
+      },
+    });
+
+    try {
+      const runner = new FishingLiveTestRunner({
+        fishing: this.merchantFishing,
+      });
+      const result = await runner.run({
+        ...options,
+        requestId,
+      });
+      this.eventBus.emit({
+        module: "FishingLiveTest",
+        type: "FISHING_LIVE_TEST_COMPLETED",
+        why: result.reason,
+        correlationId: requestId,
+        data: {
+          result,
+          fishing: this.merchantFishing.status(),
+          suspended,
+        },
+      });
+      return result;
+    } catch (error) {
+      this.eventBus.emit({
+        module: "FishingLiveTest",
+        type: "FISHING_LIVE_TEST_FAILED",
+        why: "FISHING_LIVE_TEST_RUNTIME_ERROR",
+        correlationId: requestId,
+        data: {
+          error: error instanceof Error ? error.message : String(error),
+          fishing: this.merchantFishing.status(),
+          suspended,
+        },
+      });
+      throw error;
+    } finally {
+      if (suspended.merrit) this.registerMerritJob();
+      if (suspended.fishing) this.registerFishingJob();
+      if (suspended.groupCombat) this.registerGroupCombatJob();
+      if (suspended.classSkill) this.registerClassSkillJob();
+      if (suspended.combat) this.registerCombatJob();
+      this.fishingLiveTestRunning = false;
+    }
+  }
+
   async runMerritLiveTest(
     options: MerritLiveTestOptions = {},
   ): Promise<MerritLiveTestResult> {
     if (this.merritLiveTestRunning) {
       throw new Error("Merrit live test already running");
+    }
+    if (this.fishingLiveTestRunning) {
+      throw new Error("Fishing live test already running");
     }
     if (this.merchantLiveTestRunning) {
       throw new Error("merchant live test already running");
@@ -1236,6 +1349,12 @@ export class BotRuntimeKernel {
     if (this.merchantLiveTestRunning) {
       throw new Error("merchant live test already running");
     }
+    if (this.merritLiveTestRunning) {
+      throw new Error("Merrit live test already running");
+    }
+    if (this.fishingLiveTestRunning) {
+      throw new Error("Fishing live test already running");
+    }
     if (this.movementLiveTestRunning) {
       throw new Error("movement live test already running");
     }
@@ -1317,6 +1436,67 @@ export class BotRuntimeKernel {
     } finally {
       this.merchantLiveTestRunning = false;
     }
+  }
+
+  private registerFishingJob(): void {
+    if (this.scheduler.has(FISHING_AUTONOMY_JOB_ID)) return;
+    this.scheduler.register({
+      id: FISHING_AUTONOMY_JOB_ID,
+      intervalMs: FISHING_AUTONOMY_INTERVAL_MS,
+      priority: 73,
+      tick: async () => {
+        await this.merchantFishing.tick();
+      },
+    });
+  }
+
+  private registerGroupCombatJob(): void {
+    if (this.scheduler.has(GROUP_COMBAT_JOB_ID)) return;
+    this.scheduler.register({
+      id: GROUP_COMBAT_JOB_ID,
+      intervalMs: GROUP_COMBAT_INTERVAL_MS,
+      priority: 70,
+      tick: async () => {
+        await this.groupCombat.tick();
+      },
+    });
+  }
+
+  private registerClassSkillJob(): void {
+    if (!this.classSkills || this.scheduler.has(CLASS_SKILL_JOB_ID)) return;
+    this.scheduler.register({
+      id: CLASS_SKILL_JOB_ID,
+      intervalMs: CLASS_SKILL_INTERVAL_MS,
+      priority: 60,
+      tick: async () => {
+        await this.classSkills?.tick();
+      },
+    });
+  }
+
+  private registerCombatJob(): void {
+    if (this.scheduler.has(COMBAT_JOB_ID)) return;
+    this.scheduler.register({
+      id: COMBAT_JOB_ID,
+      intervalMs: COMBAT_INTERVAL_MS,
+      priority: 50,
+      tick: async () => {
+        await this.combat.tick();
+      },
+    });
+  }
+
+  private handleMerchantFishingEvent(event: MerchantFishingEvent): void {
+    this.eventBus.emit({
+      module: "MerchantFishingController",
+      type: event.type,
+      why: event.reason,
+      ...(event.actionId && { actionId: event.actionId }),
+      data: {
+        merchantFishing: event.status,
+        ...(event.data || {}),
+      },
+    });
   }
 
   private registerMerritJob(): void {

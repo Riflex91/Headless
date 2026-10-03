@@ -108,6 +108,7 @@ function publicCharacterState(name, charBlock = {}) {
     logistics_live_test: charBlock.logistics_live_test || null,
     merchant_live_test: charBlock.merchant_live_test || null,
     merrit_live_test: charBlock.merrit_live_test || null,
+    fishing_live_test: charBlock.fishing_live_test || null,
     combat_runtime: charBlock.combat_runtime || null,
     class_skill_runtime: charBlock.class_skill_runtime || null,
     group_combat_runtime: charBlock.group_combat_runtime || null,
@@ -115,6 +116,7 @@ function publicCharacterState(name, charBlock = {}) {
     inventory_intelligence_runtime:
       charBlock.inventory_intelligence_runtime || null,
     merrit_runtime: charBlock.merrit_runtime || null,
+    fishing_runtime: charBlock.fishing_runtime || null,
     game: publicLiveState(charBlock.live_state),
     movement_trail: Array.isArray(charBlock.movement_trail)
       ? charBlock.movement_trail
@@ -303,6 +305,7 @@ function attachHeadlessDashboard({
   runLogisticsLiveTest,
   runMerchantLiveTest,
   runMerritLiveTest,
+  runFishingLiveTest,
   controlEmergencyStop,
   getEmergencyStopState,
   getRevisionSummary,
@@ -542,6 +545,30 @@ function attachHeadlessDashboard({
       } catch (error) {
         res.status(Number(error.statusCode) || 500).json({
           error: error.code || "LOGISTICS_LIVE_TEST_FAILED",
+          message: error.message,
+        });
+      }
+    },
+  );
+
+  router.post(
+    "/headless/api/characters/:name/tests/fishing",
+    async (req, res) => {
+      if (!runFishingLiveTest) {
+        res.status(503).json({ error: "FISHING_LIVE_TEST_UNAVAILABLE" });
+        return;
+      }
+
+      try {
+        const result = await runFishingLiveTest(req.params.name);
+        res.json({
+          ok: result?.outcome === "PASS",
+          result,
+          snapshot: getSnapshot(),
+        });
+      } catch (error) {
+        res.status(Number(error.statusCode) || 500).json({
+          error: error.code || "FISHING_LIVE_TEST_FAILED",
           message: error.message,
         });
       }
