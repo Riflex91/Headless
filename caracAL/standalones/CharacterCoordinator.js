@@ -2303,10 +2303,18 @@ function migrate_old_storage(path, localStorage) {
             recipient_position,
           });
         } catch (error) {
+          const error_code =
+            error && typeof error === "object" && "code" in error
+              ? String(error.code || "")
+              : "";
           worker_result = {
-            outcome: "FAIL",
+            outcome:
+              error_code === "MATERIAL_GATHER_TASK_TIMEOUT"
+                ? "TIMEOUT"
+                : "FAIL",
             reason:
-              error instanceof Error ? error.message : String(error),
+              error_code ||
+              (error instanceof Error ? error.message : String(error)),
             worker: worker_name,
           };
         }
