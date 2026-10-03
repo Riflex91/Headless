@@ -220,7 +220,6 @@ export class NpcTradingController {
         null,
         null,
         null,
-        null,
         empty,
         empty,
         empty,
