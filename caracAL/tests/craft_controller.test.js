@@ -233,10 +233,7 @@ test("Craft ignores invalid recipe metadata", () => {
   const status = setup.controller.tick();
 
   assert.equal(status.state, "EMPTY");
-  assert.equal(
-    status.decisions[0].reason,
-    "CRAFT_RECIPE_UNKNOWN_OR_INVALID",
-  );
+  assert.equal(status.decisions[0].reason, "CRAFT_RECIPE_UNKNOWN_OR_INVALID");
 });
 
 test("Craft executeNext dispatches exactly one explicit boundary mutation", async () => {
