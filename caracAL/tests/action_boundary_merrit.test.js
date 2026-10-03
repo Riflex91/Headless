@@ -34,12 +34,7 @@ function stateFixture() {
         reasons: [{ code: "closed" }],
         next_at: 1000,
       },
-      items: [
-        { name: "stand0" },
-        { name: "hpot0", q: 10 },
-        null,
-        null,
-      ],
+      items: [{ name: "stand0" }, { name: "hpot0", q: 10 }, null, null],
       slots: {},
     },
     entities: {},
