@@ -148,10 +148,11 @@ export class CraftPreflightRunner {
 
     let craftConfigOverrideCleared = false;
     let craft: CraftStatus | null = null;
+    let finalResult: CraftPreflightResult | null = null;
 
     try {
       if (!inventoryReady) {
-        return {
+        return (finalResult = {
           outcome: "FAIL",
           reason: "CRAFT_PREFLIGHT_RUNTIME_NOT_READY",
           timestamp,
@@ -182,7 +183,7 @@ export class CraftPreflightRunner {
           cleanup: {
             craftConfigOverrideCleared: false,
           },
-        };
+        });
       }
 
       this.deps.craft.setConfigOverride({
@@ -258,7 +259,7 @@ export class CraftPreflightRunner {
         craft.state === "READY" &&
         craft.selected !== null;
 
-      return {
+      return (finalResult = {
         outcome: stationReady ? "PASS" : "FAIL",
         reason: stationReady
           ? "CRAFT_PREFLIGHT_COMPLETED"
@@ -283,13 +284,14 @@ export class CraftPreflightRunner {
         cleanup: {
           craftConfigOverrideCleared: false,
         },
-      };
+      });
     } finally {
       this.deps.craft.clearConfigOverride();
       craftConfigOverrideCleared = true;
       this.deps.craft.tick();
-      if (craft) {
-        // The returned snapshot is immutable evidence from before cleanup.
+      if (finalResult) {
+        finalResult.cleanup.craftConfigOverrideCleared =
+          craftConfigOverrideCleared;
       }
     }
   }
