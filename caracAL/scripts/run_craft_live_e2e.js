@@ -212,11 +212,7 @@ async function main() {
   const managedRuntime = dashboard.runtime;
 
   try {
-    const payload = await runSupervisorLiveTest(
-      character,
-      recipe,
-      itemSlots,
-    );
+    const payload = await runSupervisorLiveTest(character, recipe, itemSlots);
     const result = verifyCraftLiveResult(payload.result, {
       recipe,
       itemSlots,
