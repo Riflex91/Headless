@@ -123,6 +123,123 @@ test("Craft material launcher preserves UNKNOWN and refuses incomplete evidence"
   assert.equal(result.verifier.deliveryObserved, false);
 });
 
+test("Craft material launcher reports safe refusal without mutation", () => {
+  const result = verifyCraftPreparation({
+    outcome: "FAIL",
+    reason: "CRAFT_MATERIAL_SAFE_SOURCE_NOT_FOUND",
+    merchant: "My_Merchant",
+    worker: "My_Ranger1",
+    plan: {
+      outcome: "FAIL",
+      reason: "CRAFT_MATERIAL_SAFE_SOURCE_NOT_FOUND",
+      requestedRecipe: "rod",
+      observerPosition: { map: "main", x: -25, y: -478 },
+      selected: null,
+      candidates: [],
+      rejectedSources: [
+        {
+          recipe: "rod",
+          missingRequirement: {
+            quantity: 1,
+            name: "spidersilk",
+            level: null,
+          },
+          source: {
+            itemName: "spidersilk",
+            monsterType: "spiderbl",
+            dropChance: 1,
+            monsterHp: 4500000,
+            score: 2.2e-7,
+          },
+          sourcePolicy: {
+            safe: false,
+            reasons: ["MONSTER_HP_OUT_OF_POLICY"],
+            spawnMaps: [],
+            monsterAttack: 1200,
+            monsterRespawn: -1,
+            stationary: true,
+            cooperative: false,
+            special: false,
+            expectedKills: 1,
+            expectedMonsterHp: 4500000,
+          },
+        },
+      ],
+    },
+    readyForCraftIngredients: false,
+    evidence: {
+      materialPlanReadOnly: true,
+      workerAttemptedOnce: false,
+      deliveryConfirmed: false,
+      craftMutationDispatched: false,
+      blindRetryUsed: false,
+    },
+    scope: {
+      movementMutationAllowed: false,
+      combatMutationAllowed: false,
+      lootMutationAllowed: false,
+      deliveryMutationAllowed: false,
+      craftMutationAllowed: false,
+      blindRetryAllowed: false,
+      mutationScope: "single-craft-material-preparation-only",
+    },
+    cleanup: {
+      runtimeStateRestored: true,
+      dispatcherRestored: true,
+    },
+  });
+
+  assert.equal(result.outcome, "FAIL");
+  assert.equal(result.reason, "CRAFT_MATERIAL_SAFE_SOURCE_NOT_FOUND");
+  assert.equal(result.verifier.preparationConfirmed, false);
+  assert.equal(result.verifier.planEvidenceValid, true);
+  assert.equal(result.verifier.workerEvidenceValid, true);
+  assert.equal(result.verifier.deliveryObserved, false);
+  assert.equal(result.verifier.noCraftMutation, true);
+  assert.equal(result.verifier.scopeRestricted, true);
+  assert.equal(result.verifier.cleanupComplete, true);
+});
+
+test("Craft material launcher keeps early position failure mutation-free", () => {
+  const source = sourceResult({
+    outcome: "FAIL",
+    reason: "CRAFT_PREPARATION_MERCHANT_POSITION_UNAVAILABLE",
+    readyForCraftIngredients: false,
+    workerResult: undefined,
+    evidence: {
+      materialPlanReadOnly: true,
+      workerAttemptedOnce: false,
+      deliveryConfirmed: false,
+      craftMutationDispatched: false,
+      blindRetryUsed: false,
+    },
+    scope: {
+      movementMutationAllowed: false,
+      combatMutationAllowed: false,
+      lootMutationAllowed: false,
+      deliveryMutationAllowed: false,
+      craftMutationAllowed: false,
+      blindRetryAllowed: false,
+      mutationScope: "single-craft-material-preparation-only",
+    },
+    cleanup: {
+      runtimeStateRestored: true,
+      dispatcherRestored: true,
+    },
+  });
+
+  const result = verifyCraftPreparation(source);
+
+  assert.equal(result.outcome, "FAIL");
+  assert.equal(
+    result.reason,
+    "CRAFT_PREPARATION_MERCHANT_POSITION_UNAVAILABLE",
+  );
+  assert.equal(result.verifier.noCraftMutation, true);
+  assert.equal(result.verifier.scopeRestricted, true);
+  assert.equal(result.verifier.cleanupComplete, true);
+});
+
 test("Craft material launcher rejects any Craft mutation permission", () => {
   const source = sourceResult();
   source.scope.craftMutationAllowed = true;
@@ -164,6 +281,7 @@ test("Craft material launcher accepts an already-ready recipe without a worker",
       deliveryMutationAllowed: false,
       craftMutationAllowed: false,
       blindRetryAllowed: false,
+      mutationScope: "single-craft-material-preparation-only",
     },
     cleanup: {
       runtimeStateRestored: true,

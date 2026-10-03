@@ -3053,6 +3053,29 @@ function migrate_old_storage(path, localStorage) {
       runtimeStateRestored: false,
       dispatcherRestored: false,
     };
+    const evidence = {
+      materialPlanReadOnly: false,
+      workerAttemptedOnce: false,
+      deliveryConfirmed: false,
+      craftMutationDispatched: false,
+      blindRetryUsed: false,
+    };
+    const scope = {
+      movementMutationAllowed: false,
+      combatMutationAllowed: false,
+      lootMutationAllowed: false,
+      deliveryMutationAllowed: false,
+      craftMutationAllowed: false,
+      blindRetryAllowed: false,
+      mutationScope: "single-craft-material-preparation-only",
+    };
+    const resultBase = () => ({
+      merchant: merchant_name,
+      worker: worker_name,
+      evidence,
+      scope,
+      cleanup,
+    });
 
     craft_material_preparation_active = true;
     emit_supervisor_event("CRAFT_MATERIAL_PREPARATION_STARTED", merchant_name, {
@@ -3071,10 +3094,9 @@ function migrate_old_storage(path, localStorage) {
         );
         if (!fs_regular.existsSync(bundle_path)) {
           return {
+            ...resultBase(),
             outcome: "FAIL",
             reason: "CRAFT_PREPARATION_RUNTIME_BUNDLE_MISSING",
-            merchant: merchant_name,
-            worker: worker_name,
           };
         }
 
@@ -3109,24 +3131,23 @@ function migrate_old_storage(path, localStorage) {
           craft_material_plan_requests.delete(plan_request_id);
         }
         return {
+          ...resultBase(),
           outcome: "FAIL",
           reason: "CRAFT_MATERIAL_PLAN_DISPATCH_FAILED",
-          merchant: merchant_name,
-          worker: worker_name,
         };
       }
 
       const plan_response = await plan_promise;
       if (plan_response.error || !plan_response.result) {
         return {
+          ...resultBase(),
           outcome: "FAIL",
           reason: plan_response.error || "CRAFT_MATERIAL_PLAN_RESULT_MISSING",
-          merchant: merchant_name,
-          worker: worker_name,
         };
       }
 
       const plan = plan_response.result;
+      evidence.materialPlanReadOnly = true;
       if (plan.reason === "CRAFT_MATERIAL_RECIPE_ALREADY_READY") {
         const result = {
           outcome: "PASS",
@@ -3140,20 +3161,10 @@ function migrate_old_storage(path, localStorage) {
           readyForCraftIngredients: true,
           workerResult: null,
           evidence: {
-            materialPlanReadOnly: true,
-            workerAttemptedOnce: false,
+            ...evidence,
             deliveryConfirmed: true,
-            craftMutationDispatched: false,
-            blindRetryUsed: false,
           },
-          scope: {
-            movementMutationAllowed: false,
-            combatMutationAllowed: false,
-            lootMutationAllowed: false,
-            deliveryMutationAllowed: false,
-            craftMutationAllowed: false,
-            blindRetryAllowed: false,
-          },
+          scope,
           cleanup,
         };
         emit_supervisor_event(
@@ -3166,10 +3177,9 @@ function migrate_old_storage(path, localStorage) {
 
       if (plan.outcome !== "PASS" || !plan.selected) {
         return {
+          ...resultBase(),
           outcome: "FAIL",
           reason: plan.reason || "CRAFT_MATERIAL_TARGET_NOT_FOUND",
-          merchant: merchant_name,
-          worker: worker_name,
           plan,
           readyForCraftIngredients: false,
         };
@@ -3204,20 +3214,31 @@ function migrate_old_storage(path, localStorage) {
 
       if (!item_name || !required_quantity || !monster_type) {
         return {
+          ...resultBase(),
           outcome: "FAIL",
           reason: "CRAFT_MATERIAL_PLAN_INVALID",
-          merchant: merchant_name,
-          worker: worker_name,
           plan,
           readyForCraftIngredients: false,
         };
       }
 
       const current_merchant = character_manage[merchant_name];
+      const observer_position =
+        plan.observerPosition && typeof plan.observerPosition === "object"
+          ? plan.observerPosition
+          : null;
+      const observer_x = Number(observer_position?.x);
+      const observer_y = Number(observer_position?.y);
+      const live_x = Number(current_merchant?.live_state?.x);
+      const live_y = Number(current_merchant?.live_state?.y);
       const merchant_position = {
-        map: current_merchant?.live_state?.map || null,
-        x: Number(current_merchant?.live_state?.x),
-        y: Number(current_merchant?.live_state?.y),
+        map:
+          (typeof observer_position?.map === "string" &&
+            observer_position.map.trim()) ||
+          current_merchant?.live_state?.map ||
+          null,
+        x: Number.isFinite(observer_x) ? observer_x : live_x,
+        y: Number.isFinite(observer_y) ? observer_y : live_y,
       };
       if (
         !merchant_position.map ||
@@ -3225,10 +3246,9 @@ function migrate_old_storage(path, localStorage) {
         !Number.isFinite(merchant_position.y)
       ) {
         return {
+          ...resultBase(),
           outcome: "FAIL",
           reason: "CRAFT_PREPARATION_MERCHANT_POSITION_UNAVAILABLE",
-          merchant: merchant_name,
-          worker: worker_name,
           plan,
           readyForCraftIngredients: false,
         };
@@ -3249,6 +3269,12 @@ function migrate_old_storage(path, localStorage) {
         merchant_paused_by_preparation = true;
         await sleep(250);
       }
+
+      evidence.workerAttemptedOnce = true;
+      scope.movementMutationAllowed = true;
+      scope.combatMutationAllowed = true;
+      scope.lootMutationAllowed = true;
+      scope.deliveryMutationAllowed = true;
 
       try {
         worker_result = await run_material_worker_task(worker_name, {
@@ -3280,6 +3306,7 @@ function migrate_old_storage(path, localStorage) {
         worker_result?.outcome === "TIMEOUT"
       ) {
         return {
+          ...resultBase(),
           outcome: worker_result.outcome,
           reason:
             worker_result.reason || "CRAFT_MATERIAL_WORKER_OUTCOME_UNCERTAIN",
@@ -3298,13 +3325,7 @@ function migrate_old_storage(path, localStorage) {
           ),
           readyForCraftIngredients: false,
           workerResult: worker_result,
-          evidence: {
-            materialPlanReadOnly: true,
-            workerAttemptedOnce: true,
-            deliveryConfirmed: false,
-            craftMutationDispatched: false,
-            blindRetryUsed: false,
-          },
+          evidence,
         };
       }
 
@@ -3332,6 +3353,7 @@ function migrate_old_storage(path, localStorage) {
         final_quantity < expected_quantity
       ) {
         return {
+          ...resultBase(),
           outcome: "FAIL",
           reason:
             worker_result?.reason || "CRAFT_MATERIAL_DELIVERY_NOT_OBSERVED",
@@ -3346,16 +3368,11 @@ function migrate_old_storage(path, localStorage) {
           finalQuantity: final_quantity,
           readyForCraftIngredients: false,
           workerResult: worker_result,
-          evidence: {
-            materialPlanReadOnly: true,
-            workerAttemptedOnce: true,
-            deliveryConfirmed: false,
-            craftMutationDispatched: false,
-            blindRetryUsed: false,
-          },
+          evidence,
         };
       }
 
+      evidence.deliveryConfirmed = true;
       const result = {
         outcome: "PASS",
         reason: "CRAFT_MATERIAL_PREPARATION_CONFIRMED",
@@ -3374,22 +3391,8 @@ function migrate_old_storage(path, localStorage) {
         finalQuantity: final_quantity,
         readyForCraftIngredients: true,
         workerResult: worker_result,
-        evidence: {
-          materialPlanReadOnly: true,
-          workerAttemptedOnce: true,
-          deliveryConfirmed: true,
-          craftMutationDispatched: false,
-          blindRetryUsed: false,
-        },
-        scope: {
-          movementMutationAllowed: true,
-          combatMutationAllowed: true,
-          lootMutationAllowed: true,
-          deliveryMutationAllowed: true,
-          craftMutationAllowed: false,
-          blindRetryAllowed: false,
-          mutationScope: "single-craft-material-preparation-only",
-        },
+        evidence,
+        scope,
         cleanup,
       };
       emit_supervisor_event(

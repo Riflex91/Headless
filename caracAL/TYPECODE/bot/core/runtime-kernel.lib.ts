@@ -842,7 +842,24 @@ export class BotRuntimeKernel {
         },
       });
       const status = this.craft.tick();
-      return planCraftMaterialPreparation(gameData, status, { recipe });
+      const characterSnapshot = this.game.character();
+      const observerPosition =
+        typeof characterSnapshot.map === "string" &&
+        characterSnapshot.map.trim() &&
+        typeof characterSnapshot.x === "number" &&
+        Number.isFinite(characterSnapshot.x) &&
+        typeof characterSnapshot.y === "number" &&
+        Number.isFinite(characterSnapshot.y)
+          ? {
+              map: characterSnapshot.map.trim(),
+              x: characterSnapshot.x,
+              y: characterSnapshot.y,
+            }
+          : null;
+      return planCraftMaterialPreparation(gameData, status, {
+        recipe,
+        observerPosition,
+      });
     } finally {
       this.craft.clearConfigOverride();
       this.craft.tick();
