@@ -199,13 +199,7 @@ test("Exchange live wiring stays explicit and single-attempt only", () => {
     "utf8",
   );
   const liveRunner = fs.readFileSync(
-    path.join(
-      root,
-      "TYPECODE",
-      "bot",
-      "core",
-      "exchange-live-test.lib.ts",
-    ),
+    path.join(root, "TYPECODE", "bot", "core", "exchange-live-test.lib.ts"),
     "utf8",
   );
 
