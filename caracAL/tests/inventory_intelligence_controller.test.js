@@ -272,3 +272,32 @@ test("inventory intelligence protects dynamically detected Future Gear slots", (
   assert.deepEqual(entry.protections, ["FUTURE_GEAR"]);
   assert.equal(status.summary.protections.FUTURE_GEAR, 1);
 });
+
+test("inventory intelligence protects account-reserved slots as RESERVED", () => {
+  const setup = makeController({
+    items: [{ name: "candidate_bow", level: 2 }],
+    gameData: {
+      items: {
+        candidate_bow: {
+          type: "weapon",
+          wtype: "bow",
+          attack: 20,
+        },
+      },
+    },
+    inventory: {
+      intelligence: { enabled: true },
+    },
+  });
+
+  setup.controller.setDynamicReservedSlots([0]);
+  const status = setup.controller.tick();
+  const entry = status.entries[0];
+
+  assert.equal(entry.disposition, "RESERVED");
+  assert.equal(entry.protected, true);
+  assert.deepEqual(entry.protections, ["RESERVED"]);
+  assert.equal(status.summary.dispositions.RESERVED, 1);
+  assert.equal(status.summary.protections.RESERVED, 1);
+});
+
