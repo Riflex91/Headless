@@ -188,7 +188,7 @@ function expectedReservationPlan(snapshotCharacters) {
       character?.accountOwned === true &&
       character?.connected === true &&
       character?.scoring?.state === "READY" &&
-      character?.futureGear?.state === "READY",
+      ["READY", "EMPTY"].includes(character?.futureGear?.state),
   );
 
   const claims = [];
@@ -383,7 +383,7 @@ function summaryMatches(characters, expectedSummary) {
     (entry) =>
       entry?.accountReservation?.state === "READY" &&
       entry?.scoring?.state === "READY" &&
-      entry?.futureGear?.state === "READY",
+      ["READY", "EMPTY"].includes(entry?.futureGear?.state),
   );
   if (readyProjections.length < 2) return false;
 

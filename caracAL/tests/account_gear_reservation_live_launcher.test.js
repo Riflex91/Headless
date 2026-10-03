@@ -61,6 +61,8 @@ function character(
     sourceReservations = [],
     targetReservations = [],
     reservedSlots = [],
+    futureGearState = "READY",
+    inventoryIntelligenceState = "READY",
   } = {},
 ) {
   return {
@@ -70,12 +72,12 @@ function character(
     ctype: "ranger",
     scoring: scoring({ inventory, mainhandScore }),
     futureGear: {
-      state: "READY",
+      state: futureGearState,
       minScoreDelta: 0,
       entries: [],
     },
     inventoryIntelligence: {
-      state: "READY",
+      state: inventoryIntelligenceState,
       entries: inventory.map((entry) => ({
         slot: entry.slot,
         name: entry.name,
@@ -232,6 +234,45 @@ test("Account Gear Reservation live gate accepts a legitimate zero-reservation a
   assert.equal(result.evidence.inventoryGearObserved, true);
 });
 
+test("Account Gear Reservation live verifier accepts EMPTY target projections", () => {
+  const expectedReservation = reservation();
+  const chars = [
+    character("RangerA", {
+      inventory: [inventoryGear()],
+      mainhandScore: 50,
+      sourceReservations: [expectedReservation],
+      reservedSlots: [3],
+    }),
+    character("RangerB", {
+      inventory: [],
+      mainhandScore: 20,
+      futureGearState: "EMPTY",
+      inventoryIntelligenceState: "EMPTY",
+      targetReservations: [expectedReservation],
+    }),
+  ];
+  const expected = expectedReservationPlan(chars);
+
+  for (const entry of chars) {
+    entry.accountReservation.summary = {
+      ...expected.summary,
+      sourceReservations:
+        entry.name === "RangerA" ? expected.reservations.length : 0,
+      targetReservations:
+        entry.name === "RangerB" ? expected.reservations.length : 0,
+    };
+  }
+
+  const evidence = accountGearReservationEvidence(chars);
+
+  assert.equal(expected.summary.readyGearCharacters, 2);
+  assert.equal(expected.reservations.length, 1);
+  assert.equal(evidence.readyPairObserved, true);
+  assert.equal(evidence.allReservationsRecomputed, true);
+  assert.equal(evidence.reservationProtectionComplete, true);
+  assert.equal(evidence.summaryMatches, true);
+});
+
 test("Account Gear Reservation live gate rejects missing RESERVED protection", () => {
   const after = completeCharacters();
   after[0].inventoryIntelligence.entries[0] = {
@@ -322,6 +363,8 @@ test("Account Gear Reservation live wiring uses the two-character TYPECODE harne
 
   assert.match(coordinator, /run_account_gear_reservation_live_test/);
   assert.match(coordinator, /wait_for_account_gear_reservation_live_runtime/);
+  assert.match(coordinator, /\["READY", "EMPTY"\]\.includes/);
+  assert.match(launcher, /\["READY", "EMPTY"\]\.includes/);
   assert.match(
     dashboard,
     /\/headless\/api\/characters\/:name\/tests\/account-gear-reservation/,

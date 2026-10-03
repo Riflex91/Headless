@@ -49,6 +49,7 @@ function character({
   weights = { attack: 1, dex: 2 },
   minScoreDelta = 0,
   selfFutureSlots = [],
+  futureGearState = "READY",
   owned = true,
 } = {}) {
   return {
@@ -67,7 +68,7 @@ function character({
       entries: [...inventory, ...equipmentEntries],
     },
     future_gear_runtime: {
-      state: "READY",
+      state: futureGearState,
       minScoreDelta,
       entries: selfFutureSlots.map((inventorySlot) => ({
         inventorySlot,
@@ -302,17 +303,36 @@ test("account Gear Reservation never steals the source character own Future Gear
   assert.equal(plan.summary.candidateClaims, 0);
 });
 
-test("account Gear Reservation waits for Future Gear readiness", () => {
-  const rangerA = character({
-    inventory: [inventoryGear()],
-  });
-  rangerA.future_gear_runtime.state = "EMPTY";
-
+test("account Gear Reservation accepts a complete EMPTY Future Gear projection", () => {
   const plan = buildAccountGearReservationPlan({
-    RangerA: rangerA,
-    RangerB: character(),
+    RangerA: character({
+      inventory: [inventoryGear()],
+      equipmentEntries: [equipmentGear("mainhand", 50)],
+    }),
+    RangerB: character({
+      inventory: [],
+      equipmentEntries: [equipmentGear("mainhand", 20)],
+      futureGearState: "EMPTY",
+    }),
+  });
+
+  assert.equal(plan.summary.readyGearCharacters, 2);
+  assert.equal(plan.summary.eligiblePairs, 2);
+  assert.equal(plan.reservations.length, 1);
+  assert.equal(plan.reservations[0].reservedForCharacter, "RangerB");
+});
+
+test("account Gear Reservation excludes a DISABLED Future Gear projection", () => {
+  const plan = buildAccountGearReservationPlan({
+    RangerA: character({
+      inventory: [inventoryGear()],
+    }),
+    RangerB: character({
+      futureGearState: "DISABLED",
+    }),
   });
 
   assert.equal(plan.summary.readyGearCharacters, 1);
+  assert.equal(plan.summary.eligiblePairs, 0);
   assert.equal(plan.reservations.length, 0);
 });
