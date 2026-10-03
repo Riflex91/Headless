@@ -9243,9 +9243,7 @@ function migrate_old_storage(path, localStorage) {
       !recipe ||
       item_slots.length < 1 ||
       item_slots.length > 9 ||
-      item_slots.some(
-        (slot) => !Number.isInteger(slot) || slot < 0,
-      ) ||
+      item_slots.some((slot) => !Number.isInteger(slot) || slot < 0) ||
       new Set(item_slots).size !== item_slots.length
     ) {
       throw make_control_error(
@@ -9314,8 +9312,7 @@ function migrate_old_storage(path, localStorage) {
         : DESIRED_RUNTIME_STATES.STOPPED);
     const started_at = Date.now();
     craft_live_test_sequence += 1;
-    const request_id =
-      `craft-live-${started_at}-${craft_live_test_sequence}`;
+    const request_id = `craft-live-${started_at}-${craft_live_test_sequence}`;
 
     char_block.craft_live_test = {
       request_id,
