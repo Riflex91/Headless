@@ -144,9 +144,7 @@ test("class skill diagnostics include roadmap-required evidence", () => {
   assert.equal(diagnostics.incident_id, null);
 });
 
-test(
-  "class skill supervisor evidence confirms Merchant massproduction action",
-  () => {
+test("class skill supervisor confirms Merchant massproduction", () => {
   const merchantEvents = [
     {
       source: "bot_runtime",
@@ -183,41 +181,42 @@ test(
     },
   };
 
-    const evidence = classSkillLiveTestEvidence(
-      merchantEvents,
-      merchantProjection,
-    );
+  const evidence = classSkillLiveTestEvidence(
+    merchantEvents,
+    merchantProjection,
+  );
 
-    assert.equal(evidence.testedClass, "merchant");
-    assert.equal(evidence.safeSkill, "massproduction");
-    assert.equal(evidence.confirmedSkill, true);
-    assert.equal(evidence.confirmedTrack, false);
-    assert.equal(evidence.classSkillProjectionVisible, true);
-    assert.equal(evidence.confirmedActionProjection, true);
+  assert.equal(evidence.testedClass, "merchant");
+  assert.equal(evidence.safeSkill, "massproduction");
+  assert.equal(evidence.confirmedSkill, true);
+  assert.equal(evidence.confirmedTrack, false);
+  assert.equal(evidence.classSkillProjectionVisible, true);
+  assert.equal(evidence.confirmedActionProjection, true);
 
-    const combined = combineClassSkillLiveTestResult(
+  const combined = combineClassSkillLiveTestResult(
     {
       outcome: "PASS",
       reason: "CLASS_SKILL_LIVE_E2E_CONFIRMED",
       scope: {
         testedClass: "merchant",
         safeSkill: "massproduction",
+        cooldownEvidenceRequired: false,
       },
     },
     evidence,
-    );
-    assert.equal(combined.outcome, "PASS");
+  );
+  assert.equal(combined.outcome, "PASS");
 
-    const diagnostics = classSkillLiveTestDiagnostics(combined, {
+  const diagnostics = classSkillLiveTestDiagnostics(combined, {
     character: "My_Merchant",
     originalDesiredState: "RUNNING",
     evidence,
-    });
-    assert.equal(diagnostics.expected.class, "merchant");
-    assert.equal(diagnostics.expected.skill, "massproduction");
-    assert.equal(
-      diagnostics.navigation.reason,
-      "SAFE_NON_TARGET_MERCHANT_SKILL",
-    );
-  },
-);
+  });
+  assert.equal(diagnostics.expected.class, "merchant");
+  assert.equal(diagnostics.expected.skill, "massproduction");
+  assert.equal(diagnostics.expected.cooldown_required, false);
+  assert.equal(
+    diagnostics.navigation.reason,
+    "SAFE_NON_TARGET_MERCHANT_SKILL",
+  );
+});
