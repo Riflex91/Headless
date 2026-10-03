@@ -470,6 +470,39 @@ async function make_runner(upper, CODE_file, version, is_typescript) {
           });
         break;
       }
+      case "market_trading_live_test": {
+        const requestId =
+          typeof m.request_id === "string" && m.request_id
+            ? m.request_id
+            : `market-trading-live-${Date.now()}`;
+        const runtime = runner_context.__caracalBotRuntime;
+        if (!runtime?.runMarketTradingLiveTest) {
+          sendIpcMessage(process, {
+            type: "market_trading_live_test_result",
+            request_id: requestId,
+            error: "MARKET_TRADING_LIVE_TEST_RUNTIME_NOT_READY",
+          });
+          break;
+        }
+
+        void runtime
+          .runMarketTradingLiveTest({ requestId })
+          .then((result) => {
+            sendIpcMessage(process, {
+              type: "market_trading_live_test_result",
+              request_id: requestId,
+              result,
+            });
+          })
+          .catch((error) => {
+            sendIpcMessage(process, {
+              type: "market_trading_live_test_result",
+              request_id: requestId,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          });
+        break;
+      }
       case "npc_trading_live_test": {
         const requestId =
           typeof m.request_id === "string" && m.request_id
