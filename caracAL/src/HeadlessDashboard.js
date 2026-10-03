@@ -108,6 +108,7 @@ function publicCharacterState(name, charBlock = {}) {
     gear_scoring_live_test: charBlock.gear_scoring_live_test || null,
     account_gear_reservation_live_test:
       charBlock.account_gear_reservation_live_test || null,
+    upgrade_live_test: charBlock.upgrade_live_test || null,
     logistics_live_test: charBlock.logistics_live_test || null,
     merchant_live_test: charBlock.merchant_live_test || null,
     bank_travel_live_test: charBlock.bank_travel_live_test || null,
@@ -317,6 +318,7 @@ function attachHeadlessDashboard({
   runInventoryLiveTest,
   runGearScoringLiveTest,
   runAccountGearReservationLiveTest,
+  runUpgradeLiveTest,
   runLogisticsLiveTest,
   runMerchantLiveTest,
   runBankTravelLiveTest,
@@ -598,6 +600,35 @@ function attachHeadlessDashboard({
       } catch (error) {
         res.status(Number(error.statusCode) || 500).json({
           error: error.code || "ACCOUNT_GEAR_RESERVATION_LIVE_TEST_FAILED",
+          message: error.message,
+        });
+      }
+    },
+  );
+
+  router.post(
+    "/headless/api/characters/:name/tests/upgrade",
+    express.json({ limit: "8kb" }),
+    async (req, res) => {
+      if (!runUpgradeLiveTest) {
+        res.status(503).json({ error: "UPGRADE_LIVE_TEST_UNAVAILABLE" });
+        return;
+      }
+
+      try {
+        const result = await runUpgradeLiveTest(req.params.name, {
+          itemName: req.body?.itemName,
+          scrollName: req.body?.scrollName,
+          itemSlot: req.body?.itemSlot,
+        });
+        res.json({
+          ok: result?.outcome === "PASS",
+          result,
+          snapshot: getSnapshot(),
+        });
+      } catch (error) {
+        res.status(Number(error.statusCode) || 500).json({
+          error: error.code || "UPGRADE_LIVE_TEST_FAILED",
           message: error.message,
         });
       }
