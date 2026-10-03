@@ -107,7 +107,11 @@ async function main() {
         : `Using existing caracAL runtime at ${baseUrl}\n`,
     );
 
-    const character = selectClassSkillCharacter(dashboard.state, requested, ctype);
+    const character = selectClassSkillCharacter(
+      dashboard.state,
+      requested,
+      ctype,
+    );
     if (!character) {
       throw new Error(
         `No ${ctype === "merchant" ? "Merchant" : "Ranger"} is available for the class-skill live test`,
