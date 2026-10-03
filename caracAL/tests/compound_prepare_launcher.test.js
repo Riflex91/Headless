@@ -95,11 +95,20 @@ test("Compound preparation launcher accepts an existing Merchant triple without 
           monsterType: null,
           itemGrade: 0,
           scrollName: "cscroll0",
+          scrollSlots: [12],
+          scrollQuantity: 2,
         },
       },
       itemName: "amulet",
       itemLevel: 2,
       monsterType: null,
+      evidence: {
+        gatherPlanReadOnly: true,
+        runtimeSnapshotReadiness: true,
+        threeMatchingItemsObserved: true,
+        allDeliveredItemsLevelMatched: true,
+        blindRetryUsed: false,
+      },
     }),
   );
 
@@ -166,6 +175,9 @@ test("Compound preparation wiring uses the three Ranger workers and no Compound 
   assert.match(coordinator, /compound_gather_plan/);
   assert.match(coordinator, /plan\.observerPosition/);
   assert.match(coordinator, /observer_position/);
+  assert.match(coordinator, /runtimeSnapshotReadiness/);
+  assert.match(coordinator, /selected\.scrollSlots/);
+  assert.match(coordinator, /selected\.scrollQuantity/);
   assert.match(
     dashboard,
     /\/headless\/api\/characters\/:name\/tests\/compound-prepare/,
