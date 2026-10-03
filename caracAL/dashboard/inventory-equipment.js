@@ -42,7 +42,12 @@
     ]);
   }
 
-  function itemTitle(item, intelligence = null, gearScore = null) {
+  function itemTitle(
+    item,
+    intelligence = null,
+    gearScore = null,
+    futureGear = null,
+  ) {
     if (!item) return "Leer";
 
     const parts = [item.display_name || item.name || "Unbekannt"];
@@ -64,6 +69,16 @@
       parts.push(`Gear score ${gearScore.score}`);
     }
     if (gearScore?.why) parts.push(gearScore.why);
+    if (futureGear?.candidate) {
+      const delta = Number.isFinite(futureGear.scoreDelta)
+        ? `+${futureGear.scoreDelta}`
+        : "?";
+      const baseline = futureGear.baselineSlot
+        ? ` vs ${futureGear.baselineSlot}`
+        : "";
+      parts.push(`Future Gear ${delta}${baseline}`);
+    }
+    if (futureGear?.reason) parts.push(futureGear.reason);
     return parts.join(" · ");
   }
 
@@ -116,13 +131,17 @@
     slotLabel,
     intelligence = null,
     gearScore = null,
+    futureGear = null,
     displaySize = 40,
   }) {
     const slot = document.createElement("div");
     slot.className = "live-item-slot";
-    slot.title = itemTitle(item, intelligence, gearScore);
+    slot.title = itemTitle(item, intelligence, gearScore, futureGear);
     if (intelligence?.disposition) {
       slot.dataset.disposition = intelligence.disposition;
+    }
+    if (futureGear?.candidate) {
+      slot.dataset.futureGear = "true";
     }
 
     const key = `${characterName}:${location}:${slotName}`;
@@ -190,6 +209,16 @@
         score.className = "item-gear-score-badge";
         score.textContent = `GS ${gearScore.score}`;
         slot.append(score);
+      }
+
+      if (futureGear?.candidate) {
+        const candidate = document.createElement("span");
+        candidate.className = "item-future-gear-badge";
+        candidate.textContent = Number.isFinite(futureGear.scoreDelta)
+          ? `FG +${futureGear.scoreDelta}`
+          : "FG";
+        candidate.title = futureGear.reason || "FUTURE_GEAR";
+        slot.append(candidate);
       }
 
       if (
@@ -295,6 +324,14 @@
         )
         .map((entry) => [entry.slot, entry]),
     );
+    const futureGearEntries = Array.isArray(character.future_gear_runtime?.entries)
+      ? character.future_gear_runtime.entries
+      : [];
+    const futureGearBySlot = new Map(
+      futureGearEntries
+        .filter((entry) => Number.isInteger(entry?.inventorySlot))
+        .map((entry) => [entry.inventorySlot, entry]),
+    );
     const section = document.createElement("section");
     section.className = "inventory-section";
 
@@ -325,6 +362,7 @@
           slotLabel: index,
           intelligence: intelligenceBySlot.get(index) || null,
           gearScore: gearBySlot.get(index) || null,
+          futureGear: futureGearBySlot.get(index) || null,
         }),
       );
     }
