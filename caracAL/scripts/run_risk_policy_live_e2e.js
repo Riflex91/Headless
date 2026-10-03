@@ -1,5 +1,4 @@
 "use strict";
-
 const {
   ensureDashboardAvailable,
   stopManagedRuntime,
@@ -9,40 +8,33 @@ const {
   runGearScoringSupervisorLiveTest,
   waitForGearScoringCharacter,
 } = require("./run_gear_scoring_live_e2e");
-
 function record(value) {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value
     : {};
 }
-
 function finite(value) {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
-
 function integer(value) {
   const normalized = finite(value);
   return normalized !== null && Number.isInteger(normalized)
     ? normalized
     : null;
 }
-
 function nonNegative(value) {
   const normalized = finite(value);
   return normalized !== null && normalized >= 0 ? normalized : null;
 }
-
 function probability(value) {
   const normalized = finite(value);
   return normalized !== null && normalized >= 0 && normalized <= 1
     ? normalized
     : null;
 }
-
 function roundMoney(value) {
   return Math.round(value * 100) / 100;
 }
-
 function sameNumber(left, right, tolerance = 0.01) {
   if (left === null && right === null) return true;
   const normalizedLeft = finite(left);
@@ -53,7 +45,6 @@ function sameNumber(left, right, tolerance = 0.01) {
     Math.abs(normalizedLeft - normalizedRight) <= tolerance
   );
 }
-
 function sameSlots(left, right) {
   return (
     Array.isArray(left) &&
@@ -62,7 +53,6 @@ function sameSlots(left, right) {
     left.every((value, index) => value === right[index])
   );
 }
-
 function normalizedPolicy(status) {
   const policy = record(status?.policy);
   const allowedKinds = Array.isArray(policy.allowedKinds)
@@ -85,7 +75,6 @@ function normalizedPolicy(status) {
     unknownAlwaysBlocked: policy.unknownAlwaysBlocked === true,
   };
 }
-
 function policyValid(policy) {
   return (
     policy.minExpectedDeltaGold !== null &&
@@ -97,7 +86,6 @@ function policyValid(policy) {
     )
   );
 }
-
 function expectedRiskDecision(estimate, policy) {
   const source = record(estimate);
   const inputValue = nonNegative(source.inputValueGold);
@@ -125,7 +113,6 @@ function expectedRiskDecision(estimate, policy) {
       source.failureOutcomeValueGold === null ? null : failureValue,
     failureLossGold: failureLoss,
   };
-
   if (!policy.allowedKinds.includes(source.kind)) {
     return {
       ...base,
@@ -133,7 +120,6 @@ function expectedRiskDecision(estimate, policy) {
       reason: "RISK_POLICY_KIND_NOT_ALLOWED",
     };
   }
-
   const expectedDelta = finite(source.expectedDeltaGold);
   const successProbability = probability(source.successProbability);
   if (
@@ -149,7 +135,6 @@ function expectedRiskDecision(estimate, policy) {
       reason: "RISK_POLICY_EXPECTED_VALUE_UNKNOWN",
     };
   }
-
   if (expectedDelta < policy.minExpectedDeltaGold) {
     return {
       ...base,
@@ -157,7 +142,6 @@ function expectedRiskDecision(estimate, policy) {
       reason: "RISK_POLICY_EXPECTED_DELTA_BELOW_MINIMUM",
     };
   }
-
   if (successProbability < policy.minSuccessProbability) {
     return {
       ...base,
@@ -165,7 +149,6 @@ function expectedRiskDecision(estimate, policy) {
       reason: "RISK_POLICY_SUCCESS_PROBABILITY_BELOW_MINIMUM",
     };
   }
-
   if (
     policy.maxInputValueGold !== null &&
     inputValue > policy.maxInputValueGold
@@ -176,7 +159,6 @@ function expectedRiskDecision(estimate, policy) {
       reason: "RISK_POLICY_INPUT_VALUE_LIMIT_EXCEEDED",
     };
   }
-
   if (
     policy.maxFailureLossGold !== null &&
     failureLoss > policy.maxFailureLossGold
@@ -187,14 +169,12 @@ function expectedRiskDecision(estimate, policy) {
       reason: "RISK_POLICY_FAILURE_LOSS_LIMIT_EXCEEDED",
     };
   }
-
   return {
     ...base,
     decision: "ALLOW",
     reason: "RISK_POLICY_ALLOWED",
   };
 }
-
 function decisionMatches(actual, expected) {
   const value = record(actual);
   return (
@@ -215,7 +195,6 @@ function decisionMatches(actual, expected) {
     value.reason === expected.reason
   );
 }
-
 function bestAllowed(decisions) {
   return (
     decisions
@@ -232,7 +211,6 @@ function bestAllowed(decisions) {
       )[0] || null
   );
 }
-
 function riskPolicyEvidence(snapshot) {
   const expectedValue = record(snapshot?.expectedValue);
   const riskPolicy = record(snapshot?.riskPolicy);
@@ -246,13 +224,11 @@ function riskPolicyEvidence(snapshot) {
   const recomputed = estimates.map((estimate) =>
     expectedRiskDecision(estimate, policy),
   );
-
   const decisionsMatch =
     actualDecisions.length === recomputed.length &&
     actualDecisions.every((decision, index) =>
       decisionMatches(decision, recomputed[index]),
     );
-
   const allowed = recomputed.filter(
     (decision) => decision.decision === "ALLOW",
   );
@@ -264,7 +240,6 @@ function riskPolicyEvidence(snapshot) {
   );
   const selected = bestAllowed(recomputed);
   const summary = record(riskPolicy.summary);
-
   const summaryMatches =
     integer(summary.estimates) === recomputed.length &&
     integer(summary.allowed) === allowed.length &&
@@ -280,29 +255,26 @@ function riskPolicyEvidence(snapshot) {
       summary.selectedExpectedDeltaGold ?? null,
       selected?.expectedDeltaGold ?? null,
     );
-
   const selectedMatches =
     selected === null
       ? riskPolicy.selected === null
       : decisionMatches(riskPolicy.selected, selected);
-
   const expectedState =
     recomputed.length === 0
       ? "EMPTY"
       : unknown.length > 0
-        ? "PARTIAL"
-        : selected
-          ? "READY"
-          : "BLOCKED";
+      ? "PARTIAL"
+      : selected
+      ? "READY"
+      : "BLOCKED";
   const expectedReason =
     expectedState === "EMPTY"
       ? "RISK_POLICY_NO_ESTIMATES"
       : expectedState === "PARTIAL"
-        ? "RISK_POLICY_PARTIAL_UNKNOWN"
-        : expectedState === "READY"
-          ? "RISK_POLICY_CANDIDATE_ALLOWED"
-          : "RISK_POLICY_ALL_CANDIDATES_BLOCKED";
-
+      ? "RISK_POLICY_PARTIAL_UNKNOWN"
+      : expectedState === "READY"
+      ? "RISK_POLICY_CANDIDATE_ALLOWED"
+      : "RISK_POLICY_ALL_CANDIDATES_BLOCKED";
   return {
     projectionVisible:
       riskPolicy.enabled === true &&
@@ -324,7 +296,6 @@ function riskPolicyEvidence(snapshot) {
     unknown: unknown.length,
   };
 }
-
 function evidenceComplete(evidence) {
   return (
     evidence.projectionVisible === true &&
@@ -338,7 +309,6 @@ function evidenceComplete(evidence) {
     evidence.reasonMatches === true
   );
 }
-
 function combineRiskPolicySupervisorResult(result) {
   const source = record(result);
   const beforeEvidence = riskPolicyEvidence(source.before);
@@ -354,7 +324,6 @@ function combineRiskPolicySupervisorResult(result) {
     supervisorReadOnly: source.scope?.readOnly === true,
     supervisorValueMutationForced: source.scope?.valueMutationForced === true,
   };
-
   const passed =
     source.outcome === "PASS" &&
     evidenceComplete(afterEvidence) &&
@@ -362,7 +331,6 @@ function combineRiskPolicySupervisorResult(result) {
     equipmentBaselineRestored &&
     evidence.supervisorReadOnly &&
     !evidence.supervisorValueMutationForced;
-
   return {
     ...source,
     outcome: passed ? "PASS" : "FAIL",
@@ -388,52 +356,45 @@ function combineRiskPolicySupervisorResult(result) {
     },
   };
 }
-
 async function main() {
   const requestedCharacter = process.argv[2] || null;
   const dashboard = await ensureDashboardAvailable(readState);
   const managedRuntime = dashboard.runtime;
-
   try {
     process.stdout.write(
       dashboard.startedRuntime
-        ? "Temporary caracAL runtime is ready at http://127.0.0.1:924\n"
-        : "Using existing caracAL runtime at http://127.0.0.1:924\n",
+        ? "Temporary caracAL runtime is ready at http://127.0.0.1:924\\n"
+        : "Using existing caracAL runtime at http://127.0.0.1:924\\n",
     );
-
     const selected = await waitForGearScoringCharacter(requestedCharacter, {
       initialState: dashboard.state,
     });
     const sampleMs = Number(
       process.env.CARACAL_RISK_POLICY_LIVE_SETTLE_MS || 1750,
     );
-
     process.stdout.write(
-      "Running read-only Risk Policy E2E with " + selected.name + "\n",
+      "Running read-only Risk Policy E2E with " + selected.name + "\\n",
     );
     const payload = await runGearScoringSupervisorLiveTest(
       selected.name,
       sampleMs,
     );
     const result = combineRiskPolicySupervisorResult(payload.result);
-    process.stdout.write(JSON.stringify(result, null, 2) + "\n");
-
+    process.stdout.write(JSON.stringify(result, null, 2) + "\\n");
     if (result.outcome !== "PASS") process.exitCode = 1;
   } finally {
     if (managedRuntime) {
-      process.stdout.write("Stopping temporary caracAL runtime\n");
+      process.stdout.write("Stopping temporary caracAL runtime\\n");
       await stopManagedRuntime(managedRuntime);
     }
   }
 }
-
 if (require.main === module) {
   main().catch((error) => {
     console.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;
   });
 }
-
 module.exports = {
   combineRiskPolicySupervisorResult,
   decisionMatches,
