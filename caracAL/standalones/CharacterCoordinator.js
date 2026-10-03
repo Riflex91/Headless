@@ -305,6 +305,9 @@ function migrate_old_storage(path, localStorage) {
   const upgrade_live_test_requests = new Map();
   let upgrade_live_test_sequence = 0;
   let upgrade_live_test_active = false;
+  const compound_live_test_requests = new Map();
+  let compound_live_test_sequence = 0;
+  let compound_live_test_active = false;
   const upgrade_live_preflight_requests = new Map();
   let upgrade_live_preflight_sequence = 0;
   let upgrade_live_preflight_active = false;
@@ -380,6 +383,7 @@ function migrate_old_storage(path, localStorage) {
         runUpgradeLiveTest: run_upgrade_live_test,
         runUpgradeLivePreflight: run_upgrade_live_preflight,
         runCompoundMaterialPreparation: run_compound_material_preparation,
+        runCompoundLiveTest: run_compound_live_test,
         runNpcTradingLiveTest: run_npc_trading_live_test,
         runMarketTradingLiveTest: run_market_trading_live_test,
         runMerritLiveTest: run_merrit_live_test,
@@ -519,6 +523,7 @@ function migrate_old_storage(path, localStorage) {
       bank_gold_live_test_active ||
       upgrade_live_test_active ||
       upgrade_live_preflight_active ||
+      compound_live_test_active ||
       compound_material_preparation_active ||
       npc_trading_live_test_active ||
       market_trading_live_test_active ||
@@ -1811,6 +1816,31 @@ function migrate_old_storage(path, localStorage) {
     );
   }
 
+  async function wait_for_compound_live_test_runtime(
+    char_name,
+    timeout_ms = MOVEMENT_LIVE_TEST_RUNTIME_TIMEOUT_MS,
+  ) {
+    const started_at = Date.now();
+    while (Date.now() - started_at < timeout_ms) {
+      const char_block = character_manage[char_name];
+      if (
+        char_block?.instance &&
+        char_block.connected &&
+        Number.isFinite(char_block.bot_runtime_started_at) &&
+        char_block.inventory_intelligence_runtime
+      ) {
+        return char_block;
+      }
+      await sleep(100);
+    }
+
+    throw make_control_error(
+      "COMPOUND_LIVE_TEST_RUNTIME_TIMEOUT",
+      `Compound runtime did not become ready for ${char_name}`,
+      504,
+    );
+  }
+
   async function wait_for_upgrade_live_test_runtime(
     char_name,
     timeout_ms = MOVEMENT_LIVE_TEST_RUNTIME_TIMEOUT_MS,
@@ -2321,6 +2351,28 @@ function migrate_old_storage(path, localStorage) {
       }, UPGRADE_LIVE_TEST_RESULT_TIMEOUT_MS);
 
       upgrade_live_test_requests.set(request_id, {
+        character: char_name,
+        resolve,
+        reject,
+        timer,
+      });
+    });
+  }
+
+  function wait_for_compound_live_test_result(char_name, request_id) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        compound_live_test_requests.delete(request_id);
+        reject(
+          make_control_error(
+            "COMPOUND_LIVE_TEST_TIMEOUT",
+            `Compound live test timed out for ${char_name}`,
+            504,
+          ),
+        );
+      }, UPGRADE_LIVE_TEST_RESULT_TIMEOUT_MS);
+
+      compound_live_test_requests.set(request_id, {
         character: char_name,
         resolve,
         reject,
