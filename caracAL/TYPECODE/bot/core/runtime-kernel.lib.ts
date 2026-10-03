@@ -42,6 +42,11 @@ import {
   UpgradeEvent,
 } from "./upgrade-controller.lib";
 import {
+  UpgradeLiveTestOptions,
+  UpgradeLiveTestResult,
+  UpgradeLiveTestRunner,
+} from "./upgrade-live-test.lib";
+import {
   MerchantAutonomyController,
   MerchantAutonomyEvent,
 } from "./merchant-autonomy-controller.lib";
@@ -240,6 +245,7 @@ export class BotRuntimeKernel {
   private groupLiveTestRunning = false;
   private farmLiveTestRunning = false;
   private inventoryLiveTestRunning = false;
+  private upgradeLiveTestRunning = false;
   private logisticsLiveTestRunning = false;
   private merchantLiveTestRunning = false;
   private bankTravelLiveTestRunning = false;
@@ -602,6 +608,9 @@ export class BotRuntimeKernel {
   }
 
   async executeUpgradeNext(): Promise<Record<string, unknown>> {
+    if (this.upgradeLiveTestRunning) {
+      throw new Error("upgrade live test is running");
+    }
     if (!this.started || this.stopping) {
       throw new Error("runtime is not ready for upgrade execution");
     }
@@ -609,6 +618,81 @@ export class BotRuntimeKernel {
       throw new Error("runtime must be RUNNING for upgrade execution");
     }
     return this.upgrade.executeNext() as unknown as Record<string, unknown>;
+  }
+
+  async runUpgradeLiveTest(
+    options: UpgradeLiveTestOptions,
+  ): Promise<UpgradeLiveTestResult> {
+    if (this.upgradeLiveTestRunning) {
+      throw new Error("upgrade live test already running");
+    }
+    if (!this.started || this.stopping) {
+      throw new Error("runtime is not ready for upgrade live test");
+    }
+    if (runtimeState() !== "RUNNING") {
+      throw new Error("runtime must be RUNNING for upgrade live test");
+    }
+
+    this.upgradeLiveTestRunning = true;
+    const requestId = options.requestId || `upgrade-live-${Date.now()}`;
+    this.eventBus.emit({
+      module: "UpgradeLiveTest",
+      type: "UPGRADE_LIVE_TEST_STARTED",
+      why: "EXPLICIT_SINGLE_UPGRADE_E2E",
+      correlationId: requestId,
+      data: {
+        requestId,
+        itemName: options.itemName,
+        itemSlot: options.itemSlot ?? null,
+        scrollName: options.scrollName,
+        irreversibleMutation: true,
+        ...runtimeIdentity(),
+      },
+    });
+
+    try {
+      const runner = new UpgradeLiveTestRunner({
+        game: this.game,
+        inventoryIntelligence: this.inventoryIntelligence,
+        upgrade: this.upgrade,
+        characterName: () => character.name,
+      });
+      const result = await runner.run({
+        ...options,
+        requestId,
+      });
+      this.eventBus.emit({
+        module: "UpgradeLiveTest",
+        type:
+          result.outcome === "PASS"
+            ? "UPGRADE_LIVE_TEST_COMPLETED"
+            : "UPGRADE_LIVE_TEST_FAILED",
+        why: result.reason,
+        correlationId: requestId,
+        ...(result.upgrade?.lastAction?.id && {
+          actionId: result.upgrade.lastAction.id,
+        }),
+        data: {
+          result,
+          upgrade: this.upgrade.status(),
+        },
+      });
+      return result;
+    } catch (error) {
+      this.eventBus.emit({
+        module: "UpgradeLiveTest",
+        type: "UPGRADE_LIVE_TEST_FAILED",
+        why: "UPGRADE_LIVE_TEST_RUNTIME_ERROR",
+        correlationId: requestId,
+        data: {
+          error: error instanceof Error ? error.message : String(error),
+          upgrade: this.upgrade.status(),
+        },
+      });
+      throw error;
+    } finally {
+      this.upgradeLiveTestRunning = false;
+    }
   }
 
   async executeLogisticsClaim(
