@@ -125,6 +125,7 @@ function publicCharacterState(name, charBlock = {}) {
       charBlock.inventory_intelligence_runtime || null,
     gear_scoring_runtime: charBlock.gear_scoring_runtime || null,
     future_gear_runtime: charBlock.future_gear_runtime || null,
+    upgrade_runtime: charBlock.upgrade_runtime || null,
     account_gear_reservation_runtime:
       charBlock.account_gear_reservation_runtime || null,
     merrit_runtime: charBlock.merrit_runtime || null,
