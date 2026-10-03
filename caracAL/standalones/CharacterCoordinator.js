@@ -1567,6 +1567,15 @@ function migrate_old_storage(path, localStorage) {
     }
   }
 
+  function reject_compound_gather_plans_for_character(char_name, reason) {
+    for (const [request_id, pending] of compound_gather_plan_requests) {
+      if (pending.character !== char_name) continue;
+      clearTimeout(pending.timer);
+      compound_gather_plan_requests.delete(request_id);
+      pending.reject(new Error(reason));
+    }
+  }
+
   async function wait_for_logistics_claim_idle(
     timeout_ms = LOGISTICS_CLAIM_RESULT_TIMEOUT_MS + 5000,
   ) {
@@ -2311,6 +2320,28 @@ function migrate_old_storage(path, localStorage) {
       }, UPGRADE_LIVE_TEST_RESULT_TIMEOUT_MS);
 
       upgrade_live_test_requests.set(request_id, {
+        character: char_name,
+        resolve,
+        reject,
+        timer,
+      });
+    });
+  }
+
+  function wait_for_compound_gather_plan_result(char_name, request_id) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        compound_gather_plan_requests.delete(request_id);
+        reject(
+          make_control_error(
+            "COMPOUND_GATHER_PLAN_TIMEOUT",
+            `Compound gather plan timed out for ${char_name}`,
+            504,
+          ),
+        );
+      }, COMPOUND_GATHER_PLAN_TIMEOUT_MS);
+
+      compound_gather_plan_requests.set(request_id, {
         character: char_name,
         resolve,
         reject,
@@ -9242,6 +9273,10 @@ function migrate_old_storage(path, localStorage) {
         char_name,
         "CHARACTER_PROCESS_EXITED_DURING_MATERIAL_GATHER_TASK",
       );
+      reject_compound_gather_plans_for_character(
+        char_name,
+        "CHARACTER_PROCESS_EXITED_DURING_COMPOUND_GATHER_PLAN",
+      );
       emit_supervisor_event("CHARACTER_PROCESS_EXITED", char_name, {
         code,
         signal,
@@ -9551,6 +9586,37 @@ function migrate_old_storage(path, localStorage) {
           });
           emit_supervisor_event(
             "LOGISTICS_LIVE_TEST_RESULT_RECEIVED",
+            char_name,
+            {
+              request_id: m.request_id,
+              outcome: m.result?.outcome || null,
+              error: m.error || null,
+            },
+          );
+          break;
+        }
+        case "compound_gather_plan_result": {
+          const pending = compound_gather_plan_requests.get(m.request_id);
+          if (!pending || pending.character !== char_name) {
+            emit_supervisor_event(
+              "COMPOUND_GATHER_PLAN_RESULT_IGNORED",
+              char_name,
+              {
+                why: "UNKNOWN_OR_STALE_REQUEST",
+                request_id: m.request_id || null,
+              },
+            );
+            break;
+          }
+
+          clearTimeout(pending.timer);
+          compound_gather_plan_requests.delete(m.request_id);
+          pending.resolve({
+            result: m.result || null,
+            error: m.error || null,
+          });
+          emit_supervisor_event(
+            "COMPOUND_GATHER_PLAN_RESULT_RECEIVED",
             char_name,
             {
               request_id: m.request_id,
