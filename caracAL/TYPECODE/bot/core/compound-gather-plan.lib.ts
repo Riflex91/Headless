@@ -10,6 +10,8 @@ export interface CompoundGatherCandidate {
   scrollName: string;
   scrollSlots: number[];
   scrollQuantity: number;
+  itemLockedSlots: number[];
+  scrollLockedSlots: number[];
   dropChance: number | null;
   monsterHp: number | null;
   score: number;
@@ -27,6 +29,14 @@ export interface CompoundGatherPlan {
     x: number;
     y: number;
   } | null;
+  runtimeGuard: {
+    map: string | null;
+    compoundInProgress: boolean;
+  };
+}
+
+export interface CompoundGatherContext {
+  compoundInProgress?: boolean;
 }
 
 interface CompoundGatherGame {
@@ -320,6 +330,13 @@ function observerPosition(
   return map && x !== null && y !== null ? { map, x, y } : null;
 }
 
+function itemLocked(item: Record<string, unknown>): boolean {
+  return (
+    item.locked === true ||
+    (typeof item.l === "string" && item.l.length > 0)
+  );
+}
+
 function inventoryItemQuantity(item: Record<string, unknown>): number {
   const quantity = nonNegativeInteger(item.q);
   return quantity !== null && quantity > 0 ? quantity : 1;
@@ -328,7 +345,7 @@ function inventoryItemQuantity(item: Record<string, unknown>): number {
 function matchingInventoryEvidence(
   inventory: InventorySlotSnapshot[],
   itemName: string,
-): { slots: number[]; quantity: number } {
+): { slots: number[]; quantity: number; lockedSlots: number[] } {
   const matching = inventory
     .filter((entry) => text(entry.item?.name) === itemName)
     .sort((left, right) => left.slot - right.slot);
@@ -339,6 +356,9 @@ function matchingInventoryEvidence(
         sum + (entry.item ? inventoryItemQuantity(record(entry.item)) : 0),
       0,
     ),
+    lockedSlots: matching
+      .filter((entry) => entry.item && itemLocked(record(entry.item)))
+      .map((entry) => entry.slot),
   };
 }
 
@@ -412,6 +432,10 @@ function inventoryTripleCandidates(
       scrollName,
       scrollSlots: scrollEvidence.slots,
       scrollQuantity: scrollEvidence.quantity,
+      itemLockedSlots: selected
+        .filter((entry) => itemLocked(entry.item))
+        .map((entry) => entry.slot),
+      scrollLockedSlots: scrollEvidence.lockedSlots,
       dropChance: null,
       monsterHp: null,
       score: 0,
@@ -440,6 +464,7 @@ function compoundableItemNames(
 
 export function planCompoundGatherTarget(
   game: CompoundGatherGame,
+  context: CompoundGatherContext = {},
 ): CompoundGatherPlan {
   const gameData = record(game.gameData());
   const itemDefinitions = record(gameData.items);
@@ -500,6 +525,8 @@ export function planCompoundGatherTarget(
         scrollName,
         scrollSlots: scrollEvidence.slots,
         scrollQuantity: scrollEvidence.quantity,
+        itemLockedSlots: [],
+        scrollLockedSlots: scrollEvidence.lockedSlots,
         dropChance,
         monsterHp,
         score: chanceWeight / Math.max(1, hpWeight),
@@ -536,6 +563,10 @@ export function planCompoundGatherTarget(
         selected: { ...candidates[0] },
         candidates: candidates.map((entry) => ({ ...entry })),
         observerPosition: position,
+        runtimeGuard: {
+          map: position?.map || null,
+          compoundInProgress: context.compoundInProgress === true,
+        },
       }
     : {
         outcome: "FAIL",
@@ -543,5 +574,9 @@ export function planCompoundGatherTarget(
         selected: null,
         candidates: [],
         observerPosition: position,
+        runtimeGuard: {
+          map: position?.map || null,
+          compoundInProgress: context.compoundInProgress === true,
+        },
       };
 }
