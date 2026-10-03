@@ -201,36 +201,3 @@ test("Craft preflight wiring stays read-only and runner-context scoped", () => {
   assert.ok(runnerReturn > preflightCase);
   assert.equal(thread.indexOf('case "craft_preflight"', runnerReturn), -1);
 });
-
-
-test("Craft preflight formatting diagnostic", async () => {
-  const prettier = require("prettier");
-  for (const relativePath of [
-    "scripts/run_craft_preflight.js",
-    "standalones/CharacterCoordinator.js",
-  ]) {
-    const fullPath = path.join(__dirname, "..", relativePath);
-    const source = fs.readFileSync(fullPath, "utf8");
-    const formatted = await prettier.format(source, { parser: "babel" });
-    const before = source.split("\n");
-    const after = formatted.split("\n");
-    let shown = 0;
-    for (
-      let index = 0;
-      index < Math.max(before.length, after.length) && shown < 8;
-      index += 1
-    ) {
-      if (before[index] !== after[index]) {
-        console.log(
-          "CRAFT_PRETTIER_DIFF",
-          relativePath,
-          index + 1,
-          JSON.stringify(before[index] ?? null),
-          "=>",
-          JSON.stringify(after[index] ?? null),
-        );
-        shown += 1;
-      }
-    }
-  }
-});
