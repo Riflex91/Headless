@@ -59,8 +59,7 @@ function makeSetup({
           const rule =
             intelligenceOverride?.inventory?.rules?.[slot.item.name] || null;
           const disposition =
-            rule ||
-            (slot.item.name === "marketparcel" ? "EXCHANGE" : "KEEP");
+            rule || (slot.item.name === "marketparcel" ? "EXCHANGE" : "KEEP");
           return {
             slot: slot.slot,
             name: slot.item.name,
