@@ -48,6 +48,7 @@ function character({
   slots = { mainhand: { name: "bow", level: 1 } },
   weights = { attack: 1, dex: 2 },
   minScoreDelta = 0,
+  selfFutureSlots = [],
   owned = true,
 } = {}) {
   return {
@@ -68,6 +69,10 @@ function character({
     future_gear_runtime: {
       state: "READY",
       minScoreDelta,
+      entries: selfFutureSlots.map((inventorySlot) => ({
+        inventorySlot,
+        candidate: true,
+      })),
     },
   };
 }
@@ -278,6 +283,37 @@ test("account Gear Reservation ignores stale disconnected projections", () => {
 
   assert.equal(plan.summary.readyGearCharacters, 1);
   assert.equal(plan.summary.eligiblePairs, 0);
+  assert.equal(plan.reservations.length, 0);
+});
+
+test("account Gear Reservation never steals the source character own Future Gear", () => {
+  const plan = buildAccountGearReservationPlan({
+    RangerA: character({
+      inventory: [inventoryGear({ slot: 3 })],
+      equipmentEntries: [equipmentGear("mainhand", 50)],
+      selfFutureSlots: [3],
+    }),
+    RangerB: character({
+      equipmentEntries: [equipmentGear("mainhand", 5)],
+    }),
+  });
+
+  assert.equal(plan.reservations.length, 0);
+  assert.equal(plan.summary.candidateClaims, 0);
+});
+
+test("account Gear Reservation waits for Future Gear readiness", () => {
+  const rangerA = character({
+    inventory: [inventoryGear()],
+  });
+  rangerA.future_gear_runtime.state = "EMPTY";
+
+  const plan = buildAccountGearReservationPlan({
+    RangerA: rangerA,
+    RangerB: character(),
+  });
+
+  assert.equal(plan.summary.readyGearCharacters, 1);
   assert.equal(plan.reservations.length, 0);
 });
 
