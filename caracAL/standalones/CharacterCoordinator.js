@@ -3051,6 +3051,10 @@ function migrate_old_storage(path, localStorage) {
     let runtime_state_restored = false;
     let plan_request_id = null;
     let worker_result = null;
+    const cleanup = {
+      runtimeStateRestored: false,
+      dispatcherRestored: false,
+    };
 
     craft_material_preparation_active = true;
     emit_supervisor_event(
@@ -3158,6 +3162,7 @@ function migrate_old_storage(path, localStorage) {
             craftMutationAllowed: false,
             blindRetryAllowed: false,
           },
+          cleanup,
         };
         emit_supervisor_event(
           "CRAFT_MATERIAL_PREPARATION_COMPLETED",
@@ -3397,6 +3402,7 @@ function migrate_old_storage(path, localStorage) {
           blindRetryAllowed: false,
           mutationScope: "single-craft-material-preparation-only",
         },
+        cleanup,
       };
       emit_supervisor_event(
         "CRAFT_MATERIAL_PREPARATION_COMPLETED",
@@ -3440,8 +3446,10 @@ function migrate_old_storage(path, localStorage) {
         );
       }
 
+      cleanup.runtimeStateRestored = runtime_state_restored;
       craft_material_preparation_active = false;
       schedule_merchant_logistics_dispatch();
+      cleanup.dispatcherRestored = true;
       emit_supervisor_event(
         "CRAFT_MATERIAL_PREPARATION_RESTORED",
         merchant_name,
