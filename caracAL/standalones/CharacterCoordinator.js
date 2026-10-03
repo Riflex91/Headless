@@ -2472,21 +2472,14 @@ function migrate_old_storage(path, localStorage) {
     }, 0);
   }
 
-  function live_item_quantity_at_level(
-    char_block,
-    item_name,
-    item_level = 0,
-  ) {
+  function live_item_quantity_at_level(char_block, item_name, item_level = 0) {
     const level = Math.max(0, Math.floor(Number(item_level) || 0));
     const items = Array.isArray(char_block?.live_state?.items)
       ? char_block.live_state.items
       : [];
     return items.reduce((sum, item) => {
       if (!item || item.name !== item_name) return sum;
-      const current_level = Math.max(
-        0,
-        Math.floor(Number(item.level) || 0),
-      );
+      const current_level = Math.max(0, Math.floor(Number(item.level) || 0));
       if (current_level !== level) return sum;
       const quantity = Number(item.q);
       return sum + (Number.isFinite(quantity) && quantity > 0 ? quantity : 1);
@@ -2858,9 +2851,8 @@ function migrate_old_storage(path, localStorage) {
         );
       }
 
-      const ready_merchant = await wait_for_material_worker_runtime(
-        merchant_name,
-      );
+      const ready_merchant =
+        await wait_for_material_worker_runtime(merchant_name);
       plan_request_id = `compound-gather-plan-${Date.now()}`;
       const plan_promise = wait_for_compound_gather_plan_result(
         merchant_name,
