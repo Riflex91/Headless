@@ -169,12 +169,7 @@ async function main() {
   const itemName = process.argv[3] || "";
   const itemSlot = Number(process.argv[4]);
 
-  if (
-    !character ||
-    !itemName ||
-    !Number.isInteger(itemSlot) ||
-    itemSlot < 0
-  ) {
+  if (!character || !itemName || !Number.isInteger(itemSlot) || itemSlot < 0) {
     console.error(
       "Usage: npm run test:live:exchange -- <character> <itemName> <itemSlot>",
     );
@@ -196,11 +191,7 @@ async function main() {
   const managedRuntime = dashboard.runtime;
 
   try {
-    const payload = await runSupervisorLiveTest(
-      character,
-      itemName,
-      itemSlot,
-    );
+    const payload = await runSupervisorLiveTest(character, itemName, itemSlot);
     const result = verifyExchangeLiveResult(payload.result, {
       itemName,
       itemSlot,
