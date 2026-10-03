@@ -272,4 +272,3 @@ test("inventory intelligence protects dynamically detected Future Gear slots", (
   assert.deepEqual(entry.protections, ["FUTURE_GEAR"]);
   assert.equal(status.summary.protections.FUTURE_GEAR, 1);
 });
-
