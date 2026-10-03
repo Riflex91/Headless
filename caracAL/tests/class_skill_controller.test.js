@@ -270,7 +270,6 @@ test("Phase 8 AoE skills are not exposed by Phase 7 ranger controller", () => {
   assert.deepEqual(status.configuredSkills, []);
 });
 
-
 test("merchant controller skips skills above character level", async () => {
   const state = stateFor("merchant");
   state.character.level = 58;
