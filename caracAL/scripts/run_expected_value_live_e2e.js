@@ -210,10 +210,10 @@ function expectedValueEvidence(snapshot) {
     estimates.length === 0
       ? "EMPTY"
       : expectedUnknown > 0
-        ? expectedEvaluated > 0
-          ? "PARTIAL"
-          : "EMPTY"
-        : "READY";
+      ? expectedEvaluated > 0
+        ? "PARTIAL"
+        : "EMPTY"
+      : "READY";
   const stateMatches = status.state === expectedState;
   const reasonMatches =
     (expectedState === "READY" && status.reason === "EXPECTED_VALUE_READY") ||
@@ -266,8 +266,7 @@ function combineExpectedValueSupervisorResult(result) {
     runtimeStateRestored,
     equipmentBaselineRestored,
     supervisorReadOnly: source.scope?.readOnly === true,
-    supervisorValueMutationForced:
-      source.scope?.valueMutationForced === true,
+    supervisorValueMutationForced: source.scope?.valueMutationForced === true,
   };
 
   const passed =
