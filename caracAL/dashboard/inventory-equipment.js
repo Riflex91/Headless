@@ -42,7 +42,7 @@
     ]);
   }
 
-  function itemTitle(item, intelligence = null) {
+  function itemTitle(item, intelligence = null, gearScore = null) {
     if (!item) return "Leer";
 
     const parts = [item.display_name || item.name || "Unbekannt"];
@@ -60,6 +60,10 @@
       parts.push(`Protected ${intelligence.protections.join(", ")}`);
     }
     if (intelligence?.why) parts.push(intelligence.why);
+    if (Number.isFinite(gearScore?.score)) {
+      parts.push(`Gear score ${gearScore.score}`);
+    }
+    if (gearScore?.why) parts.push(gearScore.why);
     return parts.join(" · ");
   }
 
@@ -111,11 +115,12 @@
     item,
     slotLabel,
     intelligence = null,
+    gearScore = null,
     displaySize = 40,
   }) {
     const slot = document.createElement("div");
     slot.className = "live-item-slot";
-    slot.title = itemTitle(item, intelligence);
+    slot.title = itemTitle(item, intelligence, gearScore);
     if (intelligence?.disposition) {
       slot.dataset.disposition = intelligence.disposition;
     }
@@ -180,6 +185,13 @@
         slot.append(disposition);
       }
 
+      if (Number.isFinite(gearScore?.score)) {
+        const score = document.createElement("span");
+        score.className = "item-gear-score-badge";
+        score.textContent = `GS ${gearScore.score}`;
+        slot.append(score);
+      }
+
       if (
         Array.isArray(intelligence?.protections) &&
         intelligence.protections.length > 0
@@ -204,6 +216,18 @@
   function createEquipment(character) {
     const game = character.game || {};
     const slots = game.slots || {};
+    const gearEntries = Array.isArray(character.gear_scoring_runtime?.entries)
+      ? character.gear_scoring_runtime.entries
+      : [];
+    const gearBySlot = new Map(
+      gearEntries
+        .filter(
+          (entry) =>
+            entry?.location === "EQUIPMENT" &&
+            typeof entry?.slot === "string",
+        )
+        .map((entry) => [entry.slot, entry]),
+    );
     const section = document.createElement("section");
     section.className = "equipment-section";
 
@@ -230,6 +254,7 @@
           slotName,
           item: slots[slotName],
           slotLabel: slotName,
+          gearScore: gearBySlot.get(slotName) || null,
         }),
       );
       grid.append(wrap);
@@ -258,6 +283,18 @@
     const intelligenceBySlot = new Map(
       intelligenceEntries
         .filter((entry) => Number.isInteger(entry?.slot))
+        .map((entry) => [entry.slot, entry]),
+    );
+    const gearEntries = Array.isArray(character.gear_scoring_runtime?.entries)
+      ? character.gear_scoring_runtime.entries
+      : [];
+    const gearBySlot = new Map(
+      gearEntries
+        .filter(
+          (entry) =>
+            entry?.location === "INVENTORY" &&
+            Number.isInteger(entry?.slot),
+        )
         .map((entry) => [entry.slot, entry]),
     );
     const section = document.createElement("section");
@@ -289,6 +326,7 @@
           item: items[index] || null,
           slotLabel: index,
           intelligence: intelligenceBySlot.get(index) || null,
+          gearScore: gearBySlot.get(index) || null,
         }),
       );
     }
