@@ -1922,6 +1922,459 @@ function migrate_old_storage(path, localStorage) {
     });
   }
 
+  function live_item_quantity(char_block, item_name) {
+    const items = Array.isArray(char_block?.live_state?.items)
+      ? char_block.live_state.items
+      : [];
+    return items.reduce((sum, item) => {
+      if (!item || item.name !== item_name) return sum;
+      const quantity = Number(item.q);
+      return sum + (Number.isFinite(quantity) && quantity > 0 ? quantity : 1);
+    }, 0);
+  }
+
+  function fishing_material_worker_names(merchant_block) {
+    const config = logistics_record(merchant_block?.runtime_config);
+    const autonomy = logistics_record(
+      config.merchantAutonomy || config.merchant_autonomy,
+    );
+    const fishing = logistics_record(autonomy.fishing);
+    const configured = Array.isArray(
+      fishing.materialWorkers || fishing.material_workers,
+    )
+      ? fishing.materialWorkers || fishing.material_workers
+      : [];
+    const names = configured
+      .filter((name) => typeof name === "string" && name.trim())
+      .map((name) => name.trim());
+    return names.length
+      ? [...new Set(names)]
+      : [...DEFAULT_FISHING_MATERIAL_WORKERS];
+  }
+
+  async function wait_for_material_worker_runtime(
+    char_name,
+    timeout_ms = MOVEMENT_LIVE_TEST_RUNTIME_TIMEOUT_MS,
+  ) {
+    const started_at = Date.now();
+    while (Date.now() - started_at < timeout_ms) {
+      const char_block = character_manage[char_name];
+      if (
+        char_block?.instance &&
+        char_block.connected &&
+        Number.isFinite(char_block.bot_runtime_started_at)
+      ) {
+        return char_block;
+      }
+      await sleep(100);
+    }
+
+    throw make_control_error(
+      "MATERIAL_WORKER_RUNTIME_TIMEOUT",
+      `Material worker runtime did not become ready for ${char_name}`,
+      504,
+    );
+  }
+
+  async function wait_for_merchant_material_quantity(
+    merchant_name,
+    item_name,
+    target_quantity,
+    timeout_ms = 10000,
+  ) {
+    const started_at = Date.now();
+    while (Date.now() - started_at < timeout_ms) {
+      const merchant_block = character_manage[merchant_name];
+      if (
+        live_item_quantity(merchant_block, item_name) >= target_quantity
+      ) {
+        return true;
+      }
+      await sleep(100);
+    }
+    return false;
+  }
+
+  function report_fishing_material_result(
+    merchant_name,
+    item_name,
+    success,
+    reason,
+  ) {
+    const merchant_block = character_manage[merchant_name];
+    if (!merchant_block?.instance) return false;
+    return safe_send(merchant_block.instance, {
+      type: "fishing_material_request_result",
+      item_name,
+      success: success === true,
+      reason: reason || null,
+    });
+  }
+
+  async function run_material_worker_task(
+    worker_name,
+    {
+      merchant_name,
+      item_name,
+      monster_type,
+      quantity,
+      recipient_position,
+    },
+  ) {
+    const worker_block = character_manage[worker_name];
+    if (!worker_block) {
+      return {
+        outcome: "FAIL",
+        reason: "MATERIAL_WORKER_NOT_FOUND",
+        worker: worker_name,
+      };
+    }
+    if (
+      worker_block.account_owned !== true ||
+      (worker_block.account_character_type || worker_block.live_state?.ctype) !==
+        "ranger"
+    ) {
+      return {
+        outcome: "FAIL",
+        reason: "MATERIAL_WORKER_NOT_ACCOUNT_RANGER",
+        worker: worker_name,
+      };
+    }
+
+    const original_desired_state =
+      worker_block.desired_runtime_state ||
+      (worker_block.enabled
+        ? DESIRED_RUNTIME_STATES.RUNNING
+        : DESIRED_RUNTIME_STATES.STOPPED);
+    const runtime_ready =
+      !!worker_block.instance &&
+      worker_block.connected &&
+      Number.isFinite(worker_block.bot_runtime_started_at);
+    let runtime_override_applied = false;
+    let runtime_state_restored = false;
+    let request_id = null;
+
+    material_worker_active_count += 1;
+    try {
+      if (!runtime_ready) {
+        const bundle_path = path.join(
+          process.cwd(),
+          "TYPECODE.out",
+          MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE,
+        );
+        if (!fs_regular.existsSync(bundle_path)) {
+          return {
+            outcome: "FAIL",
+            reason: "MATERIAL_WORKER_RUNTIME_BUNDLE_MISSING",
+            worker: worker_name,
+          };
+        }
+
+        worker_block.movement_live_test_typescript_override =
+          MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE;
+        runtime_override_applied = true;
+      }
+
+      if (original_desired_state !== DESIRED_RUNTIME_STATES.RUNNING) {
+        worker_block.enabled = true;
+        worker_block.desired_runtime_state = DESIRED_RUNTIME_STATES.RUNNING;
+      }
+
+      if (runtime_override_applied) {
+        await restart_character_for_movement_runtime(
+          worker_name,
+          worker_block,
+        );
+      } else if (!worker_block.instance) {
+        await control_character(worker_name, CONTROL_ACTIONS.START);
+      }
+
+      const ready_block = await wait_for_material_worker_runtime(worker_name);
+      material_gather_task_sequence += 1;
+      request_id =
+        `material-gather-${Date.now()}-${material_gather_task_sequence}`;
+      const result_promise = wait_for_material_gather_task_result(
+        worker_name,
+        request_id,
+      );
+      const sent = safe_send(ready_block.instance, {
+        type: "material_gather_task",
+        request_id,
+        item_name,
+        monster_type,
+        quantity,
+        recipient: merchant_name,
+        recipient_position,
+      });
+      if (!sent) {
+        const pending = material_gather_task_requests.get(request_id);
+        if (pending) {
+          clearTimeout(pending.timer);
+          material_gather_task_requests.delete(request_id);
+        }
+        return {
+          outcome: "FAIL",
+          reason: "MATERIAL_GATHER_TASK_DISPATCH_FAILED",
+          worker: worker_name,
+        };
+      }
+
+      emit_supervisor_event(
+        "FISHING_MATERIAL_WORKER_DISPATCHED",
+        worker_name,
+        {
+          request_id,
+          merchant: merchant_name,
+          item_name,
+          monster_type,
+          quantity,
+        },
+      );
+
+      const response = await result_promise;
+      if (response.error || !response.result) {
+        return {
+          outcome: "FAIL",
+          reason:
+            response.error || "MATERIAL_GATHER_TASK_RESULT_MISSING",
+          worker: worker_name,
+        };
+      }
+      return response.result;
+    } finally {
+      if (request_id) {
+        const pending = material_gather_task_requests.get(request_id);
+        if (pending) {
+          clearTimeout(pending.timer);
+          material_gather_task_requests.delete(request_id);
+        }
+      }
+
+      try {
+        if (runtime_override_applied) {
+          await restore_movement_live_test_execution_source(
+            worker_name,
+            original_desired_state,
+          );
+        } else {
+          await restore_movement_live_test_state(
+            worker_name,
+            original_desired_state,
+          );
+        }
+        runtime_state_restored = true;
+      } catch (restore_error) {
+        emit_supervisor_event(
+          "FISHING_MATERIAL_WORKER_RESTORE_FAILED",
+          worker_name,
+          {
+            request_id,
+            error:
+              restore_error instanceof Error
+                ? restore_error.message
+                : String(restore_error),
+          },
+        );
+      }
+
+      material_worker_active_count = Math.max(
+        0,
+        material_worker_active_count - 1,
+      );
+      schedule_merchant_logistics_dispatch();
+      emit_supervisor_event(
+        "FISHING_MATERIAL_WORKER_RESTORED",
+        worker_name,
+        {
+          request_id,
+          runtime_state_restored,
+          desired_runtime_state: original_desired_state,
+        },
+      );
+    }
+  }
+
+  async function coordinate_fishing_material_request(
+    merchant_name,
+    request,
+  ) {
+    const item_name =
+      typeof request?.itemName === "string" ? request.itemName.trim() : "";
+    const quantity = Math.max(1, Math.floor(Number(request?.quantity) || 1));
+    const monster_type =
+      item_name === "spidersilk" ? "spider" : null;
+    const key = `${merchant_name}:${item_name}`;
+
+    if (!item_name || !monster_type) {
+      report_fishing_material_result(
+        merchant_name,
+        item_name,
+        false,
+        "MATERIAL_REQUEST_UNSUPPORTED",
+      );
+      return;
+    }
+    if (fishing_material_requests.has(key)) return;
+
+    const merchant_block = character_manage[merchant_name];
+    if (!merchant_block) return;
+    const baseline = live_item_quantity(merchant_block, item_name);
+    const target_quantity = baseline + quantity;
+    const recipient_position = {
+      map: merchant_block.live_state?.map || null,
+      x: Number(merchant_block.live_state?.x),
+      y: Number(merchant_block.live_state?.y),
+    };
+    if (
+      !recipient_position.map ||
+      !Number.isFinite(recipient_position.x) ||
+      !Number.isFinite(recipient_position.y)
+    ) {
+      report_fishing_material_result(
+        merchant_name,
+        item_name,
+        false,
+        "MERCHANT_POSITION_UNAVAILABLE",
+      );
+      return;
+    }
+
+    const state = {
+      merchant: merchant_name,
+      itemName: item_name,
+      quantity,
+      targetQuantity: target_quantity,
+      workers: fishing_material_worker_names(merchant_block),
+      activeWorker: null,
+      outcome: "RUNNING",
+      reason: null,
+      startedAt: Date.now(),
+      completedAt: null,
+    };
+    fishing_material_requests.set(key, state);
+    merchant_block.fishing_material_request = state;
+    dashboard?.publishSnapshot();
+
+    emit_supervisor_event(
+      "FISHING_MATERIAL_REQUEST_STARTED",
+      merchant_name,
+      state,
+    );
+
+    try {
+      for (const worker_name of state.workers) {
+        const worker_block = character_manage[worker_name];
+        if (
+          !worker_block ||
+          worker_block.account_owned !== true ||
+          (worker_block.account_character_type ||
+            worker_block.live_state?.ctype) !== "ranger"
+        ) {
+          continue;
+        }
+
+        state.activeWorker = worker_name;
+        merchant_block.fishing_material_request = { ...state };
+        dashboard?.publishSnapshot();
+
+        let worker_result;
+        try {
+          worker_result = await run_material_worker_task(worker_name, {
+            merchant_name,
+            item_name,
+            monster_type,
+            quantity,
+            recipient_position,
+          });
+        } catch (error) {
+          worker_result = {
+            outcome: "FAIL",
+            reason:
+              error instanceof Error ? error.message : String(error),
+            worker: worker_name,
+          };
+        }
+
+        const delivered = await wait_for_merchant_material_quantity(
+          merchant_name,
+          item_name,
+          target_quantity,
+          worker_result?.outcome === "PASS" ? 10000 : 1500,
+        );
+
+        if (delivered) {
+          state.outcome = "PASS";
+          state.reason = "FISHING_MATERIAL_DELIVERY_CONFIRMED";
+          state.completedAt = Date.now();
+          report_fishing_material_result(
+            merchant_name,
+            item_name,
+            true,
+            state.reason,
+          );
+          emit_supervisor_event(
+            "FISHING_MATERIAL_REQUEST_COMPLETED",
+            merchant_name,
+            {
+              ...state,
+              worker_result,
+            },
+          );
+          return;
+        }
+
+        if (
+          worker_result?.outcome === "UNKNOWN" ||
+          worker_result?.outcome === "TIMEOUT"
+        ) {
+          state.outcome = worker_result.outcome;
+          state.reason =
+            worker_result.reason ||
+            "FISHING_MATERIAL_WORKER_OUTCOME_UNCERTAIN";
+          state.completedAt = Date.now();
+          report_fishing_material_result(
+            merchant_name,
+            item_name,
+            false,
+            state.reason,
+          );
+          emit_supervisor_event(
+            "FISHING_MATERIAL_REQUEST_UNCERTAIN",
+            merchant_name,
+            {
+              ...state,
+              worker_result,
+            },
+          );
+          return;
+        }
+
+        state.reason =
+          worker_result?.reason || "FISHING_MATERIAL_WORKER_FAILED";
+      }
+
+      state.outcome = "FAIL";
+      state.reason =
+        state.reason || "FISHING_MATERIAL_NO_WORKER_SUCCEEDED";
+      state.completedAt = Date.now();
+      report_fishing_material_result(
+        merchant_name,
+        item_name,
+        false,
+        state.reason,
+      );
+      emit_supervisor_event(
+        "FISHING_MATERIAL_REQUEST_FAILED",
+        merchant_name,
+        state,
+      );
+    } finally {
+      merchant_block.fishing_material_request = { ...state };
+      fishing_material_requests.delete(key);
+      dashboard?.publishSnapshot();
+    }
+  }
+
   async function restore_movement_live_test_state(
     char_name,
     desired_runtime_state,
