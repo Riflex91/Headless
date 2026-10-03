@@ -58,6 +58,10 @@ import {
   CraftPreflightRunner,
 } from "./craft-preflight.lib";
 import {
+  CraftMaterialPreparationPlan,
+  planCraftMaterialPreparation,
+} from "./craft-material-preparation-plan.lib";
+import {
   ExchangePreflightResult,
   ExchangePreflightRunner,
 } from "./exchange-preflight.lib";
@@ -791,6 +795,59 @@ export class BotRuntimeKernel {
       throw new Error("runtime must be RUNNING for craft execution");
     }
     return this.craft.executeNext() as unknown as Record<string, unknown>;
+  }
+
+  runCraftMaterialPlan(
+    recipe?: string | null,
+  ): CraftMaterialPreparationPlan {
+    if (
+      this.craftPreflightRunning ||
+      this.exchangePreflightRunning ||
+      this.exchangeLiveTestRunning ||
+      this.compoundLiveTestRunning ||
+      this.upgradeLiveTestRunning ||
+      this.upgradePreflightRunning
+    ) {
+      throw new Error("mutation verification already running");
+    }
+    if (!this.started || this.stopping) {
+      throw new Error("runtime is not ready for craft material planning");
+    }
+    if (runtimeState() !== "RUNNING") {
+      throw new Error("runtime must be RUNNING for craft material planning");
+    }
+
+    this.craftPreflightRunning = true;
+    try {
+      const intelligence = this.inventoryIntelligence.tick();
+      if (!["READY", "EMPTY"].includes(intelligence.state)) {
+        throw new Error("inventory intelligence is not ready");
+      }
+
+      const gameData = this.game.gameData();
+      const craftData =
+        gameData.craft &&
+        typeof gameData.craft === "object" &&
+        !Array.isArray(gameData.craft)
+          ? (gameData.craft as Record<string, unknown>)
+          : {};
+      const recipes = Object.keys(craftData).sort((left, right) =>
+        left.localeCompare(right),
+      );
+
+      this.craft.setConfigOverride({
+        craft: {
+          enabled: true,
+          allowedRecipes: recipes,
+        },
+      });
+      const status = this.craft.tick();
+      return planCraftMaterialPreparation(gameData, status, { recipe });
+    } finally {
+      this.craft.clearConfigOverride();
+      this.craft.tick();
+      this.craftPreflightRunning = false;
+    }
   }
 
   async runCraftPreflight(): Promise<CraftPreflightResult> {
