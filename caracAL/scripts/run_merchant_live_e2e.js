@@ -105,9 +105,7 @@ async function main() {
     }
 
     process.stdout.write(
-      "Running non-forcing Merchant Autonomy E2E with " +
-        merchant.name +
-        "\n",
+      "Running non-forcing Merchant Autonomy E2E with " + merchant.name + "\n",
     );
 
     const payload = await runMerchantLiveTest(merchant);
