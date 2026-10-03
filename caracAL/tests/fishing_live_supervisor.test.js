@@ -269,10 +269,7 @@ test("coordinator, runtime, thread, dashboard and launcher expose Fishing live p
   assert.match(coordinator, /fishing_live_test_active/);
   assert.match(runtime, /FISHING_AUTONOMY_JOB_ID/);
   assert.match(runtime, /runFishingLiveTest/);
-  assert.match(
-    dashboard,
-    /\/headless\/api\/characters\/:name\/tests\/fishing/,
-  );
+  assert.match(dashboard, /\/headless\/api\/characters\/:name\/tests\/fishing/);
   assert.match(thread, /case "fishing_live_test"/);
   assert.match(thread, /runFishingLiveTest/);
   assert.match(launcher, /selectMerchantLiveTestCharacter/);
