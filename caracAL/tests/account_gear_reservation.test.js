@@ -316,4 +316,3 @@ test("account Gear Reservation waits for Future Gear readiness", () => {
   assert.equal(plan.summary.readyGearCharacters, 1);
   assert.equal(plan.reservations.length, 0);
 });
-
