@@ -56,7 +56,7 @@ function setup(overrides = {}) {
     ],
     gameData: {
       items: {
-        stand0: { stand: true },
+        stand0: { type: "stand", skin: "stand0", stand: "stand0" },
         rod: {},
         pickaxe: {},
       },
