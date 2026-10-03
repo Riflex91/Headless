@@ -238,6 +238,81 @@ async function waitForGearScoringProjection(
   );
 }
 
+async function runGearScoringSupervisorLiveTest(
+  characterName,
+  sampleMs = Number(process.env.CARACAL_GEAR_SCORING_LIVE_SETTLE_MS || 1200),
+) {
+  return readJson(
+    await fetch(
+      baseUrl +
+        "/headless/api/characters/" +
+        encodeURIComponent(characterName) +
+        "/tests/gear-scoring",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sampleMs }),
+      },
+    ),
+  );
+}
+
+function supervisorSnapshotCharacter(characterName, snapshot) {
+  const value = record(snapshot);
+  return {
+    name: characterName,
+    game: {
+      slots: record(value.slots),
+    },
+    gear_scoring_runtime: value.scoring || null,
+  };
+}
+
+function combineGearScoringSupervisorResult(result) {
+  const source = record(result);
+  const beforeCharacter = supervisorSnapshotCharacter(
+    source.character || null,
+    source.before,
+  );
+  const afterCharacter = supervisorSnapshotCharacter(
+    source.character || null,
+    source.after,
+  );
+  const beforeEvidence = gearScoringEvidence(beforeCharacter);
+  const finalEvidence = gearScoringEvidence(afterCharacter);
+  const equipmentBaselineRestored =
+    equipmentSignature(beforeCharacter) === equipmentSignature(afterCharacter);
+  const runtimeStateRestored = source.cleanup?.runtimeStateRestored === true;
+  const evidence = {
+    ...finalEvidence,
+    projectionWasReadyBeforeSettle:
+      beforeEvidence.supervisorProjectionVisible === true,
+    equipmentBaselineRestored,
+    runtimeStateRestored,
+  };
+  const passed =
+    source.outcome === "PASS" &&
+    evidenceComplete(evidence) &&
+    evidence.projectionWasReadyBeforeSettle === true &&
+    equipmentBaselineRestored &&
+    runtimeStateRestored;
+
+  return {
+    ...source,
+    outcome: passed ? "PASS" : "FAIL",
+    reason: passed
+      ? "GEAR_SCORING_LIVE_E2E_CONFIRMED"
+      : source.reason || "GEAR_SCORING_LIVE_E2E_EVIDENCE_INCOMPLETE",
+    scoring: afterCharacter.gear_scoring_runtime,
+    evidence,
+    cleanup: {
+      ...record(source.cleanup),
+      equipmentBaselineRestored,
+      runtimeStateRestored,
+    },
+  };
+}
+
 async function runGearScoringLiveVerification(
   characterName,
   {
@@ -326,7 +401,8 @@ async function main() {
     process.stdout.write(
       "Running read-only Gear Scoring E2E with " + selected.name + "\n",
     );
-    const result = await runGearScoringLiveVerification(selected.name);
+    const payload = await runGearScoringSupervisorLiveTest(selected.name);
+    const result = combineGearScoringSupervisorResult(payload.result);
     process.stdout.write(JSON.stringify(result, null, 2) + "\n");
 
     if (result.outcome !== "PASS") {
@@ -348,6 +424,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  combineGearScoringSupervisorResult,
   contributionMatches,
   equipmentEntries,
   equipmentSignature,
@@ -355,6 +432,7 @@ module.exports = {
   gearScoringEvidence,
   readState,
   runGearScoringLiveVerification,
+  runGearScoringSupervisorLiveTest,
   selectGearScoringCharacter,
   waitForGearScoringCharacter,
   waitForGearScoringProjection,
