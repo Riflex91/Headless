@@ -202,6 +202,17 @@ async function make_runner(upper, CODE_file, version, is_typescript) {
           });
         break;
       }
+      case "fishing_material_request_result": {
+        const runtime = runner_context.__caracalBotRuntime;
+        if (runtime?.reportFishingMaterialRequestResult) {
+          runtime.reportFishingMaterialRequestResult({
+            itemName: m.item_name,
+            success: m.success === true,
+            reason: m.reason || null,
+          });
+        }
+        break;
+      }
       case "material_gather_task": {
         const requestId =
           typeof m.request_id === "string" && m.request_id
