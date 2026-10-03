@@ -45,4 +45,11 @@ jobs:
 
           cd caracAL
           echo "$FILES"
-          npx prettier --check $FILES
+          if ! npx prettier --check $FILES; then
+            for FILE in $FILES; do
+              FORMATTED="/tmp/$(basename "$FILE").prettier"
+              npx prettier "$FILE" > "$FORMATTED"
+              diff -u "$FILE" "$FORMATTED" || true
+            done
+            exit 1
+          fi
