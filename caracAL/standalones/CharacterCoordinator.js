@@ -140,6 +140,7 @@ const MERCHANT_LIVE_TEST_RESULT_TIMEOUT_MS = 120000;
 const MERRIT_LIVE_TEST_RESULT_TIMEOUT_MS = 420000;
 const BANK_TRAVEL_LIVE_TEST_RESULT_TIMEOUT_MS = 240000;
 const BANK_GOLD_LIVE_TEST_RESULT_TIMEOUT_MS = 240000;
+const UPGRADE_LIVE_TEST_RESULT_TIMEOUT_MS = 120000;
 const NPC_TRADING_LIVE_TEST_RESULT_TIMEOUT_MS = 240000;
 const MARKET_TRADING_LIVE_TEST_RESULT_TIMEOUT_MS = 240000;
 const FISHING_LIVE_TEST_RESULT_TIMEOUT_MS = 20 * 60 * 1000;
@@ -295,6 +296,9 @@ function migrate_old_storage(path, localStorage) {
   const bank_gold_live_test_requests = new Map();
   let bank_gold_live_test_sequence = 0;
   let bank_gold_live_test_active = false;
+  const upgrade_live_test_requests = new Map();
+  let upgrade_live_test_sequence = 0;
+  let upgrade_live_test_active = false;
   const npc_trading_live_test_requests = new Map();
   let npc_trading_live_test_sequence = 0;
   let npc_trading_live_test_active = false;
@@ -362,6 +366,7 @@ function migrate_old_storage(path, localStorage) {
         runMerchantLiveTest: run_merchant_live_test,
         runBankTravelLiveTest: run_bank_travel_live_test,
         runBankGoldLiveTest: run_bank_gold_live_test,
+        runUpgradeLiveTest: run_upgrade_live_test,
         runNpcTradingLiveTest: run_npc_trading_live_test,
         runMarketTradingLiveTest: run_market_trading_live_test,
         runMerritLiveTest: run_merrit_live_test,
@@ -499,6 +504,7 @@ function migrate_old_storage(path, localStorage) {
       logistics_live_test_active ||
       bank_travel_live_test_active ||
       bank_gold_live_test_active ||
+      upgrade_live_test_active ||
       npc_trading_live_test_active ||
       market_trading_live_test_active ||
       account_gear_reservation_live_test_active ||
@@ -1181,6 +1187,7 @@ function migrate_old_storage(path, localStorage) {
       char_block.gear_scoring_live_test || null;
     char_block.account_gear_reservation_live_test =
       char_block.account_gear_reservation_live_test || null;
+    char_block.upgrade_live_test = char_block.upgrade_live_test || null;
     char_block.movement_live_test_typescript_override = null;
     char_block.running_code_revision = char_block.running_code_revision || null;
     char_block.running_config_revision =
