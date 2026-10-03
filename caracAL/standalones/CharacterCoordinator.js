@@ -2208,6 +2208,36 @@ function migrate_old_storage(path, localStorage) {
     return incident.incident_id;
   }
 
+  function capture_merrit_live_test_incident(char_name, test_result) {
+    const incident = incident_recorder.capture({
+      reason: test_result.reason || "MERRIT_LIVE_TEST_FAILED",
+      severity: test_result.outcome === "TIMEOUT" ? "HIGH" : "ERROR",
+      character: char_name,
+      event: {
+        type: "merrit_live_test",
+        event: "MERRIT_LIVE_TEST_FAILED",
+        character: char_name,
+        timestamp: Date.now(),
+        request_id: test_result.request_id || test_result.requestId || null,
+        outcome: test_result.outcome || "FAIL",
+        reason: test_result.reason || "MERRIT_LIVE_TEST_FAILED",
+      },
+      extra: {
+        test: test_result,
+      },
+    });
+
+    void observe_persistence(
+      persistence.indexIncident(
+        incident,
+        path.join("logs", "incidents", incident.incident_id),
+      ),
+      "merrit_live_test_incident",
+      char_name,
+    );
+    return incident.incident_id;
+  }
+
   async function run_movement_live_test(char_name) {
     const char_block = character_manage[char_name];
     if (!char_block) {
