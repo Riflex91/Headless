@@ -90,8 +90,7 @@ function snapshot({
           name: "candidate_bow",
           disposition: "GEAR",
           protected: candidate ? protectedCandidate : false,
-          protections:
-            candidate && protectedCandidate ? ["FUTURE_GEAR"] : [],
+          protections: candidate && protectedCandidate ? ["FUTURE_GEAR"] : [],
         },
       ],
     },
