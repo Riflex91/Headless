@@ -29,46 +29,68 @@ async function readState() {
   );
 }
 
-function selectRanger(snapshot, requested = null) {
+function selectClassSkillCharacter(snapshot, requested = null, ctype = "ranger") {
   const characters = Array.isArray(snapshot?.characters)
     ? snapshot.characters
     : [];
+
+  if (!["ranger", "merchant"].includes(ctype)) {
+    throw new Error(`Unsupported class-skill live E2E class: ${ctype}`);
+  }
 
   if (requested) {
     const exact = characters.find((character) => character.name === requested);
     if (!exact) {
       throw new Error(`Unknown character in dashboard state: ${requested}`);
     }
-    if (exact.ctype !== "ranger") {
-      throw new Error("Class-skill live E2E currently requires a Ranger");
+    if (exact.ctype !== ctype) {
+      throw new Error(
+        `Class-skill live E2E currently requires a ${ctype}: ${requested}`,
+      );
     }
     return exact;
   }
 
-  const rangers = characters.filter(
+  const candidates = characters.filter(
     (character) =>
-      character.account_owned === true && character.ctype === "ranger",
+      character.account_owned === true && character.ctype === ctype,
   );
 
   return (
-    rangers.find(
+    candidates.find(
       (character) =>
         character.connected === true && character.lifecycle_state === "ONLINE",
     ) ||
-    rangers.find(
+    candidates.find(
       (character) =>
         character.enabled === true &&
         character.desired_runtime_state === "RUNNING",
     ) ||
-    rangers.find((character) => character.enabled === true) ||
-    rangers.find((character) => character.connected === true) ||
-    rangers[0] ||
+    candidates.find((character) => character.enabled === true) ||
+    candidates.find((character) => character.connected === true) ||
+    candidates[0] ||
     null
   );
 }
 
+function selectRanger(snapshot, requested = null) {
+  return selectClassSkillCharacter(snapshot, requested, "ranger");
+}
+
+function selectMerchant(snapshot, requested = null) {
+  return selectClassSkillCharacter(snapshot, requested, "merchant");
+}
+
+function parseArguments(args = process.argv.slice(2)) {
+  const merchant = args[0] === "--merchant";
+  return {
+    ctype: merchant ? "merchant" : "ranger",
+    requested: merchant ? args[1] || null : args[0] || null,
+  };
+}
+
 async function main() {
-  const requested = process.argv[2] || null;
+  const { ctype, requested } = parseArguments();
   const dashboard = await ensureDashboardAvailable(readState);
   const managedRuntime = dashboard.runtime;
 
@@ -79,13 +101,19 @@ async function main() {
         : `Using existing caracAL runtime at ${baseUrl}\n`,
     );
 
-    const character = selectRanger(dashboard.state, requested);
+    const character = selectClassSkillCharacter(
+      dashboard.state,
+      requested,
+      ctype,
+    );
     if (!character) {
-      throw new Error("No Ranger is available for the class-skill live test");
+      throw new Error(
+        `No ${ctype} is available for the class-skill live test`,
+      );
     }
 
     process.stdout.write(
-      `Running autonomous Ranger class-skill E2E for ${character.name} via ${baseUrl}\n`,
+      `Running autonomous ${ctype} class-skill E2E for ${character.name} via ${baseUrl}\n`,
     );
 
     const payload = await readJson(
@@ -123,4 +151,9 @@ if (require.main === module) {
   });
 }
 
-module.exports = { selectRanger };
+module.exports = {
+  parseArguments,
+  selectClassSkillCharacter,
+  selectMerchant,
+  selectRanger,
+};
