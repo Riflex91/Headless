@@ -730,6 +730,22 @@ export class BotRuntimeKernel {
         inventoryIntelligence: this.inventoryIntelligence,
         compound: this.compound,
         characterName: () => character.name,
+        runtimePreflight: () => {
+          const runtimeCharacter = character as unknown as {
+            map?: unknown;
+            q?: {
+              compound?: unknown;
+            };
+          };
+          return {
+            map:
+              typeof runtimeCharacter.map === "string" &&
+              runtimeCharacter.map.trim().length > 0
+                ? runtimeCharacter.map
+                : null,
+            compoundInProgress: !!runtimeCharacter.q?.compound,
+          };
+        },
       });
       const result = await runner.run({
         ...options,
