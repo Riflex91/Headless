@@ -300,4 +300,3 @@ test("inventory intelligence protects account-reserved slots as RESERVED", () =>
   assert.equal(status.summary.dispositions.RESERVED, 1);
   assert.equal(status.summary.protections.RESERVED, 1);
 });
-
