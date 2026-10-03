@@ -282,6 +282,8 @@ function migrate_old_storage(path, localStorage) {
   const inventory_live_test_requests = new Map();
   let inventory_live_test_sequence = 0;
   let gear_scoring_live_test_sequence = 0;
+  let account_gear_reservation_live_test_sequence = 0;
+  let account_gear_reservation_live_test_active = false;
   const logistics_live_test_requests = new Map();
   let logistics_live_test_sequence = 0;
   let logistics_live_test_active = false;
@@ -354,6 +356,8 @@ function migrate_old_storage(path, localStorage) {
         runFarmLiveTest: run_farm_live_test,
         runInventoryLiveTest: run_inventory_live_test,
         runGearScoringLiveTest: run_gear_scoring_live_test,
+        runAccountGearReservationLiveTest:
+          run_account_gear_reservation_live_test,
         runLogisticsLiveTest: run_logistics_live_test,
         runMerchantLiveTest: run_merchant_live_test,
         runBankTravelLiveTest: run_bank_travel_live_test,
@@ -497,6 +501,7 @@ function migrate_old_storage(path, localStorage) {
       bank_gold_live_test_active ||
       npc_trading_live_test_active ||
       market_trading_live_test_active ||
+      account_gear_reservation_live_test_active ||
       fishing_live_test_active ||
       material_worker_active_count > 0
     )
@@ -1165,6 +1170,8 @@ function migrate_old_storage(path, localStorage) {
       char_block.account_gear_reservation_runtime || null;
     char_block.gear_scoring_live_test =
       char_block.gear_scoring_live_test || null;
+    char_block.account_gear_reservation_live_test =
+      char_block.account_gear_reservation_live_test || null;
     char_block.movement_live_test_typescript_override = null;
     char_block.running_code_revision = char_block.running_code_revision || null;
     char_block.running_config_revision =
@@ -1623,6 +1630,87 @@ function migrate_old_storage(path, localStorage) {
     throw make_control_error(
       "GEAR_SCORING_LIVE_TEST_RUNTIME_TIMEOUT",
       `Gear Scoring runtime did not become ready for ${char_name}`,
+      504,
+    );
+  }
+
+  function account_gear_reservation_live_snapshot() {
+    return Object.entries(character_manage)
+      .filter(([, block]) => block?.account_owned === true)
+      .map(([name, block]) => ({
+        name,
+        accountOwned: true,
+        connected: block.connected === true,
+        ctype:
+          block.account_character_type ||
+          block.gear_scoring_runtime?.characterClass ||
+          block.live_state?.ctype ||
+          null,
+        scoring: JSON.parse(
+          JSON.stringify(block.gear_scoring_runtime || null),
+        ),
+        futureGear: JSON.parse(
+          JSON.stringify(block.future_gear_runtime || null),
+        ),
+        inventoryIntelligence: JSON.parse(
+          JSON.stringify(block.inventory_intelligence_runtime || null),
+        ),
+        accountReservation: JSON.parse(
+          JSON.stringify(block.account_gear_reservation_runtime || null),
+        ),
+        slots: JSON.parse(JSON.stringify(block.live_state?.slots || {})),
+      }))
+      .sort((left, right) => left.name.localeCompare(right.name));
+  }
+
+  function account_gear_reservation_gear_signature(char_block) {
+    const scoring_entries = Array.isArray(
+      char_block?.gear_scoring_runtime?.entries,
+    )
+      ? char_block.gear_scoring_runtime.entries
+      : [];
+    return JSON.stringify(
+      scoring_entries
+        .filter((entry) => entry?.location === "INVENTORY")
+        .map((entry) => [
+          entry.slot,
+          entry.name || null,
+          Number.isFinite(entry.level) ? entry.level : 0,
+          Number.isFinite(entry.score) ? entry.score : null,
+        ])
+        .sort((left, right) => Number(left[0]) - Number(right[0])),
+    );
+  }
+
+  async function wait_for_account_gear_reservation_live_runtime(
+    character_names,
+    timeout_ms = MOVEMENT_LIVE_TEST_RUNTIME_TIMEOUT_MS,
+  ) {
+    const started_at = Date.now();
+    while (Date.now() - started_at < timeout_ms) {
+      const blocks = character_names.map((name) => character_manage[name]);
+      if (
+        blocks.every(
+          (block) =>
+            block?.instance &&
+            block.connected &&
+            Number.isFinite(block.bot_runtime_started_at) &&
+            block.gear_scoring_runtime?.state === "READY" &&
+            block.future_gear_runtime?.state === "READY" &&
+            block.inventory_intelligence_runtime?.state === "READY" &&
+            block.account_gear_reservation_runtime?.state === "READY",
+        )
+      ) {
+        return blocks;
+      }
+      await sleep(100);
+    }
+
+    throw make_control_error(
+      "ACCOUNT_GEAR_RESERVATION_LIVE_TEST_RUNTIME_TIMEOUT",
+      `Account Gear Reservation runtime did not become ready for ${character_names.join(
+        ", ",
+      )}`,
       504,
     );
   }
@@ -5119,6 +5207,350 @@ function migrate_old_storage(path, localStorage) {
     }
 
     return char_block.gear_scoring_live_test;
+  }
+
+  async function run_account_gear_reservation_live_test(
+    source_name,
+    target_name,
+    sample_ms = 1200,
+  ) {
+    if (account_gear_reservation_live_test_active) {
+      throw make_control_error(
+        "ACCOUNT_GEAR_RESERVATION_LIVE_TEST_ALREADY_RUNNING",
+        "Account Gear Reservation live test already running",
+        409,
+      );
+    }
+
+    const names = [source_name, target_name];
+    if (
+      !source_name ||
+      !target_name ||
+      source_name === target_name ||
+      names.some((name) => !character_manage[name])
+    ) {
+      throw make_control_error(
+        "ACCOUNT_GEAR_RESERVATION_LIVE_TEST_PAIR_INVALID",
+        "Account Gear Reservation live test requires two different known characters",
+        400,
+      );
+    }
+
+    const blocks = names.map((name) => character_manage[name]);
+    if (blocks.some((block) => block?.account_owned !== true)) {
+      throw make_control_error(
+        "ACCOUNT_GEAR_RESERVATION_LIVE_TEST_ACCOUNT_REQUIRED",
+        "Both Gear Reservation live-test characters must be account-owned",
+        400,
+      );
+    }
+
+    const classes = blocks.map(
+      (block) =>
+        block.account_character_type ||
+        block.live_state?.ctype ||
+        block.gear_scoring_runtime?.characterClass ||
+        null,
+    );
+    if (!classes[0] || classes[0] !== classes[1]) {
+      throw make_control_error(
+        "ACCOUNT_GEAR_RESERVATION_LIVE_TEST_CLASS_MISMATCH",
+        "Gear Reservation live-test characters must have the same class",
+        400,
+      );
+    }
+
+    for (const [index, block] of blocks.entries()) {
+      for (const active of [
+        ["MOVEMENT", block.movement_live_test],
+        ["COMBAT", block.combat_live_test],
+        ["CLASS_SKILL", block.class_skill_live_test],
+        ["GROUP", block.group_live_test],
+        ["FARM", block.farm_live_test],
+        ["INVENTORY", block.inventory_live_test],
+        ["GEAR_SCORING", block.gear_scoring_live_test],
+      ]) {
+        if (["STARTING", "RUNNING"].includes(active[1]?.status)) {
+          throw make_control_error(
+            active[0] + "_LIVE_TEST_ALREADY_RUNNING",
+            active[0] + " live test already running for " + names[index],
+            409,
+          );
+        }
+      }
+    }
+
+    const original_states = Object.fromEntries(
+      names.map((name) => {
+        const block = character_manage[name];
+        return [
+          name,
+          block.desired_runtime_state ||
+            (block.enabled
+              ? DESIRED_RUNTIME_STATES.RUNNING
+              : DESIRED_RUNTIME_STATES.STOPPED),
+        ];
+      }),
+    );
+    const started_at = Date.now();
+    const bounded_sample_ms = Math.max(
+      500,
+      Math.min(5000, Number(sample_ms) || 1200),
+    );
+    account_gear_reservation_live_test_sequence += 1;
+    const request_id =
+      `account-gear-reservation-live-${started_at}-${account_gear_reservation_live_test_sequence}`;
+
+    account_gear_reservation_live_test_active = true;
+    for (const name of names) {
+      character_manage[name].account_gear_reservation_live_test = {
+        request_id,
+        status: "STARTING",
+        outcome: null,
+        reason: null,
+        source: source_name,
+        target: target_name,
+        started_at,
+        completed_at: null,
+      };
+    }
+    emit_supervisor_event(
+      "ACCOUNT_GEAR_RESERVATION_LIVE_TEST_REQUESTED",
+      source_name,
+      {
+        request_id,
+        source: source_name,
+        target: target_name,
+        character_class: classes[0],
+        sample_ms: bounded_sample_ms,
+      },
+    );
+    dashboard?.publishSnapshot();
+
+    const override_applied = new Set();
+    const restored = new Set();
+    let result = null;
+
+    try {
+      const bundle_path = path.join(
+        process.cwd(),
+        "TYPECODE.out",
+        MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE,
+      );
+      if (!fs_regular.existsSync(bundle_path)) {
+        throw make_control_error(
+          "ACCOUNT_GEAR_RESERVATION_LIVE_TEST_RUNTIME_BUNDLE_MISSING",
+          `Account Gear Reservation runtime bundle is missing: ${bundle_path}`,
+          503,
+        );
+      }
+
+      for (const name of names) {
+        const block = character_manage[name];
+        block.movement_live_test_typescript_override =
+          MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE;
+        block.gear_scoring_runtime = null;
+        block.future_gear_runtime = null;
+        block.inventory_intelligence_runtime = null;
+        block.account_gear_reservation_runtime = null;
+        override_applied.add(name);
+
+        if (original_states[name] !== DESIRED_RUNTIME_STATES.RUNNING) {
+          block.enabled = true;
+          block.desired_runtime_state = DESIRED_RUNTIME_STATES.RUNNING;
+        }
+      }
+
+      for (const name of names) {
+        await restart_character_for_movement_runtime(
+          name,
+          character_manage[name],
+        );
+      }
+
+      await wait_for_account_gear_reservation_live_runtime(names);
+
+      const baseline_equipment = Object.fromEntries(
+        names.map((name) => [
+          name,
+          gear_scoring_equipment_signature(character_manage[name]),
+        ]),
+      );
+      const baseline_inventory_gear = Object.fromEntries(
+        names.map((name) => [
+          name,
+          account_gear_reservation_gear_signature(character_manage[name]),
+        ]),
+      );
+      const before = account_gear_reservation_live_snapshot();
+
+      for (const name of names) {
+        character_manage[name].account_gear_reservation_live_test = {
+          ...character_manage[name].account_gear_reservation_live_test,
+          status: "RUNNING",
+        };
+      }
+      dashboard?.publishSnapshot();
+
+      await sleep(bounded_sample_ms);
+      await wait_for_account_gear_reservation_live_runtime(names, 5000);
+
+      const after = account_gear_reservation_live_snapshot();
+      const equipment_baseline_restored = names.every(
+        (name) =>
+          gear_scoring_equipment_signature(character_manage[name]) ===
+          baseline_equipment[name],
+      );
+      const inventory_gear_baseline_restored = names.every(
+        (name) =>
+          account_gear_reservation_gear_signature(character_manage[name]) ===
+          baseline_inventory_gear[name],
+      );
+
+      result = {
+        request_id,
+        outcome:
+          equipment_baseline_restored && inventory_gear_baseline_restored
+            ? "PASS"
+            : "FAIL",
+        reason:
+          equipment_baseline_restored && inventory_gear_baseline_restored
+            ? "ACCOUNT_GEAR_RESERVATION_LIVE_RUNTIME_E2E_CONFIRMED"
+            : "ACCOUNT_GEAR_RESERVATION_LIVE_GEAR_CHANGED",
+        source: source_name,
+        target: target_name,
+        characterClass: classes[0],
+        started_at,
+        completed_at: Date.now(),
+        durationMs: Date.now() - started_at,
+        before,
+        after,
+        scope: {
+          readOnly: true,
+          itemTransferMutationForced: false,
+          equipmentMutationForced: false,
+          valueMutationForced: false,
+          upgradeMutationForced: false,
+          runtimeOverrideApplied: true,
+        },
+        cleanup: {
+          equipmentBaselineRestored: equipment_baseline_restored,
+          inventoryGearBaselineRestored: inventory_gear_baseline_restored,
+          runtimeStatesRestored: false,
+        },
+      };
+    } catch (error) {
+      result = {
+        request_id,
+        outcome:
+          error.code ===
+          "ACCOUNT_GEAR_RESERVATION_LIVE_TEST_RUNTIME_TIMEOUT"
+            ? "TIMEOUT"
+            : "FAIL",
+        reason:
+          error.code ||
+          error.message ||
+          "ACCOUNT_GEAR_RESERVATION_LIVE_TEST_FAILED",
+        error: error.message || String(error),
+        source: source_name,
+        target: target_name,
+        characterClass: classes[0],
+        started_at,
+        completed_at: Date.now(),
+        durationMs: Date.now() - started_at,
+        before: null,
+        after: null,
+        scope: {
+          readOnly: true,
+          itemTransferMutationForced: false,
+          equipmentMutationForced: false,
+          valueMutationForced: false,
+          upgradeMutationForced: false,
+          runtimeOverrideApplied: override_applied.size > 0,
+        },
+        cleanup: {
+          equipmentBaselineRestored: false,
+          inventoryGearBaselineRestored: false,
+          runtimeStatesRestored: false,
+        },
+      };
+    } finally {
+      for (const name of [...names].reverse()) {
+        try {
+          if (override_applied.has(name)) {
+            await restore_movement_live_test_execution_source(
+              name,
+              original_states[name],
+            );
+          } else {
+            await restore_movement_live_test_state(
+              name,
+              original_states[name],
+            );
+          }
+          restored.add(name);
+        } catch (restore_error) {
+          emit_supervisor_event(
+            "ACCOUNT_GEAR_RESERVATION_LIVE_TEST_STATE_RESTORE_FAILED",
+            name,
+            {
+              request_id,
+              desired_runtime_state: original_states[name],
+              error:
+                restore_error instanceof Error
+                  ? restore_error.message
+                  : String(restore_error),
+            },
+          );
+          result = {
+            ...result,
+            outcome: "FAIL",
+            reason:
+              "ACCOUNT_GEAR_RESERVATION_LIVE_TEST_STATE_RESTORE_FAILED",
+            restore_error:
+              restore_error instanceof Error
+                ? restore_error.message
+                : String(restore_error),
+          };
+        }
+      }
+
+      account_gear_reservation_live_test_active = false;
+      const completed_at = Date.now();
+      result = {
+        ...result,
+        completed_at,
+        durationMs: Math.max(0, completed_at - started_at),
+        cleanup: {
+          ...(result?.cleanup || {}),
+          runtimeStatesRestored: restored.size === names.length,
+        },
+      };
+
+      for (const name of names) {
+        character_manage[name].account_gear_reservation_live_test = {
+          ...result,
+          status: result.outcome === "PASS" ? "COMPLETED" : "FAILED",
+        };
+      }
+      emit_supervisor_event(
+        result.outcome === "PASS"
+          ? "ACCOUNT_GEAR_RESERVATION_LIVE_TEST_COMPLETED"
+          : "ACCOUNT_GEAR_RESERVATION_LIVE_TEST_FAILED",
+        source_name,
+        {
+          request_id,
+          outcome: result.outcome,
+          reason: result.reason,
+          source: source_name,
+          target: target_name,
+          runtime_states_restored: restored.size === names.length,
+        },
+      );
+      dashboard?.publishSnapshot();
+    }
+
+    return character_manage[source_name].account_gear_reservation_live_test;
   }
 
   async function run_logistics_live_test(char_name) {
