@@ -1376,6 +1376,15 @@ function migrate_old_storage(path, localStorage) {
     }
   }
 
+  function reject_fishing_live_tests_for_character(char_name, reason) {
+    for (const [request_id, pending] of fishing_live_test_requests) {
+      if (pending.character !== char_name) continue;
+      clearTimeout(pending.timer);
+      fishing_live_test_requests.delete(request_id);
+      pending.reject(new Error(reason));
+    }
+  }
+
   async function wait_for_logistics_claim_idle(
     timeout_ms = LOGISTICS_CLAIM_RESULT_TIMEOUT_MS + 5000,
   ) {
@@ -1810,6 +1819,28 @@ function migrate_old_storage(path, localStorage) {
       }, MERRIT_LIVE_TEST_RESULT_TIMEOUT_MS);
 
       merrit_live_test_requests.set(request_id, {
+        character: char_name,
+        resolve,
+        reject,
+        timer,
+      });
+    });
+  }
+
+  function wait_for_fishing_live_test_result(char_name, request_id) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        fishing_live_test_requests.delete(request_id);
+        reject(
+          make_control_error(
+            "FISHING_LIVE_TEST_TIMEOUT",
+            `Fishing live test timed out for ${char_name}`,
+            504,
+          ),
+        );
+      }, FISHING_LIVE_TEST_RESULT_TIMEOUT_MS);
+
+      fishing_live_test_requests.set(request_id, {
         character: char_name,
         resolve,
         reject,
