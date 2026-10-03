@@ -846,12 +846,14 @@ export class BotRuntimeKernel {
       const observerPosition =
         typeof characterSnapshot.map === "string" &&
         characterSnapshot.map.trim() &&
+        typeof characterSnapshot.x === "number" &&
         Number.isFinite(characterSnapshot.x) &&
+        typeof characterSnapshot.y === "number" &&
         Number.isFinite(characterSnapshot.y)
           ? {
               map: characterSnapshot.map.trim(),
-              x: Number(characterSnapshot.x),
-              y: Number(characterSnapshot.y),
+              x: characterSnapshot.x,
+              y: characterSnapshot.y,
             }
           : null;
       return planCraftMaterialPreparation(gameData, status, {
