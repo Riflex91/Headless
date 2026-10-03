@@ -8124,8 +8124,7 @@ function migrate_old_storage(path, localStorage) {
         : DESIRED_RUNTIME_STATES.STOPPED);
     const started_at = Date.now();
     exchange_preflight_sequence += 1;
-    const request_id =
-      `exchange-preflight-${started_at}-${exchange_preflight_sequence}`;
+    const request_id = `exchange-preflight-${started_at}-${exchange_preflight_sequence}`;
 
     char_block.exchange_preflight = {
       request_id,
