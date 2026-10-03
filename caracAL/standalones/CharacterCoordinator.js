@@ -1646,9 +1646,7 @@ function migrate_old_storage(path, localStorage) {
           block.gear_scoring_runtime?.characterClass ||
           block.live_state?.ctype ||
           null,
-        scoring: JSON.parse(
-          JSON.stringify(block.gear_scoring_runtime || null),
-        ),
+        scoring: JSON.parse(JSON.stringify(block.gear_scoring_runtime || null)),
         futureGear: JSON.parse(
           JSON.stringify(block.future_gear_runtime || null),
         ),
@@ -5298,8 +5296,7 @@ function migrate_old_storage(path, localStorage) {
       Math.min(5000, Number(sample_ms) || 1200),
     );
     account_gear_reservation_live_test_sequence += 1;
-    const request_id =
-      `account-gear-reservation-live-${started_at}-${account_gear_reservation_live_test_sequence}`;
+    const request_id = `account-gear-reservation-live-${started_at}-${account_gear_reservation_live_test_sequence}`;
 
     account_gear_reservation_live_test_active = true;
     for (const name of names) {
@@ -5443,8 +5440,7 @@ function migrate_old_storage(path, localStorage) {
       result = {
         request_id,
         outcome:
-          error.code ===
-          "ACCOUNT_GEAR_RESERVATION_LIVE_TEST_RUNTIME_TIMEOUT"
+          error.code === "ACCOUNT_GEAR_RESERVATION_LIVE_TEST_RUNTIME_TIMEOUT"
             ? "TIMEOUT"
             : "FAIL",
         reason:
@@ -5483,10 +5479,7 @@ function migrate_old_storage(path, localStorage) {
               original_states[name],
             );
           } else {
-            await restore_movement_live_test_state(
-              name,
-              original_states[name],
-            );
+            await restore_movement_live_test_state(name, original_states[name]);
           }
           restored.add(name);
         } catch (restore_error) {
@@ -5505,8 +5498,7 @@ function migrate_old_storage(path, localStorage) {
           result = {
             ...result,
             outcome: "FAIL",
-            reason:
-              "ACCOUNT_GEAR_RESERVATION_LIVE_TEST_STATE_RESTORE_FAILED",
+            reason: "ACCOUNT_GEAR_RESERVATION_LIVE_TEST_STATE_RESTORE_FAILED",
             restore_error:
               restore_error instanceof Error
                 ? restore_error.message
