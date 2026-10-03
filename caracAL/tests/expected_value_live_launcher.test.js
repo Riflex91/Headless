@@ -100,7 +100,10 @@ function readyExpectedValue(overrides = {}) {
   };
 }
 
-function supervisorResult(expectedValue = emptyExpectedValue(), overrides = {}) {
+function supervisorResult(
+  expectedValue = emptyExpectedValue(),
+  overrides = {},
+) {
   return {
     request_id: "gear-scoring-live-1",
     outcome: "PASS",
