@@ -84,6 +84,7 @@ test("public character state exposes only dashboard-safe fields", () => {
     upgrade_live_test: null,
     upgrade_live_preflight: null,
     exchange_preflight: null,
+    craft_preflight: null,
     exchange_live_test: null,
     compound_live_test: null,
     logistics_live_test: null,
