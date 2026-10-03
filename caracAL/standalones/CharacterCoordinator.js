@@ -2958,6 +2958,492 @@ function migrate_old_storage(path, localStorage) {
     }
   }
 
+  async function run_craft_material_preparation(
+    merchant_name,
+    options = {},
+  ) {
+    if (
+      craft_material_preparation_active ||
+      compound_material_preparation_active ||
+      compound_live_test_active ||
+      upgrade_live_test_active ||
+      upgrade_live_preflight_active ||
+      exchange_preflight_active ||
+      craft_preflight_active ||
+      exchange_live_test_active
+    ) {
+      throw make_control_error(
+        "MUTATION_VERIFICATION_ALREADY_RUNNING",
+        "A mutation verification or material preparation is already running",
+        409,
+      );
+    }
+
+    const merchant_block = character_manage[merchant_name];
+    if (!merchant_block) {
+      throw make_control_error(
+        "CHARACTER_NOT_FOUND",
+        `Unknown character: ${merchant_name}`,
+        404,
+      );
+    }
+    if (
+      merchant_block.account_owned !== true ||
+      (merchant_block.account_character_type ||
+        merchant_block.live_state?.ctype) !== "merchant"
+    ) {
+      throw make_control_error(
+        "CRAFT_PREPARATION_ACCOUNT_MERCHANT_REQUIRED",
+        "Craft preparation requires an account-owned merchant: " +
+          merchant_name,
+        400,
+      );
+    }
+
+    const requested_workers = Array.isArray(options.workers)
+      ? options.workers
+          .filter((name) => typeof name === "string" && name.trim())
+          .map((name) => name.trim())
+      : [];
+    const workers = [
+      ...new Set(
+        requested_workers.length
+          ? requested_workers
+          : DEFAULT_CRAFT_MATERIAL_WORKERS,
+      ),
+    ];
+    if (workers.length < 1) {
+      throw make_control_error(
+        "CRAFT_PREPARATION_RANGER_REQUIRED",
+        "Craft preparation requires at least one Ranger worker",
+        400,
+      );
+    }
+
+    const requested_recipe =
+      typeof options.recipe === "string" && options.recipe.trim()
+        ? options.recipe.trim()
+        : null;
+    const worker_name = workers[0];
+    const started_at = Date.now();
+    const original_desired_state =
+      merchant_block.desired_runtime_state ||
+      (merchant_block.enabled
+        ? DESIRED_RUNTIME_STATES.RUNNING
+        : DESIRED_RUNTIME_STATES.STOPPED);
+    const runtime_ready =
+      !!merchant_block.instance &&
+      merchant_block.connected &&
+      Number.isFinite(merchant_block.bot_runtime_started_at);
+    let runtime_override_applied = false;
+    let merchant_paused_by_preparation = false;
+    let runtime_state_restored = false;
+    let plan_request_id = null;
+    let worker_result = null;
+
+    craft_material_preparation_active = true;
+    emit_supervisor_event(
+      "CRAFT_MATERIAL_PREPARATION_STARTED",
+      merchant_name,
+      {
+        worker: worker_name,
+        recipe: requested_recipe,
+        original_desired_state,
+        irreversibleCraftMutation: false,
+      },
+    );
+
+    try {
+      if (!runtime_ready) {
+        const bundle_path = path.join(
+          process.cwd(),
+          "TYPECODE.out",
+          MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE,
+        );
+        if (!fs_regular.existsSync(bundle_path)) {
+          return {
+            outcome: "FAIL",
+            reason: "CRAFT_PREPARATION_RUNTIME_BUNDLE_MISSING",
+            merchant: merchant_name,
+            worker: worker_name,
+          };
+        }
+
+        merchant_block.movement_live_test_typescript_override =
+          MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE;
+        runtime_override_applied = true;
+        merchant_block.enabled = true;
+        merchant_block.desired_runtime_state = DESIRED_RUNTIME_STATES.RUNNING;
+        await restart_character_for_movement_runtime(
+          merchant_name,
+          merchant_block,
+        );
+      }
+
+      const ready_merchant =
+        await wait_for_material_worker_runtime(merchant_name);
+      craft_material_plan_sequence += 1;
+      plan_request_id =
+        `craft-material-plan-${Date.now()}-${craft_material_plan_sequence}`;
+      const plan_promise = wait_for_craft_material_plan_result(
+        merchant_name,
+        plan_request_id,
+      );
+      const plan_sent = safe_send(ready_merchant.instance, {
+        type: "craft_material_plan",
+        request_id: plan_request_id,
+        ...(requested_recipe && { recipe: requested_recipe }),
+      });
+      if (!plan_sent) {
+        const pending = craft_material_plan_requests.get(plan_request_id);
+        if (pending) {
+          clearTimeout(pending.timer);
+          craft_material_plan_requests.delete(plan_request_id);
+        }
+        return {
+          outcome: "FAIL",
+          reason: "CRAFT_MATERIAL_PLAN_DISPATCH_FAILED",
+          merchant: merchant_name,
+          worker: worker_name,
+        };
+      }
+
+      const plan_response = await plan_promise;
+      if (plan_response.error || !plan_response.result) {
+        return {
+          outcome: "FAIL",
+          reason:
+            plan_response.error || "CRAFT_MATERIAL_PLAN_RESULT_MISSING",
+          merchant: merchant_name,
+          worker: worker_name,
+        };
+      }
+
+      const plan = plan_response.result;
+      if (plan.reason === "CRAFT_MATERIAL_RECIPE_ALREADY_READY") {
+        const result = {
+          outcome: "PASS",
+          reason: "CRAFT_MATERIAL_ALREADY_READY",
+          merchant: merchant_name,
+          worker: worker_name,
+          startedAt: started_at,
+          completedAt: Date.now(),
+          plan,
+          recipe: requested_recipe,
+          readyForCraftIngredients: true,
+          workerResult: null,
+          evidence: {
+            materialPlanReadOnly: true,
+            workerAttemptedOnce: false,
+            deliveryConfirmed: true,
+            craftMutationDispatched: false,
+            blindRetryUsed: false,
+          },
+          scope: {
+            movementMutationAllowed: false,
+            combatMutationAllowed: false,
+            lootMutationAllowed: false,
+            deliveryMutationAllowed: false,
+            craftMutationAllowed: false,
+            blindRetryAllowed: false,
+          },
+        };
+        emit_supervisor_event(
+          "CRAFT_MATERIAL_PREPARATION_COMPLETED",
+          merchant_name,
+          result,
+        );
+        return result;
+      }
+
+      if (plan.outcome !== "PASS" || !plan.selected) {
+        return {
+          outcome: "FAIL",
+          reason: plan.reason || "CRAFT_MATERIAL_TARGET_NOT_FOUND",
+          merchant: merchant_name,
+          worker: worker_name,
+          plan,
+          readyForCraftIngredients: false,
+        };
+      }
+
+      const selected = plan.selected;
+      const missing =
+        selected.missingRequirement &&
+        typeof selected.missingRequirement === "object"
+          ? selected.missingRequirement
+          : null;
+      const source =
+        selected.source && typeof selected.source === "object"
+          ? selected.source
+          : null;
+      const item_name =
+        typeof missing?.name === "string" && missing.name.trim()
+          ? missing.name.trim()
+          : null;
+      const required_quantity = Math.max(
+        0,
+        Math.floor(Number(missing?.quantity) || 0),
+      );
+      const item_level =
+        missing?.level === null || missing?.level === undefined
+          ? 0
+          : Math.max(0, Math.floor(Number(missing.level) || 0));
+      const monster_type =
+        typeof source?.monsterType === "string" && source.monsterType.trim()
+          ? source.monsterType.trim()
+          : null;
+
+      if (!item_name || !required_quantity || !monster_type) {
+        return {
+          outcome: "FAIL",
+          reason: "CRAFT_MATERIAL_PLAN_INVALID",
+          merchant: merchant_name,
+          worker: worker_name,
+          plan,
+          readyForCraftIngredients: false,
+        };
+      }
+
+      const current_merchant = character_manage[merchant_name];
+      const merchant_position = {
+        map: current_merchant?.live_state?.map || null,
+        x: Number(current_merchant?.live_state?.x),
+        y: Number(current_merchant?.live_state?.y),
+      };
+      if (
+        !merchant_position.map ||
+        !Number.isFinite(merchant_position.x) ||
+        !Number.isFinite(merchant_position.y)
+      ) {
+        return {
+          outcome: "FAIL",
+          reason: "CRAFT_PREPARATION_MERCHANT_POSITION_UNAVAILABLE",
+          merchant: merchant_name,
+          worker: worker_name,
+          plan,
+          readyForCraftIngredients: false,
+        };
+      }
+
+      const initial_quantity = live_item_quantity_at_level(
+        current_merchant,
+        item_name,
+        item_level,
+      );
+
+      if (
+        original_desired_state === DESIRED_RUNTIME_STATES.RUNNING &&
+        character_manage[merchant_name]?.desired_runtime_state ===
+          DESIRED_RUNTIME_STATES.RUNNING
+      ) {
+        await control_character(merchant_name, CONTROL_ACTIONS.PAUSE);
+        merchant_paused_by_preparation = true;
+        await sleep(250);
+      }
+
+      try {
+        worker_result = await run_material_worker_task(worker_name, {
+          merchant_name,
+          item_name,
+          monster_type,
+          quantity: required_quantity,
+          item_level,
+          recipient_position: merchant_position,
+          purpose: "CRAFT_TEST_MATERIAL",
+        });
+      } catch (error) {
+        const error_code =
+          error && typeof error === "object" && "code" in error
+            ? String(error.code || "")
+            : "";
+        worker_result = {
+          outcome:
+            error_code === "MATERIAL_GATHER_TASK_TIMEOUT"
+              ? "TIMEOUT"
+              : "FAIL",
+          reason:
+            error_code ||
+            (error instanceof Error ? error.message : String(error)),
+          worker: worker_name,
+        };
+      }
+
+      if (
+        worker_result?.outcome === "UNKNOWN" ||
+        worker_result?.outcome === "TIMEOUT"
+      ) {
+        return {
+          outcome: worker_result.outcome,
+          reason:
+            worker_result.reason ||
+            "CRAFT_MATERIAL_WORKER_OUTCOME_UNCERTAIN",
+          merchant: merchant_name,
+          worker: worker_name,
+          plan,
+          recipe: selected.recipe,
+          itemName: item_name,
+          itemLevel: item_level,
+          requiredQuantity: required_quantity,
+          initialQuantity: initial_quantity,
+          finalQuantity: live_item_quantity_at_level(
+            character_manage[merchant_name],
+            item_name,
+            item_level,
+          ),
+          readyForCraftIngredients: false,
+          workerResult: worker_result,
+          evidence: {
+            materialPlanReadOnly: true,
+            workerAttemptedOnce: true,
+            deliveryConfirmed: false,
+            craftMutationDispatched: false,
+            blindRetryUsed: false,
+          },
+        };
+      }
+
+      const expected_quantity = initial_quantity + required_quantity;
+      const final_quantity = await (async () => {
+        const observed_started = Date.now();
+        while (Date.now() - observed_started < 10000) {
+          const quantity = live_item_quantity_at_level(
+            character_manage[merchant_name],
+            item_name,
+            item_level,
+          );
+          if (quantity >= expected_quantity) return quantity;
+          await sleep(100);
+        }
+        return live_item_quantity_at_level(
+          character_manage[merchant_name],
+          item_name,
+          item_level,
+        );
+      })();
+
+      if (
+        worker_result?.outcome !== "PASS" ||
+        final_quantity < expected_quantity
+      ) {
+        return {
+          outcome: "FAIL",
+          reason:
+            worker_result?.reason ||
+            "CRAFT_MATERIAL_DELIVERY_NOT_OBSERVED",
+          merchant: merchant_name,
+          worker: worker_name,
+          plan,
+          recipe: selected.recipe,
+          itemName: item_name,
+          itemLevel: item_level,
+          requiredQuantity: required_quantity,
+          initialQuantity: initial_quantity,
+          finalQuantity: final_quantity,
+          readyForCraftIngredients: false,
+          workerResult: worker_result,
+          evidence: {
+            materialPlanReadOnly: true,
+            workerAttemptedOnce: true,
+            deliveryConfirmed: false,
+            craftMutationDispatched: false,
+            blindRetryUsed: false,
+          },
+        };
+      }
+
+      const result = {
+        outcome: "PASS",
+        reason: "CRAFT_MATERIAL_PREPARATION_CONFIRMED",
+        merchant: merchant_name,
+        worker: worker_name,
+        startedAt: started_at,
+        completedAt: Date.now(),
+        plan,
+        recipe: selected.recipe,
+        existingItemSlots: selected.existingItemSlots || [],
+        itemName: item_name,
+        itemLevel: item_level,
+        monsterType: monster_type,
+        requiredQuantity: required_quantity,
+        initialQuantity: initial_quantity,
+        finalQuantity: final_quantity,
+        readyForCraftIngredients: true,
+        workerResult: worker_result,
+        evidence: {
+          materialPlanReadOnly: true,
+          workerAttemptedOnce: true,
+          deliveryConfirmed: true,
+          craftMutationDispatched: false,
+          blindRetryUsed: false,
+        },
+        scope: {
+          movementMutationAllowed: true,
+          combatMutationAllowed: true,
+          lootMutationAllowed: true,
+          deliveryMutationAllowed: true,
+          craftMutationAllowed: false,
+          blindRetryAllowed: false,
+          mutationScope: "single-craft-material-preparation-only",
+        },
+      };
+      emit_supervisor_event(
+        "CRAFT_MATERIAL_PREPARATION_COMPLETED",
+        merchant_name,
+        result,
+      );
+      return result;
+    } finally {
+      if (plan_request_id) {
+        const pending = craft_material_plan_requests.get(plan_request_id);
+        if (pending) {
+          clearTimeout(pending.timer);
+          craft_material_plan_requests.delete(plan_request_id);
+        }
+      }
+
+      try {
+        if (runtime_override_applied) {
+          await restore_movement_live_test_execution_source(
+            merchant_name,
+            original_desired_state,
+          );
+        } else if (merchant_paused_by_preparation) {
+          await restore_movement_live_test_state(
+            merchant_name,
+            original_desired_state,
+          );
+        }
+        runtime_state_restored = true;
+      } catch (restore_error) {
+        emit_supervisor_event(
+          "CRAFT_MATERIAL_PREPARATION_RESTORE_FAILED",
+          merchant_name,
+          {
+            recipe: requested_recipe,
+            error:
+              restore_error instanceof Error
+                ? restore_error.message
+                : String(restore_error),
+          },
+        );
+      }
+
+      craft_material_preparation_active = false;
+      schedule_merchant_logistics_dispatch();
+      emit_supervisor_event(
+        "CRAFT_MATERIAL_PREPARATION_RESTORED",
+        merchant_name,
+        {
+          runtime_state_restored,
+          desired_runtime_state: original_desired_state,
+          worker: worker_name,
+          worker_outcome: worker_result?.outcome || null,
+        },
+      );
+    }
+  }
+
   async function run_compound_material_preparation(
     merchant_name,
     options = {},
