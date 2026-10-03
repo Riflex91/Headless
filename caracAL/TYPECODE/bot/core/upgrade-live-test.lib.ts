@@ -284,6 +284,7 @@ export class UpgradeLiveTestRunner {
     let inventoryConfigOverrideCleared = false;
     let upgradeConfigOverrideCleared = false;
     let executionAttempts = 0;
+    let finalResult: UpgradeLiveTestResult | null = null;
 
     const finish = (): UpgradeLiveTestResult => {
       const completedAt = this.now();
@@ -344,7 +345,7 @@ export class UpgradeLiveTestRunner {
 
     if (!itemName || !scrollName) {
       reason = "UPGRADE_LIVE_EXPLICIT_ITEM_AND_SCROLL_REQUIRED";
-      return finish();
+      return (finalResult = finish());
     }
 
     try {
@@ -354,7 +355,7 @@ export class UpgradeLiveTestRunner {
       );
       if (!evidence.inventoryIntelligenceReady) {
         reason = "UPGRADE_LIVE_INVENTORY_INTELLIGENCE_NOT_READY";
-        return finish();
+        return (finalResult = finish());
       }
 
       const initialInventory = this.deps.game.inventory();
@@ -365,7 +366,7 @@ export class UpgradeLiveTestRunner {
       );
       if (!evidence.itemDefinitionUpgradable) {
         reason = "UPGRADE_LIVE_ITEM_NOT_UPGRADABLE";
-        return finish();
+        return (finalResult = finish());
       }
 
       selected = selectLiveTarget(
@@ -380,7 +381,7 @@ export class UpgradeLiveTestRunner {
       );
       if (!selected) {
         reason = "UPGRADE_LIVE_SAFE_TARGET_OR_SCROLL_NOT_FOUND";
-        return finish();
+        return (finalResult = finish());
       }
 
       evidence.itemUnprotectedBefore =
@@ -426,7 +427,7 @@ export class UpgradeLiveTestRunner {
       if (!evidence.exactCandidateSelected) {
         upgradeStatus = planned;
         reason = planned.reason || "UPGRADE_LIVE_EXACT_CANDIDATE_NOT_READY";
-        return finish();
+        return (finalResult = finish());
       }
 
       executionAttempts += 1;
@@ -443,7 +444,7 @@ export class UpgradeLiveTestRunner {
           this.deps.game.inventory(),
           selected.scrollSlot,
         );
-        return finish();
+        return (finalResult = finish());
       }
 
       if (upgradeStatus.lastAction?.status !== "CONFIRMED") {
@@ -458,7 +459,7 @@ export class UpgradeLiveTestRunner {
           this.deps.game.inventory(),
           selected.scrollSlot,
         );
-        return finish();
+        return (finalResult = finish());
       }
 
       const itemBeforeSignature = stateSignature(beforeItem);
@@ -482,12 +483,12 @@ export class UpgradeLiveTestRunner {
       if (!evidence.mutationObserved) {
         outcome = "TIMEOUT";
         reason = "UPGRADE_LIVE_CONFIRMED_BUT_STATE_CHANGE_NOT_OBSERVED";
-        return finish();
+        return (finalResult = finish());
       }
 
       outcome = "PASS";
       reason = "UPGRADE_LIVE_E2E_CONFIRMED";
-      return finish();
+      return (finalResult = finish());
     } finally {
       this.deps.inventoryIntelligence.clearConfigOverride();
       inventoryConfigOverrideCleared = true;
@@ -495,6 +496,13 @@ export class UpgradeLiveTestRunner {
       upgradeConfigOverrideCleared = true;
       this.deps.inventoryIntelligence.tick();
       this.deps.upgrade.tick();
+
+      if (finalResult) {
+        finalResult.cleanup.inventoryConfigOverrideCleared =
+          inventoryConfigOverrideCleared;
+        finalResult.cleanup.upgradeConfigOverrideCleared =
+          upgradeConfigOverrideCleared;
+      }
     }
   }
 }
