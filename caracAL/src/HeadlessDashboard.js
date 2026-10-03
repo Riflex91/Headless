@@ -109,6 +109,7 @@ function publicCharacterState(name, charBlock = {}) {
     merchant_live_test: charBlock.merchant_live_test || null,
     merrit_live_test: charBlock.merrit_live_test || null,
     fishing_live_test: charBlock.fishing_live_test || null,
+    fishing_material_request: charBlock.fishing_material_request || null,
     combat_runtime: charBlock.combat_runtime || null,
     class_skill_runtime: charBlock.class_skill_runtime || null,
     group_combat_runtime: charBlock.group_combat_runtime || null,
