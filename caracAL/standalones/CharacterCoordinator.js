@@ -2970,10 +2970,7 @@ function migrate_old_storage(path, localStorage) {
     }
   }
 
-  async function run_craft_material_plan_readonly(
-    merchant_name,
-    options = {},
-  ) {
+  async function run_craft_material_plan_readonly(merchant_name, options = {}) {
     if (
       craft_preflight_active ||
       craft_material_preparation_active ||
@@ -3090,8 +3087,7 @@ function migrate_old_storage(path, localStorage) {
       const ready_merchant =
         await wait_for_material_worker_runtime(merchant_name);
       craft_material_plan_sequence += 1;
-      plan_request_id =
-        `craft-material-plan-readonly-${Date.now()}-${craft_material_plan_sequence}`;
+      plan_request_id = `craft-material-plan-readonly-${Date.now()}-${craft_material_plan_sequence}`;
       const plan_promise = wait_for_craft_material_plan_result(
         merchant_name,
         plan_request_id,
@@ -3123,8 +3119,7 @@ function migrate_old_storage(path, localStorage) {
       if (response.error || !response.result) {
         result = {
           outcome: "FAIL",
-          reason:
-            response.error || "CRAFT_MATERIAL_PLAN_RESULT_MISSING",
+          reason: response.error || "CRAFT_MATERIAL_PLAN_RESULT_MISSING",
           merchant: merchant_name,
           requestedRecipe: requested_recipe,
           plan: response.result || null,
@@ -3201,10 +3196,7 @@ function migrate_old_storage(path, localStorage) {
       craft_preflight_active = false;
       schedule_merchant_logistics_dispatch();
       cleanup.dispatcherRestored = true;
-      if (
-        result?.outcome === "PASS" &&
-        !cleanup.runtimeStateRestored
-      ) {
+      if (result?.outcome === "PASS" && !cleanup.runtimeStateRestored) {
         result.outcome = "FAIL";
         result.reason = "CRAFT_MATERIAL_PLAN_STATE_RESTORE_FAILED";
       }
