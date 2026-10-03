@@ -17,6 +17,11 @@ export interface SafeNpcTradeItem {
   unitPrice: number;
 }
 
+export function npcVendorDestination(itemName: string): string | null {
+  if (itemName === "hpot0" || itemName === "mpot0") return "potions";
+  return null;
+}
+
 export interface NpcTradingSnapshot {
   characterGold: number;
   itemQuantity: number;
@@ -269,13 +274,28 @@ export class NpcTradingController {
       );
     }
 
+    const vendorDestination = npcVendorDestination(selected.itemName);
+    if (!vendorDestination) {
+      return this.result(
+        "FAIL",
+        "NPC_TRADING_VENDOR_DESTINATION_UNAVAILABLE",
+        selected,
+        baseline,
+        null,
+        baseline,
+        empty,
+        empty,
+        empty,
+      );
+    }
+
     let travelAction: ActionRecord;
     try {
       travelAction = await this.movement.smart({
         owner: OWNER,
         module: MODULE,
         why: "NPC_TRADING_VENDOR_REQUIRED",
-        destination: selected.itemName,
+        destination: vendorDestination,
       });
     } catch (error) {
       return this.result(
