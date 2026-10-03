@@ -97,14 +97,28 @@ test("Compound preparation launcher accepts an existing Merchant triple without 
           scrollName: "cscroll0",
           scrollSlots: [12],
           scrollQuantity: 2,
+          itemLockedSlots: [],
+          scrollLockedSlots: [],
+        },
+        runtimeGuard: {
+          map: "main",
+          compoundInProgress: false,
         },
       },
       itemName: "amulet",
       itemLevel: 2,
       monsterType: null,
+      itemLockedSlots: [],
+      scrollLockedSlots: [],
+      runtimeMap: "main",
       evidence: {
         gatherPlanReadOnly: true,
         runtimeSnapshotReadiness: true,
+        localPreflightReadOnly: true,
+        compoundOperationIdle: true,
+        itemLocksClear: true,
+        scrollLocksClear: true,
+        mapAllowsCompound: true,
         threeMatchingItemsObserved: true,
         allDeliveredItemsLevelMatched: true,
         blindRetryUsed: false,
@@ -117,6 +131,61 @@ test("Compound preparation launcher accepts an existing Merchant triple without 
   assert.equal(result.verifier.workerEvidenceValid, true);
   assert.equal(result.verifier.matchingTripleObserved, true);
   assert.equal(result.verifier.scrollPresent, true);
+});
+
+test("Compound preparation launcher preserves local preflight blocker", () => {
+  const source = passResult({
+    outcome: "FAIL",
+    reason: "COMPOUND_PREPARATION_LOCAL_PREFLIGHT_BLOCKED",
+    source: "MERCHANT_INVENTORY",
+    initialQuantity: 3,
+    finalQuantity: 3,
+    workerResults: [],
+    plan: {
+      outcome: "PASS",
+      reason: "COMPOUND_GATHER_TARGET_SELECTED",
+      selected: {
+        source: "MERCHANT_INVENTORY",
+        itemName: "hpamulet",
+        itemLevel: 0,
+        itemSlots: [5, 6, 7],
+        monsterType: null,
+        itemGrade: 0,
+        scrollName: "cscroll0",
+        scrollSlots: [4],
+        scrollQuantity: 40,
+        itemLockedSlots: [],
+        scrollLockedSlots: [],
+      },
+      runtimeGuard: {
+        map: "main",
+        compoundInProgress: true,
+      },
+    },
+    itemName: "hpamulet",
+    itemLevel: 0,
+    monsterType: null,
+    itemLockedSlots: [],
+    scrollLockedSlots: [],
+    runtimeMap: "main",
+    evidence: {
+      gatherPlanReadOnly: true,
+      runtimeSnapshotReadiness: true,
+      localPreflightReadOnly: true,
+      compoundOperationIdle: false,
+      itemLocksClear: true,
+      scrollLocksClear: true,
+      mapAllowsCompound: true,
+      threeMatchingItemsObserved: true,
+      allDeliveredItemsLevelMatched: true,
+      blindRetryUsed: false,
+    },
+  });
+
+  const result = verifyCompoundPreparation(source);
+  assert.equal(result.outcome, "FAIL");
+  assert.equal(result.reason, "COMPOUND_PREPARATION_LOCAL_PREFLIGHT_BLOCKED");
+  assert.equal(result.verifier.localPreflightReady, false);
 });
 
 test("Compound preparation launcher preserves planner failure reason", () => {
@@ -178,6 +247,10 @@ test("Compound preparation wiring uses the three Ranger workers and no Compound 
   assert.match(coordinator, /runtimeSnapshotReadiness/);
   assert.match(coordinator, /selected\.scrollSlots/);
   assert.match(coordinator, /selected\.scrollQuantity/);
+  assert.match(coordinator, /selected\.itemLockedSlots/);
+  assert.match(coordinator, /selected\.scrollLockedSlots/);
+  assert.match(coordinator, /compoundOperationIdle/);
+  assert.match(coordinator, /mapAllowsCompound/);
   assert.match(
     coordinator,
     /active_typescript_override[\s\S]*movement_live_test_typescript_override/,

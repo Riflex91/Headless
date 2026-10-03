@@ -280,33 +280,39 @@ test("Compound gather planner excludes non-regular special spawns when map spawn
 
 test("Compound gather planner prefers an existing Merchant inventory triple", () => {
   const planCompoundGatherTarget = loadPlanner();
-  const result = planCompoundGatherTarget({
-    gameData() {
-      return {
-        items: {
-          amulet: { type: "amulet", compound: { int: 1 } },
-          ring: { type: "ring", compound: { dex: 1 } },
-        },
-        monsters: {
-          goo: {
-            hp: 100,
-            drop: [[1, "ring"]],
+  const result = planCompoundGatherTarget(
+    {
+      gameData() {
+        return {
+          items: {
+            amulet: { type: "amulet", compound: { int: 1 } },
+            ring: { type: "ring", compound: { dex: 1 } },
           },
-        },
-      };
+          monsters: {
+            goo: {
+              hp: 100,
+              drop: [[1, "ring"]],
+            },
+          },
+        };
+      },
+      inventory() {
+        return [
+          { slot: 1, item: { name: "amulet", level: 2 } },
+          { slot: 4, item: { name: "amulet", level: 2, l: "locked" } },
+          { slot: 7, item: { name: "amulet", level: 2 } },
+          { slot: 12, item: { name: "cscroll0", q: 40, locked: true } },
+        ];
+      },
+      itemGrade(item) {
+        return item.name === "amulet" ? 0 : 0;
+      },
+      character() {
+        return { map: "main", x: 10, y: 20 };
+      },
     },
-    inventory() {
-      return [
-        { slot: 1, item: { name: "amulet", level: 2 } },
-        { slot: 4, item: { name: "amulet", level: 2 } },
-        { slot: 7, item: { name: "amulet", level: 2 } },
-        { slot: 12, item: { name: "cscroll0", q: 40 } },
-      ];
-    },
-    itemGrade(item) {
-      return item.name === "amulet" ? 0 : 0;
-    },
-  });
+    { compoundInProgress: true },
+  );
 
   assert.equal(result.outcome, "PASS");
   assert.equal(result.selected.source, "MERCHANT_INVENTORY");
@@ -317,6 +323,10 @@ test("Compound gather planner prefers an existing Merchant inventory triple", ()
   assert.equal(result.selected.scrollName, "cscroll0");
   assert.deepEqual(result.selected.scrollSlots, [12]);
   assert.equal(result.selected.scrollQuantity, 40);
+  assert.deepEqual(result.selected.itemLockedSlots, [4]);
+  assert.deepEqual(result.selected.scrollLockedSlots, [12]);
+  assert.equal(result.runtimeGuard.map, "main");
+  assert.equal(result.runtimeGuard.compoundInProgress, true);
 });
 
 test("Compound gather planner falls back to monster farming without a full inventory triple", () => {

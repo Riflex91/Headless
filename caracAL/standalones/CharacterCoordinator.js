@@ -2999,14 +2999,47 @@ function migrate_old_storage(path, localStorage) {
               .filter((slot) => Number.isInteger(slot) && slot >= 0)
               .sort((left, right) => left - right)
           : [];
+        const item_locked_slots = Array.isArray(selected.itemLockedSlots)
+          ? selected.itemLockedSlots
+              .map((slot) => Number(slot))
+              .filter((slot) => Number.isInteger(slot) && slot >= 0)
+              .sort((left, right) => left - right)
+          : [];
+        const scroll_locked_slots = Array.isArray(selected.scrollLockedSlots)
+          ? selected.scrollLockedSlots
+              .map((slot) => Number(slot))
+              .filter((slot) => Number.isInteger(slot) && slot >= 0)
+              .sort((left, right) => left - right)
+          : [];
+        const runtime_guard =
+          plan.runtimeGuard && typeof plan.runtimeGuard === "object"
+            ? plan.runtimeGuard
+            : {};
+        const runtime_map =
+          typeof runtime_guard.map === "string" && runtime_guard.map.trim()
+            ? runtime_guard.map.trim()
+            : null;
+        const compound_operation_idle =
+          runtime_guard.compoundInProgress !== true;
+        const item_locks_clear = item_locked_slots.length === 0;
+        const scroll_locks_clear = scroll_locked_slots.length === 0;
+        const map_allows_compound =
+          !!runtime_map && !runtime_map.toLowerCase().startsWith("bank");
+        const local_preflight_ready =
+          compound_operation_idle &&
+          item_locks_clear &&
+          scroll_locks_clear &&
+          map_allows_compound;
         const current_quantity = matching_item_slots.length;
         const scroll_quantity = Math.max(
           0,
           Number(selected.scrollQuantity) || 0,
         );
         const result = {
-          outcome: "PASS",
-          reason: "COMPOUND_MATERIAL_PREPARATION_CONFIRMED",
+          outcome: local_preflight_ready ? "PASS" : "FAIL",
+          reason: local_preflight_ready
+            ? "COMPOUND_MATERIAL_PREPARATION_CONFIRMED"
+            : "COMPOUND_PREPARATION_LOCAL_PREFLIGHT_BLOCKED",
           merchant: merchant_name,
           workers,
           startedAt: started_at,
@@ -3024,7 +3057,11 @@ function migrate_old_storage(path, localStorage) {
           scrollQuantity: scroll_quantity,
           matchingItemSlots: matching_item_slots,
           matchingScrollSlots: matching_scroll_slots,
+          itemLockedSlots: item_locked_slots,
+          scrollLockedSlots: scroll_locked_slots,
+          runtimeMap: runtime_map,
           readyForCompound:
+            local_preflight_ready &&
             current_quantity >= 3 &&
             matching_item_slots.length >= 3 &&
             matching_scroll_slots.length >= 1 &&
@@ -3033,6 +3070,11 @@ function migrate_old_storage(path, localStorage) {
           evidence: {
             gatherPlanReadOnly: true,
             runtimeSnapshotReadiness: true,
+            localPreflightReadOnly: true,
+            compoundOperationIdle: compound_operation_idle,
+            itemLocksClear: item_locks_clear,
+            scrollLocksClear: scroll_locks_clear,
+            mapAllowsCompound: map_allows_compound,
             threeMatchingItemsObserved:
               current_quantity >= 3 && matching_item_slots.length >= 3,
             allDeliveredItemsLevelMatched: true,
