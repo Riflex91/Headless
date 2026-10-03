@@ -203,10 +203,7 @@ test("Upgrade live wiring stays explicit and single-attempt only", () => {
   assert.match(coordinator, /run_upgrade_live_test/);
   assert.match(coordinator, /wait_for_upgrade_live_test_result/);
   assert.match(coordinator, /upgrade_live_test_active/);
-  assert.match(
-    dashboard,
-    /\/headless\/api\/characters\/:name\/tests\/upgrade/,
-  );
+  assert.match(dashboard, /\/headless\/api\/characters\/:name\/tests\/upgrade/);
   assert.match(
     dashboard,
     /tests\/upgrade"[\s\S]*express\.json\(\{ limit: "8kb" \}\)/,
