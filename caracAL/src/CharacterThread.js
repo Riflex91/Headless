@@ -649,8 +649,7 @@ async function make_runner(upper, CODE_file, version, is_typescript) {
           break;
         }
 
-        const recipe =
-          typeof m.recipe === "string" ? m.recipe.trim() : "";
+        const recipe = typeof m.recipe === "string" ? m.recipe.trim() : "";
         const itemSlots = Array.isArray(m.itemSlots)
           ? m.itemSlots
               .map((slot) => Number(slot))
