@@ -671,7 +671,9 @@ function attachHeadlessDashboard({
     express.json({ limit: "8kb" }),
     async (req, res) => {
       if (!runCraftMaterialPreparation) {
-        res.status(503).json({ error: "CRAFT_MATERIAL_PREPARATION_UNAVAILABLE" });
+        res
+          .status(503)
+          .json({ error: "CRAFT_MATERIAL_PREPARATION_UNAVAILABLE" });
         return;
       }
 
