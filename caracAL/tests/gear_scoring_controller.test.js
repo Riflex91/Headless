@@ -61,9 +61,7 @@ function makeController({
   };
 }
 
-test(
-  "gear scoring reads inventory, equipment and Adventure Land upgrade stats",
-  () => {
+test("gear scoring reads Adventure Land stats and upgrade levels", () => {
   const setup = makeController({
     items: [
       { name: "bow", level: 2 },
@@ -118,13 +116,10 @@ test(
   assert.equal(status.summary.equippedGear, 1);
   assert.equal(status.summary.scoredItems, 2);
   assert.equal(status.summary.equipmentScore, 10);
-    assert.equal(status.summary.bestInventoryScore, 18);
-  },
-);
+  assert.equal(status.summary.bestInventoryScore, 18);
+});
 
-test(
-  "gear scoring supports transparent generic and class-specific weight overrides",
-  () => {
+test("gear scoring supports generic and class-specific weights", () => {
   const setup = makeController({
     ctype: "mage",
     items: [{ name: "staff", level: 1 }],
@@ -164,13 +159,10 @@ test(
   assert.equal(entry.stats.int, 4);
   assert.equal(entry.contributions.attack, 24);
   assert.equal(entry.contributions.int, 20);
-    assert.equal(entry.score, 44);
-  },
-);
+  assert.equal(entry.score, 44);
+});
 
-test(
-  "unknown equipped gear remains explicit instead of receiving an invented score",
-  () => {
+test("unknown equipped gear never receives an invented score", () => {
   const setup = makeController({
     items: [{ name: "mystery" }],
     equipment: {
@@ -189,13 +181,10 @@ test(
   assert.equal(status.entries[0].score, null);
   assert.equal(status.entries[0].why, "GEAR_SCORE_UNKNOWN_ITEM_METADATA");
   assert.equal(status.summary.unknownItems, 1);
-    assert.equal(status.summary.scoredItems, 0);
-  },
-);
+  assert.equal(status.summary.scoredItems, 0);
+});
 
-test(
-  "gear scoring can be disabled and emits only when meaningful status changes",
-  () => {
+test("gear scoring emits only on meaningful status changes", () => {
   const events = [];
   const config = {
     gear: {
@@ -230,6 +219,5 @@ test(
   status = setup.controller.tick();
   assert.equal(status.state, "READY");
   assert.equal(events.length, 2);
-    assert.equal(events[1].type, "GEAR_SCORING_UPDATED");
-  },
-);
+  assert.equal(events[1].type, "GEAR_SCORING_UPDATED");
+});
