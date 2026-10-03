@@ -440,6 +440,55 @@ test("Craft scheduler plans only and mutation stays explicit one-shot", () => {
   assert.doesNotMatch(schedulerBlock, /executeNext/);
 });
 
+test("Expected Value runtime remains read-only and exposes scheduler status", () => {
+  const kernel = fs.readFileSync(
+    path.join(
+      __dirname,
+      "..",
+      "TYPECODE",
+      "bot",
+      "core",
+      "runtime-kernel.lib.ts",
+    ),
+    "utf8",
+  );
+  const controller = fs.readFileSync(
+    path.join(
+      __dirname,
+      "..",
+      "TYPECODE",
+      "bot",
+      "core",
+      "expected-value-controller.lib.ts",
+    ),
+    "utf8",
+  );
+
+  assert.match(kernel, /EXPECTED_VALUE_JOB_ID/);
+  assert.match(kernel, /expectedValue: this\.expectedValue\.status\(\)/);
+  assert.match(kernel, /this\.expectedValue\.tick\(\)/);
+
+  const schedulerStart = kernel.indexOf("id: EXPECTED_VALUE_JOB_ID");
+  const schedulerEnd = kernel.indexOf(
+    "id: FARM_INTELLIGENCE_JOB_ID",
+    schedulerStart,
+  );
+  assert.ok(schedulerStart >= 0);
+  assert.ok(schedulerEnd > schedulerStart);
+  const schedulerBlock = kernel.slice(schedulerStart, schedulerEnd);
+  assert.match(schedulerBlock, /this\.expectedValue\.tick\(\)/);
+  assert.doesNotMatch(schedulerBlock, /executeNext/);
+
+  assert.doesNotMatch(controller, /this\.actions/);
+  assert.doesNotMatch(controller, /executeNext/);
+  assert.doesNotMatch(controller, /\.upgrade\s*\(/);
+  assert.doesNotMatch(controller, /\.compound\s*\(/);
+  assert.match(
+    controller,
+    /OFFICIAL_BASE_NO_DYNAMIC_GRACE_NO_OFFERING/,
+  );
+});
+
 test("Upgrade live IPC stays in runner context and exposes one attempt only", () => {
   const thread = fs.readFileSync(
     path.join(__dirname, "..", "src", "CharacterThread.js"),
