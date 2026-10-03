@@ -3306,6 +3306,7 @@ function migrate_old_storage(path, localStorage) {
         worker_result?.outcome === "TIMEOUT"
       ) {
         return {
+          ...resultBase(),
           outcome: worker_result.outcome,
           reason:
             worker_result.reason || "CRAFT_MATERIAL_WORKER_OUTCOME_UNCERTAIN",
@@ -3352,6 +3353,7 @@ function migrate_old_storage(path, localStorage) {
         final_quantity < expected_quantity
       ) {
         return {
+          ...resultBase(),
           outcome: "FAIL",
           reason:
             worker_result?.reason || "CRAFT_MATERIAL_DELIVERY_NOT_OBSERVED",
