@@ -22,6 +22,7 @@ export interface MaterialGatherTaskOptions {
     x: number;
     y: number;
   };
+  purpose?: "FISHING_MATERIAL" | "COMPOUND_TEST_MATERIAL";
   timeoutMs?: number;
   pollMs?: number;
 }
@@ -490,9 +491,15 @@ export class MaterialGatheringTaskRunner {
           },
           itemName: options.itemName,
           quantity,
-          reason: "FISHING_MATERIAL_DELIVERY",
+          reason:
+            options.purpose === "COMPOUND_TEST_MATERIAL"
+              ? "COMPOUND_TEST_MATERIAL_DELIVERY"
+              : "FISHING_MATERIAL_DELIVERY",
           metadata: {
-            purpose: "FISHING_MATERIAL",
+            purpose:
+              options.purpose === "COMPOUND_TEST_MATERIAL"
+                ? "COMPOUND_TEST_MATERIAL"
+                : "FISHING_MATERIAL",
             authorized: true,
             monsterType: options.monsterType,
           },
