@@ -5,9 +5,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
 
-const {
-  verifyCraftPreparation,
-} = require("../scripts/run_craft_prepare");
+const { verifyCraftPreparation } = require("../scripts/run_craft_prepare");
 
 function sourceResult(overrides = {}) {
   return {
@@ -221,35 +219,4 @@ test("Craft material preparation wiring never dispatches Craft itself", () => {
   assert.doesNotMatch(block, /\.craft\s*\(/);
   assert.doesNotMatch(block, /executeCraftNext/);
   assert.match(block, /blindRetryUsed: false/);
-});
-
-
-test("Craft preparation formatting diagnostic", async () => {
-  const os = require("node:os");
-  const { spawnSync } = require("node:child_process");
-  const prettier = require("prettier");
-  const files = [
-    "scripts/run_craft_prepare.js",
-    "src/CharacterThread.js",
-    "src/HeadlessDashboard.js",
-    "standalones/CharacterCoordinator.js",
-    "tests/craft_prepare_launcher.test.js",
-  ];
-
-  for (const relativePath of files) {
-    const fullPath = path.join(__dirname, "..", relativePath);
-    const source = fs.readFileSync(fullPath, "utf8");
-    const formatted = await prettier.format(source, { parser: "babel" });
-    if (formatted === source) continue;
-    const tempPath = path.join(
-      os.tmpdir(),
-      "craft-prettier-" + relativePath.replaceAll("/", "-"),
-    );
-    fs.writeFileSync(tempPath, formatted, "utf8");
-    const diff = spawnSync("diff", ["-u", fullPath, tempPath], {
-      encoding: "utf8",
-    });
-    console.log("CRAFT_PRETTIER_FILE", relativePath);
-    console.log(diff.stdout || "");
-  }
 });
