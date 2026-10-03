@@ -125,9 +125,7 @@ async function runSupervisorPreflight(character) {
 async function main() {
   const character = process.argv[2] || "";
   if (!character) {
-    console.error(
-      "Usage: npm run test:live:upgrade-preflight -- <character>",
-    );
+    console.error("Usage: npm run test:live:upgrade-preflight -- <character>");
     process.exitCode = 2;
     return;
   }
