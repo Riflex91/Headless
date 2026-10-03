@@ -58,6 +58,10 @@ import {
   ExpectedValueEvent,
 } from "./expected-value-controller.lib";
 import {
+  RiskPolicyController,
+  RiskPolicyEvent,
+} from "./risk-policy-controller.lib";
+import {
   CraftPreflightResult,
   CraftPreflightRunner,
 } from "./craft-preflight.lib";
@@ -214,6 +218,8 @@ const CRAFT_JOB_ID = "craft-loop";
 const CRAFT_INTERVAL_MS = 1000;
 const EXPECTED_VALUE_JOB_ID = "expected-value-loop";
 const EXPECTED_VALUE_INTERVAL_MS = 1000;
+const RISK_POLICY_JOB_ID = "risk-policy-loop";
+const RISK_POLICY_INTERVAL_MS = 1000;
 const FARM_INTELLIGENCE_JOB_ID = "farm-intelligence-loop";
 const FARM_INTELLIGENCE_INTERVAL_MS = 1000;
 const MERCHANT_AUTONOMY_JOB_ID = "merchant-autonomy-loop";
@@ -289,6 +295,7 @@ export class BotRuntimeKernel {
   readonly exchange: ExchangeController;
   readonly craft: CraftController;
   readonly expectedValue: ExpectedValueController;
+  readonly riskPolicy: RiskPolicyController;
   readonly merchantAutonomy: MerchantAutonomyController;
   readonly bankTravel: BankTravelController;
   readonly bankGoldSettlement: BankGoldSettlementController;
@@ -458,6 +465,10 @@ export class BotRuntimeKernel {
         onEvent: (event) => this.handleExpectedValueEvent(event),
       },
     );
+    this.riskPolicy = new RiskPolicyController(this.expectedValue, {
+      config: () => runtimeConfig?.config || {},
+      onEvent: (event) => this.handleRiskPolicyEvent(event),
+    });
     this.merchantAutonomy = new MerchantAutonomyController(
       this.game,
       this.actions,
@@ -583,6 +594,15 @@ export class BotRuntimeKernel {
     });
 
     this.scheduler.register({
+      id: RISK_POLICY_JOB_ID,
+      intervalMs: RISK_POLICY_INTERVAL_MS,
+      priority: 78,
+      tick: () => {
+        this.riskPolicy.tick();
+      },
+    });
+
+    this.scheduler.register({
       id: FARM_INTELLIGENCE_JOB_ID,
       intervalMs: FARM_INTELLIGENCE_INTERVAL_MS,
       priority: 80,
@@ -637,6 +657,7 @@ export class BotRuntimeKernel {
             gearScoring: this.gearScoring.status(),
             futureGear: this.futureGear.status(),
             expectedValue: this.expectedValue.status(),
+            riskPolicy: this.riskPolicy.status(),
             merchantAutonomy: this.merchantAutonomy.status(),
             bankTravel: this.bankTravel.status(),
             merchantMerrit: this.merchantMerrit.status(),
@@ -737,6 +758,7 @@ export class BotRuntimeKernel {
       exchange: this.exchange.status(),
       craft: this.craft.status(),
       expectedValue: this.expectedValue.status(),
+      riskPolicy: this.riskPolicy.status(),
       merchantAutonomy: this.merchantAutonomy.status(),
       bankTravel: this.bankTravel.status(),
       merchantMerrit: this.merchantMerrit.status(),
@@ -3334,6 +3356,17 @@ export class BotRuntimeKernel {
       why: event.reason,
       data: {
         expectedValue: event.status,
+      },
+    });
+  }
+
+  private handleRiskPolicyEvent(event: RiskPolicyEvent): void {
+    this.eventBus.emit({
+      module: "RiskPolicyController",
+      type: event.type,
+      why: event.reason,
+      data: {
+        riskPolicy: event.status,
       },
     });
   }
