@@ -746,8 +746,7 @@ export class MerchantFishingController {
       );
     }
 
-    if (!this.resultAttempted) {
-      const readyCharacter = this.game.character();
+    const readyCharacter = this.game.character();
       if (
         requiredMp !== null &&
         readyCharacter.mp !== null &&
@@ -820,8 +819,6 @@ export class MerchantFishingController {
         },
       });
       return status;
-    }
-
   }
 
   async cleanupTemporaryState(): Promise<ActionRecord | null> {
