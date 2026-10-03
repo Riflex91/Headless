@@ -58,6 +58,14 @@ function verifyCompoundLiveResult(source, expected = {}) {
     allItemsUnprotectedBefore: evidence.allItemsUnprotectedBefore === true,
     scrollUnprotectedBefore: evidence.scrollUnprotectedBefore === true,
     exactCandidateSelected: evidence.exactCandidateSelected === true,
+    localPreflightReady:
+      evidence.localPreflightReadOnly === true &&
+      evidence.compoundOperationIdle === true &&
+      evidence.itemLocksClear === true &&
+      evidence.scrollLocksClear === true &&
+      evidence.mapAllowsCompound === true &&
+      typeof evidence.runtimeMap === "string" &&
+      !evidence.runtimeMap.toLowerCase().startsWith("bank"),
     actionDispatchedOnce:
       evidence.actionDispatchedOnce === true &&
       typeof lastAction.id === "string" &&

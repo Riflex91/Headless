@@ -49,6 +49,10 @@ function makeSetup({
   ],
   itemGrade = () => 0,
   executeNext,
+  runtimePreflight = () => ({
+    map: "main",
+    compoundInProgress: false,
+  }),
 } = {}) {
   const { CompoundLiveTestRunner } = coreModule("compound-live-test.lib.ts");
 
@@ -197,6 +201,7 @@ function makeSetup({
     inventoryIntelligence,
     compound,
     characterName: () => "My_Merchant",
+    runtimePreflight,
     now: () => state.now,
     sleep: async (ms) => {
       state.now += ms;
@@ -227,6 +232,12 @@ test("Compound live runner confirms exactly one real triple mutation", async () 
   assert.equal(result.evidence.itemGradesKnown, true);
   assert.equal(result.evidence.itemGradesMatch, true);
   assert.equal(result.evidence.scrollGradeCompatible, true);
+  assert.equal(result.evidence.localPreflightReadOnly, true);
+  assert.equal(result.evidence.compoundOperationIdle, true);
+  assert.equal(result.evidence.itemLocksClear, true);
+  assert.equal(result.evidence.scrollLocksClear, true);
+  assert.equal(result.evidence.mapAllowsCompound, true);
+  assert.equal(result.evidence.runtimeMap, "main");
   assert.equal(result.evidence.actionDispatchedOnce, true);
   assert.equal(result.evidence.actionConfirmed, true);
   assert.equal(result.evidence.mutationObserved, true);
@@ -302,6 +313,31 @@ test("Compound live runner rejects a scroll that does not match real item grade"
   assert.equal(result.outcome, "FAIL");
   assert.equal(result.reason, "COMPOUND_LIVE_SAFE_TRIPLE_OR_SCROLL_NOT_FOUND");
   assert.equal(s.executionCalls(), 0);
+});
+
+test("Compound live runner blocks dispatch when just-in-time local preflight is unsafe", async () => {
+  const s = makeSetup({
+    runtimePreflight: () => ({
+      map: "bank",
+      compoundInProgress: true,
+    }),
+  });
+  const result = await s.runner.run({
+    itemName: "ring",
+    itemSlots: [0, 1, 2],
+    scrollName: "cscroll0",
+  });
+
+  assert.equal(result.outcome, "FAIL");
+  assert.equal(result.reason, "COMPOUND_LIVE_LOCAL_PREFLIGHT_BLOCKED");
+  assert.equal(s.executionCalls(), 0);
+  assert.equal(result.evidence.localPreflightReadOnly, true);
+  assert.equal(result.evidence.compoundOperationIdle, false);
+  assert.equal(result.evidence.itemLocksClear, true);
+  assert.equal(result.evidence.scrollLocksClear, true);
+  assert.equal(result.evidence.mapAllowsCompound, false);
+  assert.equal(result.evidence.runtimeMap, "bank");
+  assert.equal(result.evidence.actionDispatchedOnce, false);
 });
 
 test("Compound live runner returns UNKNOWN and never retries", async () => {
