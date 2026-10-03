@@ -785,6 +785,15 @@ function migrate_old_storage(path, localStorage) {
     }
 
     if (
+      char_block &&
+      normalized.data?.merchantFishing &&
+      typeof normalized.data.merchantFishing === "object"
+    ) {
+      char_block.fishing_runtime = normalized.data.merchantFishing;
+    }
+
+
+    if (
       normalized.module === "MerchantMerritController" &&
       normalized.type === "MERRIT_PARCEL_CONFIRMED" &&
       Number.isFinite(Number(normalized.data?.readyAt))
@@ -856,7 +865,8 @@ function migrate_old_storage(path, localStorage) {
         normalized.data?.groupCombat ||
         normalized.data?.farmIntelligence ||
         normalized.data?.inventoryIntelligence ||
-        normalized.data?.merchantMerrit)
+        normalized.data?.merchantMerrit ||
+        normalized.data?.merchantFishing)
     ) {
       dashboard?.publishSnapshot();
     }
