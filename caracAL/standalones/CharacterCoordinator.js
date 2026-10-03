@@ -146,12 +146,18 @@ const MARKET_TRADING_LIVE_TEST_RESULT_TIMEOUT_MS = 240000;
 const FISHING_LIVE_TEST_RESULT_TIMEOUT_MS = 20 * 60 * 1000;
 const MATERIAL_GATHER_TASK_RESULT_TIMEOUT_MS = 6 * 60 * 1000;
 const COMPOUND_GATHER_PLAN_TIMEOUT_MS = 30000;
+const CRAFT_MATERIAL_PLAN_TIMEOUT_MS = 30000;
 const DEFAULT_FISHING_MATERIAL_WORKERS = Object.freeze([
   "My_Ranger1",
   "My_Ranger2",
   "My_Ranger3",
 ]);
 const DEFAULT_COMPOUND_MATERIAL_WORKERS = Object.freeze([
+  "My_Ranger1",
+  "My_Ranger2",
+  "My_Ranger3",
+]);
+const DEFAULT_CRAFT_MATERIAL_WORKERS = Object.freeze([
   "My_Ranger1",
   "My_Ranger2",
   "My_Ranger3",
@@ -334,7 +340,10 @@ function migrate_old_storage(path, localStorage) {
   const material_gather_task_requests = new Map();
   let material_gather_task_sequence = 0;
   const compound_gather_plan_requests = new Map();
+  const craft_material_plan_requests = new Map();
+  let craft_material_plan_sequence = 0;
   let compound_material_preparation_active = false;
+  let craft_material_preparation_active = false;
   const fishing_material_requests = new Map();
   let material_worker_active_count = 0;
   const logistics_claim_requests = new Map();
@@ -393,6 +402,7 @@ function migrate_old_storage(path, localStorage) {
         runUpgradeLivePreflight: run_upgrade_live_preflight,
         runExchangePreflight: run_exchange_preflight,
         runCraftPreflight: run_craft_preflight,
+        runCraftMaterialPreparation: run_craft_material_preparation,
         runExchangeLiveTest: run_exchange_live_test,
         runCompoundMaterialPreparation: run_compound_material_preparation,
         runCompoundLiveTest: run_compound_live_test,
@@ -2482,6 +2492,28 @@ function migrate_old_storage(path, localStorage) {
       }, UPGRADE_LIVE_TEST_RESULT_TIMEOUT_MS);
 
       compound_live_test_requests.set(request_id, {
+        character: char_name,
+        resolve,
+        reject,
+        timer,
+      });
+    });
+  }
+
+  function wait_for_craft_material_plan_result(char_name, request_id) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        craft_material_plan_requests.delete(request_id);
+        reject(
+          make_control_error(
+            "CRAFT_MATERIAL_PLAN_TIMEOUT",
+            `Craft material plan timed out for ${char_name}`,
+            504,
+          ),
+        );
+      }, CRAFT_MATERIAL_PLAN_TIMEOUT_MS);
+
+      craft_material_plan_requests.set(request_id, {
         character: char_name,
         resolve,
         reject,
@@ -11548,6 +11580,37 @@ function migrate_old_storage(path, localStorage) {
           });
           emit_supervisor_event(
             "LOGISTICS_LIVE_TEST_RESULT_RECEIVED",
+            char_name,
+            {
+              request_id: m.request_id,
+              outcome: m.result?.outcome || null,
+              error: m.error || null,
+            },
+          );
+          break;
+        }
+        case "craft_material_plan_result": {
+          const pending = craft_material_plan_requests.get(m.request_id);
+          if (!pending || pending.character !== char_name) {
+            emit_supervisor_event(
+              "CRAFT_MATERIAL_PLAN_RESULT_IGNORED",
+              char_name,
+              {
+                why: "UNKNOWN_OR_STALE_REQUEST",
+                request_id: m.request_id || null,
+              },
+            );
+            break;
+          }
+
+          clearTimeout(pending.timer);
+          craft_material_plan_requests.delete(m.request_id);
+          pending.resolve({
+            result: m.result || null,
+            error: m.error || null,
+          });
+          emit_supervisor_event(
+            "CRAFT_MATERIAL_PLAN_RESULT_RECEIVED",
             char_name,
             {
               request_id: m.request_id,
