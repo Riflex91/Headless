@@ -85,6 +85,7 @@ export interface CompoundLiveTestResult {
     stationTravelStatus: string | null;
     stationDistanceAfter: number | null;
     stationProximityReady: boolean;
+    movementIdleBeforeDispatch: boolean;
     localPreflightReadOnly: boolean;
     compoundOperationIdle: boolean;
     itemLocksClear: boolean;
@@ -135,7 +136,7 @@ interface CompoundLiveTestDependencies {
     CompoundController,
     "status" | "tick" | "executeNext" | "setConfigOverride" | "clearConfigOverride"
   >;
-  movement: Pick<MovementController, "smart">;
+  movement: Pick<MovementController, "smart" | "status">;
   characterName?: () => string | null;
   runtimePreflight: () => CompoundLiveRuntimePreflight;
   now?: () => number;
@@ -386,6 +387,7 @@ function baseEvidence(): CompoundLiveTestResult["evidence"] {
     stationTravelStatus: null,
     stationDistanceAfter: null,
     stationProximityReady: false,
+    movementIdleBeforeDispatch: false,
     localPreflightReadOnly: false,
     compoundOperationIdle: false,
     itemLocksClear: false,
@@ -672,13 +674,15 @@ export class CompoundLiveTestRunner {
         evidence.stationTravelConfirmed = true;
       }
 
+      let dispatchCharacter = this.deps.game.character();
       evidence.stationDistanceAfter = stationDistance(
-        this.deps.game.character(),
+        dispatchCharacter,
         station,
       );
       evidence.stationProximityReady =
         evidence.stationDistanceAfter !== null &&
-        evidence.stationDistanceAfter <= COMPOUND_STATION_MAX_DISTANCE;
+        evidence.stationDistanceAfter <= COMPOUND_STATION_MAX_DISTANCE &&
+        dispatchCharacter.moving !== true;
 
       if (!evidence.stationProximityReady) {
         compoundStatus = planned;
@@ -688,6 +692,18 @@ export class CompoundLiveTestRunner {
 
       const runtimePreflight = this.deps.runtimePreflight();
       const dispatchInventory = this.deps.game.inventory();
+      dispatchCharacter = this.deps.game.character();
+      evidence.stationDistanceAfter = stationDistance(
+        dispatchCharacter,
+        station,
+      );
+      evidence.stationProximityReady =
+        evidence.stationDistanceAfter !== null &&
+        evidence.stationDistanceAfter <= COMPOUND_STATION_MAX_DISTANCE &&
+        dispatchCharacter.moving !== true;
+      const movementStatus = this.deps.movement.status();
+      evidence.movementIdleBeforeDispatch =
+        movementStatus.owner === null && movementStatus.active === null;
       evidence.localPreflightReadOnly = true;
       evidence.runtimeMap = text(runtimePreflight.map);
       evidence.compoundOperationIdle =
@@ -703,6 +719,8 @@ export class CompoundLiveTestRunner {
         !evidence.runtimeMap.toLowerCase().startsWith("bank");
 
       if (
+        !evidence.stationProximityReady ||
+        !evidence.movementIdleBeforeDispatch ||
         !evidence.compoundOperationIdle ||
         !evidence.itemLocksClear ||
         !evidence.scrollLocksClear ||
