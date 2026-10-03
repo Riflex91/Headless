@@ -83,8 +83,7 @@ function verifyCraftPreparation(source) {
       sourceInfo.monsterType.length > 0;
 
   const workerEvidenceValid = alreadyReady
-    ? result.workerResult === null &&
-      evidence.workerAttemptedOnce === false
+    ? result.workerResult === null && evidence.workerAttemptedOnce === false
     : workerResult.outcome === "PASS" &&
       workerResult.reason === "MATERIAL_GATHER_AND_DELIVERY_CONFIRMED" &&
       workerEvidence.combatControllerUsed === true &&
@@ -150,15 +149,15 @@ function verifyCraftPreparation(source) {
     outcome: passed
       ? "PASS"
       : result.outcome === "UNKNOWN"
-        ? "UNKNOWN"
-        : result.outcome === "TIMEOUT"
-          ? "TIMEOUT"
-          : "FAIL",
+      ? "UNKNOWN"
+      : result.outcome === "TIMEOUT"
+      ? "TIMEOUT"
+      : "FAIL",
     reason: passed
       ? "CRAFT_MATERIAL_PREPARATION_E2E_CONFIRMED"
       : sourceFailed && typeof result.reason === "string" && result.reason
-        ? result.reason
-        : "CRAFT_MATERIAL_PREPARATION_EVIDENCE_INCOMPLETE",
+      ? result.reason
+      : "CRAFT_MATERIAL_PREPARATION_EVIDENCE_INCOMPLETE",
     verifier: verified,
   };
 }
@@ -175,7 +174,9 @@ async function main() {
       : DEFAULT_WORKER;
 
   process.stdout.write(
-    `Preparing Craft materials for ${merchant}${recipe ? ` recipe ${recipe}` : ""} with exactly one worker ${worker}. The worker may move, fight, loot and deliver the planned missing material. No Craft mutation is dispatched by this command.\n`,
+    `Preparing Craft materials for ${merchant}${
+      recipe ? ` recipe ${recipe}` : ""
+    } with exactly one worker ${worker}. The worker may move, fight, loot and deliver the planned missing material. No Craft mutation is dispatched by this command.\n`,
   );
 
   const dashboard = await ensureDashboardAvailable(readState);
