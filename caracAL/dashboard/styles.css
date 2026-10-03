@@ -939,6 +939,20 @@ dd {
   line-height: 1;
 }
 
+.item-future-gear-badge {
+  position: absolute;
+  right: 0.12rem;
+  bottom: 0.12rem;
+  z-index: 2;
+  padding: 0.08rem 0.18rem;
+  border-radius: 0.2rem;
+  background: rgba(5, 9, 18, 0.88);
+  color: #dbe6f7;
+  font-size: 0.46rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
 .item-protection-badge {
   position: absolute;
   left: 0.12rem;
