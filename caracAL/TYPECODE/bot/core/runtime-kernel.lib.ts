@@ -54,6 +54,10 @@ import {
   CraftEvent,
 } from "./craft-controller.lib";
 import {
+  CraftPreflightResult,
+  CraftPreflightRunner,
+} from "./craft-preflight.lib";
+import {
   ExchangePreflightResult,
   ExchangePreflightRunner,
 } from "./exchange-preflight.lib";
@@ -290,6 +294,7 @@ export class BotRuntimeKernel {
   private compoundLiveTestRunning = false;
   private exchangePreflightRunning = false;
   private exchangeLiveTestRunning = false;
+  private craftPreflightRunning = false;
   private logisticsLiveTestRunning = false;
   private merchantLiveTestRunning = false;
   private bankTravelLiveTestRunning = false;
@@ -714,7 +719,8 @@ export class BotRuntimeKernel {
       this.upgradePreflightRunning ||
       this.compoundLiveTestRunning ||
       this.exchangePreflightRunning ||
-      this.exchangeLiveTestRunning
+      this.exchangeLiveTestRunning ||
+      this.craftPreflightRunning
     ) {
       throw new Error("mutation verification is running");
     }
@@ -733,7 +739,8 @@ export class BotRuntimeKernel {
       this.upgradePreflightRunning ||
       this.compoundLiveTestRunning ||
       this.exchangePreflightRunning ||
-      this.exchangeLiveTestRunning
+      this.exchangeLiveTestRunning ||
+      this.craftPreflightRunning
     ) {
       throw new Error("mutation verification is running");
     }
@@ -752,7 +759,8 @@ export class BotRuntimeKernel {
       this.upgradePreflightRunning ||
       this.compoundLiveTestRunning ||
       this.exchangePreflightRunning ||
-      this.exchangeLiveTestRunning
+      this.exchangeLiveTestRunning ||
+      this.craftPreflightRunning
     ) {
       throw new Error("mutation verification is running");
     }
@@ -771,7 +779,8 @@ export class BotRuntimeKernel {
       this.upgradePreflightRunning ||
       this.compoundLiveTestRunning ||
       this.exchangePreflightRunning ||
-      this.exchangeLiveTestRunning
+      this.exchangeLiveTestRunning ||
+      this.craftPreflightRunning
     ) {
       throw new Error("mutation verification is running");
     }
@@ -784,10 +793,83 @@ export class BotRuntimeKernel {
     return this.craft.executeNext() as unknown as Record<string, unknown>;
   }
 
+  async runCraftPreflight(): Promise<CraftPreflightResult> {
+    if (
+      this.craftPreflightRunning ||
+      this.exchangePreflightRunning ||
+      this.exchangeLiveTestRunning ||
+      this.compoundLiveTestRunning ||
+      this.upgradeLiveTestRunning ||
+      this.upgradePreflightRunning
+    ) {
+      throw new Error("mutation verification already running");
+    }
+    if (!this.started || this.stopping) {
+      throw new Error("runtime is not ready for craft preflight");
+    }
+    if (runtimeState() !== "RUNNING") {
+      throw new Error("runtime must be RUNNING for craft preflight");
+    }
+
+    this.craftPreflightRunning = true;
+    const requestId = `craft-preflight-${Date.now()}`;
+    this.eventBus.emit({
+      module: "CraftPreflight",
+      type: "CRAFT_PREFLIGHT_STARTED",
+      why: "READ_ONLY_CRAFT_SCAN",
+      correlationId: requestId,
+      data: {
+        requestId,
+        readOnly: true,
+        ...runtimeIdentity(),
+      },
+    });
+
+    try {
+      const runner = new CraftPreflightRunner({
+        game: this.game,
+        inventoryIntelligence: this.inventoryIntelligence,
+        craft: this.craft,
+        characterName: () => character.name,
+      });
+      const result = runner.run();
+      this.eventBus.emit({
+        module: "CraftPreflight",
+        type:
+          result.outcome === "PASS"
+            ? "CRAFT_PREFLIGHT_COMPLETED"
+            : "CRAFT_PREFLIGHT_FAILED",
+        why: result.reason,
+        correlationId: requestId,
+        data: {
+          requestId,
+          result,
+          craft: this.craft.status(),
+        },
+      });
+      return result;
+    } catch (error) {
+      this.eventBus.emit({
+        module: "CraftPreflight",
+        type: "CRAFT_PREFLIGHT_FAILED",
+        why: "CRAFT_PREFLIGHT_RUNTIME_ERROR",
+        correlationId: requestId,
+        data: {
+          error: error instanceof Error ? error.message : String(error),
+          craft: this.craft.status(),
+        },
+      });
+      throw error;
+    } finally {
+      this.craftPreflightRunning = false;
+    }
+  }
+
   async runExchangePreflight(): Promise<ExchangePreflightResult> {
     if (
       this.exchangePreflightRunning ||
       this.exchangeLiveTestRunning ||
+      this.craftPreflightRunning ||
       this.upgradeLiveTestRunning ||
       this.upgradePreflightRunning ||
       this.compoundLiveTestRunning
@@ -861,6 +943,7 @@ export class BotRuntimeKernel {
     if (
       this.exchangeLiveTestRunning ||
       this.exchangePreflightRunning ||
+      this.craftPreflightRunning ||
       this.compoundLiveTestRunning ||
       this.upgradeLiveTestRunning ||
       this.upgradePreflightRunning
@@ -1003,7 +1086,8 @@ export class BotRuntimeKernel {
       this.upgradeLiveTestRunning ||
       this.upgradePreflightRunning ||
       this.exchangePreflightRunning ||
-      this.exchangeLiveTestRunning
+      this.exchangeLiveTestRunning ||
+      this.craftPreflightRunning
     ) {
       throw new Error("mutation verification already running");
     }
@@ -1128,7 +1212,8 @@ export class BotRuntimeKernel {
       this.upgradePreflightRunning ||
       this.compoundLiveTestRunning ||
       this.exchangePreflightRunning ||
-      this.exchangeLiveTestRunning
+      this.exchangeLiveTestRunning ||
+      this.craftPreflightRunning
     ) {
       throw new Error("mutation verification already running");
     }
@@ -1188,7 +1273,8 @@ export class BotRuntimeKernel {
       this.upgradePreflightRunning ||
       this.compoundLiveTestRunning ||
       this.exchangePreflightRunning ||
-      this.exchangeLiveTestRunning
+      this.exchangeLiveTestRunning ||
+      this.craftPreflightRunning
     ) {
       throw new Error("mutation verification already running");
     }
