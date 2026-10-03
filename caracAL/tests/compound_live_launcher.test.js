@@ -41,6 +41,18 @@ function passResult() {
       allItemsUnprotectedBefore: true,
       scrollUnprotectedBefore: true,
       exactCandidateSelected: true,
+      stationLocated: true,
+      stationId: "newupgrade",
+      stationMap: "main",
+      stationX: -207,
+      stationY: -220,
+      stationDistanceBefore: 0,
+      stationTravelRequired: false,
+      stationTravelConfirmed: true,
+      stationTravelActionId: null,
+      stationTravelStatus: null,
+      stationDistanceAfter: 0,
+      stationProximityReady: true,
       localPreflightReadOnly: true,
       compoundOperationIdle: true,
       itemLocksClear: true,
@@ -54,6 +66,7 @@ function passResult() {
       offeringOmitted: true,
     },
     scope: {
+      movementMutationAllowed: true,
       upgradeMutationAllowed: false,
       compoundMutationAllowed: true,
       irreversibleMutation: true,
@@ -82,10 +95,43 @@ test("Compound live launcher independently confirms complete PASS evidence", () 
   assert.equal(result.outcome, "PASS");
   assert.equal(result.reason, "COMPOUND_LIVE_E2E_CONFIRMED");
   assert.equal(result.verifier.explicitTargetObserved, true);
+  assert.equal(result.verifier.stationReady, true);
   assert.equal(result.verifier.localPreflightReady, true);
   assert.equal(result.verifier.actionDispatchedOnce, true);
   assert.equal(result.verifier.cleanupComplete, true);
   assert.equal(result.verifier.scopeRestricted, true);
+});
+
+test("Compound live launcher rejects missing station readiness evidence", () => {
+  const source = passResult();
+  source.evidence.stationProximityReady = false;
+
+  const result = verifyCompoundLiveResult(source, {
+    itemName: "ring",
+    itemSlots: [2, 7, 9],
+    scrollName: "cscroll0",
+  });
+
+  assert.equal(result.outcome, "FAIL");
+  assert.equal(result.reason, "COMPOUND_LIVE_E2E_EVIDENCE_INCOMPLETE");
+  assert.equal(result.verifier.stationReady, false);
+});
+
+test("Compound live launcher accepts confirmed station travel evidence", () => {
+  const source = passResult();
+  source.evidence.stationDistanceBefore = 900;
+  source.evidence.stationTravelRequired = true;
+  source.evidence.stationTravelActionId = "M-1";
+  source.evidence.stationTravelStatus = "CONFIRMED";
+
+  const result = verifyCompoundLiveResult(source, {
+    itemName: "ring",
+    itemSlots: [2, 7, 9],
+    scrollName: "cscroll0",
+  });
+
+  assert.equal(result.outcome, "PASS");
+  assert.equal(result.verifier.stationReady, true);
 });
 
 test("Compound live launcher rejects missing local preflight evidence", () => {
@@ -173,4 +219,6 @@ test("Compound live wiring stays explicit and single-attempt only", () => {
   assert.match(coordinator, /single-compound-attempt-only/);
   assert.match(runtime, /COMPOUND_LIVE_TEST_STARTED/);
   assert.match(runtime, /runCompoundLiveTest/);
+  assert.match(runtime, /movement: this\.movement/);
+  assert.match(runtime, /MERCHANT_AUTONOMY_JOB_ID/);
 });
