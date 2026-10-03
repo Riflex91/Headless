@@ -150,7 +150,8 @@ function buildAccountGearReservationPlan(
     ([, block]) =>
       block?.connected === true &&
       Number.isFinite(block?.bot_runtime_started_at) &&
-      block?.gear_scoring_runtime?.state === "READY",
+      block?.gear_scoring_runtime?.state === "READY" &&
+      block?.future_gear_runtime?.state === "READY",
   );
 
   const claims = [];
