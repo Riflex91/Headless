@@ -5463,6 +5463,10 @@ function migrate_old_storage(path, localStorage) {
         char_name,
         "CHARACTER_PROCESS_EXITED_DURING_MERCHANT_LIVE_TEST",
       );
+      reject_merrit_live_tests_for_character(
+        char_name,
+        "CHARACTER_PROCESS_EXITED_DURING_MERRIT_LIVE_TEST",
+      );
       emit_supervisor_event("CHARACTER_PROCESS_EXITED", char_name, {
         code,
         signal,
