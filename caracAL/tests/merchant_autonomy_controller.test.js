@@ -66,7 +66,16 @@ function setup(overrides = {}) {
       },
       maps: {
         main: {
-          zones: [{ type: "fishing", drop: "f1", polygon: [[0, 0], [1, 1]] }],
+          zones: [
+            {
+              type: "fishing",
+              drop: "f1",
+              polygon: [
+                [0, 0],
+                [1, 1],
+              ],
+            },
+          ],
         },
         tunnel: {
           zones: [{ type: "mining", drop: "m2", polygon: [[2, 2]] }],
@@ -133,7 +142,9 @@ test("merchant autonomy core maps every Phase 12 feature from real-shaped state"
 });
 
 test("merchant autonomy core stays disabled by default and rejects non-merchants", () => {
-  const { controller } = setup({ character: { name: "Ranger", ctype: "ranger", map: "main" } });
+  const { controller } = setup({
+    character: { name: "Ranger", ctype: "ranger", map: "main" },
+  });
   controller.setConfigOverride({ merchantAutonomy: { enabled: true } });
   const wrongClass = controller.tick();
   assert.equal(wrongClass.state, "UNSUPPORTED_CLASS");
@@ -141,7 +152,11 @@ test("merchant autonomy core stays disabled by default and rejects non-merchants
   controller.clearConfigOverride();
   const defaultDisabled = new (loadController())(
     {
-      character: () => ({ name: "My_Merchant", ctype: "merchant", map: "main" }),
+      character: () => ({
+        name: "My_Merchant",
+        ctype: "merchant",
+        map: "main",
+      }),
       inventory: () => [],
       equipment: () => ({}),
       tradeSlots: () => ({}),
