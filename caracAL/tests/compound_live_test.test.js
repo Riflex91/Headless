@@ -67,6 +67,14 @@ function makeSetup({
     items: [],
   },
   movementSmart,
+  movementStatus = () => ({
+    owner: null,
+    mode: "IDLE",
+    path: null,
+    safePoint: null,
+    stuck: null,
+    active: null,
+  }),
   runtimePreflight = () => ({
     map: "main",
     compoundInProgress: false,
@@ -198,6 +206,9 @@ function makeSetup({
   };
 
   const movement = {
+    status() {
+      return movementStatus();
+    },
     async smart(request) {
       movementCalls += 1;
       if (movementSmart) {
@@ -292,6 +303,7 @@ test("Compound live runner confirms exactly one real triple mutation", async () 
   assert.equal(result.evidence.stationTravelConfirmed, true);
   assert.equal(result.evidence.stationProximityReady, true);
   assert.equal(result.evidence.stationDistanceAfter, 0);
+  assert.equal(result.evidence.movementIdleBeforeDispatch, true);
   assert.equal(s.movementCalls(), 0);
   assert.equal(result.evidence.localPreflightReadOnly, true);
   assert.equal(result.evidence.compoundOperationIdle, true);
@@ -467,6 +479,30 @@ test("Compound live runner rejects a scroll that does not match real item grade"
 
   assert.equal(result.outcome, "FAIL");
   assert.equal(result.reason, "COMPOUND_LIVE_SAFE_TRIPLE_OR_SCROLL_NOT_FOUND");
+  assert.equal(s.executionCalls(), 0);
+});
+
+test("Compound live runner blocks dispatch while another movement owner is active", async () => {
+  const s = makeSetup({
+    movementStatus: () => ({
+      owner: "MerchantAutonomyController",
+      mode: "SMART",
+      path: null,
+      safePoint: null,
+      stuck: null,
+      active: { id: 1, type: "SMART" },
+    }),
+  });
+  const result = await s.runner.run({
+    itemName: "ring",
+    itemSlots: [0, 1, 2],
+    scrollName: "cscroll0",
+  });
+
+  assert.equal(result.outcome, "FAIL");
+  assert.equal(result.reason, "COMPOUND_LIVE_LOCAL_PREFLIGHT_BLOCKED");
+  assert.equal(result.evidence.movementIdleBeforeDispatch, false);
+  assert.equal(result.evidence.actionDispatchedOnce, false);
   assert.equal(s.executionCalls(), 0);
 });
 
