@@ -143,3 +143,77 @@ test("class skill diagnostics include roadmap-required evidence", () => {
   assert.equal(diagnostics.result.outcome, "PASS");
   assert.equal(diagnostics.incident_id, null);
 });
+
+test("class skill supervisor confirms Merchant massproduction", () => {
+  const merchantEvents = [
+    {
+      source: "bot_runtime",
+      module: "ClassSkillLiveTest",
+      type: "CLASS_SKILL_LIVE_TEST_STARTED",
+    },
+    {
+      source: "bot_runtime",
+      module: "MerchantSkillController",
+      type: "CLASS_SKILL_ACTION",
+      data: {
+        skill: "massproduction",
+        actionStatus: "CONFIRMED",
+      },
+    },
+    {
+      source: "bot_runtime",
+      module: "ClassSkillLiveTest",
+      type: "CLASS_SKILL_LIVE_TEST_COMPLETED",
+    },
+  ];
+  const merchantProjection = {
+    account_character_type: "merchant",
+    class_skill_runtime: {
+      className: "merchant",
+      module: "MerchantSkillController",
+      state: "USING",
+      reason: "CLASS_SKILL_DISPATCHED",
+      lastAction: {
+        id: "skill-merchant-1",
+        status: "CONFIRMED",
+        skill: "massproduction",
+      },
+    },
+  };
+
+  const evidence = classSkillLiveTestEvidence(
+    merchantEvents,
+    merchantProjection,
+  );
+
+  assert.equal(evidence.testedClass, "merchant");
+  assert.equal(evidence.safeSkill, "massproduction");
+  assert.equal(evidence.confirmedSkill, true);
+  assert.equal(evidence.confirmedTrack, false);
+  assert.equal(evidence.classSkillProjectionVisible, true);
+  assert.equal(evidence.confirmedActionProjection, true);
+
+  const combined = combineClassSkillLiveTestResult(
+    {
+      outcome: "PASS",
+      reason: "CLASS_SKILL_LIVE_E2E_CONFIRMED",
+      scope: {
+        testedClass: "merchant",
+        safeSkill: "massproduction",
+        cooldownEvidenceRequired: false,
+      },
+    },
+    evidence,
+  );
+  assert.equal(combined.outcome, "PASS");
+
+  const diagnostics = classSkillLiveTestDiagnostics(combined, {
+    character: "My_Merchant",
+    originalDesiredState: "RUNNING",
+    evidence,
+  });
+  assert.equal(diagnostics.expected.class, "merchant");
+  assert.equal(diagnostics.expected.skill, "massproduction");
+  assert.equal(diagnostics.expected.cooldown_required, false);
+  assert.equal(diagnostics.navigation.reason, "SAFE_NON_TARGET_MERCHANT_SKILL");
+});

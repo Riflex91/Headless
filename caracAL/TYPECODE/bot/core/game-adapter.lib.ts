@@ -123,6 +123,7 @@ export interface SkillSnapshot {
   key: string;
   name: string | null;
   classes: string[];
+  level: number | null;
   mp: number | null;
   cooldown: number | null;
   range: number | null;
@@ -566,6 +567,7 @@ export class GameAdapter {
           key,
           name: stringOrNull(skill.name),
           classes,
+          level: numberOrNull(skill.level),
           mp: numberOrNull(skill.mp),
           cooldown: numberOrNull(skill.cooldown),
           range: numberOrNull(skill.range),

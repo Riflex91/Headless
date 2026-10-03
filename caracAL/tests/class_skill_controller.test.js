@@ -269,3 +269,59 @@ test("Phase 8 AoE skills are not exposed by Phase 7 ranger controller", () => {
   const status = setup.controller.status();
   assert.deepEqual(status.configuredSkills, []);
 });
+
+test("merchant controller skips skills above character level", async () => {
+  const state = stateFor("merchant");
+  state.character.level = 58;
+  state.character.mp = 1000;
+  const setup = makeController(
+    "merchant",
+    {
+      classSkills: {
+        merchant: {
+          enabled: true,
+          skills: {
+            mcourage: { enabled: true, priority: 200 },
+            massproduction: { enabled: true, priority: 100 },
+          },
+        },
+      },
+    },
+    {
+      state,
+      skills: [
+        {
+          key: "mcourage",
+          name: "Merchant's Courage",
+          classes: ["merchant"],
+          level: 70,
+          mp: 2400,
+          cooldown: 2000,
+          range: null,
+          hostile: false,
+          party: false,
+          passive: false,
+        },
+        {
+          key: "massproduction",
+          name: "Mass Production",
+          classes: ["merchant"],
+          level: 30,
+          mp: 20,
+          cooldown: 50,
+          range: null,
+          hostile: false,
+          party: false,
+          passive: false,
+        },
+      ],
+    },
+  );
+
+  const status = await setup.controller.tick();
+
+  assert.equal(status.state, "USING");
+  assert.equal(status.selectedSkill, "massproduction");
+  assert.equal(setup.calls.length, 1);
+  assert.equal(setup.calls[0].skill, "massproduction");
+});

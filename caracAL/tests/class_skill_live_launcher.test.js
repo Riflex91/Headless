@@ -3,7 +3,11 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 
-const { selectRanger } = require("../scripts/run_class_skill_live_e2e");
+const {
+  parseArguments,
+  selectMerchant,
+  selectRanger,
+} = require("../scripts/run_class_skill_live_e2e");
 
 test("class skill launcher prefers an online owned Ranger", () => {
   const ranger = selectRanger({
@@ -52,4 +56,38 @@ test("class skill launcher rejects requested non-ranger", () => {
       ),
     /requires a Ranger/,
   );
+});
+
+test("class skill launcher selects an owned Merchant for Merchant mode", () => {
+  const merchant = selectMerchant({
+    characters: [
+      {
+        name: "My_Merchant",
+        ctype: "merchant",
+        account_owned: true,
+        connected: true,
+        lifecycle_state: "ONLINE",
+      },
+      {
+        name: "My_Ranger1",
+        ctype: "ranger",
+        account_owned: true,
+        connected: true,
+        lifecycle_state: "ONLINE",
+      },
+    ],
+  });
+
+  assert.equal(merchant.name, "My_Merchant");
+});
+
+test("class skill launcher parses Merchant live mode", () => {
+  assert.deepEqual(parseArguments(["--merchant"]), {
+    ctype: "merchant",
+    requested: null,
+  });
+  assert.deepEqual(parseArguments(["--merchant", "My_Merchant"]), {
+    ctype: "merchant",
+    requested: "My_Merchant",
+  });
 });
