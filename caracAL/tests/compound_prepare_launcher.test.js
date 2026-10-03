@@ -184,10 +184,7 @@ test("Compound preparation launcher preserves local preflight blocker", () => {
 
   const result = verifyCompoundPreparation(source);
   assert.equal(result.outcome, "FAIL");
-  assert.equal(
-    result.reason,
-    "COMPOUND_PREPARATION_LOCAL_PREFLIGHT_BLOCKED",
-  );
+  assert.equal(result.reason, "COMPOUND_PREPARATION_LOCAL_PREFLIGHT_BLOCKED");
   assert.equal(result.verifier.localPreflightReady, false);
 });
 
