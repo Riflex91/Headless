@@ -87,6 +87,34 @@ test("Compound gather planner resolves named drop tables", () => {
   assert.equal(result.selected.dropChance, 0.125);
 });
 
+test("Compound gather planner accepts object-mapped monster drops", () => {
+  const planCompoundGatherTarget = loadPlanner();
+  const result = planCompoundGatherTarget({
+    gameData() {
+      return {
+        items: {
+          ring: { compound: { dex: 1 } },
+        },
+        monsters: {
+          goo: {
+            hp: 100,
+            drop: {
+              ring: 0.4,
+            },
+          },
+        },
+      };
+    },
+    itemGrade() {
+      return 0;
+    },
+  });
+
+  assert.equal(result.outcome, "PASS");
+  assert.equal(result.selected.itemName, "ring");
+  assert.equal(result.selected.dropChance, 0.4);
+});
+
 test("Compound gather planner prefers better expected farming yield", () => {
   const planCompoundGatherTarget = loadPlanner();
   const game = {
