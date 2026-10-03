@@ -821,6 +821,7 @@ function migrate_old_storage(path, localStorage) {
         quantity: normalized.data?.quantity,
         recipient: normalized.data?.recipient,
         purpose: normalized.data?.purpose,
+        recipientPosition: normalized.data?.merchantFishing?.character,
       });
     }
 
@@ -2210,10 +2211,27 @@ function migrate_old_storage(path, localStorage) {
     if (!merchant_block) return;
     const baseline = live_item_quantity(merchant_block, item_name);
     const target_quantity = baseline + quantity;
+    const event_position =
+      request?.recipientPosition && typeof request.recipientPosition === "object"
+        ? request.recipientPosition
+        : null;
+    const finite_coordinate = (value) =>
+      value !== null &&
+      value !== undefined &&
+      Number.isFinite(Number(value))
+        ? Number(value)
+        : null;
+    const event_x = finite_coordinate(event_position?.x);
+    const event_y = finite_coordinate(event_position?.y);
+    const live_x = finite_coordinate(merchant_block.live_state?.x);
+    const live_y = finite_coordinate(merchant_block.live_state?.y);
     const recipient_position = {
-      map: merchant_block.live_state?.map || null,
-      x: Number(merchant_block.live_state?.x),
-      y: Number(merchant_block.live_state?.y),
+      map:
+        typeof event_position?.map === "string" && event_position.map.trim()
+          ? event_position.map.trim()
+          : merchant_block.live_state?.map || null,
+      x: event_x ?? live_x,
+      y: event_y ?? live_y,
     };
     if (
       !recipient_position.map ||
