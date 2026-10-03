@@ -35,25 +35,23 @@ function passResult(overrides = {}) {
     targetQuantity: 3,
     scrollQuantity: 2,
     readyForCompound: true,
-    workerResults: ["My_Ranger1", "My_Ranger2", "My_Ranger3"].map(
-      (worker) => ({
-        outcome: "PASS",
-        reason: "MATERIAL_GATHER_AND_DELIVERY_CONFIRMED",
-        worker,
-        itemName: "ring",
-        itemLevel: 0,
-        evidence: {
-          combatControllerUsed: true,
-          materialObserved: true,
-          deliveryConfirmed: true,
-          blindRetryUsed: false,
-        },
-        cleanup: {
-          combatOverrideCleared: true,
-          preferredTargetCleared: true,
-        },
-      }),
-    ),
+    workerResults: ["My_Ranger1", "My_Ranger2", "My_Ranger3"].map((worker) => ({
+      outcome: "PASS",
+      reason: "MATERIAL_GATHER_AND_DELIVERY_CONFIRMED",
+      worker,
+      itemName: "ring",
+      itemLevel: 0,
+      evidence: {
+        combatControllerUsed: true,
+        materialObserved: true,
+        deliveryConfirmed: true,
+        blindRetryUsed: false,
+      },
+      cleanup: {
+        combatOverrideCleared: true,
+        preferredTargetCleared: true,
+      },
+    })),
     evidence: {
       gatherPlanReadOnly: true,
       threeMatchingItemsObserved: true,
