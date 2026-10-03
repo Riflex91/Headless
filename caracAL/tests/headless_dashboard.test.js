@@ -81,11 +81,13 @@ test("public character state exposes only dashboard-safe fields", () => {
     inventory_live_test: null,
     logistics_live_test: null,
     merchant_live_test: null,
+    merrit_live_test: null,
     combat_runtime: null,
     class_skill_runtime: null,
     group_combat_runtime: null,
     farm_intelligence_runtime: null,
     inventory_intelligence_runtime: null,
+    merrit_runtime: null,
     game: null,
     movement_trail: [],
   });
@@ -412,11 +414,17 @@ test("dashboard module and coordinator remain syntactically valid", () => {
   assert.match(coordinator, /farm_intelligence_runtime/);
   assert.match(coordinator, /inventory_intelligence_runtime/);
   assert.match(coordinator, /inventory_live_test/);
+  assert.match(coordinator, /merrit_live_test/);
+  assert.match(coordinator, /merrit_runtime/);
+  assert.match(coordinator, /saveCooldown/);
   assert.match(coordinator, /appendFarmStatistic/);
   assert.match(runtimeKernel, /classSkills/);
   assert.match(runtimeKernel, /groupCombat/);
   assert.match(runtimeKernel, /farmIntelligence/);
   assert.match(runtimeKernel, /inventoryIntelligence/);
+  assert.match(runtimeKernel, /merchantMerrit/);
+  assert.match(runtimeKernel, /MERRIT_AUTONOMY_JOB_ID/);
+  assert.match(runtimeKernel, /runMerritLiveTest/);
   assert.match(runtimeKernel, /FARM_INTELLIGENCE_JOB_ID/);
   assert.match(runtimeKernel, /INVENTORY_INTELLIGENCE_JOB_ID/);
   assert.match(runtimeKernel, /GROUP_COMBAT_JOB_ID/);
@@ -430,6 +438,8 @@ test("dashboard module and coordinator remain syntactically valid", () => {
   assert.match(characterThread, /combat_live_test_result/);
   assert.match(characterThread, /class_skill_live_test/);
   assert.match(characterThread, /class_skill_live_test_result/);
+  assert.match(characterThread, /merrit_live_test/);
+  assert.match(characterThread, /merrit_live_test_result/);
 });
 
 test("dashboard public live state keeps nearby entity telemetry but not map scene blobs", () => {
