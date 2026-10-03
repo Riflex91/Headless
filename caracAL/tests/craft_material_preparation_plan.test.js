@@ -126,7 +126,7 @@ test("Craft material planner carries the runtime observer position", () => {
   assert.equal(result.selected.sourcePolicy.expectedMonsterHp, 120);
 });
 
-test("Craft material planner rejects boss and statistically excessive sources", () => {
+test("Craft material planner rejects unsafe material sources", () => {
   const { planCraftMaterialPreparation } = core(
     "craft-material-preparation-plan.lib.ts",
   );
