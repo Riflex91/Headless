@@ -49,6 +49,24 @@ function makeSetup({
   ],
   itemGrade = () => 0,
   executeNext,
+  character = {
+    map: "main",
+    x: -207,
+    y: -220,
+    moving: false,
+  },
+  station = {
+    id: "newupgrade",
+    name: "Cue",
+    role: "newupgrade",
+    map: "main",
+    x: -207,
+    y: -220,
+    visible: true,
+    positions: [{ x: -207, y: -220 }],
+    items: [],
+  },
+  movementSmart,
   runtimePreflight = () => ({
     map: "main",
     compoundInProgress: false,
@@ -58,12 +76,14 @@ function makeSetup({
 
   const state = {
     items: items.map((item) => (item ? { ...item } : null)),
+    character: { ...character },
     now: 1000,
   };
 
   let intelligenceOverride = null;
   let compoundOverride = null;
   let executionCalls = 0;
+  let movementCalls = 0;
   let compoundStatus = {
     timestamp: 1000,
     enabled: true,
@@ -177,13 +197,45 @@ function makeSetup({
     },
   };
 
+  const movement = {
+    async smart(request) {
+      movementCalls += 1;
+      if (movementSmart) {
+        return movementSmart({
+          state,
+          request,
+          movementCalls,
+        });
+      }
+      state.character = {
+        ...state.character,
+        map: request.destination.map,
+        x: request.destination.x,
+        y: request.destination.y,
+        moving: false,
+      };
+      return {
+        id: `M-${movementCalls}`,
+        status: "CONFIRMED",
+      };
+    },
+  };
+
   const runner = new CompoundLiveTestRunner({
     game: {
+      character() {
+        return { ...state.character };
+      },
       inventory() {
         return state.items.map((item, slot) => ({
           slot,
           item: item ? { ...item } : null,
         }));
+      },
+      npcs(mapName) {
+        return station && (!mapName || station.map === mapName)
+          ? [{ ...station }]
+          : [];
       },
       gameData() {
         return {
@@ -200,6 +252,7 @@ function makeSetup({
     },
     inventoryIntelligence,
     compound,
+    movement,
     characterName: () => "My_Merchant",
     runtimePreflight,
     now: () => state.now,
@@ -212,6 +265,7 @@ function makeSetup({
     runner,
     state,
     executionCalls: () => executionCalls,
+    movementCalls: () => movementCalls,
     intelligenceOverride: () => intelligenceOverride,
     compoundOverride: () => compoundOverride,
   };
@@ -232,6 +286,13 @@ test("Compound live runner confirms exactly one real triple mutation", async () 
   assert.equal(result.evidence.itemGradesKnown, true);
   assert.equal(result.evidence.itemGradesMatch, true);
   assert.equal(result.evidence.scrollGradeCompatible, true);
+  assert.equal(result.evidence.stationLocated, true);
+  assert.equal(result.evidence.stationId, "newupgrade");
+  assert.equal(result.evidence.stationTravelRequired, false);
+  assert.equal(result.evidence.stationTravelConfirmed, true);
+  assert.equal(result.evidence.stationProximityReady, true);
+  assert.equal(result.evidence.stationDistanceAfter, 0);
+  assert.equal(s.movementCalls(), 0);
   assert.equal(result.evidence.localPreflightReadOnly, true);
   assert.equal(result.evidence.compoundOperationIdle, true);
   assert.equal(result.evidence.itemLocksClear, true);
@@ -246,6 +307,100 @@ test("Compound live runner confirms exactly one real triple mutation", async () 
   assert.equal(result.cleanup.compoundConfigOverrideCleared, true);
   assert.equal(s.intelligenceOverride(), null);
   assert.equal(s.compoundOverride(), null);
+});
+
+test("Compound live runner travels to Cue before the single Compound dispatch", async () => {
+  const s = makeSetup({
+    character: {
+      map: "main",
+      x: -1102,
+      y: 0,
+      moving: false,
+    },
+  });
+  const result = await s.runner.run({
+    itemName: "ring",
+    itemSlots: [0, 1, 2],
+    scrollName: "cscroll0",
+  });
+
+  assert.equal(result.outcome, "PASS");
+  assert.equal(s.movementCalls(), 1);
+  assert.equal(s.executionCalls(), 1);
+  assert.equal(result.evidence.stationTravelRequired, true);
+  assert.equal(result.evidence.stationTravelConfirmed, true);
+  assert.equal(result.evidence.stationTravelStatus, "CONFIRMED");
+  assert.equal(result.evidence.stationProximityReady, true);
+  assert.equal(result.evidence.stationDistanceAfter, 0);
+});
+
+test("Compound live runner blocks Compound when station travel is rejected", async () => {
+  const s = makeSetup({
+    character: {
+      map: "main",
+      x: -1102,
+      y: 0,
+      moving: false,
+    },
+    movementSmart: async () => ({
+      id: "M-rejected",
+      status: "REJECTED",
+    }),
+  });
+  const result = await s.runner.run({
+    itemName: "ring",
+    itemSlots: [0, 1, 2],
+    scrollName: "cscroll0",
+  });
+
+  assert.equal(result.outcome, "FAIL");
+  assert.equal(result.reason, "COMPOUND_LIVE_STATION_TRAVEL_NOT_CONFIRMED");
+  assert.equal(s.movementCalls(), 1);
+  assert.equal(s.executionCalls(), 0);
+  assert.equal(result.evidence.actionDispatchedOnce, false);
+});
+
+test("Compound live runner preserves unknown station travel without Compound dispatch", async () => {
+  const s = makeSetup({
+    character: {
+      map: "main",
+      x: -1102,
+      y: 0,
+      moving: false,
+    },
+    movementSmart: async () => ({
+      id: "M-unknown",
+      status: "UNKNOWN",
+    }),
+  });
+  const result = await s.runner.run({
+    itemName: "ring",
+    itemSlots: [0, 1, 2],
+    scrollName: "cscroll0",
+  });
+
+  assert.equal(result.outcome, "UNKNOWN");
+  assert.equal(
+    result.reason,
+    "COMPOUND_LIVE_STATION_TRAVEL_UNKNOWN_NO_COMPOUND_DISPATCH",
+  );
+  assert.equal(s.movementCalls(), 1);
+  assert.equal(s.executionCalls(), 0);
+  assert.equal(result.evidence.actionDispatchedOnce, false);
+});
+
+test("Compound live runner blocks Compound when Cue cannot be located", async () => {
+  const s = makeSetup({ station: null });
+  const result = await s.runner.run({
+    itemName: "ring",
+    itemSlots: [0, 1, 2],
+    scrollName: "cscroll0",
+  });
+
+  assert.equal(result.outcome, "FAIL");
+  assert.equal(result.reason, "COMPOUND_LIVE_STATION_NOT_FOUND");
+  assert.equal(s.movementCalls(), 0);
+  assert.equal(s.executionCalls(), 0);
 });
 
 test("Compound live runner requires three distinct explicit slots", async () => {
