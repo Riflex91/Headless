@@ -299,6 +299,9 @@ function migrate_old_storage(path, localStorage) {
   const upgrade_live_test_requests = new Map();
   let upgrade_live_test_sequence = 0;
   let upgrade_live_test_active = false;
+  const upgrade_live_preflight_requests = new Map();
+  let upgrade_live_preflight_sequence = 0;
+  let upgrade_live_preflight_active = false;
   const npc_trading_live_test_requests = new Map();
   let npc_trading_live_test_sequence = 0;
   let npc_trading_live_test_active = false;
@@ -367,6 +370,7 @@ function migrate_old_storage(path, localStorage) {
         runBankTravelLiveTest: run_bank_travel_live_test,
         runBankGoldLiveTest: run_bank_gold_live_test,
         runUpgradeLiveTest: run_upgrade_live_test,
+        runUpgradeLivePreflight: run_upgrade_live_preflight,
         runNpcTradingLiveTest: run_npc_trading_live_test,
         runMarketTradingLiveTest: run_market_trading_live_test,
         runMerritLiveTest: run_merrit_live_test,
@@ -505,6 +509,7 @@ function migrate_old_storage(path, localStorage) {
       bank_travel_live_test_active ||
       bank_gold_live_test_active ||
       upgrade_live_test_active ||
+      upgrade_live_preflight_active ||
       npc_trading_live_test_active ||
       market_trading_live_test_active ||
       account_gear_reservation_live_test_active ||
@@ -1188,6 +1193,8 @@ function migrate_old_storage(path, localStorage) {
     char_block.account_gear_reservation_live_test =
       char_block.account_gear_reservation_live_test || null;
     char_block.upgrade_live_test = char_block.upgrade_live_test || null;
+    char_block.upgrade_live_preflight =
+      char_block.upgrade_live_preflight || null;
     char_block.movement_live_test_typescript_override = null;
     char_block.running_code_revision = char_block.running_code_revision || null;
     char_block.running_config_revision =
@@ -2251,6 +2258,31 @@ function migrate_old_storage(path, localStorage) {
       }, NPC_TRADING_LIVE_TEST_RESULT_TIMEOUT_MS);
 
       npc_trading_live_test_requests.set(request_id, {
+        character: char_name,
+        resolve,
+        reject,
+        timer,
+      });
+    });
+  }
+
+  function wait_for_upgrade_live_preflight_result(
+    char_name,
+    request_id,
+  ) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        upgrade_live_preflight_requests.delete(request_id);
+        reject(
+          make_control_error(
+            "UPGRADE_PREFLIGHT_TIMEOUT",
+            `Upgrade preflight timed out for ${char_name}`,
+            504,
+          ),
+        );
+      }, UPGRADE_LIVE_TEST_RESULT_TIMEOUT_MS);
+
+      upgrade_live_preflight_requests.set(request_id, {
         character: char_name,
         resolve,
         reject,
@@ -7022,6 +7054,265 @@ function migrate_old_storage(path, localStorage) {
     return character_manage[char_name]?.npc_trading_live_test;
   }
 
+  async function run_upgrade_live_preflight(char_name) {
+    const char_block = character_manage[char_name];
+    if (!char_block) {
+      throw make_control_error(
+        "CHARACTER_NOT_FOUND",
+        `Unknown character: ${char_name}`,
+        404,
+      );
+    }
+    if (char_block.account_owned !== true) {
+      throw make_control_error(
+        "UPGRADE_PREFLIGHT_ACCOUNT_CHARACTER_REQUIRED",
+        "Upgrade preflight requires an account-owned character: " + char_name,
+        400,
+      );
+    }
+    if (upgrade_live_preflight_active || upgrade_live_test_active) {
+      throw make_control_error(
+        "UPGRADE_VERIFICATION_ALREADY_RUNNING",
+        "An Upgrade verification is already running",
+        409,
+      );
+    }
+
+    for (const active of [
+      ["MOVEMENT", char_block.movement_live_test],
+      ["COMBAT", char_block.combat_live_test],
+      ["CLASS_SKILL", char_block.class_skill_live_test],
+      ["GROUP", char_block.group_live_test],
+      ["FARM", char_block.farm_live_test],
+      ["INVENTORY", char_block.inventory_live_test],
+      ["GEAR_SCORING", char_block.gear_scoring_live_test],
+      [
+        "ACCOUNT_GEAR_RESERVATION",
+        char_block.account_gear_reservation_live_test,
+      ],
+      ["UPGRADE", char_block.upgrade_live_test],
+      ["LOGISTICS", char_block.logistics_live_test],
+      ["MERCHANT", char_block.merchant_live_test],
+      ["BANK_TRAVEL", char_block.bank_travel_live_test],
+      ["BANK_GOLD", char_block.bank_gold_live_test],
+      ["NPC_TRADING", char_block.npc_trading_live_test],
+      ["MARKET_TRADING", char_block.market_trading_live_test],
+      ["MERRIT", char_block.merrit_live_test],
+      ["FISHING", char_block.fishing_live_test],
+    ]) {
+      if (["STARTING", "RUNNING"].includes(active[1]?.status)) {
+        throw make_control_error(
+          active[0] + "_LIVE_TEST_ALREADY_RUNNING",
+          active[0] + " live test already running for " + char_name,
+          409,
+        );
+      }
+    }
+
+    const original_desired_state =
+      char_block.desired_runtime_state ||
+      (char_block.enabled
+        ? DESIRED_RUNTIME_STATES.RUNNING
+        : DESIRED_RUNTIME_STATES.STOPPED);
+    const started_at = Date.now();
+    upgrade_live_preflight_sequence += 1;
+    const request_id =
+      `upgrade-preflight-${started_at}-${upgrade_live_preflight_sequence}`;
+
+    char_block.upgrade_live_preflight = {
+      request_id,
+      status: "STARTING",
+      outcome: null,
+      reason: null,
+      started_at,
+      completed_at: null,
+      readOnly: true,
+    };
+    upgrade_live_preflight_active = true;
+    emit_supervisor_event("UPGRADE_PREFLIGHT_REQUESTED", char_name, {
+      request_id,
+      readOnly: true,
+      original_desired_state,
+    });
+    dashboard?.publishSnapshot();
+
+    let runtime_state_restored = false;
+    let runtime_override_applied = false;
+
+    try {
+      const bundle_path = path.join(
+        process.cwd(),
+        "TYPECODE.out",
+        MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE,
+      );
+      if (!fs_regular.existsSync(bundle_path)) {
+        throw make_control_error(
+          "UPGRADE_PREFLIGHT_RUNTIME_BUNDLE_MISSING",
+          `Upgrade preflight runtime bundle is missing: ${bundle_path}`,
+          503,
+        );
+      }
+
+      char_block.movement_live_test_typescript_override =
+        MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE;
+      char_block.inventory_intelligence_runtime = null;
+      char_block.upgrade_runtime = null;
+      runtime_override_applied = true;
+
+      if (original_desired_state !== DESIRED_RUNTIME_STATES.RUNNING) {
+        char_block.enabled = true;
+        char_block.desired_runtime_state = DESIRED_RUNTIME_STATES.RUNNING;
+      }
+
+      await restart_character_for_movement_runtime(char_name, char_block);
+      const ready_block = await wait_for_upgrade_live_test_runtime(char_name);
+      const result_promise = wait_for_upgrade_live_preflight_result(
+        char_name,
+        request_id,
+      );
+
+      ready_block.upgrade_live_preflight = {
+        ...ready_block.upgrade_live_preflight,
+        status: "RUNNING",
+      };
+      dashboard?.publishSnapshot();
+
+      const sent = safe_send(ready_block.instance, {
+        type: "upgrade_live_preflight",
+        request_id,
+      });
+      if (!sent) {
+        const pending = upgrade_live_preflight_requests.get(request_id);
+        if (pending) {
+          clearTimeout(pending.timer);
+          upgrade_live_preflight_requests.delete(request_id);
+        }
+        throw make_control_error(
+          "UPGRADE_PREFLIGHT_DISPATCH_FAILED",
+          `Could not dispatch Upgrade preflight to ${char_name}`,
+          503,
+        );
+      }
+
+      const child_response = await result_promise;
+      if (child_response.error || !child_response.result) {
+        throw make_control_error(
+          "UPGRADE_PREFLIGHT_RUNTIME_FAILED",
+          child_response.error || "Upgrade preflight returned no result",
+          500,
+        );
+      }
+
+      const runtime_result = child_response.result;
+      ready_block.upgrade_live_preflight = {
+        ...runtime_result,
+        request_id,
+        status: runtime_result.outcome === "PASS" ? "COMPLETED" : "FAILED",
+        started_at,
+        completed_at: Date.now(),
+        cleanup: {
+          runtimeStateRestored: false,
+          dispatcherRestored: false,
+        },
+      };
+      emit_supervisor_event("UPGRADE_PREFLIGHT_COMPLETED", char_name, {
+        request_id,
+        outcome: runtime_result.outcome,
+        reason: runtime_result.reason,
+        summary: runtime_result.summary || null,
+      });
+    } catch (error) {
+      char_block.upgrade_live_preflight = {
+        request_id,
+        outcome:
+          error.code === "UPGRADE_PREFLIGHT_TIMEOUT" ||
+          error.code === "UPGRADE_LIVE_TEST_RUNTIME_TIMEOUT"
+            ? "TIMEOUT"
+            : "FAIL",
+        reason: error.code || error.message || "UPGRADE_PREFLIGHT_FAILED",
+        error: error.message || String(error),
+        status: "FAILED",
+        started_at,
+        completed_at: Date.now(),
+        durationMs: Date.now() - started_at,
+        scope: {
+          readOnly: true,
+          upgradeMutationForced: false,
+          offeringMutationForced: false,
+          compoundMutationForced: false,
+          exchangeMutationForced: false,
+          craftMutationForced: false,
+        },
+        cleanup: {
+          runtimeStateRestored: false,
+          dispatcherRestored: false,
+        },
+      };
+      emit_supervisor_event(
+        "UPGRADE_PREFLIGHT_FAILED",
+        char_name,
+        char_block.upgrade_live_preflight,
+      );
+    } finally {
+      const pending = upgrade_live_preflight_requests.get(request_id);
+      if (pending) {
+        clearTimeout(pending.timer);
+        upgrade_live_preflight_requests.delete(request_id);
+      }
+
+      try {
+        if (runtime_override_applied) {
+          await restore_movement_live_test_execution_source(
+            char_name,
+            original_desired_state,
+          );
+        } else {
+          await restore_movement_live_test_state(
+            char_name,
+            original_desired_state,
+          );
+        }
+        runtime_state_restored = true;
+      } catch (restore_error) {
+        emit_supervisor_event(
+          "UPGRADE_PREFLIGHT_STATE_RESTORE_FAILED",
+          char_name,
+          {
+            request_id,
+            desired_runtime_state: original_desired_state,
+            error:
+              restore_error instanceof Error
+                ? restore_error.message
+                : String(restore_error),
+          },
+        );
+      }
+
+      upgrade_live_preflight_active = false;
+      schedule_merchant_logistics_dispatch();
+      const final_block = character_manage[char_name];
+      if (final_block?.upgrade_live_preflight) {
+        final_block.upgrade_live_preflight.cleanup = {
+          ...(final_block.upgrade_live_preflight.cleanup || {}),
+          runtimeStateRestored: runtime_state_restored,
+          dispatcherRestored: true,
+        };
+        if (
+          !runtime_state_restored &&
+          final_block.upgrade_live_preflight.outcome === "PASS"
+        ) {
+          final_block.upgrade_live_preflight.outcome = "FAIL";
+          final_block.upgrade_live_preflight.reason =
+            "UPGRADE_PREFLIGHT_STATE_RESTORE_FAILED";
+          final_block.upgrade_live_preflight.status = "FAILED";
+        }
+      }
+      dashboard?.publishSnapshot();
+    }
+
+    return character_manage[char_name]?.upgrade_live_preflight;
+  }
+
   async function run_upgrade_live_test(char_name, options = {}) {
     const char_block = character_manage[char_name];
     if (!char_block) {
@@ -7053,10 +7344,10 @@ function migrate_old_storage(path, localStorage) {
         400,
       );
     }
-    if (upgrade_live_test_active) {
+    if (upgrade_live_test_active || upgrade_live_preflight_active) {
       throw make_control_error(
-        "UPGRADE_LIVE_TEST_ALREADY_RUNNING",
-        "An Upgrade live test is already running",
+        "UPGRADE_VERIFICATION_ALREADY_RUNNING",
+        "An Upgrade verification is already running",
         409,
       );
     }
@@ -9364,6 +9655,37 @@ function migrate_old_storage(path, localStorage) {
           });
           emit_supervisor_event(
             "NPC_TRADING_LIVE_TEST_RESULT_RECEIVED",
+            char_name,
+            {
+              request_id: m.request_id,
+              outcome: m.result?.outcome || null,
+              error: m.error || null,
+            },
+          );
+          break;
+        }
+        case "upgrade_live_preflight_result": {
+          const pending = upgrade_live_preflight_requests.get(m.request_id);
+          if (!pending || pending.character !== char_name) {
+            emit_supervisor_event(
+              "UPGRADE_PREFLIGHT_RESULT_IGNORED",
+              char_name,
+              {
+                why: "UNKNOWN_OR_STALE_REQUEST",
+                request_id: m.request_id || null,
+              },
+            );
+            break;
+          }
+
+          clearTimeout(pending.timer);
+          upgrade_live_preflight_requests.delete(m.request_id);
+          pending.resolve({
+            result: m.result || null,
+            error: m.error || null,
+          });
+          emit_supervisor_event(
+            "UPGRADE_PREFLIGHT_RESULT_RECEIVED",
             char_name,
             {
               request_id: m.request_id,
