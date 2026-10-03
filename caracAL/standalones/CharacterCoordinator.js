@@ -4440,9 +4440,7 @@ function migrate_old_storage(path, localStorage) {
         400,
       );
     }
-    if (
-      ["STARTING", "RUNNING"].includes(char_block.merrit_live_test?.status)
-    ) {
+    if (["STARTING", "RUNNING"].includes(char_block.merrit_live_test?.status)) {
       throw make_control_error(
         "MERRIT_LIVE_TEST_ALREADY_RUNNING",
         "Merrit live test already running for " + char_name,
@@ -4778,8 +4776,7 @@ function migrate_old_storage(path, localStorage) {
           );
           final_block.merrit_live_test.incident_id = incident_id;
           if (final_block.merrit_live_test.diagnostics) {
-            final_block.merrit_live_test.diagnostics.incident_id =
-              incident_id;
+            final_block.merrit_live_test.diagnostics.incident_id = incident_id;
             final_block.merrit_live_test.diagnostics.result = {
               outcome: "FAIL",
               reason: "MERRIT_LIVE_E2E_STATE_RESTORE_FAILED",
@@ -4834,9 +4831,7 @@ function migrate_old_storage(path, localStorage) {
         409,
       );
     }
-    if (
-      ["STARTING", "RUNNING"].includes(char_block.merrit_live_test?.status)
-    ) {
+    if (["STARTING", "RUNNING"].includes(char_block.merrit_live_test?.status)) {
       throw make_control_error(
         "MERRIT_LIVE_TEST_ALREADY_RUNNING",
         "Merrit live test already running for " + char_name,
@@ -5814,15 +5809,11 @@ function migrate_old_storage(path, localStorage) {
             result: m.result || null,
             error: m.error || null,
           });
-          emit_supervisor_event(
-            "MERRIT_LIVE_TEST_RESULT_RECEIVED",
-            char_name,
-            {
-              request_id: m.request_id,
-              outcome: m.result?.outcome || null,
-              error: m.error || null,
-            },
-          );
+          emit_supervisor_event("MERRIT_LIVE_TEST_RESULT_RECEIVED", char_name, {
+            request_id: m.request_id,
+            outcome: m.result?.outcome || null,
+            error: m.error || null,
+          });
           break;
         }
         case "merchant_live_test_result": {
