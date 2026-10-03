@@ -2976,25 +2976,27 @@ function migrate_old_storage(path, localStorage) {
 
       const plan = plan_response.result;
       const selected = plan.selected;
-
-      if (
-        original_desired_state === DESIRED_RUNTIME_STATES.RUNNING &&
-        character_manage[merchant_name]?.desired_runtime_state ===
-          DESIRED_RUNTIME_STATES.RUNNING
-      ) {
-        await control_character(merchant_name, CONTROL_ACTIONS.PAUSE);
-        merchant_paused_by_preparation = true;
-        await sleep(250);
-      }
-
       const item_name = selected.itemName;
       const monster_type = selected.monsterType;
       const item_level = 0;
       const current_merchant = character_manage[merchant_name];
+      const observer_position =
+        plan.observerPosition &&
+        typeof plan.observerPosition === "object"
+          ? plan.observerPosition
+          : null;
+      const observer_x = Number(observer_position?.x);
+      const observer_y = Number(observer_position?.y);
+      const live_x = Number(current_merchant?.live_state?.x);
+      const live_y = Number(current_merchant?.live_state?.y);
       const merchant_position = {
-        map: current_merchant?.live_state?.map || null,
-        x: Number(current_merchant?.live_state?.x),
-        y: Number(current_merchant?.live_state?.y),
+        map:
+          (typeof observer_position?.map === "string" &&
+            observer_position.map.trim()) ||
+          current_merchant?.live_state?.map ||
+          null,
+        x: Number.isFinite(observer_x) ? observer_x : live_x,
+        y: Number.isFinite(observer_y) ? observer_y : live_y,
       };
       if (
         !merchant_position.map ||
@@ -3009,6 +3011,16 @@ function migrate_old_storage(path, localStorage) {
           plan,
           workerResults: worker_results,
         };
+      }
+
+      if (
+        original_desired_state === DESIRED_RUNTIME_STATES.RUNNING &&
+        character_manage[merchant_name]?.desired_runtime_state ===
+          DESIRED_RUNTIME_STATES.RUNNING
+      ) {
+        await control_character(merchant_name, CONTROL_ACTIONS.PAUSE);
+        merchant_paused_by_preparation = true;
+        await sleep(250);
       }
 
       const initial_quantity = live_item_quantity_at_level(
