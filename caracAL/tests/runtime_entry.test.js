@@ -266,3 +266,45 @@ test("account Gear Reservation sync stays classification-only", () => {
   assert.doesNotMatch(kernel, /\bequip\s*\(/);
   assert.doesNotMatch(kernel, /\bupgrade\s*\(/);
 });
+
+test("Upgrade scheduler plans only and mutation stays explicit one-shot", () => {
+  const kernel = fs.readFileSync(
+    path.join(
+      __dirname,
+      "..",
+      "TYPECODE",
+      "bot",
+      "core",
+      "runtime-kernel.lib.ts",
+    ),
+    "utf8",
+  );
+  const controller = fs.readFileSync(
+    path.join(
+      __dirname,
+      "..",
+      "TYPECODE",
+      "bot",
+      "core",
+      "upgrade-controller.lib.ts",
+    ),
+    "utf8",
+  );
+
+  assert.match(kernel, /UPGRADE_JOB_ID/);
+  assert.match(kernel, /executeUpgradeNext/);
+  assert.match(kernel, /this\.upgrade\.executeNext\(\)/);
+  assert.match(controller, /executionMode: "EXPLICIT_ONE_SHOT"/);
+  assert.match(controller, /UPGRADE_UNKNOWN_HOLD_ACTIVE/);
+
+  const schedulerStart = kernel.indexOf("id: UPGRADE_JOB_ID");
+  const schedulerEnd = kernel.indexOf(
+    "id: FARM_INTELLIGENCE_JOB_ID",
+    schedulerStart,
+  );
+  assert.ok(schedulerStart >= 0);
+  assert.ok(schedulerEnd > schedulerStart);
+  const schedulerBlock = kernel.slice(schedulerStart, schedulerEnd);
+  assert.match(schedulerBlock, /this\.upgrade\.tick\(\)/);
+  assert.doesNotMatch(schedulerBlock, /executeNext/);
+});
