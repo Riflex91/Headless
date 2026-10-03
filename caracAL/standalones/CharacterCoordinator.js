@@ -824,7 +824,6 @@ function migrate_old_storage(path, localStorage) {
       });
     }
 
-
     if (
       normalized.module === "MerchantMerritController" &&
       normalized.type === "MERRIT_PARCEL_CONFIRMED" &&
@@ -2001,9 +2000,7 @@ function migrate_old_storage(path, localStorage) {
     const started_at = Date.now();
     while (Date.now() - started_at < timeout_ms) {
       const merchant_block = character_manage[merchant_name];
-      if (
-        live_item_quantity(merchant_block, item_name) >= target_quantity
-      ) {
+      if (live_item_quantity(merchant_block, item_name) >= target_quantity) {
         return true;
       }
       await sleep(100);
@@ -2029,13 +2026,7 @@ function migrate_old_storage(path, localStorage) {
 
   async function run_material_worker_task(
     worker_name,
-    {
-      merchant_name,
-      item_name,
-      monster_type,
-      quantity,
-      recipient_position,
-    },
+    { merchant_name, item_name, monster_type, quantity, recipient_position },
   ) {
     const worker_block = character_manage[worker_name];
     if (!worker_block) {
@@ -2047,8 +2038,8 @@ function migrate_old_storage(path, localStorage) {
     }
     if (
       worker_block.account_owned !== true ||
-      (worker_block.account_character_type || worker_block.live_state?.ctype) !==
-        "ranger"
+      (worker_block.account_character_type ||
+        worker_block.live_state?.ctype) !== "ranger"
     ) {
       return {
         outcome: "FAIL",
@@ -2097,18 +2088,14 @@ function migrate_old_storage(path, localStorage) {
       }
 
       if (runtime_override_applied) {
-        await restart_character_for_movement_runtime(
-          worker_name,
-          worker_block,
-        );
+        await restart_character_for_movement_runtime(worker_name, worker_block);
       } else if (!worker_block.instance) {
         await control_character(worker_name, CONTROL_ACTIONS.START);
       }
 
       const ready_block = await wait_for_material_worker_runtime(worker_name);
       material_gather_task_sequence += 1;
-      request_id =
-        `material-gather-${Date.now()}-${material_gather_task_sequence}`;
+      request_id = `material-gather-${Date.now()}-${material_gather_task_sequence}`;
       const result_promise = wait_for_material_gather_task_result(
         worker_name,
         request_id,
@@ -2135,24 +2122,19 @@ function migrate_old_storage(path, localStorage) {
         };
       }
 
-      emit_supervisor_event(
-        "FISHING_MATERIAL_WORKER_DISPATCHED",
-        worker_name,
-        {
-          request_id,
-          merchant: merchant_name,
-          item_name,
-          monster_type,
-          quantity,
-        },
-      );
+      emit_supervisor_event("FISHING_MATERIAL_WORKER_DISPATCHED", worker_name, {
+        request_id,
+        merchant: merchant_name,
+        item_name,
+        monster_type,
+        quantity,
+      });
 
       const response = await result_promise;
       if (response.error || !response.result) {
         return {
           outcome: "FAIL",
-          reason:
-            response.error || "MATERIAL_GATHER_TASK_RESULT_MISSING",
+          reason: response.error || "MATERIAL_GATHER_TASK_RESULT_MISSING",
           worker: worker_name,
         };
       }
@@ -2198,27 +2180,19 @@ function migrate_old_storage(path, localStorage) {
         material_worker_active_count - 1,
       );
       schedule_merchant_logistics_dispatch();
-      emit_supervisor_event(
-        "FISHING_MATERIAL_WORKER_RESTORED",
-        worker_name,
-        {
-          request_id,
-          runtime_state_restored,
-          desired_runtime_state: original_desired_state,
-        },
-      );
+      emit_supervisor_event("FISHING_MATERIAL_WORKER_RESTORED", worker_name, {
+        request_id,
+        runtime_state_restored,
+        desired_runtime_state: original_desired_state,
+      });
     }
   }
 
-  async function coordinate_fishing_material_request(
-    merchant_name,
-    request,
-  ) {
+  async function coordinate_fishing_material_request(merchant_name, request) {
     const item_name =
       typeof request?.itemName === "string" ? request.itemName.trim() : "";
     const quantity = Math.max(1, Math.floor(Number(request?.quantity) || 1));
-    const monster_type =
-      item_name === "spidersilk" ? "spider" : null;
+    const monster_type = item_name === "spidersilk" ? "spider" : null;
     const key = `${merchant_name}:${item_name}`;
 
     if (!item_name || !monster_type) {
@@ -2353,8 +2327,7 @@ function migrate_old_storage(path, localStorage) {
         ) {
           state.outcome = worker_result.outcome;
           state.reason =
-            worker_result.reason ||
-            "FISHING_MATERIAL_WORKER_OUTCOME_UNCERTAIN";
+            worker_result.reason || "FISHING_MATERIAL_WORKER_OUTCOME_UNCERTAIN";
           state.completedAt = Date.now();
           report_fishing_material_result(
             merchant_name,
@@ -2378,8 +2351,7 @@ function migrate_old_storage(path, localStorage) {
       }
 
       state.outcome = "FAIL";
-      state.reason =
-        state.reason || "FISHING_MATERIAL_NO_WORKER_SUCCEEDED";
+      state.reason = state.reason || "FISHING_MATERIAL_NO_WORKER_SUCCEEDED";
       state.completedAt = Date.now();
       report_fishing_material_result(
         merchant_name,
