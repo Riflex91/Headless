@@ -402,6 +402,25 @@ test("exchange success confirms and explicit failed result rejects", async () =>
   assert.equal(rejectedResult.status, "REJECTED");
 });
 
+test("exchange thrown structured rejection is REJECTED with preserved reason", async () => {
+  const setup = makeBoundary(makeState(), {
+    async exchange() {
+      throw { reason: "distance" };
+    },
+  });
+
+  const result = await setup.boundary.exchange({
+    itemSlot: 7,
+    module: "Exchange",
+    why: "EXCHANGE_TOKEN",
+  });
+
+  assert.equal(result.status, "REJECTED");
+  assert.equal(result.error, "distance");
+  assert.equal(result.evidence.reason, "distance");
+  assert.equal(setup.ledger.canRetry(result.id), true);
+});
+
 test("exchange can confirm from consumed stack and otherwise remains UNKNOWN", async () => {
   const state = makeState();
   const confirmed = makeBoundary(state, {
