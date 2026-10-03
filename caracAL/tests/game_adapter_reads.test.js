@@ -406,4 +406,3 @@ test("item grade read delegates to the Adventure Land runtime helper safely", ()
   };
   assert.equal(adapter.itemGrade({ name: "sword", level: 7 }), null);
 });
-
