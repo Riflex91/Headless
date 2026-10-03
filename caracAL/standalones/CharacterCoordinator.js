@@ -831,6 +831,14 @@ function migrate_old_storage(path, localStorage) {
 
     if (
       char_block &&
+      normalized.data?.futureGear &&
+      typeof normalized.data.futureGear === "object"
+    ) {
+      char_block.future_gear_runtime = normalized.data.futureGear;
+    }
+
+    if (
+      char_block &&
       normalized.data?.merchantMerrit &&
       typeof normalized.data.merchantMerrit === "object"
     ) {
@@ -1101,6 +1109,7 @@ function migrate_old_storage(path, localStorage) {
     char_block.inventory_intelligence_runtime =
       char_block.inventory_intelligence_runtime || null;
     char_block.gear_scoring_runtime = char_block.gear_scoring_runtime || null;
+    char_block.future_gear_runtime = char_block.future_gear_runtime || null;
     char_block.gear_scoring_live_test =
       char_block.gear_scoring_live_test || null;
     char_block.movement_live_test_typescript_override = null;
