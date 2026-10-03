@@ -308,4 +308,3 @@ test("Upgrade scheduler plans only and mutation stays explicit one-shot", () => 
   assert.match(schedulerBlock, /this\.upgrade\.tick\(\)/);
   assert.doesNotMatch(schedulerBlock, /executeNext/);
 });
-
