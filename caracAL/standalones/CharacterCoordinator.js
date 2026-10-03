@@ -3455,13 +3455,12 @@ function migrate_old_storage(path, localStorage) {
         404,
       );
     }
-    if (
-      (char_block.account_character_type || char_block.live_state?.ctype) !==
-      "ranger"
-    ) {
+    const class_skill_type =
+      char_block.account_character_type || char_block.live_state?.ctype;
+    if (!["ranger", "merchant"].includes(class_skill_type)) {
       throw make_control_error(
-        "CLASS_SKILL_RANGER_REQUIRED",
-        `Class skill live test requires a Ranger: ${char_name}`,
+        "CLASS_SKILL_LIVE_TEST_CLASS_UNSUPPORTED",
+        `Class skill live test requires a Ranger or Merchant: ${char_name}`,
         400,
       );
     }
