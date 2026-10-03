@@ -2,7 +2,12 @@ import type {
   InventoryIntelligenceController,
   InventoryIntelligenceEntry,
 } from "./inventory-intelligence-controller.lib";
-import type { InventorySlotSnapshot } from "./game-adapter.lib";
+import type {
+  CharacterSnapshot,
+  InventorySlotSnapshot,
+  NpcSnapshot,
+} from "./game-adapter.lib";
+import type { MovementController } from "./movement-controller.lib";
 import type {
   CompoundController,
   CompoundStatus,
@@ -68,6 +73,18 @@ export interface CompoundLiveTestResult {
     allItemsUnprotectedBefore: boolean;
     scrollUnprotectedBefore: boolean;
     exactCandidateSelected: boolean;
+    stationLocated: boolean;
+    stationId: string | null;
+    stationMap: string | null;
+    stationX: number | null;
+    stationY: number | null;
+    stationDistanceBefore: number | null;
+    stationTravelRequired: boolean;
+    stationTravelConfirmed: boolean;
+    stationTravelActionId: string | null;
+    stationTravelStatus: string | null;
+    stationDistanceAfter: number | null;
+    stationProximityReady: boolean;
     localPreflightReadOnly: boolean;
     compoundOperationIdle: boolean;
     itemLocksClear: boolean;
@@ -84,6 +101,7 @@ export interface CompoundLiveTestResult {
     offeringOmitted: boolean;
   };
   scope: {
+    movementMutationAllowed: true;
     upgradeMutationAllowed: false;
     compoundMutationAllowed: true;
     irreversibleMutation: true;
@@ -100,7 +118,9 @@ export interface CompoundLiveTestResult {
 }
 
 interface CompoundLiveGameAdapter {
+  character(): CharacterSnapshot;
   inventory(): InventorySlotSnapshot[];
+  npcs(mapName?: string | null): NpcSnapshot[];
   gameData(): Record<string, unknown>;
   itemGrade(item: Record<string, unknown>): number | null;
 }
@@ -115,6 +135,7 @@ interface CompoundLiveTestDependencies {
     CompoundController,
     "status" | "tick" | "executeNext" | "setConfigOverride" | "clearConfigOverride"
   >;
+  movement: Pick<MovementController, "smart">;
   characterName?: () => string | null;
   runtimePreflight: () => CompoundLiveRuntimePreflight;
   now?: () => number;
@@ -149,6 +170,30 @@ function nonNegativeInteger(value: unknown): number | null {
     value >= 0
     ? value
     : null;
+}
+
+const COMPOUND_STATION_ID = "newupgrade";
+const COMPOUND_STATION_MAP = "main";
+const COMPOUND_STATION_MAX_DISTANCE = 60;
+
+function stationDistance(
+  character: CharacterSnapshot,
+  station: NpcSnapshot,
+): number | null {
+  if (
+    character.map !== station.map ||
+    typeof character.x !== "number" ||
+    !Number.isFinite(character.x) ||
+    typeof character.y !== "number" ||
+    !Number.isFinite(character.y) ||
+    typeof station.x !== "number" ||
+    !Number.isFinite(station.x) ||
+    typeof station.y !== "number" ||
+    !Number.isFinite(station.y)
+  ) {
+    return null;
+  }
+  return Math.hypot(character.x - station.x, character.y - station.y);
 }
 
 function inventoryItem(
@@ -329,6 +374,18 @@ function baseEvidence(): CompoundLiveTestResult["evidence"] {
     allItemsUnprotectedBefore: false,
     scrollUnprotectedBefore: false,
     exactCandidateSelected: false,
+    stationLocated: false,
+    stationId: null,
+    stationMap: null,
+    stationX: null,
+    stationY: null,
+    stationDistanceBefore: null,
+    stationTravelRequired: false,
+    stationTravelConfirmed: false,
+    stationTravelActionId: null,
+    stationTravelStatus: null,
+    stationDistanceAfter: null,
+    stationProximityReady: false,
     localPreflightReadOnly: false,
     compoundOperationIdle: false,
     itemLocksClear: false,
@@ -423,6 +480,7 @@ export class CompoundLiveTestRunner {
             : true,
         },
         scope: {
+          movementMutationAllowed: true,
           upgradeMutationAllowed: false,
           compoundMutationAllowed: true,
           irreversibleMutation: true,
@@ -541,6 +599,90 @@ export class CompoundLiveTestRunner {
         compoundStatus = planned;
         reason =
           planned.reason || "COMPOUND_LIVE_EXACT_CANDIDATE_NOT_READY";
+        return (finalResult = finish());
+      }
+
+      const station =
+        this.deps.game
+          .npcs(COMPOUND_STATION_MAP)
+          .find(
+            (npc) =>
+              npc.id === COMPOUND_STATION_ID &&
+              npc.map === COMPOUND_STATION_MAP &&
+              typeof npc.x === "number" &&
+              Number.isFinite(npc.x) &&
+              typeof npc.y === "number" &&
+              Number.isFinite(npc.y),
+          ) || null;
+      evidence.stationLocated = !!station;
+      evidence.stationId = station?.id || null;
+      evidence.stationMap = station?.map || null;
+      evidence.stationX = station?.x ?? null;
+      evidence.stationY = station?.y ?? null;
+
+      if (!station) {
+        compoundStatus = planned;
+        reason = "COMPOUND_LIVE_STATION_NOT_FOUND";
+        return (finalResult = finish());
+      }
+
+      evidence.stationDistanceBefore = stationDistance(
+        this.deps.game.character(),
+        station,
+      );
+      evidence.stationTravelRequired =
+        evidence.stationDistanceBefore === null ||
+        evidence.stationDistanceBefore > COMPOUND_STATION_MAX_DISTANCE;
+
+      if (evidence.stationTravelRequired) {
+        try {
+          const travel = await this.deps.movement.smart({
+            owner: "CompoundLiveTest",
+            module: "CompoundLiveTest",
+            why: "COMPOUND_STATION_REQUIRED",
+            correlationId: requestId,
+            destination: {
+              map: station.map,
+              x: station.x as number,
+              y: station.y as number,
+            },
+          });
+          evidence.stationTravelActionId = travel.id;
+          evidence.stationTravelStatus = travel.status || null;
+          evidence.stationTravelConfirmed = travel.status === "CONFIRMED";
+
+          if (travel.status === "UNKNOWN") {
+            compoundStatus = planned;
+            outcome = "UNKNOWN";
+            reason =
+              "COMPOUND_LIVE_STATION_TRAVEL_UNKNOWN_NO_COMPOUND_DISPATCH";
+            return (finalResult = finish());
+          }
+          if (!evidence.stationTravelConfirmed) {
+            compoundStatus = planned;
+            reason = "COMPOUND_LIVE_STATION_TRAVEL_NOT_CONFIRMED";
+            return (finalResult = finish());
+          }
+        } catch (_error) {
+          compoundStatus = planned;
+          reason = "COMPOUND_LIVE_STATION_TRAVEL_ERROR";
+          return (finalResult = finish());
+        }
+      } else {
+        evidence.stationTravelConfirmed = true;
+      }
+
+      evidence.stationDistanceAfter = stationDistance(
+        this.deps.game.character(),
+        station,
+      );
+      evidence.stationProximityReady =
+        evidence.stationDistanceAfter !== null &&
+        evidence.stationDistanceAfter <= COMPOUND_STATION_MAX_DISTANCE;
+
+      if (!evidence.stationProximityReady) {
+        compoundStatus = planned;
+        reason = "COMPOUND_LIVE_STATION_PROXIMITY_NOT_CONFIRMED";
         return (finalResult = finish());
       }
 
