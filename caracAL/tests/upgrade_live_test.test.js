@@ -174,8 +174,12 @@ function makeRunner({
           items: {
             sword: { upgrade: { attack: 2 } },
             scroll0: {},
+            scroll1: {},
           },
         };
+      },
+      itemGrade() {
+        return 0;
       },
     },
     inventoryIntelligence: intelligence,
@@ -208,6 +212,8 @@ test("Upgrade live runner confirms one real successful mutation", async () => {
   assert.equal(result.outcome, "PASS");
   assert.equal(result.reason, "UPGRADE_LIVE_E2E_CONFIRMED");
   assert.equal(setup.executeCalls(), 1);
+  assert.equal(result.evidence.itemGradeKnown, true);
+  assert.equal(result.evidence.scrollGradeCompatible, true);
   assert.equal(result.evidence.actionDispatchedOnce, true);
   assert.equal(result.evidence.actionConfirmed, true);
   assert.equal(result.evidence.upgradeSucceeded, true);
@@ -237,6 +243,24 @@ test("Upgrade live runner accepts a confirmed chance failure when mutation is ob
   assert.equal(result.after.item.present, false);
   assert.equal(result.evidence.mutationObserved, true);
   assert.equal(setup.executeCalls(), 1);
+});
+
+test("Upgrade live runner refuses a scroll that does not match Adventure Land item grade", async () => {
+  const setup = makeRunner();
+
+  const result = await setup.runner.run({
+    itemName: "sword",
+    scrollName: "scroll1",
+  });
+
+  assert.equal(result.outcome, "FAIL");
+  assert.equal(
+    result.reason,
+    "UPGRADE_LIVE_SAFE_TARGET_OR_SCROLL_NOT_FOUND",
+  );
+  assert.equal(result.evidence.itemGradeKnown, false);
+  assert.equal(result.evidence.scrollGradeCompatible, false);
+  assert.equal(setup.executeCalls(), 0);
 });
 
 test("Upgrade live runner returns UNKNOWN without any retry", async () => {
