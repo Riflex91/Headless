@@ -3005,9 +3005,7 @@ function migrate_old_storage(path, localStorage) {
               .filter((slot) => Number.isInteger(slot) && slot >= 0)
               .sort((left, right) => left - right)
           : [];
-        const scroll_locked_slots = Array.isArray(
-          selected.scrollLockedSlots,
-        )
+        const scroll_locked_slots = Array.isArray(selected.scrollLockedSlots)
           ? selected.scrollLockedSlots
               .map((slot) => Number(slot))
               .filter((slot) => Number.isInteger(slot) && slot >= 0)
