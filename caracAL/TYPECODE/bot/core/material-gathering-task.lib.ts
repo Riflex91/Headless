@@ -14,6 +14,7 @@ import type { MovementController } from "./movement-controller.lib";
 export interface MaterialGatherTaskOptions {
   requestId?: string;
   itemName: string;
+  itemLevel?: number;
   monsterType: string;
   quantity: number;
   recipient: string;
@@ -22,6 +23,7 @@ export interface MaterialGatherTaskOptions {
     x: number;
     y: number;
   };
+  purpose?: "FISHING_MATERIAL" | "COMPOUND_TEST_MATERIAL";
   timeoutMs?: number;
   pollMs?: number;
 }
@@ -35,6 +37,7 @@ export interface MaterialGatherTaskResult {
   durationMs: number;
   worker: string | null;
   itemName: string;
+  itemLevel: number | null;
   monsterType: string;
   quantity: number;
   recipient: string;
@@ -92,6 +95,15 @@ function positiveInteger(value: unknown): number | null {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
+function nonNegativeInteger(value: unknown): number | null {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function itemLevel(item: Record<string, unknown> | null): number {
+  return nonNegativeInteger(item?.level) ?? 0;
+}
+
 function itemQuantity(item: Record<string, unknown> | null): number {
   if (!item) return 0;
   const quantity = Number(item.q);
@@ -101,12 +113,18 @@ function itemQuantity(item: Record<string, unknown> | null): number {
 function inventoryQuantity(
   inventory: InventorySlotSnapshot[],
   itemName: string,
+  requiredLevel: number | null = null,
 ): number {
-  return inventory.reduce(
-    (sum, entry) =>
-      entry.item?.name === itemName ? sum + itemQuantity(entry.item) : sum,
-    0,
-  );
+  return inventory.reduce((sum, entry) => {
+    if (entry.item?.name !== itemName) return sum;
+    if (
+      requiredLevel !== null &&
+      itemLevel(entry.item) !== requiredLevel
+    ) {
+      return sum;
+    }
+    return sum + itemQuantity(entry.item);
+  }, 0);
 }
 
 function distance(
@@ -189,6 +207,10 @@ export class MaterialGatheringTaskRunner {
     const requestId =
       options.requestId || `material-gather-${startedAt}`;
     const quantity = positiveInteger(options.quantity);
+    const requiredLevel =
+      options.itemLevel === undefined
+        ? null
+        : nonNegativeInteger(options.itemLevel);
     const timeoutMs = Math.max(
       30000,
       Number(options.timeoutMs) || DEFAULT_TIMEOUT_MS,
@@ -198,6 +220,7 @@ export class MaterialGatheringTaskRunner {
     const initialQuantity = inventoryQuantity(
       this.deps.game.inventory(),
       options.itemName,
+      requiredLevel,
     );
     let outcome: MaterialGatherTaskResult["outcome"] = "FAIL";
     let reason = "MATERIAL_GATHER_NOT_COMPLETED";
@@ -212,6 +235,7 @@ export class MaterialGatheringTaskRunner {
       const currentQuantity = inventoryQuantity(
         this.deps.game.inventory(),
         options.itemName,
+        requiredLevel,
       );
       return {
         requestId,
@@ -222,6 +246,7 @@ export class MaterialGatheringTaskRunner {
         durationMs: Math.max(0, completedAt - startedAt),
         worker,
         itemName: options.itemName,
+        itemLevel: requiredLevel,
         monsterType: options.monsterType,
         quantity: quantity || 0,
         recipient: options.recipient,
@@ -284,6 +309,7 @@ export class MaterialGatheringTaskRunner {
         const available = inventoryQuantity(
           this.deps.game.inventory(),
           options.itemName,
+          requiredLevel,
         );
         if (available >= quantity) break;
 
@@ -418,6 +444,7 @@ export class MaterialGatheringTaskRunner {
               inventoryQuantity(
                 this.deps.game.inventory(),
                 options.itemName,
+                requiredLevel,
               ) < quantity
             ) {
               outcome = "UNKNOWN";
@@ -448,8 +475,11 @@ export class MaterialGatheringTaskRunner {
       }
 
       if (
-        inventoryQuantity(this.deps.game.inventory(), options.itemName) <
-        quantity
+        inventoryQuantity(
+          this.deps.game.inventory(),
+          options.itemName,
+          requiredLevel,
+        ) < quantity
       ) {
         outcome = "TIMEOUT";
         reason = "MATERIAL_GATHER_TIMEOUT";
@@ -490,11 +520,18 @@ export class MaterialGatheringTaskRunner {
           },
           itemName: options.itemName,
           quantity,
-          reason: "FISHING_MATERIAL_DELIVERY",
+          reason:
+            options.purpose === "COMPOUND_TEST_MATERIAL"
+              ? "COMPOUND_TEST_MATERIAL_DELIVERY"
+              : "FISHING_MATERIAL_DELIVERY",
           metadata: {
-            purpose: "FISHING_MATERIAL",
+            purpose:
+              options.purpose === "COMPOUND_TEST_MATERIAL"
+                ? "COMPOUND_TEST_MATERIAL"
+                : "FISHING_MATERIAL",
             authorized: true,
             monsterType: options.monsterType,
+            itemLevel: requiredLevel,
           },
         });
 

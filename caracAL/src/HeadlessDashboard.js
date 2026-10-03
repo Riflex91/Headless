@@ -321,6 +321,7 @@ function attachHeadlessDashboard({
   runAccountGearReservationLiveTest,
   runUpgradeLiveTest,
   runUpgradeLivePreflight,
+  runCompoundMaterialPreparation,
   runLogisticsLiveTest,
   runMerchantLiveTest,
   runBankTravelLiveTest,
@@ -626,6 +627,35 @@ function attachHeadlessDashboard({
       } catch (error) {
         res.status(Number(error.statusCode) || 500).json({
           error: error.code || "UPGRADE_PREFLIGHT_FAILED",
+          message: error.message,
+        });
+      }
+    },
+  );
+
+  router.post(
+    "/headless/api/characters/:name/tests/compound-prepare",
+    express.json({ limit: "8kb" }),
+    async (req, res) => {
+      if (!runCompoundMaterialPreparation) {
+        res.status(503).json({
+          error: "COMPOUND_MATERIAL_PREPARATION_UNAVAILABLE",
+        });
+        return;
+      }
+
+      try {
+        const result = await runCompoundMaterialPreparation(req.params.name, {
+          workers: req.body?.workers,
+        });
+        res.json({
+          ok: result?.outcome === "PASS",
+          result,
+          snapshot: getSnapshot(),
+        });
+      } catch (error) {
+        res.status(Number(error.statusCode) || 500).json({
+          error: error.code || "COMPOUND_MATERIAL_PREPARATION_FAILED",
           message: error.message,
         });
       }

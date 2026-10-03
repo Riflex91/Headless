@@ -133,6 +133,29 @@ test("inventory intelligence covers every Phase 10 disposition", () => {
   }
 });
 
+test("inventory intelligence supports explicit COMPOUND classification", () => {
+  const setup = makeController({
+    items: [{ name: "ring", level: 0 }],
+    gameData: {
+      items: {
+        ring: { type: "ring", compound: { dex: 1 } },
+      },
+    },
+    inventory: {
+      intelligence: { enabled: true },
+      dispositions: {
+        COMPOUND: ["ring"],
+      },
+    },
+  });
+
+  const status = setup.controller.tick();
+
+  assert.equal(status.entries[0].disposition, "COMPOUND");
+  assert.equal(status.entries[0].protected, false);
+  assert.equal(status.summary.dispositions.COMPOUND, 1);
+});
+
 test("inventory intelligence applies all protection classes conservatively", () => {
   const setup = makeController({
     items: [

@@ -42,6 +42,14 @@ import {
   UpgradeEvent,
 } from "./upgrade-controller.lib";
 import {
+  CompoundController,
+  CompoundEvent,
+} from "./compound-controller.lib";
+import {
+  CompoundGatherPlan,
+  planCompoundGatherTarget as buildCompoundGatherPlan,
+} from "./compound-gather-plan.lib";
+import {
   UpgradeLiveTestOptions,
   UpgradeLiveTestResult,
   UpgradeLiveTestRunner,
@@ -159,6 +167,8 @@ const FUTURE_GEAR_JOB_ID = "future-gear-loop";
 const FUTURE_GEAR_INTERVAL_MS = 1000;
 const UPGRADE_JOB_ID = "upgrade-loop";
 const UPGRADE_INTERVAL_MS = 1000;
+const COMPOUND_JOB_ID = "compound-loop";
+const COMPOUND_INTERVAL_MS = 1000;
 const FARM_INTELLIGENCE_JOB_ID = "farm-intelligence-loop";
 const FARM_INTELLIGENCE_INTERVAL_MS = 1000;
 const MERCHANT_AUTONOMY_JOB_ID = "merchant-autonomy-loop";
@@ -230,6 +240,7 @@ export class BotRuntimeKernel {
   readonly gearScoring: GearScoringController;
   readonly futureGear: FutureGearController;
   readonly upgrade: UpgradeController;
+  readonly compound: CompoundController;
   readonly merchantAutonomy: MerchantAutonomyController;
   readonly bankTravel: BankTravelController;
   readonly bankGoldSettlement: BankGoldSettlementController;
@@ -358,6 +369,15 @@ export class BotRuntimeKernel {
         onEvent: (event) => this.handleUpgradeEvent(event),
       },
     );
+    this.compound = new CompoundController(
+      this.game,
+      this.actions,
+      this.inventoryIntelligence,
+      {
+        config: () => runtimeConfig?.config || {},
+        onEvent: (event) => this.handleCompoundEvent(event),
+      },
+    );
     this.merchantAutonomy = new MerchantAutonomyController(
       this.game,
       this.actions,
@@ -443,6 +463,15 @@ export class BotRuntimeKernel {
       priority: 83,
       tick: () => {
         this.upgrade.tick();
+      },
+    });
+
+    this.scheduler.register({
+      id: COMPOUND_JOB_ID,
+      intervalMs: COMPOUND_INTERVAL_MS,
+      priority: 82,
+      tick: () => {
+        this.compound.tick();
       },
     });
 
@@ -596,6 +625,7 @@ export class BotRuntimeKernel {
       gearScoring: this.gearScoring.status(),
       futureGear: this.futureGear.status(),
       upgrade: this.upgrade.status(),
+      compound: this.compound.status(),
       merchantAutonomy: this.merchantAutonomy.status(),
       bankTravel: this.bankTravel.status(),
       merchantMerrit: this.merchantMerrit.status(),
@@ -620,6 +650,23 @@ export class BotRuntimeKernel {
       throw new Error("runtime must be RUNNING for upgrade execution");
     }
     return this.upgrade.executeNext() as unknown as Record<string, unknown>;
+  }
+
+  async executeCompoundNext(): Promise<Record<string, unknown>> {
+    if (this.upgradeLiveTestRunning || this.upgradePreflightRunning) {
+      throw new Error("upgrade verification is running");
+    }
+    if (!this.started || this.stopping) {
+      throw new Error("runtime is not ready for compound execution");
+    }
+    if (runtimeState() !== "RUNNING") {
+      throw new Error("runtime must be RUNNING for compound execution");
+    }
+    return this.compound.executeNext() as unknown as Record<string, unknown>;
+  }
+
+  compoundGatherPlan(): CompoundGatherPlan {
+    return buildCompoundGatherPlan(this.game);
   }
 
   async runUpgradePreflight(): Promise<UpgradePreflightResult> {
@@ -2451,6 +2498,18 @@ export class BotRuntimeKernel {
       ...(event.actionId && { actionId: event.actionId }),
       data: {
         upgrade: event.status,
+      },
+    });
+  }
+
+  private handleCompoundEvent(event: CompoundEvent): void {
+    this.eventBus.emit({
+      module: "CompoundController",
+      type: event.type,
+      why: event.reason,
+      ...(event.actionId && { actionId: event.actionId }),
+      data: {
+        compound: event.status,
       },
     });
   }

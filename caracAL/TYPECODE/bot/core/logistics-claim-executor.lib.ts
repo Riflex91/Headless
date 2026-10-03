@@ -86,6 +86,11 @@ function itemName(slot: InventorySlotSnapshot): string | null {
   return text(slot.item?.name);
 }
 
+function itemLevel(slot: InventorySlotSnapshot): number {
+  const level = Number(slot.item?.level);
+  return Number.isInteger(level) && level >= 0 ? level : 0;
+}
+
 function itemQuantity(slot: InventorySlotSnapshot): number {
   if (!slot.item) return 0;
   const quantity = Number(slot.item.q);
@@ -328,11 +333,17 @@ export class LogisticsClaimExecutor {
   ): Promise<LogisticsExecutionResult> {
     const name = text(claim.itemName);
     const requestedQuantity = positiveInteger(claim.quantity) || 1;
+    const requiredLevel =
+      claim.metadata?.purpose === "COMPOUND_TEST_MATERIAL"
+        ? Math.max(0, Math.floor(Number(claim.metadata?.itemLevel) || 0))
+        : null;
     if (!name) {
       return blocked(claim, source, target, "CLAIM_ITEM_INVALID");
     }
     if (
-      claim.metadata?.purpose !== "FISHING_MATERIAL" ||
+      !["FISHING_MATERIAL", "COMPOUND_TEST_MATERIAL"].includes(
+        String(claim.metadata?.purpose || ""),
+      ) ||
       claim.metadata?.authorized !== true
     ) {
       return blocked(
@@ -347,6 +358,9 @@ export class LogisticsClaimExecutor {
       .inventory()
       .filter((slot) => {
         if (itemName(slot) !== name || !slot.item) return false;
+        if (requiredLevel !== null && itemLevel(slot) !== requiredLevel) {
+          return false;
+        }
         const item = slot.item;
         return (
           item.l !== true &&
