@@ -222,6 +222,10 @@ test("supervisor snapshot counts active lifecycle states", () => {
   assert.equal(snapshot.goals.readOnly, true);
   assert.equal(snapshot.goals.executionEnabled, false);
   assert.equal(snapshot.goals.state, "EMPTY");
+  assert.equal(snapshot.goal_handoff.readOnly, true);
+  assert.equal(snapshot.goal_handoff.executionEnabled, false);
+  assert.equal(snapshot.goal_handoff.dispatchAllowed, false);
+  assert.equal(snapshot.goal_handoff.state, "IDLE");
 });
 
 test("supervisor snapshot exposes supplied read-only account strategy projection", () => {
@@ -369,6 +373,79 @@ test("supervisor snapshot exposes supplied read-only goal planning projection", 
   assert.deepEqual(snapshot.goals, goalPlan);
   assert.equal(snapshot.goals.executionEnabled, false);
   assert.equal(snapshot.goals.lifecycleMutationDispatched, false);
+});
+
+test("supervisor snapshot exposes supplied read-only Goal handoff projection", () => {
+  const handoff = {
+    timestamp: 1234,
+    state: "READY",
+    reason: "GOAL_HANDOFF_READY",
+    readOnly: true,
+    executionEnabled: false,
+    dispatchAllowed: false,
+    lifecycleMutationDispatched: false,
+    gameplayMutationDispatched: false,
+    valueMutationDispatched: false,
+    selectedGoal: {
+      goalId: "farm-gem0",
+      type: "FARM_ITEM",
+      priority: 90,
+      characterName: null,
+      target: { itemName: "gem0", quantity: 10 },
+    },
+    selectedTask: {
+      taskId: "farm-gem0:3",
+      kind: "FARM_ITEM",
+      subsystem: "FullAutonomy/FarmIntelligence",
+      owners: ["FullAutonomy", "FarmIntelligence"],
+      description: "Farm until 10 x gem0 is confirmed",
+      lane: "FULL_AUTONOMY_FARM",
+      status: "PLANNED",
+      executionAllowed: false,
+      mutationDispatched: false,
+    },
+    candidates: [],
+    summary: {
+      goals: 1,
+      active: 1,
+      actionable: 1,
+      waiting: 0,
+      malformed: 0,
+    },
+    safety: {
+      valid: true,
+      readOnly: true,
+      executionDisabled: true,
+      noMutationDispatched: true,
+      policyValid: true,
+      goalsSafe: true,
+    },
+    policy: {
+      goalIntentExecutionSeparated: true,
+      manualStopInheritedFromGoalPlanner: true,
+      fullAutonomyHandoffOnly: true,
+      oneSelectedTask: true,
+      directMutationAllowed: false,
+    },
+  };
+
+  const snapshot = buildSupervisorSnapshot(
+    {},
+    {},
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    handoff,
+  );
+
+  assert.deepEqual(snapshot.goal_handoff, handoff);
+  assert.equal(snapshot.goal_handoff.executionEnabled, false);
+  assert.equal(snapshot.goal_handoff.dispatchAllowed, false);
+  assert.equal(snapshot.goal_handoff.lifecycleMutationDispatched, false);
 });
 
 test("diagnostic time range query is bounded", () => {
