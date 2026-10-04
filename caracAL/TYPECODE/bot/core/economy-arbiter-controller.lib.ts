@@ -49,6 +49,7 @@ export interface EconomyArbiterStatus {
     unknownBlocksLowerPriority: true;
     safetyBlocksLowerPriority: true;
     backgroundDynamicScoring: false;
+    enforcementEnabled: boolean;
     executionEnabled: false;
     valueMutationForced: false;
   };
@@ -61,6 +62,82 @@ export interface EconomyArbiterEvent {
   status: EconomyArbiterStatus;
 }
 
+export interface EconomyArbiterAuthorization {
+  enforced: boolean;
+  allowed: boolean;
+  lane: EconomyArbiterLane;
+  selectedLane: EconomyArbiterLane | null;
+  state: EconomyArbiterState;
+  reason: string;
+}
+
+export interface EconomyArbiterIntent {
+  module: string;
+  action: string;
+  why: string;
+  metadata?: Record<string, unknown>;
+}
+
+const ECONOMY_ACTIONS = new Set([
+  "UPGRADE",
+  "COMPOUND",
+  "EXCHANGE",
+  "CRAFT",
+]);
+
+const ECONOMY_MODULES = new Set([
+  "UpgradeController",
+  "CompoundController",
+  "ExchangeController",
+  "CraftController",
+]);
+
+const ECONOMY_PREBUFF_SKILLS = new Set([
+  "massproduction",
+  "massproductionpp",
+  "massexchange",
+  "massexchangepp",
+]);
+
+export function economyArbiterLaneForIntent(
+  intent: EconomyArbiterIntent,
+): EconomyArbiterLane | null {
+  const module = typeof intent.module === "string" ? intent.module.trim() : "";
+  const action = typeof intent.action === "string"
+    ? intent.action.trim().toUpperCase()
+    : "";
+  const why = typeof intent.why === "string"
+    ? intent.why.trim().toUpperCase()
+    : "";
+  const skill =
+    typeof intent.metadata?.skill === "string"
+      ? intent.metadata.skill.trim().toLowerCase()
+      : "";
+
+  if (module === "MerchantMerritController" || why.startsWith("MERRIT_")) {
+    return "MERRIT";
+  }
+  if (module === "MerchantLogistics") {
+    return "CRITICAL_FARMER_LOGISTICS";
+  }
+  if (
+    module === "MerchantSkillController" &&
+    ECONOMY_PREBUFF_SKILLS.has(skill)
+  ) {
+    return "ECONOMY_PREBUFF";
+  }
+  if (ECONOMY_MODULES.has(module) || ECONOMY_ACTIONS.has(action)) {
+    return "ECONOMY";
+  }
+  if (
+    module === "MerchantFishingController" ||
+    why.startsWith("FISHING_")
+  ) {
+    return "BACKGROUND";
+  }
+  return null;
+}
+
 export interface EconomyArbiterControllerOptions {
   now?: () => number;
   config?: () => unknown;
@@ -70,6 +147,7 @@ export interface EconomyArbiterControllerOptions {
 
 interface NormalizedEconomyArbiterConfig {
   enabled: boolean;
+  enforcementEnabled: boolean;
 }
 
 const LANE_ORDER: EconomyArbiterLane[] = [
@@ -93,6 +171,9 @@ function normalizeConfig(value: unknown): NormalizedEconomyArbiterConfig {
   const arbiter = record(root.economyArbiter ?? root.economy_arbiter);
   return {
     enabled: arbiter.enabled !== false,
+    enforcementEnabled:
+      arbiter.enforcementEnabled === true ||
+      arbiter.enforcement_enabled === true,
   };
 }
 
@@ -123,6 +204,7 @@ function emptyStatus(
   enabled: boolean,
   state: EconomyArbiterState,
   reason: string,
+  enforcementEnabled = false,
 ): EconomyArbiterStatus {
   return {
     timestamp,
@@ -143,6 +225,7 @@ function emptyStatus(
       unknownBlocksLowerPriority: true,
       safetyBlocksLowerPriority: true,
       backgroundDynamicScoring: false,
+      enforcementEnabled,
       executionEnabled: false,
       valueMutationForced: false,
     },
@@ -176,6 +259,69 @@ export class EconomyArbiterController {
     return this.lastStatus;
   }
 
+  authorize(lane: EconomyArbiterLane): EconomyArbiterAuthorization {
+    const status = this.tick();
+    const selectedLane = status.selected?.lane || null;
+
+    if (!status.policy.enforcementEnabled) {
+      return {
+        enforced: false,
+        allowed: true,
+        lane,
+        selectedLane,
+        state: status.state,
+        reason: "ECONOMY_ARBITER_ENFORCEMENT_DISABLED",
+      };
+    }
+
+    if (!status.enabled) {
+      return {
+        enforced: true,
+        allowed: false,
+        lane,
+        selectedLane,
+        state: status.state,
+        reason: "ECONOMY_ARBITER_DISABLED",
+      };
+    }
+
+    if (status.state !== "READY") {
+      return {
+        enforced: true,
+        allowed: false,
+        lane,
+        selectedLane,
+        state: status.state,
+        reason:
+          status.state === "UNKNOWN"
+            ? "ECONOMY_ARBITER_UNKNOWN_BLOCK"
+            : status.state === "BLOCKED"
+              ? "ECONOMY_ARBITER_SELECTED_BLOCKED"
+              : "ECONOMY_ARBITER_LANE_NOT_SELECTED",
+      };
+    }
+
+    if (selectedLane !== lane) {
+      return {
+        enforced: true,
+        allowed: false,
+        lane,
+        selectedLane,
+        state: status.state,
+        reason: "ECONOMY_ARBITER_HIGHER_PRIORITY_LANE_SELECTED",
+      };
+    }
+
+    return {
+      enforced: true,
+      allowed: true,
+      lane,
+      selectedLane,
+      state: status.state,
+      reason: "ECONOMY_ARBITER_LANE_AUTHORIZED",
+    };
+  }
+
   tick(): EconomyArbiterStatus {
     const timestamp = this.now();
     const config = normalizeConfig(this.configSource());
@@ -187,6 +333,7 @@ export class EconomyArbiterController {
           false,
           "DISABLED",
           "ECONOMY_ARBITER_DISABLED",
+          config.enforcementEnabled,
         ),
       );
     }
@@ -204,7 +351,13 @@ export class EconomyArbiterController {
 
     if (!selected) {
       return this.publish({
-        ...emptyStatus(timestamp, true, "IDLE", "ECONOMY_ARBITER_IDLE"),
+        ...emptyStatus(
+          timestamp,
+          true,
+          "IDLE",
+          "ECONOMY_ARBITER_IDLE",
+          config.enforcementEnabled,
+        ),
         lanes,
         summary,
       });
@@ -237,6 +390,7 @@ export class EconomyArbiterController {
         unknownBlocksLowerPriority: true,
         safetyBlocksLowerPriority: true,
         backgroundDynamicScoring: false,
+        enforcementEnabled: config.enforcementEnabled,
         executionEnabled: false,
         valueMutationForced: false,
       },
