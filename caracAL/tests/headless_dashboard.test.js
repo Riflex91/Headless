@@ -222,6 +222,10 @@ test("supervisor snapshot counts active lifecycle states", () => {
   assert.equal(snapshot.goals.readOnly, true);
   assert.equal(snapshot.goals.executionEnabled, false);
   assert.equal(snapshot.goals.state, "EMPTY");
+  assert.equal(snapshot.goal_handoff.readOnly, true);
+  assert.equal(snapshot.goal_handoff.executionEnabled, false);
+  assert.equal(snapshot.goal_handoff.handoffDispatched, false);
+  assert.equal(snapshot.goal_handoff.state, "EMPTY");
 });
 
 test("supervisor snapshot exposes supplied read-only account strategy projection", () => {
@@ -369,6 +373,77 @@ test("supervisor snapshot exposes supplied read-only goal planning projection", 
   assert.deepEqual(snapshot.goals, goalPlan);
   assert.equal(snapshot.goals.executionEnabled, false);
   assert.equal(snapshot.goals.lifecycleMutationDispatched, false);
+});
+
+test("supervisor snapshot exposes supplied read-only Goal handoff projection", () => {
+  const goalHandoff = {
+    timestamp: 1234,
+    state: "READY",
+    reason: "GOAL_HANDOFF_READY",
+    readOnly: true,
+    executionEnabled: false,
+    handoffDispatched: false,
+    gameplayMutationDispatched: false,
+    valueMutationDispatched: false,
+    lifecycleMutationDispatched: false,
+    selectedGoal: {
+      goalId: "farm-gem0",
+      type: "FARM_ITEM",
+      priority: 90,
+      state: "PLANNED",
+      reason: "GOAL_PLAN_READY",
+      target: { itemName: "gem0", quantity: 10 },
+    },
+    handoff: {
+      taskId: "farm-gem0:3",
+      kind: "FARM_ITEM",
+      mode: "EXECUTION_INTENT",
+      adapter: "FarmIntelligence",
+      subsystem: "FullAutonomy/FarmIntelligence",
+      mutationDomain: "GAMEPLAY",
+      dispatchAllowed: false,
+      executionEnabled: false,
+      mutationDispatched: false,
+      goalExecutorRequired: true,
+    },
+    blockedGoals: [],
+    summary: {
+      totalGoals: 1,
+      activeGoals: 1,
+      readyGoals: 1,
+      blockedGoals: 0,
+    },
+    policy: {
+      singleGoalSelection: true,
+      highestPriorityReadyFirst: true,
+      blockedGoalsSkipped: true,
+      manualStopRespected: true,
+      existingSubsystemsOnly: true,
+      goalExecutorRequiredForDispatch: true,
+      directGameplayMutationAllowed: false,
+      directValueMutationAllowed: false,
+      directLifecycleMutationAllowed: false,
+      phase20EncounterDeferred: true,
+    },
+  };
+
+  const snapshot = buildSupervisorSnapshot(
+    {},
+    {},
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    goalHandoff,
+  );
+
+  assert.deepEqual(snapshot.goal_handoff, goalHandoff);
+  assert.equal(snapshot.goal_handoff.executionEnabled, false);
+  assert.equal(snapshot.goal_handoff.handoffDispatched, false);
+  assert.equal(snapshot.goal_handoff.gameplayMutationDispatched, false);
 });
 
 test("diagnostic time range query is bounded", () => {

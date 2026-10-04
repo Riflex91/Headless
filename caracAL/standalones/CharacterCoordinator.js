@@ -104,6 +104,7 @@ const {
 } = require("../src/AccountGearReservation");
 const { buildAccountStrategy } = require("../src/AccountStrategy");
 const { buildGoalPlan } = require("../src/GoalPlanner");
+const { buildGoalHandoff } = require("../src/GoalHandoff");
 const { GoalManagementService } = require("../src/GoalManagement");
 const {
   buildFullAutonomyPlan,
@@ -477,6 +478,7 @@ function migrate_old_storage(path, localStorage) {
         getAccountStrategyState: account_strategy_state,
         getFullAutonomyState: full_autonomy_state,
         getGoalPlanState: goal_plan_state,
+        getGoalHandoffState: goal_handoff_state,
         createGoal: (input) => goal_management.create(input),
         updateGoal: (goalId, input) => goal_management.update(goalId, input),
         getMapScene: (mapName) => dashboard_map_scenes.get(mapName) || null,
@@ -527,6 +529,12 @@ function migrate_old_storage(path, localStorage) {
       accountStrategy: account_strategy_state(),
       characterManage: character_manage,
       fullAutonomy: build_full_autonomy_plan(),
+    });
+  }
+
+  function goal_handoff_state() {
+    return buildGoalHandoff(goal_plan_state(), {
+      fullAutonomy: full_autonomy_state(),
     });
   }
 
