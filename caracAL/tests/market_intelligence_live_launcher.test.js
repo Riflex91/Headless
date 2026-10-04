@@ -324,14 +324,16 @@ test("Market Intelligence compact bootstrap output exposes correlated Ponty resp
   result.sourceProbe = {
     evidence: {
       pontySnapshotResponseReceived: true,
-      pontySnapshotItems: 0,
+      pontySnapshotItems: 208,
+      pontyNormalizedListings: 208,
     },
   };
 
   const output = formatCompactResult(result);
   assert.match(output, /Bootstrap runtime: PAUSED/);
   assert.match(output, /Ponty snapshot response: yes/);
-  assert.match(output, /Ponty snapshot items: 0/);
+  assert.match(output, /Ponty snapshot items: 208/);
+  assert.match(output, /Ponty normalized listings: 208/);
   assert.match(output, /Value mutation dispatched: no/);
 });
 
@@ -570,6 +572,10 @@ test("Market Intelligence live launcher bootstraps only through paused read-only
     gameAdapter,
     /secondhands: \(\) => runtimePontySnapshot \?\? runtimeValue\("secondhands"\)/,
   );
+  assert.match(gameAdapter, /runtimeValue\("item_value"\)/);
+  assert.match(gameAdapter, /runtimeValue\("calculate_item_value"\)/);
+  assert.match(gameAdapter, /multipliers\.secondhands_mult/);
+  assert.match(gameAdapter, /multipliers\.secondhands_cash_mult/);
 
   assert.doesNotMatch(launcher, /ActionBoundary/);
   assert.doesNotMatch(launcher, /socket\.emit/);

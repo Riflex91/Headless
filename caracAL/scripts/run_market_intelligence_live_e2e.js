@@ -373,6 +373,10 @@ function formatCompactResult(result) {
         "Ponty snapshot items: " +
           String(sourceProbeEvidence.pontySnapshotItems ?? 0),
       );
+      lines.push(
+        "Ponty normalized listings: " +
+          String(sourceProbeEvidence.pontyNormalizedListings ?? 0),
+      );
     }
   }
 
