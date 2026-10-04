@@ -110,6 +110,7 @@ function actionFromHandoff(goalHandoff) {
     mutationDomain: text(handoff.mutationDomain),
     characterName: text(handoff.characterName),
     target: record(handoff.target),
+    metadata: record(selectedGoal.metadata),
     requiresAdapterDispatcher: true,
   };
 }

@@ -158,6 +158,7 @@ function selectedGoalProjection(goal) {
     state: text(goal.state),
     reason: text(goal.reason),
     target: record(goal.target),
+    metadata: record(goal.metadata),
   };
 }
 

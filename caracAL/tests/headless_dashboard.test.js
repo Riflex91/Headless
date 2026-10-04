@@ -231,6 +231,12 @@ test("supervisor snapshot counts active lifecycle states", () => {
   assert.equal(snapshot.goal_execution.dispatchAllowed, false);
   assert.equal(snapshot.goal_execution.dispatchImplemented, false);
   assert.equal(snapshot.goal_execution.mutationDispatched, false);
+  assert.equal(snapshot.goal_adapter.state, "EMPTY");
+  assert.equal(snapshot.goal_adapter.readOnly, true);
+  assert.equal(snapshot.goal_adapter.dispatchAllowed, false);
+  assert.equal(snapshot.goal_adapter.dispatchImplemented, false);
+  assert.equal(snapshot.goal_adapter.requestDispatched, false);
+  assert.equal(snapshot.goal_adapter.mutationDispatched, false);
 });
 
 test("supervisor snapshot exposes supplied read-only account strategy projection", () => {
@@ -493,6 +499,71 @@ test("supervisor snapshot exposes supplied Goal execution decision projection", 
   assert.equal(snapshot.goal_execution.dispatchAllowed, true);
   assert.equal(snapshot.goal_execution.dispatchImplemented, false);
   assert.equal(snapshot.goal_execution.mutationDispatched, false);
+});
+
+test("supervisor snapshot exposes supplied Goal adapter projection", () => {
+  const goalAdapter = {
+    timestamp: 1234,
+    state: "READY",
+    reason: "GOAL_ADAPTER_CRAFT_REQUEST_READY",
+    readOnly: true,
+    dispatchAllowed: false,
+    dispatchImplemented: false,
+    requestDispatched: false,
+    mutationDispatched: false,
+    decisionState: "READY",
+    decisionReason: "GOAL_EXECUTION_ADAPTER_DISPATCH_READY",
+    goalId: "craft-fireblade",
+    kind: "PLAN_CRAFT",
+    capability: {
+      bridge: "CraftController",
+      runtimeMethod: "executeCraftNext",
+      preflightMethod: "runCraftMaterialPlan",
+      translationSupported: true,
+      runtimeBridgeImplemented: false,
+    },
+    request: {
+      version: 1,
+      type: "GOAL_RUNTIME_SEQUENCE",
+      goalId: "craft-fireblade",
+      taskId: "craft-fireblade:2",
+      kind: "PLAN_CRAFT",
+      bridge: "CraftController",
+      dispatchAllowed: false,
+      dispatchImplemented: false,
+    },
+    policy: {
+      existingRuntimeBridgesOnly: true,
+      explicitRuntimeHintsRequired: true,
+      noInventedExecutionParameters: true,
+      singleRequestPlanOnly: true,
+      dispatcherRequired: true,
+      directGameplayMutationAllowed: false,
+      directValueMutationAllowed: false,
+      directLifecycleMutationAllowed: false,
+    },
+  };
+
+  const snapshot = buildSupervisorSnapshot(
+    {},
+    {},
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    goalAdapter,
+  );
+
+  assert.deepEqual(snapshot.goal_adapter, goalAdapter);
+  assert.equal(snapshot.goal_adapter.dispatchAllowed, false);
+  assert.equal(snapshot.goal_adapter.dispatchImplemented, false);
+  assert.equal(snapshot.goal_adapter.requestDispatched, false);
+  assert.equal(snapshot.goal_adapter.mutationDispatched, false);
 });
 
 test("diagnostic time range query is bounded", () => {

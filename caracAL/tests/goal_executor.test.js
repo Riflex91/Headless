@@ -48,6 +48,7 @@ function readyHandoff({
         itemName: "gem0",
         quantity: 10,
       },
+      metadata: {},
     },
     handoff: {
       taskId: "goal-1:3",
@@ -251,6 +252,7 @@ test("Ready handoff becomes one adapter-dispatch decision without mutation", () 
       itemName: "gem0",
       quantity: 10,
     },
+    metadata: {},
     requiresAdapterDispatcher: true,
   });
   assert.deepEqual(decision.action, action);
@@ -258,6 +260,27 @@ test("Ready handoff becomes one adapter-dispatch decision without mutation", () 
   assert.equal(decision.dispatchAllowed, true);
   assert.equal(decision.dispatchImplemented, false);
   assert.equal(decision.mutationDispatched, false);
+});
+
+test("Goal execution decision preserves adapter runtime metadata", () => {
+  const source = readyHandoff();
+  source.selectedGoal.metadata = {
+    runtime: {
+      workerCharacter: "My_Ranger1",
+      monsterType: "goo",
+    },
+  };
+
+  const decision = buildGoalExecutionDecision(source, {
+    policy: enabledPolicy,
+  });
+
+  assert.deepEqual(decision.action.metadata, {
+    runtime: {
+      workerCharacter: "My_Ranger1",
+      monsterType: "goo",
+    },
+  });
 });
 
 test("Unsupported handoff kinds fail closed", () => {

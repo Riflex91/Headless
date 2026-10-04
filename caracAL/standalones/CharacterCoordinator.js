@@ -109,6 +109,7 @@ const {
   buildGoalExecutionDecision,
   readGoalExecutionPolicy,
 } = require("../src/GoalExecutor");
+const { buildGoalAdapterPlan } = require("../src/GoalAdapter");
 const { GoalManagementService } = require("../src/GoalManagement");
 const {
   buildFullAutonomyPlan,
@@ -485,6 +486,7 @@ function migrate_old_storage(path, localStorage) {
         getGoalPlanState: goal_plan_state,
         getGoalHandoffState: goal_handoff_state,
         getGoalExecutionState: goal_execution_state,
+        getGoalAdapterState: goal_adapter_state,
         createGoal: (input) => goal_management.create(input),
         updateGoal: (goalId, input) => goal_management.update(goalId, input),
         getMapScene: (mapName) => dashboard_map_scenes.get(mapName) || null,
@@ -553,6 +555,10 @@ function migrate_old_storage(path, localStorage) {
       executionInFlight: false,
       safetyBlockReason: full_autonomy_safety_block_reason(),
     });
+  }
+
+  function goal_adapter_state() {
+    return buildGoalAdapterPlan(goal_execution_state());
   }
 
   function build_full_autonomy_plan() {
