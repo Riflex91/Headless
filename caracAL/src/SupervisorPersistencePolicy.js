@@ -77,7 +77,11 @@ function marketObservationSignature(observation) {
 
   return JSON.stringify([
     source.itemName || source.item_name || source.item || null,
-    Number.isInteger(Number(source.level)) ? Number(source.level) : null,
+    source.level !== null &&
+    source.level !== undefined &&
+    Number.isInteger(Number(source.level))
+      ? Number(source.level)
+      : null,
     Number(source.price) || 0,
     Number(source.quantity) || 0,
     source.server || null,
