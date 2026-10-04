@@ -580,9 +580,10 @@ function migrate_old_storage(path, localStorage) {
     };
   }
 
-  async function reconcile_full_autonomy(trigger = "INTERVAL") {
-    const plan = build_full_autonomy_plan();
-    const decision = build_full_autonomy_execution_decision(plan);
+  async function dispatch_full_autonomy_decision(
+    decision,
+    trigger = "INTERVAL",
+  ) {
     const timestamp = Date.now();
 
     full_autonomy_last_execution = {
@@ -668,6 +669,12 @@ function migrate_old_storage(path, localStorage) {
     }
 
     return full_autonomy_last_execution;
+  }
+
+  async function reconcile_full_autonomy(trigger = "INTERVAL") {
+    const plan = build_full_autonomy_plan();
+    const decision = build_full_autonomy_execution_decision(plan);
+    return dispatch_full_autonomy_decision(decision, trigger);
   }
 
   function logistics_record(value) {
