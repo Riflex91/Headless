@@ -299,6 +299,7 @@ function migrate_old_storage(path, localStorage) {
   const inventory_live_test_requests = new Map();
   let inventory_live_test_sequence = 0;
   let gear_scoring_live_test_sequence = 0;
+  let market_intelligence_live_test_sequence = 0;
   const economy_arbiter_enforcement_probe_requests = new Map();
   const economy_prebuff_execution_live_test_requests = new Map();
   let economy_prebuff_execution_live_test_sequence = 0;
@@ -403,6 +404,7 @@ function migrate_old_storage(path, localStorage) {
         runFarmLiveTest: run_farm_live_test,
         runInventoryLiveTest: run_inventory_live_test,
         runGearScoringLiveTest: run_gear_scoring_live_test,
+        runMarketIntelligenceLiveTest: run_market_intelligence_live_test,
         runEconomyPrebuffExecutionLiveTest:
           run_economy_prebuff_execution_live_test,
         runAccountGearReservationLiveTest:
@@ -2034,6 +2036,33 @@ function migrate_old_storage(path, localStorage) {
     );
   }
 
+  async function wait_for_market_intelligence_live_runtime(
+    char_name,
+    timeout_ms = MOVEMENT_LIVE_TEST_RUNTIME_TIMEOUT_MS,
+  ) {
+    const started_at = Date.now();
+    while (Date.now() - started_at < timeout_ms) {
+      const char_block = character_manage[char_name];
+      if (
+        char_block?.instance &&
+        char_block.connected &&
+        Number.isFinite(char_block.bot_runtime_started_at) &&
+        ["READY", "EMPTY"].includes(
+          char_block.market_intelligence_runtime?.state,
+        )
+      ) {
+        return char_block;
+      }
+      await sleep(100);
+    }
+
+    throw make_control_error(
+      "MARKET_INTELLIGENCE_LIVE_TEST_RUNTIME_TIMEOUT",
+      `Market Intelligence runtime did not become ready for ${char_name}`,
+      504,
+    );
+  }
+
   function account_gear_reservation_live_snapshot() {
     return Object.entries(character_manage)
       .filter(([, block]) => block?.account_owned === true)
@@ -2437,6 +2466,60 @@ function migrate_old_storage(path, localStorage) {
     if (original_desired_state === DESIRED_RUNTIME_STATES.PAUSED) {
       await control_character(char_name, CONTROL_ACTIONS.PAUSE);
     }
+  }
+
+  async function restore_market_intelligence_live_test_execution_source(
+    char_name,
+    original_desired_state,
+  ) {
+    const char_block = character_manage[char_name];
+    if (!char_block) return;
+
+    char_block.movement_live_test_typescript_override = null;
+    emit_supervisor_event(
+      "MARKET_INTELLIGENCE_LIVE_TEST_RUNTIME_OVERRIDE_CLEARED",
+      char_name,
+      {
+        desired_runtime_state: original_desired_state,
+      },
+    );
+
+    clear_restart_timer(char_block);
+    clear_stable_timer(char_block);
+
+    if (original_desired_state === DESIRED_RUNTIME_STATES.STOPPED) {
+      char_block.enabled = false;
+      char_block.desired_runtime_state = DESIRED_RUNTIME_STATES.STOPPED;
+      if (char_block.instance) {
+        await softkill_block(char_block);
+      } else {
+        set_lifecycle_state(
+          char_name,
+          LIFECYCLE_STATES.STOPPED,
+          "market_intelligence_live_test_restore",
+        );
+      }
+      return;
+    }
+
+    char_block.enabled = true;
+    char_block.desired_runtime_state = original_desired_state;
+
+    if (char_block.instance) {
+      char_block.controlled_restart = true;
+      await softkill_block(char_block);
+    } else {
+      const started = start_char(char_name);
+      if (!started) {
+        throw make_control_error(
+          "CHARACTER_RESTORE_START_FAILED",
+          `Could not restart original runtime for ${char_name}`,
+          503,
+        );
+      }
+    }
+
+    await wait_for_character_connected(char_name);
   }
 
   function wait_for_movement_live_test_result(char_name, request_id) {
@@ -7760,6 +7843,261 @@ function migrate_old_storage(path, localStorage) {
     }
 
     return char_block.gear_scoring_live_test;
+  }
+
+  async function run_market_intelligence_live_test(
+    char_name,
+    sample_ms = 5500,
+  ) {
+    const char_block = character_manage[char_name];
+    if (!char_block) {
+      throw make_control_error(
+        "CHARACTER_NOT_FOUND",
+        `Unknown character: ${char_name}`,
+        404,
+      );
+    }
+    if (char_block.account_owned !== true) {
+      throw make_control_error(
+        "MARKET_INTELLIGENCE_LIVE_TEST_ACCOUNT_REQUIRED",
+        "Market Intelligence live test requires an account-owned character",
+        400,
+      );
+    }
+    if (
+      ["STARTING", "RUNNING"].includes(
+        char_block.market_intelligence_live_test?.status,
+      )
+    ) {
+      throw make_control_error(
+        "MARKET_INTELLIGENCE_LIVE_TEST_ALREADY_RUNNING",
+        `Market Intelligence live test already running for ${char_name}`,
+        409,
+      );
+    }
+    if (
+      economy_prebuff_execution_live_test_active ||
+      upgrade_live_test_active ||
+      compound_live_test_active ||
+      exchange_live_test_active ||
+      craft_live_test_active ||
+      npc_trading_live_test_active ||
+      market_trading_live_test_active
+    ) {
+      throw make_control_error(
+        "MUTATION_VERIFICATION_ALREADY_RUNNING",
+        "A mutation verification is already running",
+        409,
+      );
+    }
+
+    const original_desired_state =
+      char_block.desired_runtime_state ||
+      (char_block.enabled
+        ? DESIRED_RUNTIME_STATES.RUNNING
+        : DESIRED_RUNTIME_STATES.STOPPED);
+    const started_at = Date.now();
+    const bounded_sample_ms = Math.max(
+      5500,
+      Math.min(15000, Number(sample_ms) || 5500),
+    );
+    market_intelligence_live_test_sequence += 1;
+    const request_id =
+      `market-intelligence-live-${started_at}-${market_intelligence_live_test_sequence}`;
+
+    char_block.market_intelligence_live_test = {
+      request_id,
+      status: "STARTING",
+      outcome: null,
+      reason: null,
+      started_at,
+      completed_at: null,
+    };
+    emit_supervisor_event(
+      "MARKET_INTELLIGENCE_LIVE_TEST_REQUESTED",
+      char_name,
+      {
+        request_id,
+        original_desired_state,
+        sample_ms: bounded_sample_ms,
+        verification_runtime_state: DESIRED_RUNTIME_STATES.PAUSED,
+      },
+    );
+    dashboard?.publishSnapshot();
+
+    let runtime_override_applied = false;
+    let runtime_state_restored = false;
+    let result = null;
+
+    try {
+      const bundle_path = path.join(
+        process.cwd(),
+        "TYPECODE.out",
+        MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE,
+      );
+      if (!fs_regular.existsSync(bundle_path)) {
+        throw make_control_error(
+          "MARKET_INTELLIGENCE_LIVE_TEST_RUNTIME_BUNDLE_MISSING",
+          `Market Intelligence runtime bundle is missing: ${bundle_path}`,
+          503,
+        );
+      }
+
+      char_block.movement_live_test_typescript_override =
+        MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE;
+      runtime_override_applied = true;
+      char_block.market_intelligence_runtime = null;
+      char_block.enabled = true;
+      char_block.desired_runtime_state = DESIRED_RUNTIME_STATES.PAUSED;
+
+      emit_supervisor_event(
+        "MARKET_INTELLIGENCE_LIVE_TEST_RUNTIME_OVERRIDE_APPLIED",
+        char_name,
+        {
+          request_id,
+          typescript_file: MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE,
+          runtime_state: DESIRED_RUNTIME_STATES.PAUSED,
+        },
+      );
+
+      await restart_character_for_movement_runtime(char_name, char_block);
+      const ready_block =
+        await wait_for_market_intelligence_live_runtime(char_name);
+
+      ready_block.market_intelligence_live_test = {
+        ...ready_block.market_intelligence_live_test,
+        status: "RUNNING",
+      };
+      dashboard?.publishSnapshot();
+
+      await sleep(bounded_sample_ms);
+
+      const final_block = character_manage[char_name];
+      const projection = final_block?.market_intelligence_runtime;
+      if (
+        !projection ||
+        !["READY", "EMPTY"].includes(projection.state)
+      ) {
+        throw make_control_error(
+          "MARKET_INTELLIGENCE_LIVE_TEST_PROJECTION_LOST",
+          `Market Intelligence projection was lost for ${char_name}`,
+          500,
+        );
+      }
+
+      result = {
+        request_id,
+        outcome: "PASS",
+        reason: "MARKET_INTELLIGENCE_LIVE_RUNTIME_E2E_CONFIRMED",
+        character: char_name,
+        realm: final_block.realm || null,
+        started_at,
+        completed_at: Date.now(),
+        durationMs: Date.now() - started_at,
+        projection: JSON.parse(JSON.stringify(projection)),
+        scope: {
+          readOnly: true,
+          runtimeStateDuringTest: DESIRED_RUNTIME_STATES.PAUSED,
+          movementMutationForced: false,
+          combatMutationForced: false,
+          valueMutationForced: false,
+          equipmentMutationForced: false,
+          socketRequestForced: false,
+          pontyBuyForced: false,
+          tradeMutationForced: false,
+          mutationDispatched: false,
+          runtimeOverrideApplied: true,
+        },
+        cleanup: {
+          runtimeStateRestored: false,
+        },
+      };
+    } catch (error) {
+      result = {
+        request_id,
+        outcome:
+          error.code === "MARKET_INTELLIGENCE_LIVE_TEST_RUNTIME_TIMEOUT"
+            ? "TIMEOUT"
+            : "FAIL",
+        reason:
+          error.code ||
+          error.message ||
+          "MARKET_INTELLIGENCE_LIVE_TEST_FAILED",
+        error: error.message || String(error),
+        character: char_name,
+        realm: char_block.realm || null,
+        started_at,
+        completed_at: Date.now(),
+        durationMs: Date.now() - started_at,
+        projection: null,
+        scope: {
+          readOnly: true,
+          runtimeStateDuringTest: DESIRED_RUNTIME_STATES.PAUSED,
+          movementMutationForced: false,
+          combatMutationForced: false,
+          valueMutationForced: false,
+          equipmentMutationForced: false,
+          socketRequestForced: false,
+          pontyBuyForced: false,
+          tradeMutationForced: false,
+          mutationDispatched: false,
+          runtimeOverrideApplied: runtime_override_applied,
+        },
+        cleanup: {
+          runtimeStateRestored: false,
+        },
+      };
+    } finally {
+      try {
+        if (runtime_override_applied) {
+          await restore_market_intelligence_live_test_execution_source(
+            char_name,
+            original_desired_state,
+          );
+        }
+        runtime_state_restored = true;
+      } catch (restore_error) {
+        result = {
+          ...result,
+          outcome: "FAIL",
+          reason: "MARKET_INTELLIGENCE_LIVE_TEST_STATE_RESTORE_FAILED",
+          restore_error:
+            restore_error instanceof Error
+              ? restore_error.message
+              : String(restore_error),
+        };
+      }
+
+      const completed_at = Date.now();
+      result = {
+        ...result,
+        completed_at,
+        durationMs: Math.max(0, completed_at - started_at),
+        cleanup: {
+          ...(result?.cleanup || {}),
+          runtimeStateRestored: runtime_state_restored,
+        },
+      };
+      char_block.market_intelligence_live_test = {
+        ...result,
+        status: result.outcome === "PASS" ? "COMPLETED" : "FAILED",
+      };
+      emit_supervisor_event(
+        result.outcome === "PASS"
+          ? "MARKET_INTELLIGENCE_LIVE_TEST_COMPLETED"
+          : "MARKET_INTELLIGENCE_LIVE_TEST_FAILED",
+        char_name,
+        {
+          request_id,
+          outcome: result.outcome,
+          reason: result.reason,
+          runtime_state_restored,
+        },
+      );
+      dashboard?.publishSnapshot();
+    }
+
+    return char_block.market_intelligence_live_test;
   }
 
   async function run_account_gear_reservation_live_test(
