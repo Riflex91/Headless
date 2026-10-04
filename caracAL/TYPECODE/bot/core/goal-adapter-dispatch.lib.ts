@@ -183,11 +183,15 @@ export class GoalAdapterDispatchRunner {
       return finish("BLOCKED", "GOAL_ADAPTER_DISPATCH_PREFLIGHT_NOT_CONFIRMED");
     }
 
-    if (requestIdentity.kind === "FARM_ITEM") {
+    if (
+      requestIdentity.kind === "FARM_ITEM" ||
+      requestIdentity.kind === "ACQUIRE_GEAR"
+    ) {
       const args = record(request.arguments);
       const itemName = text(args.itemName);
       const monsterType = text(args.monsterType);
       const quantity = positiveInteger(args.quantity);
+      const isGear = requestIdentity.kind === "ACQUIRE_GEAR";
       const recipient = text(args.recipient);
       const position = record(args.recipientPosition);
       const recipientPosition =
@@ -200,6 +204,7 @@ export class GoalAdapterDispatchRunner {
               y: finite(position.y) as number,
             }
           : null;
+      const deliveryMode = text(args.deliveryMode);
 
       if (
         request.type !== "GOAL_RUNTIME_METHOD" ||
@@ -208,42 +213,91 @@ export class GoalAdapterDispatchRunner {
         !itemName ||
         !monsterType ||
         !quantity ||
-        !recipient ||
-        !recipientPosition
+        (isGear
+          ? quantity !== 1 || deliveryMode !== "KEEP_ON_WORKER"
+          : !recipient || !recipientPosition)
       ) {
-        return finish("BLOCKED", "GOAL_ADAPTER_DISPATCH_FARM_CONTRACT_INVALID");
+        return finish(
+          "BLOCKED",
+          isGear
+            ? "GOAL_ADAPTER_DISPATCH_GEAR_CONTRACT_INVALID"
+            : "GOAL_ADAPTER_DISPATCH_FARM_CONTRACT_INVALID",
+        );
       }
 
       const itemLevel =
-        args.itemLevel === undefined ? undefined : nonNegativeInteger(args.itemLevel);
-      if (args.itemLevel !== undefined && itemLevel === null) {
-        return finish("BLOCKED", "GOAL_ADAPTER_DISPATCH_FARM_ITEM_LEVEL_INVALID");
+        args.itemLevel === undefined
+          ? undefined
+          : nonNegativeInteger(args.itemLevel);
+      const minimumItemLevel =
+        args.minimumItemLevel === undefined
+          ? undefined
+          : nonNegativeInteger(args.minimumItemLevel);
+      if (
+        (args.itemLevel !== undefined && itemLevel === null) ||
+        (args.minimumItemLevel !== undefined && minimumItemLevel === null) ||
+        (itemLevel !== undefined && minimumItemLevel !== undefined) ||
+        (isGear && minimumItemLevel === undefined)
+      ) {
+        return finish(
+          "BLOCKED",
+          isGear
+            ? "GOAL_ADAPTER_DISPATCH_GEAR_ITEM_LEVEL_INVALID"
+            : "GOAL_ADAPTER_DISPATCH_FARM_ITEM_LEVEL_INVALID",
+        );
       }
 
       const timeoutMs =
-        args.timeoutMs === undefined ? undefined : positiveInteger(args.timeoutMs);
+        args.timeoutMs === undefined
+          ? undefined
+          : positiveInteger(args.timeoutMs);
       const pollMs =
         args.pollMs === undefined ? undefined : positiveInteger(args.pollMs);
       if (
         (args.timeoutMs !== undefined && timeoutMs === null) ||
         (args.pollMs !== undefined && pollMs === null)
       ) {
-        return finish("BLOCKED", "GOAL_ADAPTER_DISPATCH_FARM_TIMING_INVALID");
+        return finish(
+          "BLOCKED",
+          isGear
+            ? "GOAL_ADAPTER_DISPATCH_GEAR_TIMING_INVALID"
+            : "GOAL_ADAPTER_DISPATCH_FARM_TIMING_INVALID",
+        );
       }
 
       mutationPathInvoked = true;
       try {
         const result = await this.deps.runMaterialGatherTask({
-          requestId: `${requestId}:farm`,
+          requestId: `${requestId}:${isGear ? "gear" : "farm"}`,
           itemName,
           ...(itemLevel !== undefined && itemLevel !== null && { itemLevel }),
+          ...(minimumItemLevel !== undefined &&
+            minimumItemLevel !== null && { minimumItemLevel }),
           monsterType,
           quantity,
-          recipient,
-          recipientPosition,
+          ...(isGear
+            ? { deliveryMode: "KEEP_ON_WORKER" as const }
+            : {
+                recipient: recipient as string,
+                recipientPosition: recipientPosition as {
+                  map: string;
+                  x: number;
+                  y: number;
+                },
+              }),
           ...(timeoutMs !== undefined && timeoutMs !== null && { timeoutMs }),
           ...(pollMs !== undefined && pollMs !== null && { pollMs }),
         });
+
+        if (
+          isGear &&
+          result.outcome === "PASS" &&
+          result.evidence.keptOnWorkerConfirmed !== true
+        ) {
+          return finish("FAIL", "GOAL_ADAPTER_DISPATCH_GEAR_NOT_CONFIRMED", {
+            materialGather: result as unknown as Record<string, unknown>,
+          });
+        }
 
         const outcome: GoalAdapterDispatchOutcome =
           result.outcome === "PASS"
@@ -253,19 +307,26 @@ export class GoalAdapterDispatchRunner {
               : result.outcome === "TIMEOUT"
                 ? "TIMEOUT"
                 : "FAIL";
+        const prefix = isGear ? "GEAR" : "FARM";
         return finish(
           outcome,
           outcome === "PASS"
-            ? "GOAL_ADAPTER_DISPATCH_FARM_CONFIRMED"
-            : `GOAL_ADAPTER_DISPATCH_FARM_${result.reason || outcome}`,
+            ? `GOAL_ADAPTER_DISPATCH_${prefix}_CONFIRMED`
+            : `GOAL_ADAPTER_DISPATCH_${prefix}_${result.reason || outcome}`,
           {
             materialGather: result as unknown as Record<string, unknown>,
           },
         );
       } catch (error) {
-        return finish("FAIL", "GOAL_ADAPTER_DISPATCH_FARM_RUNTIME_ERROR", {
-          error: error instanceof Error ? error.message : String(error),
-        });
+        return finish(
+          "FAIL",
+          isGear
+            ? "GOAL_ADAPTER_DISPATCH_GEAR_RUNTIME_ERROR"
+            : "GOAL_ADAPTER_DISPATCH_FARM_RUNTIME_ERROR",
+          {
+            error: error instanceof Error ? error.message : String(error),
+          },
+        );
       }
     }
 

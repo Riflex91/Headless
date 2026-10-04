@@ -270,6 +270,111 @@ export class GoalAdapterPreflightRunner {
       return finish(outcome, reason, evidence);
     }
 
+    if (identity.kind === "ACQUIRE_GEAR") {
+      const args = record(request.arguments);
+      const itemName = text(args.itemName);
+      const monsterType = text(args.monsterType);
+      const quantity = positiveInteger(args.quantity);
+      const minimumItemLevel = finite(args.minimumItemLevel);
+      const workerCharacter = text(request.characterName);
+
+      if (
+        request.type !== "GOAL_RUNTIME_METHOD" ||
+        text(request.runtimeMethod) !== "runMaterialGatherTask" ||
+        text(request.bridge) !== "MaterialGatheringTaskRunner" ||
+        args.deliveryMode !== "KEEP_ON_WORKER"
+      ) {
+        return finish("BLOCKED", "GOAL_ADAPTER_PREFLIGHT_GEAR_CONTRACT_INVALID");
+      }
+
+      if (
+        !itemName ||
+        !monsterType ||
+        quantity !== 1 ||
+        !workerCharacter ||
+        minimumItemLevel === null ||
+        !Number.isInteger(minimumItemLevel) ||
+        minimumItemLevel < 0
+      ) {
+        return finish("BLOCKED", "GOAL_ADAPTER_PREFLIGHT_GEAR_ARGUMENTS_INVALID");
+      }
+
+      if (
+        character.name !== workerCharacter ||
+        character.ctype !== "ranger"
+      ) {
+        return finish("BLOCKED", "GOAL_ADAPTER_PREFLIGHT_GEAR_WORKER_MISMATCH", {
+          expectedCharacter: workerCharacter,
+          actualCharacter: character.name,
+          actualClass: character.ctype,
+        });
+      }
+
+      farmOverrideCleared = false;
+      let outcome: GoalAdapterPreflightOutcome = "FAIL";
+      let reason = "GOAL_ADAPTER_PREFLIGHT_GEAR_RUNTIME_ERROR";
+      let evidence: Record<string, unknown> = {};
+
+      try {
+        this.deps.farmIntelligence.setConfigOverride({
+          farming: {
+            enabled: true,
+            goalMonster: monsterType,
+            goalItems: [itemName],
+          },
+        });
+        const status = this.deps.farmIntelligence.tick();
+        const candidates = Array.isArray(status.candidates)
+          ? status.candidates
+          : [];
+        const exact = candidates.find(
+          (candidate) =>
+            text(candidate?.monster) === monsterType &&
+            stringList(candidate?.estimated?.dropItems).includes(itemName),
+        );
+
+        if (!exact) {
+          outcome = "BLOCKED";
+          reason = "GOAL_ADAPTER_PREFLIGHT_GEAR_SOURCE_NOT_CONFIRMED";
+          evidence = {
+            itemName,
+            minimumItemLevel,
+            monsterType,
+            farmState: text(status.state),
+            farmReason: text(status.reason),
+            candidateCount: candidates.length,
+          };
+        } else {
+          outcome = "PASS";
+          reason = "GOAL_ADAPTER_PREFLIGHT_GEAR_CONFIRMED";
+          evidence = {
+            itemName,
+            minimumItemLevel,
+            monsterType,
+            quantity,
+            deliveryMode: "KEEP_ON_WORKER",
+            farmState: text(status.state),
+            farmReason: text(status.reason),
+            dropItems: stringList(exact.estimated?.dropItems),
+          };
+        }
+      } catch (error) {
+        evidence = {
+          error: error instanceof Error ? error.message : String(error),
+        };
+      } finally {
+        this.deps.farmIntelligence.clearConfigOverride();
+        farmOverrideCleared = true;
+        try {
+          this.deps.farmIntelligence.tick();
+        } catch (_error) {
+          // Cleanup state is still restored even if the refresh projection fails.
+        }
+      }
+
+      return finish(outcome, reason, evidence);
+    }
+
     if (identity.kind === "PLAN_CRAFT") {
       const preflight = record(request.preflight);
       const preflightArguments = record(preflight.arguments);
