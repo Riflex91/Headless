@@ -62,6 +62,12 @@ import {
   RiskPolicyEvent,
 } from "./risk-policy-controller.lib";
 import {
+  EconomyArbiterController,
+  EconomyArbiterEvent,
+  EconomyArbiterLane,
+  EconomyArbiterSignal,
+} from "./economy-arbiter-controller.lib";
+import {
   CraftPreflightResult,
   CraftPreflightRunner,
 } from "./craft-preflight.lib";
@@ -220,6 +226,8 @@ const EXPECTED_VALUE_JOB_ID = "expected-value-loop";
 const EXPECTED_VALUE_INTERVAL_MS = 1000;
 const RISK_POLICY_JOB_ID = "risk-policy-loop";
 const RISK_POLICY_INTERVAL_MS = 1000;
+const ECONOMY_ARBITER_JOB_ID = "economy-arbiter-loop";
+const ECONOMY_ARBITER_INTERVAL_MS = 1000;
 const FARM_INTELLIGENCE_JOB_ID = "farm-intelligence-loop";
 const FARM_INTELLIGENCE_INTERVAL_MS = 1000;
 const MERCHANT_AUTONOMY_JOB_ID = "merchant-autonomy-loop";
@@ -296,6 +304,7 @@ export class BotRuntimeKernel {
   readonly craft: CraftController;
   readonly expectedValue: ExpectedValueController;
   readonly riskPolicy: RiskPolicyController;
+  readonly economyArbiter: EconomyArbiterController;
   readonly merchantAutonomy: MerchantAutonomyController;
   readonly bankTravel: BankTravelController;
   readonly bankGoldSettlement: BankGoldSettlementController;
@@ -469,6 +478,11 @@ export class BotRuntimeKernel {
       config: () => runtimeConfig?.config || {},
       onEvent: (event) => this.handleRiskPolicyEvent(event),
     });
+    this.economyArbiter = new EconomyArbiterController({
+      config: () => runtimeConfig?.config || {},
+      signals: () => this.economyArbiterSignals(),
+      onEvent: (event) => this.handleEconomyArbiterEvent(event),
+    });
     this.merchantAutonomy = new MerchantAutonomyController(
       this.game,
       this.actions,
@@ -603,6 +617,15 @@ export class BotRuntimeKernel {
     });
 
     this.scheduler.register({
+      id: ECONOMY_ARBITER_JOB_ID,
+      intervalMs: ECONOMY_ARBITER_INTERVAL_MS,
+      priority: 72,
+      tick: () => {
+        this.economyArbiter.tick();
+      },
+    });
+
+    this.scheduler.register({
       id: FARM_INTELLIGENCE_JOB_ID,
       intervalMs: FARM_INTELLIGENCE_INTERVAL_MS,
       priority: 80,
@@ -658,6 +681,7 @@ export class BotRuntimeKernel {
             futureGear: this.futureGear.status(),
             expectedValue: this.expectedValue.status(),
             riskPolicy: this.riskPolicy.status(),
+            economyArbiter: this.economyArbiter.status(),
             merchantAutonomy: this.merchantAutonomy.status(),
             bankTravel: this.bankTravel.status(),
             merchantMerrit: this.merchantMerrit.status(),
@@ -759,6 +783,7 @@ export class BotRuntimeKernel {
       craft: this.craft.status(),
       expectedValue: this.expectedValue.status(),
       riskPolicy: this.riskPolicy.status(),
+      economyArbiter: this.economyArbiter.status(),
       merchantAutonomy: this.merchantAutonomy.status(),
       bankTravel: this.bankTravel.status(),
       merchantMerrit: this.merchantMerrit.status(),
@@ -3360,6 +3385,114 @@ export class BotRuntimeKernel {
     });
   }
 
+  private economyArbiterSignals(): Partial<
+    Record<EconomyArbiterLane, EconomyArbiterSignal>
+  > {
+    const emergencyStop = !!parent.caracAL?.emergency_stop;
+    const merrit = this.merchantMerrit.status();
+    const riskPolicy = this.riskPolicy.status();
+    const merchant = this.merchantAutonomy.status();
+    const fishing = this.merchantFishing.status();
+    const logisticsUnknown =
+      this.lastLogisticsExecution?.outcome === "UNKNOWN" ||
+      this.lastLogisticsExecution?.outcome === "DISPATCHED";
+    const merritActive =
+      merrit.enabled &&
+      !["DISABLED", "UNSUPPORTED_CLASS", "COOLDOWN"].includes(merrit.state);
+    const economyUnknown =
+      riskPolicy.state === "PARTIAL" || riskPolicy.summary.unknown > 0;
+    const economyActive = economyUnknown || riskPolicy.selected !== null;
+    const standActive =
+      merchant.state === "READY" && merchant.merrit.activeListings > 0;
+    const backgroundVisible =
+      merchant.state === "READY" &&
+      (merchant.giveaways.visibleCount > 0 ||
+        merchant.wishlist.activeSlots.length > 0 ||
+        merchant.ponty.npcPresent ||
+        (merchant.gathering.fishing.skillPresent &&
+          merchant.gathering.fishing.zones.length > 0) ||
+        (merchant.gathering.mining.skillPresent &&
+          merchant.gathering.mining.zones.length > 0));
+    const fishingActive =
+      fishing.enabled &&
+      !["DISABLED", "UNSUPPORTED_CLASS", "COMPLETE"].includes(fishing.state);
+
+    return {
+      SAFETY: {
+        active: emergencyStop,
+        blocked: emergencyStop,
+        reason: emergencyStop ? "EMERGENCY_STOP_ACTIVE" : "SAFETY_CLEAR",
+        data: {
+          emergencyStop,
+        },
+      },
+      MERRIT: {
+        active: merritActive,
+        blocked: merrit.state === "BLOCKED",
+        unknown: merrit.state === "UNKNOWN",
+        reason: merrit.reason,
+        data: {
+          state: merrit.state,
+          roadmapStage: merrit.roadmapStage,
+        },
+      },
+      CRITICAL_FARMER_LOGISTICS: {
+        active: this.logisticsClaimRunning || logisticsUnknown,
+        unknown: logisticsUnknown,
+        reason: logisticsUnknown
+          ? "LOGISTICS_OUTCOME_UNCERTAIN"
+          : this.logisticsClaimRunning
+            ? "LOGISTICS_EXECUTION_ACTIVE"
+            : "LOGISTICS_IDLE",
+        data: {
+          busy: this.logisticsClaimRunning,
+          lastOutcome: this.lastLogisticsExecution?.outcome ?? null,
+          lastReason: this.lastLogisticsExecution?.reason ?? null,
+        },
+      },
+      ECONOMY_PREBUFF: {
+        active: false,
+        reason: "ECONOMY_PREBUFF_NOT_IMPLEMENTED",
+      },
+      ECONOMY: {
+        active: economyActive,
+        blocked: riskPolicy.state === "BLOCKED",
+        unknown: economyUnknown,
+        reason: riskPolicy.reason,
+        data: {
+          state: riskPolicy.state,
+          selectedKind: riskPolicy.selected?.kind ?? null,
+          selectedName: riskPolicy.selected?.name ?? null,
+          unknown: riskPolicy.summary.unknown,
+        },
+      },
+      MERCHANT_STAND: {
+        active: standActive,
+        reason: standActive ? "MERCHANT_STAND_ACTIVE" : "MERCHANT_STAND_IDLE",
+        data: {
+          activeListings: merchant.merrit.activeListings,
+        },
+      },
+      BACKGROUND: {
+        active: backgroundVisible || fishingActive,
+        blocked: fishing.state === "BLOCKED",
+        unknown: fishing.state === "UNKNOWN",
+        reason:
+          fishing.state === "UNKNOWN"
+            ? fishing.reason
+            : backgroundVisible || fishingActive
+              ? "MERCHANT_BACKGROUND_AVAILABLE"
+              : "MERCHANT_BACKGROUND_IDLE",
+        data: {
+          fishingState: fishing.state,
+          visibleGiveaways: merchant.giveaways.visibleCount,
+          wishlistSlots: merchant.wishlist.activeSlots.length,
+          pontyVisible: merchant.ponty.npcPresent,
+        },
+      },
+    };
+  }
+
   private handleRiskPolicyEvent(event: RiskPolicyEvent): void {
     this.eventBus.emit({
       module: "RiskPolicyController",
@@ -3367,6 +3500,17 @@ export class BotRuntimeKernel {
       why: event.reason,
       data: {
         riskPolicy: event.status,
+      },
+    });
+  }
+
+  private handleEconomyArbiterEvent(event: EconomyArbiterEvent): void {
+    this.eventBus.emit({
+      module: "EconomyArbiterController",
+      type: event.type,
+      why: event.reason,
+      data: {
+        economyArbiter: event.status,
       },
     });
   }
