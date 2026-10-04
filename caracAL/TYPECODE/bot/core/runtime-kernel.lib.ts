@@ -1,5 +1,9 @@
 import { ActionBoundary } from "./action-boundary.lib";
-import { ActionLedger } from "./action-ledger.lib";
+import {
+  ActionAuthorizationDecision,
+  ActionIntent,
+  ActionLedger,
+} from "./action-ledger.lib";
 import { EventBus, RuntimeEvent } from "./event-bus.lib";
 import {
   ModuleRegistry,
@@ -66,6 +70,7 @@ import {
   EconomyArbiterEvent,
   EconomyArbiterLane,
   EconomyArbiterSignal,
+  economyArbiterLaneForIntent,
 } from "./economy-arbiter-controller.lib";
 import {
   CraftPreflightResult,
@@ -356,6 +361,7 @@ export class BotRuntimeKernel {
 
     this.actionLedger = new ActionLedger({
       isEmergencyStopActive: () => !!parent.caracAL?.emergency_stop,
+      authorizeIntent: (intent) => this.authorizeEconomyIntent(intent),
       emit: (event) => {
         this.eventBus.emit({
           module: event.module,
@@ -3385,6 +3391,26 @@ export class BotRuntimeKernel {
     });
   }
 
+  private authorizeEconomyIntent(
+    intent: ActionIntent,
+  ): ActionAuthorizationDecision | null {
+    const lane = economyArbiterLaneForIntent(intent);
+    if (!lane) return null;
+
+    const authorization = this.economyArbiter.authorize(lane);
+    if (!authorization.enforced || authorization.allowed) return null;
+
+    return {
+      allowed: false,
+      reason: authorization.reason,
+      data: {
+        lane,
+        selectedLane: authorization.selectedLane,
+        arbiterState: authorization.state,
+      },
+    };
+  }
+
   private economyArbiterSignals(): Partial<
     Record<EconomyArbiterLane, EconomyArbiterSignal>
   > {
@@ -3398,7 +3424,7 @@ export class BotRuntimeKernel {
       this.lastLogisticsExecution?.outcome === "DISPATCHED";
     const merritActive =
       merrit.enabled &&
-      !["DISABLED", "UNSUPPORTED_CLASS", "COOLDOWN"].includes(merrit.state);
+      !["UNSUPPORTED_CLASS", "COOLDOWN"].includes(merrit.state);
     const economyUnknown =
       riskPolicy.state === "PARTIAL" || riskPolicy.summary.unknown > 0;
     const economyActive = economyUnknown || riskPolicy.selected !== null;
@@ -3415,7 +3441,7 @@ export class BotRuntimeKernel {
           merchant.gathering.mining.zones.length > 0));
     const fishingActive =
       fishing.enabled &&
-      !["DISABLED", "UNSUPPORTED_CLASS", "COMPLETE"].includes(fishing.state);
+      !["UNSUPPORTED_CLASS", "COMPLETE"].includes(fishing.state);
 
     return {
       SAFETY: {
