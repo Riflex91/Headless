@@ -261,6 +261,7 @@ function buildSupervisorSnapshot(
   merchantLogisticsState = null,
   accountStrategyState = null,
   fullAutonomyState = null,
+  goalPlanState = null,
 ) {
   const characters = Object.entries(characterManage)
     .map(([name, charBlock]) => publicCharacterState(name, charBlock))
@@ -357,6 +358,36 @@ function buildSupervisorSnapshot(
         unknownSignalsAreNeutral: true,
       },
     },
+    goals: goalPlanState || {
+      timestamp: null,
+      state: "EMPTY",
+      reason: "GOALS_EMPTY",
+      readOnly: true,
+      executionEnabled: false,
+      gameplayMutationDispatched: false,
+      valueMutationDispatched: false,
+      lifecycleMutationDispatched: false,
+      goals: [],
+      summary: {
+        total: 0,
+        active: 0,
+        planned: 0,
+        blocked: 0,
+        complete: 0,
+        paused: 0,
+        cancelled: 0,
+        invalid: 0,
+        byType: {},
+      },
+      policy: {
+        intentExecutionSeparated: true,
+        manualStopRespected: true,
+        fullAutonomyHandoffOnly: true,
+        directGameplayMutationAllowed: false,
+        directValueMutationAllowed: false,
+        directLifecycleMutationAllowed: false,
+      },
+    },
     characters,
   };
 }
@@ -426,6 +457,7 @@ function attachHeadlessDashboard({
   getMerchantLogisticsState,
   getAccountStrategyState,
   getFullAutonomyState,
+  getGoalPlanState,
   getMapScene,
   diagnosticStore,
   incidentRecorder,
@@ -447,6 +479,7 @@ function attachHeadlessDashboard({
       getMerchantLogisticsState?.(),
       getAccountStrategyState?.(),
       getFullAutonomyState?.(),
+      getGoalPlanState?.(),
     );
 
   router.use("/headless", (req, res, next) => {

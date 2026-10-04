@@ -103,6 +103,7 @@ const {
   reservedSlotsForCharacter,
 } = require("../src/AccountGearReservation");
 const { buildAccountStrategy } = require("../src/AccountStrategy");
+const { buildGoalPlan } = require("../src/GoalPlanner");
 const {
   buildFullAutonomyPlan,
   manualStopProtected,
@@ -458,6 +459,7 @@ function migrate_old_storage(path, localStorage) {
         getMerchantLogisticsState: () => merchant_logistics_board,
         getAccountStrategyState: account_strategy_state,
         getFullAutonomyState: full_autonomy_state,
+        getGoalPlanState: goal_plan_state,
         getMapScene: (mapName) => dashboard_map_scenes.get(mapName) || null,
         diagnosticStore: diagnostic_store,
         incidentRecorder: incident_recorder,
@@ -499,6 +501,14 @@ function migrate_old_storage(path, localStorage) {
 
   function account_strategy_state() {
     return buildAccountStrategy(character_manage);
+  }
+
+  function goal_plan_state() {
+    return buildGoalPlan(persistence.listGoals(), {
+      accountStrategy: account_strategy_state(),
+      characterManage: character_manage,
+      fullAutonomy: build_full_autonomy_plan(),
+    });
   }
 
   function build_full_autonomy_plan() {
