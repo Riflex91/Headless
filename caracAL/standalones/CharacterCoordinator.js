@@ -430,8 +430,10 @@ function migrate_old_storage(path, localStorage) {
     persistence.getStructuredState("goal_execution", "dispatch_unknown_hold")
       ?.value || null;
   const goal_adapter_dispatch_supervisor = new GoalAdapterDispatchSupervisor({
-    getExecutionDecision: goal_execution_state,
-    getAdapterPlan: goal_adapter_state,
+    getExecutionDecision: () =>
+      goal_execution_state({ allowGoalDispatchInFlight: true }),
+    getAdapterPlan: () =>
+      goal_adapter_state({ allowGoalDispatchInFlight: true }),
     runPreflight: ({ characterName, request }) =>
       goal_adapter_preflight_supervisor.run(characterName, request),
     getCharacter: (name) => character_manage[name] || null,
@@ -449,6 +451,25 @@ function migrate_old_storage(path, localStorage) {
         "goal_execution",
         "dispatch_last_result",
         result,
+      ),
+  });
+  const goal_reconciler = new GoalReconciler({
+    enabled: goal_execution_policy.enabled && !observer_only,
+    reconcileIntervalMs: goal_execution_policy.reconcileIntervalMs,
+    getExecutionDecision: goal_execution_state,
+    getAdapterPlan: goal_adapter_state,
+    getDispatchState: () => goal_adapter_dispatch_supervisor.snapshot(),
+    dispatch: ({ expectedGoalId, expectedTaskId }) =>
+      goal_adapter_dispatch_supervisor.run({
+        expectedGoalId,
+        expectedTaskId,
+      }),
+    emit: emit_supervisor_event,
+    persistLastCycle: (cycle) =>
+      persistence.saveStructuredState(
+        "goal_execution",
+        "reconcile_last_cycle",
+        cycle,
       ),
   });
   try {
