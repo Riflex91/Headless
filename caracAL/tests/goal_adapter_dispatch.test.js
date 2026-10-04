@@ -859,28 +859,30 @@ test("PLAN_CRAFT UNKNOWN is surfaced without a second execution", async () => {
 test("unsupported Goal kinds never reach a mutation dependency", async () => {
   const s = setup({
     preflightResult: preflight({
-      kind: "ACCUMULATE_GOLD",
-      goalId: "gold-1",
-      taskId: "gold-1:2",
+      kind: "UNKNOWN_KIND",
+      goalId: "unknown-1",
+      taskId: "unknown-1:1",
     }),
   });
   const result = await s.runner.run(
     {
       version: 1,
-      goalId: "gold-1",
-      taskId: "gold-1:2",
-      kind: "ACCUMULATE_GOLD",
+      goalId: "unknown-1",
+      taskId: "unknown-1:1",
+      kind: "UNKNOWN_KIND",
       dispatchAllowed: false,
       dispatchImplemented: false,
     },
-    { requestId: "dispatch-gold", authorized: true },
+    { requestId: "dispatch-unknown", authorized: true },
   );
 
   assert.equal(result.outcome, "BLOCKED");
   assert.equal(result.reason, "GOAL_ADAPTER_DISPATCH_KIND_UNSUPPORTED");
   assert.equal(result.scope.mutationPathInvoked, false);
   assert.equal(
-    s.calls.some(([name]) => ["material", "craftExecute"].includes(name)),
+    s.calls.some(([name]) =>
+      ["material", "training", "gold", "craftExecute"].includes(name),
+    ),
     false,
   );
 });
