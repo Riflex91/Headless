@@ -291,6 +291,29 @@ test("unsupported runtime workers remain explicitly blocked", () => {
   }
 });
 
+test("Coordinator and dashboard project Goal adapter plans without dispatch wiring", () => {
+  const coordinator = fs.readFileSync(
+    path.join(__dirname, "..", "standalones", "CharacterCoordinator.js"),
+    "utf8",
+  );
+  const dashboard = fs.readFileSync(
+    path.join(__dirname, "..", "src", "HeadlessDashboard.js"),
+    "utf8",
+  );
+
+  assert.match(coordinator, /buildGoalAdapterPlan/);
+  assert.match(coordinator, /getGoalAdapterState:\s*goal_adapter_state/);
+  assert.match(coordinator, /function goal_adapter_state\(\)/);
+  assert.doesNotMatch(coordinator, /function reconcile_goal_adapter/);
+  assert.doesNotMatch(coordinator, /dispatch_goal_adapter/);
+  assert.doesNotMatch(coordinator, /goal_runtime_request/);
+
+  assert.match(dashboard, /goal_adapter:\s*goalAdapterState/);
+  assert.match(dashboard, /getGoalAdapterState/);
+  assert.match(dashboard, /requestDispatched:\s*false/);
+  assert.match(dashboard, /mutationDispatched:\s*false/);
+});
+
 test("Goal adapter contract contains no dispatch or mutation implementation", () => {
   const source = fs.readFileSync(
     path.join(__dirname, "..", "src", "GoalAdapter.js"),
