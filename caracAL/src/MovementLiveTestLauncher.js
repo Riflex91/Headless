@@ -70,12 +70,14 @@ function startManagedRuntime({
   cwd = path.resolve(__dirname, ".."),
   spawnImpl = childProcess.spawn,
   env = process.env,
+  stdio = ["ignore", "inherit", "inherit"],
+  windowsHide = false,
 } = {}) {
   return spawnImpl(process.execPath, ["main.js"], {
     cwd,
     env,
-    stdio: ["ignore", "inherit", "inherit"],
-    windowsHide: false,
+    stdio,
+    windowsHide,
   });
 }
 
@@ -177,6 +179,7 @@ async function ensureDashboardAvailable(
       process.env.CARACAL_LIVE_TEST_STARTUP_TIMEOUT_MS || 60000,
     ),
     pollMs = Number(process.env.CARACAL_LIVE_TEST_STARTUP_POLL_MS || 500),
+    quiet = false,
   } = {},
 ) {
   try {
@@ -189,9 +192,11 @@ async function ensureDashboardAvailable(
     if (!isConnectionFailure(error)) throw error;
   }
 
-  process.stdout.write(
-    "caracAL dashboard is not running; starting a temporary runtime for the live test\n",
-  );
+  if (!quiet) {
+    process.stdout.write(
+      "caracAL dashboard is not running; starting a temporary runtime for the live test\n",
+    );
+  }
   const runtime = startRuntime();
 
   try {
