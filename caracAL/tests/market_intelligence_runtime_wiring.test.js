@@ -61,7 +61,10 @@ test("supervisor propagates realm and persists deduped LIVE_VISIBLE samples only
   assert.match(coordinator, /selectNewLiveMarketObservations/);
   assert.match(coordinator, /selectMarketLocalHistoryForRuntime/);
   assert.match(coordinator, /marketLocalHistorySyncSignature/);
-  assert.match(coordinator, /persistence\.listMarketHistory\(\{ limit: 500 \}\)/);
+  assert.match(
+    coordinator,
+    /persistence\.listMarketHistory\(\{ limit: 500 \}\)/,
+  );
   assert.match(coordinator, /type: "market_intelligence_history"/);
   assert.match(coordinator, /persistence\.appendMarketObservation/);
   assert.match(coordinator, /source: "LIVE_VISIBLE"/);
