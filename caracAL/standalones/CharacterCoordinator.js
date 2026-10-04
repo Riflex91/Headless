@@ -532,6 +532,7 @@ function migrate_old_storage(path, localStorage) {
       compound_gather_plan_requests.size > 0 ||
       craft_material_plan_requests.size > 0 ||
       logistics_claim_requests.size > 0 ||
+      full_autonomy_live_test_active ||
       account_strategy_live_test_active ||
       economy_prebuff_execution_live_test_active ||
       account_gear_reservation_live_test_active ||
