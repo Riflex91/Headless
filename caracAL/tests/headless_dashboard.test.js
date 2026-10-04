@@ -526,6 +526,7 @@ test("dashboard module and coordinator remain syntactically valid", () => {
   assert.match(coordinator, /CharacterConfigService/);
   assert.match(coordinator, /getPersistenceHealth/);
   assert.match(coordinator, /restoreDesiredRuntimeState/);
+  assert.match(coordinator, /restoreDesiredRuntimeStateSource/);
   assert.match(coordinator, /getDesiredStateAuthority/);
   assert.match(coordinator, /desiredStateSource/);
   assert.match(coordinator, /persisted_authority/);
