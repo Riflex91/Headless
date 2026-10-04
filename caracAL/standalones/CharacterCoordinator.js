@@ -111,6 +111,7 @@ const {
   restoreDesiredRuntimeState,
   selectMarketLocalHistoryForRuntime,
   selectNewLiveMarketObservations,
+  selectNewPontyMarketObservations,
   shouldPersistSnapshot,
   snapshotSignature,
 } = require("../src/SupervisorPersistencePolicy");
@@ -771,14 +772,23 @@ function migrate_old_storage(path, localStorage) {
       return false;
     }
 
-    const observations = selectMarketLocalHistoryForRuntime(
-      persistence.listMarketHistory({ limit: 500 }),
-      {
-        server: char_block.realm || null,
-        liveSignatures: char_block.market_live_observation_signatures,
-        limit: 250,
-      },
+    const history_rows = [
+      ...persistence.listMarketHistory({ limit: 500 }),
+      ...persistence.listPontyHistory({ limit: 500 }).map((row) => ({
+        ...row,
+        seller: "Ponty",
+        source: "PONTY",
+      })),
+    ].sort(
+      (left, right) =>
+        Number(right.observed_at || 0) - Number(left.observed_at || 0),
     );
+    const observations = selectMarketLocalHistoryForRuntime(history_rows, {
+      server: char_block.realm || null,
+      liveSignatures: char_block.market_live_observation_signatures,
+      pontySignatures: char_block.market_ponty_observation_signatures,
+      limit: 250,
+    });
     const signature = marketLocalHistorySyncSignature(observations);
     if (char_block.market_local_history_sync_signature === signature) {
       return false;
@@ -1030,6 +1040,68 @@ function migrate_old_storage(path, localStorage) {
             },
           }),
           "market_intelligence_live_visible",
+          char_name,
+        );
+      });
+
+      const selected_ponty_observations = selectNewPontyMarketObservations(
+        char_block.market_ponty_observation_signatures,
+        market_intelligence.observations,
+      );
+      char_block.market_ponty_observation_signatures =
+        selected_ponty_observations.signatures;
+
+      selected_ponty_observations.observations.forEach((observation) => {
+        const item_name =
+          typeof observation.itemName === "string"
+            ? observation.itemName.trim()
+            : "";
+        const price = Number(observation.price);
+        const quantity = Number(observation.quantity);
+        if (
+          !item_name ||
+          !Number.isFinite(price) ||
+          price <= 0 ||
+          !Number.isFinite(quantity) ||
+          quantity <= 0
+        ) {
+          return;
+        }
+
+        void observe_persistence(
+          persistence.appendPontyObservation({
+            itemName: item_name,
+            level:
+              observation.level !== null &&
+              observation.level !== undefined &&
+              Number.isInteger(Number(observation.level)) &&
+              Number(observation.level) >= 0
+                ? Number(observation.level)
+                : null,
+            price,
+            quantity,
+            server:
+              typeof observation.server === "string"
+                ? observation.server
+                : null,
+            observedAt:
+              Number.isFinite(Number(observation.timestamp)) &&
+              Number(observation.timestamp) >= 0
+                ? Number(observation.timestamp)
+                : normalized.timestamp,
+            metadata: {
+              ...(observation.metadata &&
+              typeof observation.metadata === "object"
+                ? observation.metadata
+                : {}),
+              seller:
+                typeof observation.seller === "string"
+                  ? observation.seller
+                  : "Ponty",
+              observer: char_name,
+            },
+          }),
+          "market_intelligence_ponty",
           char_name,
         );
       });
@@ -1397,6 +1469,11 @@ function migrate_old_storage(path, localStorage) {
       char_block.market_live_observation_signatures,
     )
       ? char_block.market_live_observation_signatures
+      : [];
+    char_block.market_ponty_observation_signatures = Array.isArray(
+      char_block.market_ponty_observation_signatures,
+    )
+      ? char_block.market_ponty_observation_signatures
       : [];
     char_block.market_local_history_sync_signature =
       char_block.market_local_history_sync_signature || null;

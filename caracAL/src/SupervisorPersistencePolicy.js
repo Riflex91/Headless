@@ -77,7 +77,11 @@ function marketObservationSignature(observation) {
 
   return JSON.stringify([
     source.itemName || source.item_name || source.item || null,
-    Number.isInteger(Number(source.level)) ? Number(source.level) : null,
+    source.level !== null &&
+    source.level !== undefined &&
+    Number.isInteger(Number(source.level))
+      ? Number(source.level)
+      : null,
     Number(source.price) || 0,
     Number(source.quantity) || 0,
     source.server || null,
@@ -88,7 +92,11 @@ function marketObservationSignature(observation) {
   ]);
 }
 
-function selectNewLiveMarketObservations(previousSignatures, observations) {
+function selectNewMarketObservationsBySource(
+  previousSignatures,
+  observations,
+  source,
+) {
   const previous = new Set(
     Array.isArray(previousSignatures) ? previousSignatures : [],
   );
@@ -99,7 +107,7 @@ function selectNewLiveMarketObservations(previousSignatures, observations) {
     if (
       !observation ||
       typeof observation !== "object" ||
-      observation.source !== "LIVE_VISIBLE"
+      observation.source !== source
     ) {
       continue;
     }
@@ -116,6 +124,22 @@ function selectNewLiveMarketObservations(previousSignatures, observations) {
   };
 }
 
+function selectNewLiveMarketObservations(previousSignatures, observations) {
+  return selectNewMarketObservationsBySource(
+    previousSignatures,
+    observations,
+    "LIVE_VISIBLE",
+  );
+}
+
+function selectNewPontyMarketObservations(previousSignatures, observations) {
+  return selectNewMarketObservationsBySource(
+    previousSignatures,
+    observations,
+    "PONTY",
+  );
+}
+
 function marketLocalHistorySyncSignature(observations) {
   const payload = JSON.stringify(
     Array.isArray(observations) ? observations : [],
@@ -125,13 +149,19 @@ function marketLocalHistorySyncSignature(observations) {
 
 function selectMarketLocalHistoryForRuntime(
   rows,
-  { server = null, liveSignatures = [], limit = 250 } = {},
+  {
+    server = null,
+    liveSignatures = [],
+    pontySignatures = [],
+    limit = 250,
+  } = {},
 ) {
   const normalizedServer =
     typeof server === "string" && server.trim() ? server.trim() : null;
-  const activeLive = new Set(
-    Array.isArray(liveSignatures) ? liveSignatures : [],
-  );
+  const activeObservations = new Set([
+    ...(Array.isArray(liveSignatures) ? liveSignatures : []),
+    ...(Array.isArray(pontySignatures) ? pontySignatures : []),
+  ]);
   const boundedLimit = Math.min(
     1000,
     Math.max(1, Math.trunc(Number(limit) || 250)),
@@ -202,7 +232,9 @@ function selectMarketLocalHistoryForRuntime(
       },
     };
 
-    if (activeLive.has(marketObservationSignature(observation))) continue;
+    if (activeObservations.has(marketObservationSignature(observation))) {
+      continue;
+    }
 
     observations.push(observation);
     if (observations.length >= boundedLimit) break;
@@ -237,6 +269,7 @@ module.exports = {
   restoreDesiredRuntimeState,
   selectMarketLocalHistoryForRuntime,
   selectNewLiveMarketObservations,
+  selectNewPontyMarketObservations,
   shouldPersistSnapshot,
   snapshotSignature,
 };

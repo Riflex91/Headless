@@ -43,3 +43,43 @@ export function readPontyMarketObservations(
     },
   }));
 }
+
+export class PontyMarketSnapshotTracker {
+  private signature: string | null = null;
+  private observedAt: number | null = null;
+
+  observations(
+    game: PontyMarketReadSource,
+    options: PontyMarketSourceOptions = {},
+  ): MarketIntelligenceObservationInput[] {
+    const listings = game.ponty();
+    if (listings.length === 0) {
+      this.signature = null;
+      this.observedAt = null;
+      return [];
+    }
+
+    const signature = JSON.stringify(listings);
+    if (signature !== this.signature || this.observedAt === null) {
+      this.signature = signature;
+      this.observedAt = options.now?.() ?? Date.now();
+    }
+
+    const observedAt = this.observedAt;
+    return readPontyMarketObservations(
+      {
+        ponty: () => listings,
+      },
+      {
+        ...options,
+        now: () => observedAt,
+      },
+    ).map((observation) => ({
+      ...observation,
+      metadata: {
+        ...(observation.metadata || {}),
+        freshnessBasis: "FIRST_OBSERVED_RUNTIME_SNAPSHOT",
+      },
+    }));
+  }
+}

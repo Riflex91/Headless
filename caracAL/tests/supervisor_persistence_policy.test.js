@@ -16,6 +16,7 @@ const {
   restoreDesiredRuntimeState,
   selectMarketLocalHistoryForRuntime,
   selectNewLiveMarketObservations,
+  selectNewPontyMarketObservations,
   shouldPersistSnapshot,
   snapshotSignature,
 } = require("../src/SupervisorPersistencePolicy");
@@ -208,6 +209,82 @@ test("live market persistence treats changed price or quantity as new evidence",
   assert.notEqual(changed.signatures[1], initial.signatures[0]);
 });
 
+test("Ponty market persistence dedupes unchanged snapshots by RID and value", () => {
+  const firstObservation = {
+    itemName: "sword",
+    level: 2,
+    price: 1000,
+    quantity: 3,
+    server: "EU I",
+    seller: "Ponty",
+    timestamp: 1000,
+    source: "PONTY",
+    metadata: {
+      rid: "RID-SWORD",
+      totalPrice: 3000,
+      priceBasis: "PONTY_UNIT_PRICE",
+    },
+  };
+
+  const first = selectNewPontyMarketObservations([], [firstObservation]);
+  assert.deepEqual(first.observations, [firstObservation]);
+  assert.equal(first.signatures.length, 1);
+
+  const unchanged = selectNewPontyMarketObservations(first.signatures, [
+    {
+      ...firstObservation,
+      timestamp: 5000,
+    },
+  ]);
+  assert.deepEqual(unchanged.observations, []);
+  assert.deepEqual(unchanged.signatures, first.signatures);
+
+  const changed = selectNewPontyMarketObservations(first.signatures, [
+    {
+      ...firstObservation,
+      price: 1100,
+      timestamp: 6000,
+    },
+  ]);
+  assert.equal(changed.observations.length, 1);
+  assert.notDeepEqual(changed.signatures, first.signatures);
+});
+
+test("Ponty market persistence ignores non-PONTY market sources", () => {
+  const result = selectNewPontyMarketObservations(
+    [],
+    [
+      {
+        itemName: "sword",
+        level: 2,
+        price: 1000,
+        quantity: 1,
+        server: "EU I",
+        seller: "Trader",
+        timestamp: 1000,
+        source: "LIVE_VISIBLE",
+        metadata: {
+          rid: "RID-LIVE",
+        },
+      },
+      {
+        itemName: "sword",
+        level: 2,
+        price: 900,
+        quantity: 1,
+        server: "EU I",
+        seller: "History",
+        timestamp: 900,
+        source: "LOCAL_HISTORY",
+        metadata: {},
+      },
+    ],
+  );
+
+  assert.deepEqual(result.observations, []);
+  assert.deepEqual(result.signatures, []);
+});
+
 test("LOCAL_HISTORY selection stays server-bound and excludes active live listings", () => {
   const activeLive = {
     itemName: "gem0",
@@ -287,6 +364,90 @@ test("LOCAL_HISTORY selection stays server-bound and excludes active live listin
         slot: "trade1",
         rid: "RID-2",
         storedSource: "LIVE_VISIBLE",
+      },
+    },
+  ]);
+});
+
+test("market signatures keep null levels distinct from level zero", () => {
+  const base = {
+    itemName: "scroll0",
+    price: 1000,
+    quantity: 1,
+    server: "EU I",
+    seller: "Ponty",
+    metadata: {
+      rid: "RID-LEVEL",
+    },
+  };
+
+  assert.notEqual(
+    marketObservationSignature({ ...base, level: null }),
+    marketObservationSignature({ ...base, level: 0 }),
+  );
+});
+
+test("LOCAL_HISTORY excludes active Ponty snapshots but keeps older Ponty evidence", () => {
+  const activePonty = {
+    itemName: "sword",
+    level: 2,
+    price: 1000,
+    quantity: 1,
+    server: "EU I",
+    seller: "Ponty",
+    metadata: {
+      rid: "RID-CURRENT",
+    },
+  };
+
+  const history = selectMarketLocalHistoryForRuntime(
+    [
+      {
+        item_name: "sword",
+        level: 2,
+        price: 1000,
+        quantity: 1,
+        server: "EU I",
+        seller: "Ponty",
+        source: "PONTY",
+        observed_at: 5000,
+        metadata: {
+          rid: "RID-CURRENT",
+        },
+      },
+      {
+        item_name: "sword",
+        level: 2,
+        price: 900,
+        quantity: 1,
+        server: "EU I",
+        seller: "Ponty",
+        source: "PONTY",
+        observed_at: 4000,
+        metadata: {
+          rid: "RID-OLDER",
+        },
+      },
+    ],
+    {
+      server: "EU I",
+      pontySignatures: [marketObservationSignature(activePonty)],
+      limit: 250,
+    },
+  );
+
+  assert.deepEqual(history, [
+    {
+      itemName: "sword",
+      level: 2,
+      price: 900,
+      quantity: 1,
+      server: "EU I",
+      seller: "Ponty",
+      observedAt: 4000,
+      metadata: {
+        rid: "RID-OLDER",
+        storedSource: "PONTY",
       },
     },
   ]);

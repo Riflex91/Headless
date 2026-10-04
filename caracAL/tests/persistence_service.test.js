@@ -486,6 +486,15 @@ test("structured persistence domains survive a restart", async () => {
       server: "EU I",
       observedAt: 6100,
     });
+    await first.appendMarketObservation({
+      itemName: "scroll1",
+      price: 5000,
+      quantity: 1,
+      server: "EU I",
+      seller: "Vendor",
+      source: "LIVE_VISIBLE",
+      observedAt: 6050,
+    });
     await first.appendFarmStatistic("My_Ranger1", "goo", {
       startedAt: 1000,
       endedAt: 7000,
@@ -551,10 +560,26 @@ test("structured persistence domains survive a restart", async () => {
         metadata: { slot: 3 },
       },
     ]);
-    assert.equal(
-      reopened.listPontyHistory({ itemName: "scroll0" })[0].price,
-      12500,
-    );
+    assert.deepEqual(reopened.listMarketHistory({ itemName: "scroll1" })[0], {
+      item_name: "scroll1",
+      level: null,
+      price: 5000,
+      quantity: 1,
+      server: "EU I",
+      seller: "Vendor",
+      source: "LIVE_VISIBLE",
+      observed_at: 6050,
+      metadata: {},
+    });
+    assert.deepEqual(reopened.listPontyHistory({ itemName: "scroll0" })[0], {
+      item_name: "scroll0",
+      level: null,
+      price: 12500,
+      quantity: 1,
+      server: "EU I",
+      observed_at: 6100,
+      metadata: {},
+    });
     assert.deepEqual(reopened.listFarmStatistics("My_Ranger1")[0], {
       farm_key: "goo",
       sample_started_at: 1000,

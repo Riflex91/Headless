@@ -225,6 +225,7 @@ import {
   MarketIntelligenceEvent,
   MarketIntelligenceObservationInput,
 } from "./market-intelligence-controller.lib";
+import { PontyMarketSnapshotTracker } from "./ponty-market-source.lib";
 import {
   MarketTradingLiveTestOptions,
   MarketTradingLiveTestResult,
@@ -381,6 +382,8 @@ export class BotRuntimeKernel {
   private logisticsClaimRunning = false;
   private lastLogisticsExecution: LogisticsExecutionResult | null = null;
   private marketLocalHistory: MarketIntelligenceObservationInput[] = [];
+  private readonly pontyMarketSnapshotTracker =
+    new PontyMarketSnapshotTracker();
 
   constructor() {
     this.eventBus = new EventBus({
@@ -459,6 +462,10 @@ export class BotRuntimeKernel {
     });
     this.marketIntelligence = new MarketIntelligenceController(this.game, {
       server: runtimeRealm,
+      ponty: () =>
+        this.pontyMarketSnapshotTracker.observations(this.game, {
+          server: runtimeRealm,
+        }),
       localHistory: () => this.marketLocalHistory,
       onEvent: (event) => this.handleMarketIntelligenceEvent(event),
     });
