@@ -66,6 +66,10 @@ import {
   RiskPolicyEvent,
 } from "./risk-policy-controller.lib";
 import {
+  EconomyPrebuffController,
+  EconomyPrebuffEvent,
+} from "./economy-prebuff-controller.lib";
+import {
   EconomyArbiterController,
   EconomyArbiterEvent,
   EconomyArbiterLane,
@@ -231,6 +235,8 @@ const EXPECTED_VALUE_JOB_ID = "expected-value-loop";
 const EXPECTED_VALUE_INTERVAL_MS = 1000;
 const RISK_POLICY_JOB_ID = "risk-policy-loop";
 const RISK_POLICY_INTERVAL_MS = 1000;
+const ECONOMY_PREBUFF_JOB_ID = "economy-prebuff-loop";
+const ECONOMY_PREBUFF_INTERVAL_MS = 1000;
 const ECONOMY_ARBITER_JOB_ID = "economy-arbiter-loop";
 const ECONOMY_ARBITER_INTERVAL_MS = 1000;
 const FARM_INTELLIGENCE_JOB_ID = "farm-intelligence-loop";
@@ -309,6 +315,7 @@ export class BotRuntimeKernel {
   readonly craft: CraftController;
   readonly expectedValue: ExpectedValueController;
   readonly riskPolicy: RiskPolicyController;
+  readonly economyPrebuff: EconomyPrebuffController;
   readonly economyArbiter: EconomyArbiterController;
   readonly merchantAutonomy: MerchantAutonomyController;
   readonly bankTravel: BankTravelController;
@@ -484,6 +491,14 @@ export class BotRuntimeKernel {
       config: () => runtimeConfig?.config || {},
       onEvent: (event) => this.handleRiskPolicyEvent(event),
     });
+    this.economyPrebuff = new EconomyPrebuffController(
+      this.game,
+      this.riskPolicy,
+      {
+        config: () => runtimeConfig?.config || {},
+        onEvent: (event) => this.handleEconomyPrebuffEvent(event),
+      },
+    );
     this.economyArbiter = new EconomyArbiterController({
       config: () => runtimeConfig?.config || {},
       signals: () => this.economyArbiterSignals(),
@@ -623,6 +638,15 @@ export class BotRuntimeKernel {
     });
 
     this.scheduler.register({
+      id: ECONOMY_PREBUFF_JOB_ID,
+      intervalMs: ECONOMY_PREBUFF_INTERVAL_MS,
+      priority: 77,
+      tick: () => {
+        this.economyPrebuff.tick();
+      },
+    });
+
+    this.scheduler.register({
       id: ECONOMY_ARBITER_JOB_ID,
       intervalMs: ECONOMY_ARBITER_INTERVAL_MS,
       priority: 72,
@@ -687,6 +711,7 @@ export class BotRuntimeKernel {
             futureGear: this.futureGear.status(),
             expectedValue: this.expectedValue.status(),
             riskPolicy: this.riskPolicy.status(),
+            economyPrebuff: this.economyPrebuff.status(),
             economyArbiter: this.economyArbiter.status(),
             merchantAutonomy: this.merchantAutonomy.status(),
             bankTravel: this.bankTravel.status(),
@@ -789,6 +814,7 @@ export class BotRuntimeKernel {
       craft: this.craft.status(),
       expectedValue: this.expectedValue.status(),
       riskPolicy: this.riskPolicy.status(),
+      economyPrebuff: this.economyPrebuff.status(),
       economyArbiter: this.economyArbiter.status(),
       merchantAutonomy: this.merchantAutonomy.status(),
       bankTravel: this.bankTravel.status(),
@@ -3539,6 +3565,7 @@ export class BotRuntimeKernel {
     const emergencyStop = !!parent.caracAL?.emergency_stop;
     const merrit = this.merchantMerrit.status();
     const riskPolicy = this.riskPolicy.status();
+    const prebuff = this.economyPrebuff.status();
     const merchant = this.merchantAutonomy.status();
     const fishing = this.merchantFishing.status();
     const logisticsUnknown =
@@ -3600,7 +3627,21 @@ export class BotRuntimeKernel {
       },
       ECONOMY_PREBUFF: {
         active: false,
-        reason: "ECONOMY_PREBUFF_NOT_IMPLEMENTED",
+        reason:
+          prebuff.state === "READY"
+            ? "ECONOMY_PREBUFF_READY_EXECUTION_DEFERRED"
+            : prebuff.reason,
+        data: {
+          state: prebuff.state,
+          demandKind: prebuff.demand.kind,
+          demandName: prebuff.demand.name,
+          selectedSkill: prebuff.selectedSkill,
+          riskPolicyState: prebuff.demand.riskPolicyState,
+          unknown: prebuff.demand.unknown,
+          executionEnabled: prebuff.policy.executionEnabled,
+          arbiterLaneActivationEnabled:
+            prebuff.policy.arbiterLaneActivationEnabled,
+        },
       },
       ECONOMY: {
         active: economyActive,
@@ -3639,6 +3680,17 @@ export class BotRuntimeKernel {
         },
       },
     };
+  }
+
+  private handleEconomyPrebuffEvent(event: EconomyPrebuffEvent): void {
+    this.eventBus.emit({
+      module: "EconomyPrebuffController",
+      type: event.type,
+      why: event.reason,
+      data: {
+        economyPrebuff: event.status,
+      },
+    });
   }
 
   private handleRiskPolicyEvent(event: RiskPolicyEvent): void {

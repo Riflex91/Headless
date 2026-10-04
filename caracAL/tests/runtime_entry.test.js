@@ -531,6 +531,62 @@ test("Risk Policy runtime remains read-only and blocks unknown EV", () => {
   assert.match(controller, /unknownAlwaysBlocked: true/);
 });
 
+test("Economy Prebuff runtime plans read-only before the Arbiter", () => {
+  const kernel = fs.readFileSync(
+    path.join(
+      __dirname,
+      "..",
+      "TYPECODE",
+      "bot",
+      "core",
+      "runtime-kernel.lib.ts",
+    ),
+    "utf8",
+  );
+  const controller = fs.readFileSync(
+    path.join(
+      __dirname,
+      "..",
+      "TYPECODE",
+      "bot",
+      "core",
+      "economy-prebuff-controller.lib.ts",
+    ),
+    "utf8",
+  );
+
+  assert.match(kernel, /ECONOMY_PREBUFF_JOB_ID/);
+  assert.match(kernel, /economyPrebuff: this\.economyPrebuff\.status\(\)/);
+  assert.match(kernel, /this\.economyPrebuff\.tick\(\)/);
+  assert.match(kernel, /priority: 77/);
+  assert.match(kernel, /active: false/);
+  assert.match(kernel, /ECONOMY_PREBUFF_READY_EXECUTION_DEFERRED/);
+
+  const schedulerStart = kernel.indexOf("id: ECONOMY_PREBUFF_JOB_ID");
+  const schedulerEnd = kernel.indexOf(
+    "id: ECONOMY_ARBITER_JOB_ID",
+    schedulerStart,
+  );
+  assert.ok(schedulerStart >= 0);
+  assert.ok(schedulerEnd > schedulerStart);
+  const schedulerBlock = kernel.slice(schedulerStart, schedulerEnd);
+  assert.match(schedulerBlock, /this\.economyPrebuff\.tick\(\)/);
+  assert.doesNotMatch(schedulerBlock, /execute/);
+
+  assert.doesNotMatch(controller, /ActionBoundary/);
+  assert.doesNotMatch(controller, /useSkill/);
+  assert.doesNotMatch(controller, /executeNext/);
+  assert.match(controller, /massproductionpp/);
+  assert.match(controller, /massproduction/);
+  assert.match(controller, /massexchangepp/);
+  assert.match(controller, /massexchange/);
+  assert.match(controller, /buffLifetimeMs: 10000/);
+  assert.match(controller, /exchangeDemandSupported: false/);
+  assert.match(controller, /arbiterLaneActivationEnabled: false/);
+  assert.match(controller, /executionEnabled: false/);
+  assert.match(controller, /valueMutationForced: false/);
+});
+
 test("Economy Arbiter runtime is read-only and projects fixed lane priority", () => {
   const kernel = fs.readFileSync(
     path.join(
@@ -565,7 +621,8 @@ test("Economy Arbiter runtime is read-only and projects fixed lane priority", ()
   assert.match(kernel, /this\.economyArbiter\.authorize\(lane\)/);
   assert.match(kernel, /economyArbiterLaneForIntent/);
   assert.match(kernel, /priority: 72/);
-  assert.match(kernel, /ECONOMY_PREBUFF_NOT_IMPLEMENTED/);
+  assert.match(kernel, /ECONOMY_PREBUFF_READY_EXECUTION_DEFERRED/);
+  assert.match(kernel, /arbiterLaneActivationEnabled/);
   assert.match(kernel, /LOGISTICS_OUTCOME_UNCERTAIN/);
 
   const schedulerStart = kernel.indexOf("id: ECONOMY_ARBITER_JOB_ID");
