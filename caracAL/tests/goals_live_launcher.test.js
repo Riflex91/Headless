@@ -224,6 +224,37 @@ test("Goals live E2E validates populated read-only Goal plans", () => {
   assert.equal(evidence.complete, true);
 });
 
+test("Goals live E2E accepts generated INVALID goals as a safe PARTIAL projection", () => {
+  const invalidGoal = goal({
+    goalId: "invalid-goal",
+    type: "FARM_ITEM",
+    state: "INVALID",
+    reason: "FARM_ITEM_TARGET_INVALID",
+    progress: {
+      state: "UNKNOWN",
+      current: null,
+      target: null,
+      ratio: null,
+    },
+    completion: {
+      met: false,
+      source: null,
+      criteria: [],
+    },
+    tasks: [],
+    errors: ["FARM_ITEM_TARGET_INVALID"],
+  });
+
+  const result = evaluateGoals(snapshot([invalidGoal]));
+
+  assert.equal(result.outcome, "PASS");
+  assert.equal(result.evidence.state, "PARTIAL");
+  assert.equal(result.evidence.invalid, 1);
+  assert.equal(result.evidence.goalStructureValid, true);
+  assert.equal(result.evidence.summaryValid, true);
+  assert.equal(result.evidence.safetyValid, true);
+});
+
 test("Goals live E2E rejects any direct execution or mutation permission", () => {
   const source = snapshot([goal()]);
   source.goals.executionEnabled = true;
