@@ -319,6 +319,39 @@ async function make_runner(upper, CODE_file, version, is_typescript) {
         }
         break;
       }
+      case "goal_adapter_preflight": {
+        const requestId =
+          typeof m.request_id === "string" && m.request_id
+            ? m.request_id
+            : "goal-adapter-preflight-" + Date.now();
+        const runtime = runner_context.__caracalBotRuntime;
+        if (!runtime?.runGoalAdapterPreflight) {
+          sendIpcMessage(process, {
+            type: "goal_adapter_preflight_result",
+            request_id: requestId,
+            error: "GOAL_ADAPTER_PREFLIGHT_RUNTIME_NOT_READY",
+          });
+          break;
+        }
+
+        void runtime
+          .runGoalAdapterPreflight(m.request, { requestId })
+          .then((result) => {
+            sendIpcMessage(process, {
+              type: "goal_adapter_preflight_result",
+              request_id: requestId,
+              result,
+            });
+          })
+          .catch((error) => {
+            sendIpcMessage(process, {
+              type: "goal_adapter_preflight_result",
+              request_id: requestId,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          });
+        break;
+      }
       case "material_gather_task": {
         const requestId =
           typeof m.request_id === "string" && m.request_id

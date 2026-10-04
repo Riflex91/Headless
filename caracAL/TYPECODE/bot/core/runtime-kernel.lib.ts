@@ -151,6 +151,10 @@ import {
   MaterialGatheringTaskRunner,
 } from "./material-gathering-task.lib";
 import {
+  GoalAdapterPreflightResult,
+  GoalAdapterPreflightRunner,
+} from "./goal-adapter-preflight.lib";
+import {
   LogisticsClaim,
   LogisticsClaimExecutor,
   LogisticsExecutionResult,
@@ -380,6 +384,7 @@ export class BotRuntimeKernel {
   private merritLiveTestRunning = false;
   private fishingLiveTestRunning = false;
   private materialGatherTaskRunning = false;
+  private goalAdapterPreflightRunning = false;
   private economyPrebuffExecutionRunning = false;
   private logisticsClaimRunning = false;
   private lastLogisticsExecution: LogisticsExecutionResult | null = null;
@@ -3118,6 +3123,103 @@ export class BotRuntimeKernel {
     reason?: string | null;
   }): void {
     this.merchantFishing.reportMaterialRequestResult(result);
+  }
+
+  async runGoalAdapterPreflight(
+    request: unknown,
+    options: { requestId?: string } = {},
+  ): Promise<GoalAdapterPreflightResult> {
+    if (this.goalAdapterPreflightRunning) {
+      throw new Error("Goal adapter preflight already running");
+    }
+    if (
+      this.materialGatherTaskRunning ||
+      this.economyPrebuffExecutionRunning ||
+      this.movementLiveTestRunning ||
+      this.combatLiveTestRunning ||
+      this.classSkillLiveTestRunning ||
+      this.groupLiveTestRunning ||
+      this.farmLiveTestRunning ||
+      this.inventoryLiveTestRunning ||
+      this.upgradeLiveTestRunning ||
+      this.upgradePreflightRunning ||
+      this.compoundLiveTestRunning ||
+      this.exchangePreflightRunning ||
+      this.exchangeLiveTestRunning ||
+      this.craftPreflightRunning ||
+      this.craftLiveTestRunning ||
+      this.logisticsLiveTestRunning ||
+      this.merchantLiveTestRunning ||
+      this.bankTravelLiveTestRunning ||
+      this.bankGoldLiveTestRunning ||
+      this.npcTradingLiveTestRunning ||
+      this.marketTradingLiveTestRunning ||
+      this.marketIntelligenceSourceProbeRunning ||
+      this.merritLiveTestRunning ||
+      this.fishingLiveTestRunning ||
+      this.logisticsClaimRunning
+    ) {
+      throw new Error("runtime is busy with another controlled activity");
+    }
+    if (!this.started || this.stopping || runtimeState() !== "RUNNING") {
+      throw new Error("runtime is not ready for Goal adapter preflight");
+    }
+
+    this.goalAdapterPreflightRunning = true;
+    const requestId =
+      options.requestId || `goal-adapter-preflight-${Date.now()}`;
+    this.eventBus.emit({
+      module: "GoalAdapterPreflight",
+      type: "GOAL_ADAPTER_PREFLIGHT_STARTED",
+      why: "PHASE19_READ_ONLY_RUNTIME_PREFLIGHT",
+      correlationId: requestId,
+      data: {
+        requestId,
+        readOnly: true,
+        ...runtimeIdentity(),
+      },
+    });
+
+    try {
+      const runner = new GoalAdapterPreflightRunner({
+        farmIntelligence: this.farmIntelligence,
+        character: () => {
+          const snapshot = this.game.character();
+          return {
+            name: snapshot.name,
+            ctype: snapshot.ctype,
+          };
+        },
+        craftMaterialPlan: (recipe) => this.runCraftMaterialPlan(recipe),
+      });
+      const result = await runner.run(request, { requestId });
+
+      this.eventBus.emit({
+        module: "GoalAdapterPreflight",
+        type: "GOAL_ADAPTER_PREFLIGHT_COMPLETED",
+        why: result.reason,
+        correlationId: requestId,
+        data: {
+          result,
+          readOnly: true,
+        },
+      });
+      return result;
+    } catch (error) {
+      this.eventBus.emit({
+        module: "GoalAdapterPreflight",
+        type: "GOAL_ADAPTER_PREFLIGHT_FAILED",
+        why: "GOAL_ADAPTER_PREFLIGHT_RUNTIME_ERROR",
+        correlationId: requestId,
+        data: {
+          error: error instanceof Error ? error.message : String(error),
+          readOnly: true,
+        },
+      });
+      throw error;
+    } finally {
+      this.goalAdapterPreflightRunning = false;
+    }
   }
 
   async runMaterialGatherTask(
