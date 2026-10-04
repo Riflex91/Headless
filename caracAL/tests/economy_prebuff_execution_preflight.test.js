@@ -6,8 +6,10 @@ const path = require("node:path");
 const test = require("node:test");
 
 const {
+  formatCompactResult,
   normalizeCandidate,
   normalizeVerificationPolicyPreflight,
+  parseCliArgs,
   verificationPolicyCandidates,
 } = require("../scripts/run_economy_prebuff_execution_preflight");
 
@@ -58,6 +60,74 @@ function result({
     },
   };
 }
+
+test("preflight CLI defaults to compact output and supports explicit verbose mode", () => {
+  assert.deepEqual(parseCliArgs(["My_Merchant"]), {
+    requestedCharacter: "My_Merchant",
+    verbose: false,
+    clearScreen: true,
+  });
+  assert.deepEqual(parseCliArgs(["My_Merchant", "--verbose", "--no-clear"]), {
+    requestedCharacter: "My_Merchant",
+    verbose: true,
+    clearScreen: false,
+  });
+});
+
+test("compact preflight output keeps only decision-critical fields", () => {
+  const preflight = normalizeCandidate(result(), "My_Merchant");
+  const output = formatCompactResult(preflight);
+
+  assert.match(output, /Economy Prebuff Execution Preflight/);
+  assert.match(output, /Outcome: READY/);
+  assert.match(output, /Risk Policy: READY/);
+  assert.match(output, /Prebuff: READY/);
+  assert.match(output, /Selected skill: massproductionpp/);
+  assert.match(output, /Candidate: UPGRADE helmet \[2\]/);
+  assert.match(output, /Mutation dispatched: no/);
+  assert.match(output, /Exact guarded mutation command:/);
+  assert.doesNotMatch(output, /inventoryIntelligence/);
+  assert.doesNotMatch(output, /"diagnostics"/);
+});
+
+test("compact blocked preflight summarizes verification attempts one line each", () => {
+  const output = formatCompactResult({
+    outcome: "NO_CANDIDATE",
+    reason: "ECONOMY_PREBUFF_EXECUTION_VERIFICATION_POLICY_NOT_READY",
+    character: "My_Merchant",
+    riskPolicyState: "EMPTY",
+    riskPolicyReason: "RISK_POLICY_NO_ESTIMATES",
+    prebuffState: "IDLE",
+    prebuffReason: "ECONOMY_PREBUFF_NO_ECONOMY_SELECTION",
+    selectedSkill: null,
+    candidate: null,
+    command: null,
+    scope: {
+      readOnly: true,
+      mutationDispatched: false,
+    },
+    verificationPolicyAttempts: [
+      {
+        candidate: {
+          kind: "UPGRADE",
+          name: "shoes",
+          slots: [16],
+        },
+        riskPolicyState: "READY",
+        riskPolicyReason: "RISK_POLICY_CANDIDATE_ALLOWED",
+        prebuffState: "BLOCKED",
+        prebuffReason: "ECONOMY_PREBUFF_SKILL_NOT_READY",
+      },
+    ],
+  });
+
+  assert.match(output, /Verification attempts: 1/);
+  assert.match(
+    output,
+    /UPGRADE shoes \[16\]: risk=READY \(RISK_POLICY_CANDIDATE_ALLOWED\); prebuff=BLOCKED/,
+  );
+  assert.doesNotMatch(output, /\{\s*"candidate"/);
+});
 
 test("preflight emits exact guarded upgrade command for READY candidate", () => {
   const preflight = normalizeCandidate(result(), "My_Merchant");
@@ -397,6 +467,9 @@ test("preflight source remains on read-only Gear Scoring supervisor", () => {
   );
 
   assert.match(source, /runGearScoringSupervisorLiveTest/);
+  assert.match(source, /stdio: \["ignore", "ignore", "ignore"\]/);
+  assert.match(source, /formatCompactResult/);
+  assert.match(source, /--verbose/);
   assert.match(source, /scope:\s*\{\s*readOnly: true/);
   assert.match(source, /mutationDispatched: false/);
   assert.match(source, /inventoryIntelligence/);
