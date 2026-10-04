@@ -202,6 +202,63 @@ async function make_runner(upper, CODE_file, version, is_typescript) {
           });
         break;
       }
+      case "economy_prebuff_execution_live_test": {
+        const requestId =
+          typeof m.request_id === "string" && m.request_id
+            ? m.request_id
+            : `economy-prebuff-execution-live-${Date.now()}`;
+        const runtime = runner_context.__caracalBotRuntime;
+        if (!runtime?.runEconomyPrebuffExecutionLiveTest) {
+          sendIpcMessage(process, {
+            type: "economy_prebuff_execution_live_test_result",
+            request_id: requestId,
+            error: "ECONOMY_PREBUFF_EXECUTION_LIVE_TEST_RUNTIME_NOT_READY",
+          });
+          break;
+        }
+
+        const expectedKind =
+          m.expected_kind === "UPGRADE" || m.expected_kind === "COMPOUND"
+            ? m.expected_kind
+            : null;
+        const expectedName =
+          typeof m.expected_name === "string" ? m.expected_name.trim() : "";
+        const expectedSlots = Array.isArray(m.expected_slots)
+          ? m.expected_slots.map((slot) => Number(slot))
+          : [];
+
+        if (!expectedKind || !expectedName) {
+          sendIpcMessage(process, {
+            type: "economy_prebuff_execution_live_test_result",
+            request_id: requestId,
+            error: "ECONOMY_PREBUFF_EXECUTION_LIVE_TEST_EXPECTATION_INVALID",
+          });
+          break;
+        }
+
+        void runtime
+          .runEconomyPrebuffExecutionLiveTest({
+            requestId,
+            expectedKind,
+            expectedName,
+            expectedSlots,
+          })
+          .then((result) => {
+            sendIpcMessage(process, {
+              type: "economy_prebuff_execution_live_test_result",
+              request_id: requestId,
+              result,
+            });
+          })
+          .catch((error) => {
+            sendIpcMessage(process, {
+              type: "economy_prebuff_execution_live_test_result",
+              request_id: requestId,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          });
+        break;
+      }
       case "economy_arbiter_enforcement_probe": {
         const requestId =
           typeof m.request_id === "string" && m.request_id
