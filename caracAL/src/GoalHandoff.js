@@ -98,7 +98,10 @@ function executionTaskForGoal(goal) {
   return (
     array(goal?.tasks).find((task) => {
       const kind = text(task?.kind);
-      return kind && Object.prototype.hasOwnProperty.call(GOAL_HANDOFF_ROUTES, kind);
+      return (
+        kind &&
+        Object.prototype.hasOwnProperty.call(GOAL_HANDOFF_ROUTES, kind)
+      );
     }) || null
   );
 }
@@ -120,16 +123,17 @@ function fullAutonomyGuard(fullAutonomy, route) {
   const source = record(fullAutonomy);
   const execution = record(source.execution);
   const required = route?.requiresFullAutonomy === true;
+  const executionState = text(execution.state);
 
   return {
     required,
     executionEnabled: source.executionEnabled === true,
-    state: text(execution.state),
+    state: executionState,
     reason: text(execution.reason),
     satisfied:
       required !== true ||
       (source.executionEnabled === true &&
-        !["BLOCKED", "DISABLED"].includes(text(execution.state))),
+        ["READY", "STABLE"].includes(executionState)),
   };
 }
 
