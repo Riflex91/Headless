@@ -103,7 +103,10 @@ const {
   reservedSlotsForCharacter,
 } = require("../src/AccountGearReservation");
 const { buildAccountStrategy } = require("../src/AccountStrategy");
-const { buildFullAutonomyPlan } = require("../src/FullAutonomy");
+const {
+  buildFullAutonomyPlan,
+  manualStopProtected,
+} = require("../src/FullAutonomy");
 const {
   buildFullAutonomyExecutionDecision,
   readFullAutonomyExecutionPolicy,
@@ -688,6 +691,401 @@ function migrate_old_storage(path, localStorage) {
     }
 
     return full_autonomy_last_execution;
+  }
+
+  function full_autonomy_live_test_protected(char_block) {
+    return (
+      manualStopProtected(char_block) ||
+      char_block?.desired_runtime_state_source === "MANUAL_PAUSE"
+    );
+  }
+
+  function full_autonomy_live_test_snapshot(char_block) {
+    return {
+      enabled: char_block.enabled === true,
+      desiredRuntimeState:
+        char_block.desired_runtime_state || DESIRED_RUNTIME_STATES.STOPPED,
+      desiredRuntimeStateSource:
+        char_block.desired_runtime_state_source || "UNKNOWN",
+      lifecycleOnlyProbe:
+        char_block.full_autonomy_live_test_lifecycle_only === true,
+      rotationSource: char_block.rotation_source || null,
+      rotationReplacement: char_block.rotation_replacement || null,
+    };
+  }
+
+  async function wait_for_full_autonomy_live_test(
+    predicate,
+    timeout_ms = 60000,
+  ) {
+    const started_at = Date.now();
+    while (Date.now() - started_at < timeout_ms) {
+      if (predicate()) return true;
+      await sleep(100);
+    }
+    return false;
+  }
+
+  async function restore_full_autonomy_live_test_state(
+    character_names,
+    originals,
+  ) {
+    for (const char_name of character_names) {
+      const char_block = character_manage[char_name];
+      if (!char_block) continue;
+      char_block.enabled = false;
+      char_block.desired_runtime_state = DESIRED_RUNTIME_STATES.STOPPED;
+      char_block.desired_runtime_state_source =
+        "FULL_AUTONOMY_LIVE_TEST_CLEANUP";
+      clear_restart_timer(char_block);
+      clear_stable_timer(char_block);
+    }
+
+    await Promise.all(
+      character_names.map(async (char_name) => {
+        const char_block = character_manage[char_name];
+        if (char_block?.instance) {
+          await softkill_block(char_block);
+        }
+      }),
+    );
+
+    await wait_for_full_autonomy_live_test(
+      () =>
+        character_names.every(
+          (char_name) => !character_manage[char_name]?.instance,
+        ),
+      10000,
+    );
+
+    for (const char_name of character_names) {
+      const char_block = character_manage[char_name];
+      const original = originals[char_name];
+      if (!char_block || !original) continue;
+
+      clear_restart_timer(char_block);
+      clear_stable_timer(char_block);
+      char_block.enabled = original.enabled;
+      char_block.desired_runtime_state = original.desiredRuntimeState;
+      char_block.desired_runtime_state_source =
+        original.desiredRuntimeStateSource;
+      char_block.full_autonomy_live_test_lifecycle_only =
+        original.lifecycleOnlyProbe;
+      char_block.rotation_source = original.rotationSource;
+      char_block.rotation_replacement = original.rotationReplacement;
+      char_block.connected = false;
+      char_block.lifecycle_state = LIFECYCLE_STATES.STOPPED;
+      persist_character_runtime_state(
+        char_name,
+        "full_autonomy_live_test_restore",
+      );
+    }
+
+    refresh_merchant_logistics("FULL_AUTONOMY_LIVE_TEST_RESTORE");
+    refresh_account_gear_reservations("FULL_AUTONOMY_LIVE_TEST_RESTORE");
+
+    return character_names.every((char_name) => {
+      const char_block = character_manage[char_name];
+      const original = originals[char_name];
+      return (
+        !!char_block &&
+        !!original &&
+        !char_block.instance &&
+        char_block.connected === false &&
+        char_block.enabled === original.enabled &&
+        char_block.desired_runtime_state === original.desiredRuntimeState &&
+        char_block.desired_runtime_state_source ===
+          original.desiredRuntimeStateSource &&
+        char_block.full_autonomy_live_test_lifecycle_only ===
+          original.lifecycleOnlyProbe
+      );
+    });
+  }
+
+  async function run_full_autonomy_live_test() {
+    if (!observer_only) {
+      throw make_control_error(
+        "FULL_AUTONOMY_LIVE_TEST_REQUIRES_OBSERVER_ONLY",
+        "Full Autonomy live test requires an observer-only supervisor",
+        409,
+      );
+    }
+    if (full_autonomy_live_test_active) {
+      throw make_control_error(
+        "FULL_AUTONOMY_LIVE_TEST_ALREADY_ACTIVE",
+        "A Full Autonomy live test is already active",
+        409,
+      );
+    }
+    if (emergency_stop.snapshot().active) {
+      throw make_control_error(
+        "FULL_AUTONOMY_LIVE_TEST_EMERGENCY_STOP_ACTIVE",
+        "Emergency stop must be clear before Full Autonomy live test",
+        409,
+      );
+    }
+    const safety_block = full_autonomy_safety_block_reason();
+    if (safety_block) {
+      throw make_control_error(
+        "FULL_AUTONOMY_LIVE_TEST_CONTROLLED_OPERATION_ACTIVE",
+        "Another controlled operation is active",
+        409,
+      );
+    }
+    if (
+      Object.values(character_manage).some(
+        (char_block) => char_block?.instance || char_block?.connected,
+      )
+    ) {
+      throw make_control_error(
+        "FULL_AUTONOMY_LIVE_TEST_REQUIRES_IDLE_SUPERVISOR",
+        "Full Autonomy live test requires zero active character processes",
+        409,
+      );
+    }
+
+    const strategy = account_strategy_state();
+    const profiles = Array.isArray(strategy?.profiles) ? strategy.profiles : [];
+    const merchant_profile = profiles.find(
+      (profile) => profile?.class === "merchant",
+    );
+    const merchant_name = merchant_profile?.name || null;
+    const merchant_block = character_manage[merchant_name];
+
+    if (!merchant_name || !merchant_block) {
+      throw make_control_error(
+        "FULL_AUTONOMY_LIVE_TEST_MERCHANT_MISSING",
+        "Account Merchant profile is unavailable",
+        409,
+      );
+    }
+    if (full_autonomy_live_test_protected(merchant_block)) {
+      throw make_control_error(
+        "FULL_AUTONOMY_LIVE_TEST_MERCHANT_PROTECTED",
+        "Merchant has manual lifecycle protection",
+        409,
+      );
+    }
+
+    const combat_names = profiles
+      .filter(
+        (profile) =>
+          profile?.name &&
+          profile.name !== merchant_name &&
+          character_manage[profile.name]?.account_owned === true &&
+          !full_autonomy_live_test_protected(character_manage[profile.name]),
+      )
+      .map((profile) => profile.name)
+      .sort()
+      .slice(0, 4);
+
+    if (combat_names.length < 4) {
+      throw make_control_error(
+        "FULL_AUTONOMY_LIVE_TEST_COMBAT_CANDIDATES_INSUFFICIENT",
+        "Full Autonomy live test requires four unprotected combat candidates",
+        409,
+      );
+    }
+
+    const test_characters = [...combat_names, merchant_name];
+    const originals = Object.fromEntries(
+      test_characters.map((char_name) => [
+        char_name,
+        full_autonomy_live_test_snapshot(character_manage[char_name]),
+      ]),
+    );
+
+    full_autonomy_live_test_sequence += 1;
+    const test_id =
+      "full-autonomy-live-" +
+      Date.now() +
+      "-" +
+      full_autonomy_live_test_sequence;
+    let result = {
+      testId: test_id,
+      outcome: "FAIL",
+      reason: "FULL_AUTONOMY_LIVE_TEST_INCOMPLETE",
+      action: null,
+      evidence: {},
+      scope: {
+        observerOnly: true,
+        lifecycleOnlyProbe: true,
+        lifecycleMutationDispatched: false,
+        gameplayMutationDispatched: false,
+        valueMutationDispatched: false,
+        policyOverride: true,
+      },
+      cleanup: {
+        runtimeStateRestored: false,
+      },
+    };
+
+    full_autonomy_live_test_active = true;
+    try {
+      merchant_block.full_autonomy_live_test_lifecycle_only = true;
+      merchant_block.enabled = false;
+      merchant_block.desired_runtime_state = DESIRED_RUNTIME_STATES.STOPPED;
+      merchant_block.desired_runtime_state_source =
+        "FULL_AUTONOMY_LIVE_TEST_SETUP";
+      persist_character_runtime_state(
+        merchant_name,
+        "full_autonomy_live_test_target_setup",
+      );
+
+      for (const char_name of combat_names) {
+        const char_block = character_manage[char_name];
+        char_block.full_autonomy_live_test_lifecycle_only = true;
+        char_block.enabled = true;
+        char_block.desired_runtime_state = DESIRED_RUNTIME_STATES.RUNNING;
+        char_block.desired_runtime_state_source =
+          "FULL_AUTONOMY_LIVE_TEST_SETUP";
+        persist_character_runtime_state(
+          char_name,
+          "full_autonomy_live_test_source_setup",
+        );
+        const started = start_char(char_name);
+        if (!started) {
+          throw make_control_error(
+            "FULL_AUTONOMY_LIVE_TEST_SOURCE_START_FAILED",
+            "Failed to start lifecycle-only source: " + char_name,
+            500,
+          );
+        }
+        if (lifecycle_policy.startupStaggerMs > 0) {
+          await sleep(lifecycle_policy.startupStaggerMs);
+        }
+      }
+
+      const sources_online = await wait_for_full_autonomy_live_test(() =>
+        combat_names.every((char_name) => {
+          const char_block = character_manage[char_name];
+          return (
+            !!char_block?.instance &&
+            char_block.connected === true &&
+            char_block.lifecycle_state === LIFECYCLE_STATES.ONLINE
+          );
+        }),
+      );
+      if (!sources_online) {
+        result.reason = "FULL_AUTONOMY_LIVE_TEST_SOURCE_CONNECT_TIMEOUT";
+        return result;
+      }
+
+      const test_policy = {
+        ...full_autonomy_policy,
+        enabled: true,
+        maxActionsPerCycle: 1,
+      };
+      const preflight_plan = build_full_autonomy_plan();
+      const preflight_decision = build_full_autonomy_execution_decision(
+        preflight_plan,
+        {
+          policy: test_policy,
+          allowObserverOnly: true,
+          safetyBlockReason: null,
+        },
+      );
+
+      if (
+        preflight_decision.action?.type !== "ROTATE" ||
+        preflight_decision.action.startCharacter !== merchant_name ||
+        !combat_names.includes(preflight_decision.action.stopCharacter)
+      ) {
+        result.reason = "FULL_AUTONOMY_LIVE_TEST_ROTATION_NOT_PLANNED";
+        result.evidence = {
+          preflightState: preflight_decision.state,
+          preflightReason: preflight_decision.reason,
+          preflightAction: preflight_decision.action || null,
+          activeSources: combat_names,
+          merchantTarget: merchant_name,
+        };
+        return result;
+      }
+
+      const execution = await reconcile_full_autonomy("LIVE_TEST", {
+        policy: test_policy,
+        allowObserverOnly: true,
+        safetyBlockReason: null,
+      });
+      result.action = execution.action || preflight_decision.action;
+      result.scope.lifecycleMutationDispatched = execution.dispatched === true;
+
+      if (execution.dispatched !== true || execution.outcome !== "DISPATCHED") {
+        result.reason = "FULL_AUTONOMY_LIVE_TEST_ROTATION_DISPATCH_FAILED";
+        result.evidence = {
+          execution,
+        };
+        return result;
+      }
+
+      const stop_name = preflight_decision.action.stopCharacter;
+      const rotated = await wait_for_full_autonomy_live_test(() => {
+        const source = character_manage[stop_name];
+        const target = character_manage[merchant_name];
+        return (
+          !source?.instance &&
+          source?.connected === false &&
+          source?.lifecycle_state === LIFECYCLE_STATES.STOPPED &&
+          !!target?.instance &&
+          target?.connected === true &&
+          target?.lifecycle_state === LIFECYCLE_STATES.ONLINE
+        );
+      });
+
+      const source = character_manage[stop_name];
+      const target = character_manage[merchant_name];
+      const source_authority =
+        source?.desired_runtime_state_source || "UNKNOWN";
+      const target_authority =
+        target?.desired_runtime_state_source || "UNKNOWN";
+      const lifecycle_only_confirmed =
+        source?.full_autonomy_live_test_lifecycle_only === true &&
+        target?.full_autonomy_live_test_lifecycle_only === true;
+
+      result.evidence = {
+        activeSources: combat_names,
+        sourceCharacter: stop_name,
+        targetCharacter: merchant_name,
+        rotationObserved: rotated,
+        sourceStopped:
+          !source?.instance &&
+          source?.lifecycle_state === LIFECYCLE_STATES.STOPPED,
+        targetOnline:
+          !!target?.instance &&
+          target?.connected === true &&
+          target?.lifecycle_state === LIFECYCLE_STATES.ONLINE,
+        sourceAuthority: source_authority,
+        targetAuthority: target_authority,
+        lifecycleOnlyConfirmed: lifecycle_only_confirmed,
+        maxOnlineCharacters: lifecycle_policy.maxOnlineCharacters,
+      };
+
+      const pass =
+        rotated &&
+        source_authority === "FULL_AUTONOMY" &&
+        target_authority === "FULL_AUTONOMY" &&
+        lifecycle_only_confirmed;
+
+      result.outcome = pass ? "PASS" : "FAIL";
+      result.reason = pass
+        ? "FULL_AUTONOMY_LIVE_E2E_CONFIRMED"
+        : "FULL_AUTONOMY_LIVE_EVIDENCE_INCOMPLETE";
+      return result;
+    } catch (error) {
+      result.outcome = "FAIL";
+      result.reason = error?.code || "FULL_AUTONOMY_LIVE_TEST_EXECUTION_FAILED";
+      result.error = error instanceof Error ? error.message : String(error);
+      return result;
+    } finally {
+      result.cleanup.runtimeStateRestored =
+        await restore_full_autonomy_live_test_state(test_characters, originals);
+      if (!result.cleanup.runtimeStateRestored && result.outcome === "PASS") {
+        result.outcome = "FAIL";
+        result.reason = "FULL_AUTONOMY_LIVE_TEST_STATE_RESTORE_FAILED";
+      }
+      full_autonomy_live_test_active = false;
+      dashboard?.publishSnapshot();
+    }
   }
 
   function logistics_record(value) {
