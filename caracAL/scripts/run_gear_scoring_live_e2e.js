@@ -241,6 +241,7 @@ async function waitForGearScoringProjection(
 async function runGearScoringSupervisorLiveTest(
   characterName,
   sampleMs = Number(process.env.CARACAL_GEAR_SCORING_LIVE_SETTLE_MS || 1200),
+  options = {},
 ) {
   return readJson(
     await fetch(
@@ -251,7 +252,12 @@ async function runGearScoringSupervisorLiveTest(
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sampleMs }),
+        body: JSON.stringify({
+          sampleMs,
+          ...(options.economyArbiterEnforcementProbe === true && {
+            economyArbiterEnforcementProbe: true,
+          }),
+        }),
       },
     ),
   );
