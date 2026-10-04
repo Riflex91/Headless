@@ -1,9 +1,12 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const childProcess = require("node:child_process");
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
+const prettier = require("prettier");
 
 const { loadTypeScriptModule } = require("./load_typescript_module");
 
@@ -362,4 +365,34 @@ test("training worker and runtime retain the normal Combat scheduler without a s
   const preflightBlock = kernel.slice(preflightStart, preflightEnd);
   assert.match(preflightBlock, /level:\s*snapshot\.level/);
   assert.match(preflightBlock, /xp:\s*snapshot\.xp/);
+});
+
+test("temporary Phase 19.13 formatter probe", async () => {
+  const targets = [
+    path.join(__dirname, "character_training_task.test.js"),
+    path.join(__dirname, "goal_adapter.test.js"),
+    path.join(__dirname, "goal_adapter_dispatch.test.js"),
+  ];
+
+  for (const target of targets) {
+    const source = fs.readFileSync(target, "utf8");
+    const formatted = await prettier.format(source, { filepath: target });
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "phase19-13-prettier-"));
+    const temp = path.join(tempDir, path.basename(target));
+    try {
+      fs.writeFileSync(temp, formatted);
+      let diff = "";
+      try {
+        childProcess.execFileSync("diff", ["-u", target, temp], {
+          encoding: "utf8",
+        });
+      } catch (error) {
+        diff = String(error.stdout || "");
+      }
+      console.log("PHASE19_13_PRETTIER_DIFF", path.basename(target));
+      console.log(diff || "NO_DIFF");
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  }
 });
