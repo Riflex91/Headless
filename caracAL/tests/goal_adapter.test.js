@@ -227,6 +227,103 @@ test("invalid optional FARM_ITEM runtime hints fail closed", () => {
   );
 });
 
+test("TRAIN_CHARACTER maps to explicit scheduler-driven training pulse", () => {
+  const result = buildGoalAdapterPlan(
+    readyDecision({
+      kind: "TRAIN_CHARACTER",
+      characterName: "My_Mage",
+      target: {
+        characterName: "My_Mage",
+        level: 42,
+      },
+      metadata: {
+        runtime: {
+          monsterType: "goo",
+          timeoutMs: 60000,
+          pollMs: 200,
+        },
+      },
+      mutationDomain: "GAMEPLAY",
+    }),
+    { now: () => 3333 },
+  );
+
+  assert.equal(result.timestamp, 3333);
+  assert.equal(result.state, GOAL_ADAPTER_STATES.READY);
+  assert.equal(result.reason, "GOAL_ADAPTER_TRAINING_REQUEST_READY");
+  assert.deepEqual(
+    result.capability,
+    GOAL_ADAPTER_CAPABILITIES.TRAIN_CHARACTER,
+  );
+  assert.deepEqual(result.request, {
+    version: GOAL_ADAPTER_REQUEST_VERSION,
+    type: "GOAL_RUNTIME_METHOD",
+    goalId: "goal-1",
+    taskId: "goal-1:3",
+    kind: "TRAIN_CHARACTER",
+    bridge: "CharacterTrainingTaskRunner",
+    runtimeMethod: "runCharacterTrainingTask",
+    characterName: "My_Mage",
+    arguments: {
+      targetLevel: 42,
+      monsterType: "goo",
+      timeoutMs: 60000,
+      pollMs: 200,
+    },
+    runtimeGuards: [
+      "TARGET_RUNTIME_RUNNING",
+      "NO_CONTROLLED_ACTIVITY",
+      "COMBAT_SCHEDULER_REQUIRED",
+      "EMERGENCY_STOP_CLEAR",
+      "SCOPED_COMBAT_OVERRIDE_MUST_BE_CLEARED",
+      "UNKNOWN_OUTCOME_NO_BLIND_RETRY",
+    ],
+    mutationDomain: "GAMEPLAY",
+    dispatchAllowed: false,
+    dispatchImplemented: false,
+  });
+});
+
+test("TRAIN_CHARACTER requires explicit monster source and exact target worker", () => {
+  const missing = buildGoalAdapterPlan(
+    readyDecision({
+      kind: "TRAIN_CHARACTER",
+      characterName: "My_Mage",
+      target: { characterName: "My_Mage", level: 42 },
+      metadata: { runtime: {} },
+    }),
+  );
+  assert.equal(missing.state, GOAL_ADAPTER_STATES.BLOCKED);
+  assert.equal(
+    missing.reason,
+    "GOAL_ADAPTER_TRAINING_RUNTIME_HINTS_REQUIRED",
+  );
+  assert.deepEqual(missing.details.missing, ["monsterType"]);
+
+  const mismatch = buildGoalAdapterPlan(
+    readyDecision({
+      kind: "TRAIN_CHARACTER",
+      characterName: "My_Mage",
+      target: { characterName: "My_Mage", level: 42 },
+      metadata: {
+        runtime: {
+          workerCharacter: "My_Ranger1",
+          monsterType: "goo",
+        },
+      },
+    }),
+  );
+  assert.equal(mismatch.state, GOAL_ADAPTER_STATES.BLOCKED);
+  assert.equal(
+    mismatch.reason,
+    "GOAL_ADAPTER_TRAINING_WORKER_MUST_MATCH_TARGET",
+  );
+  assert.deepEqual(mismatch.details, {
+    characterName: "My_Mage",
+    workerCharacter: "My_Ranger1",
+  });
+});
+
 test("ACQUIRE_GEAR maps to retained minimum-level gear gathering", () => {
   const result = buildGoalAdapterPlan(
     readyDecision({
@@ -410,7 +507,6 @@ test("PLAN_CRAFT accepts an explicit runtime worker hint without inventing a cha
 
 test("unsupported runtime workers remain explicitly blocked", () => {
   const cases = [
-    ["TRAIN_CHARACTER", "GOAL_ADAPTER_TRAINING_RUNTIME_WORKER_MISSING"],
     ["ACCUMULATE_GOLD", "GOAL_ADAPTER_GOLD_RUNTIME_WORKER_MISSING"],
   ];
 
