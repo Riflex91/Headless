@@ -1,4 +1,8 @@
 import type {
+  CharacterGoldTaskOptions,
+  CharacterGoldTaskResult,
+} from "./character-gold-task.lib";
+import type {
   CharacterTrainingTaskOptions,
   CharacterTrainingTaskResult,
 } from "./character-training-task.lib";
@@ -48,6 +52,9 @@ interface GoalAdapterDispatchDependencies {
   runCharacterTrainingTask(
     options: CharacterTrainingTaskOptions,
   ): Promise<CharacterTrainingTaskResult>;
+  runCharacterGoldTask(
+    options: CharacterGoldTaskOptions,
+  ): Promise<CharacterGoldTaskResult>;
   craft: {
     setConfigOverride(config: unknown): void;
     clearConfigOverride(): void;
@@ -188,6 +195,96 @@ export class GoalAdapterDispatchRunner {
 
     if (!preflightMatches(preflight, request)) {
       return finish("BLOCKED", "GOAL_ADAPTER_DISPATCH_PREFLIGHT_NOT_CONFIRMED");
+    }
+
+    if (requestIdentity.kind === "ACCUMULATE_GOLD") {
+      const args = record(request.arguments);
+      const goalAmount = positiveInteger(args.goalAmount);
+      const scope = text(args.scope);
+      const monsterType = text(args.monsterType);
+
+      if (
+        request.type !== "GOAL_RUNTIME_METHOD" ||
+        text(request.bridge) !== "CharacterGoldTaskRunner" ||
+        text(request.runtimeMethod) !== "runCharacterGoldTask" ||
+        !text(request.characterName) ||
+        !goalAmount ||
+        !monsterType ||
+        (scope !== "ACCOUNT" && scope !== "CHARACTER")
+      ) {
+        return finish(
+          "BLOCKED",
+          "GOAL_ADAPTER_DISPATCH_GOLD_CONTRACT_INVALID",
+        );
+      }
+
+      const timeoutMs =
+        args.timeoutMs === undefined
+          ? undefined
+          : positiveInteger(args.timeoutMs);
+      const pollMs =
+        args.pollMs === undefined ? undefined : positiveInteger(args.pollMs);
+      if (
+        (args.timeoutMs !== undefined && timeoutMs === null) ||
+        (args.pollMs !== undefined && pollMs === null)
+      ) {
+        return finish(
+          "BLOCKED",
+          "GOAL_ADAPTER_DISPATCH_GOLD_TIMING_INVALID",
+        );
+      }
+
+      mutationPathInvoked = true;
+      try {
+        const result = await this.deps.runCharacterGoldTask({
+          requestId: `${requestId}:gold`,
+          goalAmount,
+          scope,
+          monsterType,
+          ...(timeoutMs !== undefined && timeoutMs !== null && { timeoutMs }),
+          ...(pollMs !== undefined && pollMs !== null && { pollMs }),
+        });
+
+        if (
+          result.outcome === "PASS" &&
+          result.progress.targetReached !== true &&
+          result.progress.goldIncreased !== true
+        ) {
+          return finish(
+            "FAIL",
+            "GOAL_ADAPTER_DISPATCH_GOLD_PROGRESS_NOT_CONFIRMED",
+            {
+              gold: result as unknown as Record<string, unknown>,
+            },
+          );
+        }
+
+        const outcome: GoalAdapterDispatchOutcome =
+          result.outcome === "PASS"
+            ? "PASS"
+            : result.outcome === "UNKNOWN"
+              ? "UNKNOWN"
+              : result.outcome === "TIMEOUT"
+                ? "TIMEOUT"
+                : "FAIL";
+        return finish(
+          outcome,
+          outcome === "PASS"
+            ? "GOAL_ADAPTER_DISPATCH_GOLD_CONFIRMED"
+            : `GOAL_ADAPTER_DISPATCH_GOLD_${result.reason || outcome}`,
+          {
+            gold: result as unknown as Record<string, unknown>,
+          },
+        );
+      } catch (error) {
+        return finish(
+          "FAIL",
+          "GOAL_ADAPTER_DISPATCH_GOLD_RUNTIME_ERROR",
+          {
+            error: error instanceof Error ? error.message : String(error),
+          },
+        );
+      }
     }
 
     if (requestIdentity.kind === "TRAIN_CHARACTER") {

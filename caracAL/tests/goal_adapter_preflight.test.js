@@ -90,6 +90,27 @@ function trainingRequest(overrides = {}) {
   };
 }
 
+function goldRequest(overrides = {}) {
+  return {
+    version: 1,
+    type: "GOAL_RUNTIME_METHOD",
+    goalId: "gold-account",
+    taskId: "gold-account:1",
+    kind: "ACCUMULATE_GOLD",
+    bridge: "CharacterGoldTaskRunner",
+    runtimeMethod: "runCharacterGoldTask",
+    characterName: "My_Rogue",
+    dispatchAllowed: false,
+    dispatchImplemented: false,
+    arguments: {
+      goalAmount: 1000000,
+      scope: "ACCOUNT",
+      monsterType: "goo",
+    },
+    ...overrides,
+  };
+}
+
 function craftRequest(overrides = {}) {
   return {
     version: 1,
@@ -438,6 +459,121 @@ test("TRAIN_CHARACTER preflight blocks worker mismatch, missing level and missin
   assert.equal(noSource.cleanup.farmOverrideCleared, true);
 });
 
+test("ACCUMULATE_GOLD preflight confirms exact worker, gold telemetry and explicit source", async () => {
+  const setupResult = setup({
+    character: {
+      name: "My_Rogue",
+      ctype: "rogue",
+      level: 40,
+      xp: 123,
+      gold: 500000,
+    },
+  });
+
+  const result = await setupResult.runner.run(goldRequest());
+
+  assert.equal(result.outcome, "PASS");
+  assert.equal(result.reason, "GOAL_ADAPTER_PREFLIGHT_GOLD_CONFIRMED");
+  assert.equal(result.goalId, "gold-account");
+  assert.equal(result.kind, "ACCUMULATE_GOLD");
+  assert.equal(result.character.name, "My_Rogue");
+  assert.equal(result.evidence.goalAmount, 1000000);
+  assert.equal(result.evidence.scope, "ACCOUNT");
+  assert.equal(result.evidence.currentGold, 500000);
+  assert.equal(result.evidence.monsterType, "goo");
+  assert.equal(result.evidence.alreadyReached, false);
+  assert.equal(result.cleanup.farmOverrideCleared, true);
+  assert.equal(setupResult.override, null);
+});
+
+test("ACCUMULATE_GOLD character scope can pass without override when target is already reached", async () => {
+  const setupResult = setup({
+    character: {
+      name: "My_Rogue",
+      ctype: "rogue",
+      level: 40,
+      xp: 123,
+      gold: 1200000,
+    },
+  });
+
+  const result = await setupResult.runner.run(
+    goldRequest({
+      arguments: {
+        goalAmount: 1000000,
+        scope: "CHARACTER",
+        monsterType: "goo",
+      },
+    }),
+  );
+
+  assert.equal(result.outcome, "PASS");
+  assert.equal(result.reason, "GOAL_ADAPTER_PREFLIGHT_GOLD_ALREADY_REACHED");
+  assert.equal(result.evidence.alreadyReached, true);
+  assert.equal(result.evidence.currentGold, 1200000);
+  assert.deepEqual(setupResult.calls, []);
+});
+
+test("ACCUMULATE_GOLD preflight blocks worker mismatch, missing gold and missing source", async () => {
+  const wrongWorker = setup({
+    character: {
+      name: "My_Rogue2",
+      ctype: "rogue",
+      level: 40,
+      xp: 100,
+      gold: 500000,
+    },
+  });
+  const mismatch = await wrongWorker.runner.run(goldRequest());
+  assert.equal(mismatch.outcome, "BLOCKED");
+  assert.equal(mismatch.reason, "GOAL_ADAPTER_PREFLIGHT_GOLD_WORKER_MISMATCH");
+  assert.deepEqual(wrongWorker.calls, []);
+
+  const missingGold = setup({
+    character: {
+      name: "My_Rogue",
+      ctype: "rogue",
+      level: 40,
+      xp: 100,
+      gold: null,
+    },
+  });
+  const noGold = await missingGold.runner.run(goldRequest());
+  assert.equal(noGold.outcome, "BLOCKED");
+  assert.equal(
+    noGold.reason,
+    "GOAL_ADAPTER_PREFLIGHT_GOLD_TELEMETRY_UNAVAILABLE",
+  );
+  assert.deepEqual(missingGold.calls, []);
+
+  const missingSource = setup({
+    character: {
+      name: "My_Rogue",
+      ctype: "rogue",
+      level: 40,
+      xp: 100,
+      gold: 500000,
+    },
+    farmStatus: {
+      state: "READY",
+      reason: "FARM_CANDIDATE_SELECTED",
+      candidates: [
+        {
+          monster: "bee",
+          estimated: { dropItems: [] },
+        },
+      ],
+    },
+  });
+  const noSource = await missingSource.runner.run(goldRequest());
+  assert.equal(noSource.outcome, "BLOCKED");
+  assert.equal(
+    noSource.reason,
+    "GOAL_ADAPTER_PREFLIGHT_GOLD_SOURCE_NOT_CONFIRMED",
+  );
+  assert.equal(noSource.cleanup.farmOverrideCleared, true);
+});
+
 test("ACQUIRE_GEAR preflight confirms the explicit retained gear source", async () => {
   const setupResult = setup({
     farmStatus: {
@@ -664,9 +800,9 @@ test("unsupported adapter kinds remain blocked", async () => {
   const result = await setupResult.runner.run({
     version: 1,
     type: "GOAL_RUNTIME_METHOD",
-    goalId: "gold",
-    taskId: "gold:2",
-    kind: "ACCUMULATE_GOLD",
+    goalId: "unknown",
+    taskId: "unknown:1",
+    kind: "UNKNOWN_KIND",
     dispatchAllowed: false,
     dispatchImplemented: false,
   });
