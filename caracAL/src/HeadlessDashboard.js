@@ -263,6 +263,7 @@ function buildSupervisorSnapshot(
   fullAutonomyState = null,
   goalPlanState = null,
   goalHandoffState = null,
+  goalExecutionState = null,
 ) {
   const characters = Object.entries(characterManage)
     .map(([name, charBlock]) => publicCharacterState(name, charBlock))
@@ -421,6 +422,17 @@ function buildSupervisorSnapshot(
         phase20EncounterDeferred: true,
       },
     },
+    goal_execution: goalExecutionState || {
+      enabled: false,
+      state: "DISABLED",
+      reason: "GOAL_EXECUTION_DISABLED",
+      action: null,
+      dispatchAllowed: false,
+      dispatchImplemented: false,
+      mutationDispatched: false,
+      maxActionsPerCycle: 1,
+      reconcileIntervalMs: 5000,
+    },
     characters,
   };
 }
@@ -492,6 +504,7 @@ function attachHeadlessDashboard({
   getFullAutonomyState,
   getGoalPlanState,
   getGoalHandoffState,
+  getGoalExecutionState,
   createGoal,
   updateGoal,
   getMapScene,
@@ -517,6 +530,7 @@ function attachHeadlessDashboard({
       getFullAutonomyState?.(),
       getGoalPlanState?.(),
       getGoalHandoffState?.(),
+      getGoalExecutionState?.(),
     );
 
   router.use("/headless", (req, res, next) => {
