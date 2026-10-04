@@ -208,9 +208,8 @@ function marketIntelligenceEvidence(character) {
     LIVE_VISIBLE: observations.filter(
       (observation) => observation?.source === "LIVE_VISIBLE",
     ).length,
-    PONTY: observations.filter(
-      (observation) => observation?.source === "PONTY",
-    ).length,
+    PONTY: observations.filter((observation) => observation?.source === "PONTY")
+      .length,
     LOCAL_HISTORY: observations.filter(
       (observation) => observation?.source === "LOCAL_HISTORY",
     ).length,
@@ -246,10 +245,7 @@ function marketIntelligenceEvidence(character) {
     observations.length > 0 &&
     aggregates.length > 0;
   const metricsValid =
-    projectionReady &&
-    summaryMatches &&
-    observationsValid &&
-    aggregatesValid;
+    projectionReady && summaryMatches && observationsValid && aggregatesValid;
 
   return {
     projectionVisible:
@@ -289,8 +285,8 @@ function evaluateMarketIntelligence(character) {
     reason: complete
       ? "MARKET_INTELLIGENCE_LIVE_E2E_CONFIRMED"
       : partial
-        ? "MARKET_INTELLIGENCE_LIVE_PARTIAL_SOURCE_COVERAGE"
-        : "MARKET_INTELLIGENCE_LIVE_EVIDENCE_INCOMPLETE",
+      ? "MARKET_INTELLIGENCE_LIVE_PARTIAL_SOURCE_COVERAGE"
+      : "MARKET_INTELLIGENCE_LIVE_EVIDENCE_INCOMPLETE",
     character: character?.name || null,
     realm: character?.realm || null,
     marketIntelligence: character?.market_intelligence_runtime || null,
@@ -378,9 +374,7 @@ async function main() {
     );
 
     await sleep(
-      Number(
-        process.env.CARACAL_MARKET_INTELLIGENCE_LIVE_SETTLE_MS || 5500,
-      ),
+      Number(process.env.CARACAL_MARKET_INTELLIGENCE_LIVE_SETTLE_MS || 5500),
     );
     const state = await readState();
     const current = array(state.characters).find(
