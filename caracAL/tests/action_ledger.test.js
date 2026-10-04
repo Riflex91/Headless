@@ -235,54 +235,56 @@ test("OutcomeTransaction is a narrow status transition wrapper", () => {
   assert.equal(result.durationMs, 200);
 });
 
+test(
+  "action authorization blocks governed intent before dispatch and records policy metadata",
+  () => {
+    const { ActionLedger } = loadLedgerModule();
+    const events = [];
+    const ledger = new ActionLedger({
+      now: () => 1000,
+      nextActionId: () => "A-policy",
+      nextCorrelationId: () => "C-policy",
+      authorizeIntent: (intent) =>
+        intent.module === "MerchantFishingController"
+          ? {
+              allowed: false,
+              reason: "ECONOMY_ARBITER_HIGHER_PRIORITY_LANE_SELECTED",
+              data: {
+                lane: "BACKGROUND",
+                selectedLane: "MERRIT",
+                arbiterState: "READY",
+              },
+            }
+          : null,
+      emit: (event) => events.push(event),
+    });
 
-test("action authorization blocks governed intent before dispatch and records policy metadata", () => {
-  const { ActionLedger } = loadLedgerModule();
-  const events = [];
-  const ledger = new ActionLedger({
-    now: () => 1000,
-    nextActionId: () => "A-policy",
-    nextCorrelationId: () => "C-policy",
-    authorizeIntent: (intent) =>
-      intent.module === "MerchantFishingController"
-        ? {
-            allowed: false,
-            reason: "ECONOMY_ARBITER_HIGHER_PRIORITY_LANE_SELECTED",
-            data: {
-              lane: "BACKGROUND",
-              selectedLane: "MERRIT",
-              arbiterState: "READY",
-            },
-          }
-        : null,
-    emit: (event) => events.push(event),
-  });
+    const blocked = ledger.create({
+      module: "MerchantFishingController",
+      action: "SKILL",
+      why: "FISHING_EXECUTE_SKILL",
+      metadata: { skill: "fishing" },
+    });
 
-  const blocked = ledger.create({
-    module: "MerchantFishingController",
-    action: "SKILL",
-    why: "FISHING_EXECUTE_SKILL",
-    metadata: { skill: "fishing" },
-  });
+    assert.equal(blocked.status, "BLOCKED");
+    assert.equal(blocked.dispatchedAt, undefined);
+    assert.deepEqual(blocked.metadata.policyBlock, {
+      reason: "ECONOMY_ARBITER_HIGHER_PRIORITY_LANE_SELECTED",
+      lane: "BACKGROUND",
+      selectedLane: "MERRIT",
+      arbiterState: "READY",
+    });
+    assert.equal(events.at(-1).type, "ACTION_BLOCKED");
+    assert.equal(
+      events.at(-1).why,
+      "ECONOMY_ARBITER_HIGHER_PRIORITY_LANE_SELECTED",
+    );
 
-  assert.equal(blocked.status, "BLOCKED");
-  assert.equal(blocked.dispatchedAt, undefined);
-  assert.deepEqual(blocked.metadata.policyBlock, {
-    reason: "ECONOMY_ARBITER_HIGHER_PRIORITY_LANE_SELECTED",
-    lane: "BACKGROUND",
-    selectedLane: "MERRIT",
-    arbiterState: "READY",
-  });
-  assert.equal(events.at(-1).type, "ACTION_BLOCKED");
-  assert.equal(
-    events.at(-1).why,
-    "ECONOMY_ARBITER_HIGHER_PRIORITY_LANE_SELECTED",
-  );
-
-  const ungoverned = ledger.create({
-    module: "CombatController",
-    action: "ATTACK",
-    why: "SAFE_TARGET",
-  });
-  assert.equal(ungoverned.status, null);
-});
+    const ungoverned = ledger.create({
+      module: "CombatController",
+      action: "ATTACK",
+      why: "SAFE_TARGET",
+    });
+      assert.equal(ungoverned.status, null);
+  },
+);
