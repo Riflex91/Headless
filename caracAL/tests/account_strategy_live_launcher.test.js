@@ -258,10 +258,7 @@ test("Account Strategy live launcher is GET-only and observer bootstrap starts n
   assert.doesNotMatch(source, /socket\.emit/);
   assert.doesNotMatch(source, /desired_runtime_state/);
 
-  assert.match(
-    coordinator,
-    /process\.env\.CARACAL_OBSERVER_ONLY\s*===\s*"1"/,
-  );
+  assert.match(coordinator, /process\.env\.CARACAL_OBSERVER_ONLY\s*===\s*"1"/);
   assert.match(coordinator, /const startup_chars = observer_only\s*\? \[\]/);
   assert.match(coordinator, /observer_only,/);
 });
