@@ -135,8 +135,7 @@ function goalEvidence(goal) {
     criteriaCardinalityValid &&
     criteriaChecks.every((entry) => entry.valid);
 
-  const tasksExpected =
-    state === "PLANNED" || state === "BLOCKED";
+  const tasksExpected = state === "PLANNED" || state === "BLOCKED";
   const taskChecks = tasks.map((task) => taskEvidence(task, state));
   const tasksValid =
     (tasksExpected ? tasks.length > 0 : tasks.length === 0) &&
@@ -297,32 +296,34 @@ function evaluateGoals(snapshot) {
 function formatCompactResult(result) {
   const evidence = record(result?.evidence);
   const scope = record(result?.scope);
-  return [
-    "Goals Live E2E",
-    "Outcome: " + (result?.outcome || "UNKNOWN"),
-    "Reason: " + (result?.reason || "UNKNOWN"),
-    "State: " + (evidence.state || "MISSING"),
-    "Goals: " + String(evidence.goals ?? 0),
-    "Active: " + String(evidence.active ?? 0),
-    "Planned: " + String(evidence.planned ?? 0),
-    "Blocked: " + String(evidence.blocked ?? 0),
-    "Complete: " + String(evidence.completedGoals ?? 0),
-    "Invalid: " + String(evidence.invalid ?? 0),
-    "Goal structure valid: " +
-      (evidence.goalStructureValid === true ? "yes" : "no"),
-    "Summary valid: " + (evidence.summaryValid === true ? "yes" : "no"),
-    "Safety policy valid: " + (evidence.safetyValid === true ? "yes" : "no"),
-    "Read-only: " + (scope.readOnly === true ? "yes" : "no"),
-    "Dashboard GET only: " + (scope.dashboardGetOnly === true ? "yes" : "no"),
-    "Lifecycle mutation dispatched: " +
-      (scope.lifecycleMutationDispatched === true ? "yes" : "no"),
-    "Gameplay mutation dispatched: " +
-      (scope.gameplayMutationDispatched === true ? "yes" : "no"),
-    "Value mutation dispatched: " +
-      (scope.valueMutationDispatched === true ? "yes" : "no"),
-    "Observer-only bootstrap: " +
-      (scope.observerOnlyBootstrap === true ? "yes" : "no"),
-  ].join("\n") + "\n";
+  return (
+    [
+      "Goals Live E2E",
+      "Outcome: " + (result?.outcome || "UNKNOWN"),
+      "Reason: " + (result?.reason || "UNKNOWN"),
+      "State: " + (evidence.state || "MISSING"),
+      "Goals: " + String(evidence.goals ?? 0),
+      "Active: " + String(evidence.active ?? 0),
+      "Planned: " + String(evidence.planned ?? 0),
+      "Blocked: " + String(evidence.blocked ?? 0),
+      "Complete: " + String(evidence.completedGoals ?? 0),
+      "Invalid: " + String(evidence.invalid ?? 0),
+      "Goal structure valid: " +
+        (evidence.goalStructureValid === true ? "yes" : "no"),
+      "Summary valid: " + (evidence.summaryValid === true ? "yes" : "no"),
+      "Safety policy valid: " + (evidence.safetyValid === true ? "yes" : "no"),
+      "Read-only: " + (scope.readOnly === true ? "yes" : "no"),
+      "Dashboard GET only: " + (scope.dashboardGetOnly === true ? "yes" : "no"),
+      "Lifecycle mutation dispatched: " +
+        (scope.lifecycleMutationDispatched === true ? "yes" : "no"),
+      "Gameplay mutation dispatched: " +
+        (scope.gameplayMutationDispatched === true ? "yes" : "no"),
+      "Value mutation dispatched: " +
+        (scope.valueMutationDispatched === true ? "yes" : "no"),
+      "Observer-only bootstrap: " +
+        (scope.observerOnlyBootstrap === true ? "yes" : "no"),
+    ].join("\n") + "\n"
+  );
 }
 
 async function readState({ fetchImpl = fetch } = {}) {
