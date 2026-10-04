@@ -294,14 +294,8 @@ test("coordinator and dashboard expose Gear Scoring TYPECODE live path", () => {
     coordinator,
     /compound_runtime\s*=\s*normalized\.data\.compound/,
   );
-  assert.match(
-    coordinator,
-    /upgrade:\s*JSON\.parse\([\s\S]*upgrade_runtime/,
-  );
-  assert.match(
-    coordinator,
-    /compound:\s*JSON\.parse\([\s\S]*compound_runtime/,
-  );
+  assert.match(coordinator, /upgrade:\s*JSON\.parse\([\s\S]*upgrade_runtime/);
+  assert.match(coordinator, /compound:\s*JSON\.parse\([\s\S]*compound_runtime/);
   assert.match(
     coordinator,
     /movement_live_test_typescript_override\s*=\s*MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE/,
