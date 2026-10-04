@@ -340,9 +340,13 @@ test("Goals live state reader performs GET only", async () => {
   assert.equal(calls[0].options.method, "GET");
 });
 
-test("Goals live launcher has no POST, control or gameplay mutation path", () => {
+test("Goals live launcher has no POST, PATCH, control or gameplay mutation path", () => {
   const source = fs.readFileSync(
     path.join(__dirname, "..", "scripts", "run_goals_live_e2e.js"),
+    "utf8",
+  );
+  const dashboard = fs.readFileSync(
+    path.join(__dirname, "..", "src", "HeadlessDashboard.js"),
     "utf8",
   );
 
@@ -351,8 +355,16 @@ test("Goals live launcher has no POST, control or gameplay mutation path", () =>
   assert.match(source, /ensureDashboardAvailable/);
   assert.match(source, /CARACAL_OBSERVER_ONLY:\s*"1"/);
   assert.doesNotMatch(source, /method:\s*"POST"/);
+  assert.doesNotMatch(source, /method:\s*"PATCH"/);
+  assert.doesNotMatch(source, /\/headless\/api\/goals(?:["/])/);
   assert.doesNotMatch(source, /controlCharacter/);
   assert.doesNotMatch(source, /desired_runtime_state/);
   assert.doesNotMatch(source, /ActionBoundary/);
   assert.doesNotMatch(source, /socket\.emit/);
+
+  assert.match(dashboard, /router\.post\(\s*"\/headless\/api\/goals"/);
+  assert.match(
+    dashboard,
+    /router\.patch\(\s*"\/headless\/api\/goals\/:goalId"/,
+  );
 });
