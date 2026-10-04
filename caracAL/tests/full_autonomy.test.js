@@ -87,12 +87,7 @@ function setup({
           },
     };
     profiles.push(
-      profile(
-        name,
-        characterClass,
-        capabilities,
-        farmScores[name] ?? 0,
-      ),
+      profile(name, characterClass, capabilities, farmScores[name] ?? 0),
     );
   }
 
@@ -169,7 +164,8 @@ test("Full Autonomy never recommends a manually stopped character", () => {
     (entry) => entry.name === "My_Warrior",
   );
 
-  assert.equal(manualStopProtected(source.characterManage.My_Warrior), true);
+  const warriorBlock = source.characterManage.My_Warrior;
+  assert.equal(manualStopProtected(warriorBlock), true);
   assert.equal(warrior.manualStopProtected, true);
   assert.equal(warrior.selected, false);
   assert.equal(warrior.recommendedDesiredState, "STOPPED");
@@ -229,25 +225,24 @@ test("Active encounter continuity outranks a higher farm score", () => {
     },
   });
 
-  source.characterManage.My_Ranger2.enabled = false;
-  source.characterManage.My_Ranger2.connected = false;
-  source.characterManage.My_Ranger2.lifecycle_state = "STOPPED";
-  source.characterManage.My_Ranger2.desired_runtime_state = "STOPPED";
-  source.characterManage.My_Ranger2.desired_runtime_state_source = "CONFIG";
+  const ranger2 = source.characterManage.My_Ranger2;
+  ranger2.enabled = false;
+  ranger2.connected = false;
+  ranger2.lifecycle_state = "STOPPED";
+  ranger2.desired_runtime_state = "STOPPED";
+  ranger2.desired_runtime_state_source = "CONFIG";
 
   const plan = buildFullAutonomyPlan(source.characterManage, {
     accountStrategy: source.accountStrategy,
     merchantLogistics: source.merchantLogistics,
   });
 
-  assert.equal(
-    plan.recommendations.find((entry) => entry.name === "My_Ranger2").selected,
-    true,
+  const ranger2Recommendation = plan.recommendations.find(
+    (entry) => entry.name === "My_Ranger2",
   );
-  assert.equal(
-    plan.recommendations.find((entry) => entry.name === "My_Ranger2").reason,
-    "ACTIVE_ENCOUNTER_CONTINUITY",
-  );
+
+  assert.equal(ranger2Recommendation.selected, true);
+  assert.equal(ranger2Recommendation.reason, "ACTIVE_ENCOUNTER_CONTINUITY");
   assert.equal(plan.summary.encounterSignals, 1);
 });
 
