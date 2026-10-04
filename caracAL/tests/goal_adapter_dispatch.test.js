@@ -440,16 +440,13 @@ test("TRAIN_CHARACTER invokes exactly one bounded training pulse after preflight
   assert.equal(result.scope.blindRetryUsed, false);
   assert.equal(s.calls.filter(([name]) => name === "preflight").length, 1);
   assert.equal(s.calls.filter(([name]) => name === "training").length, 1);
-  assert.deepEqual(
-    s.calls.find(([name]) => name === "training")[1],
-    {
-      requestId: "dispatch-training:training",
-      targetLevel: 42,
-      monsterType: "goo",
-      timeoutMs: 60000,
-      pollMs: 200,
-    },
-  );
+  assert.deepEqual(s.calls.find(([name]) => name === "training")[1], {
+    requestId: "dispatch-training:training",
+    targetLevel: 42,
+    monsterType: "goo",
+    timeoutMs: 60000,
+    pollMs: 200,
+  });
   assert.equal(result.execution.training.progress.xpIncreased, true);
 });
 
