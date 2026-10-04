@@ -531,6 +531,51 @@ test("Risk Policy runtime remains read-only and blocks unknown EV", () => {
   assert.match(controller, /unknownAlwaysBlocked: true/);
 });
 
+test("Economy Prebuff coupled live runner is explicit and single-mutation scoped", () => {
+  const kernel = fs.readFileSync(
+    path.join(
+      __dirname,
+      "..",
+      "TYPECODE",
+      "bot",
+      "core",
+      "runtime-kernel.lib.ts",
+    ),
+    "utf8",
+  );
+  const runner = fs.readFileSync(
+    path.join(
+      __dirname,
+      "..",
+      "TYPECODE",
+      "bot",
+      "core",
+      "economy-prebuff-execution-live-test.lib.ts",
+    ),
+    "utf8",
+  );
+
+  assert.match(kernel, /runEconomyPrebuffExecutionLiveTest/);
+  assert.match(kernel, /EconomyPrebuffExecutionLiveTestRunner/);
+  assert.match(kernel, /maxValueMutations: 1/);
+  assert.match(kernel, /blindRetryAllowed: false/);
+  assert.match(kernel, /scheduler\.unregister\(MERCHANT_AUTONOMY_JOB_ID\)/);
+  assert.match(kernel, /scheduler\.unregister\(CLASS_SKILL_JOB_ID\)/);
+  assert.match(kernel, /scheduler\.unregister\(COMBAT_JOB_ID\)/);
+  assert.match(kernel, /this\.economyPrebuffExecutionRunning = true/);
+  assert.match(kernel, /this\.economyPrebuffExecutionRunning = false/);
+
+  assert.match(runner, /expectedCandidateMatches/);
+  assert.match(runner, /ECONOMY_PREBUFF_EXECUTION_LIVE_PREFLIGHT_BLOCKED/);
+  assert.match(runner, /ECONOMY_PREBUFF_EXECUTION_LIVE_UNKNOWN_NO_RETRY/);
+  assert.match(runner, /inventoryMutationObserved/);
+  assert.match(runner, /maxValueMutations: 1/);
+  assert.match(runner, /blindRetryAllowed: false/);
+  assert.doesNotMatch(runner, /upgrade\.executeNext/);
+  assert.doesNotMatch(runner, /compound\.executeNext/);
+  assert.doesNotMatch(runner, /useSkill/);
+});
+
 test("Economy Prebuff coupled execution is explicit, guarded, and one-shot", () => {
   const kernel = fs.readFileSync(
     path.join(
