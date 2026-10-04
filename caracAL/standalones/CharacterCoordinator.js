@@ -302,6 +302,8 @@ function migrate_old_storage(path, localStorage) {
   const inventory_live_test_requests = new Map();
   let inventory_live_test_sequence = 0;
   let gear_scoring_live_test_sequence = 0;
+  let account_strategy_live_test_sequence = 0;
+  let account_strategy_live_test_active = false;
   let market_intelligence_live_test_sequence = 0;
   const market_intelligence_source_probe_requests = new Map();
   const economy_arbiter_enforcement_probe_requests = new Map();
@@ -408,6 +410,7 @@ function migrate_old_storage(path, localStorage) {
         runFarmLiveTest: run_farm_live_test,
         runInventoryLiveTest: run_inventory_live_test,
         runGearScoringLiveTest: run_gear_scoring_live_test,
+        runAccountStrategyLiveTest: run_account_strategy_live_test,
         runMarketIntelligenceLiveTest: run_market_intelligence_live_test,
         runEconomyPrebuffExecutionLiveTest:
           run_economy_prebuff_execution_live_test,
@@ -1525,6 +1528,8 @@ function migrate_old_storage(path, localStorage) {
       char_block.account_gear_reservation_runtime || null;
     char_block.gear_scoring_live_test =
       char_block.gear_scoring_live_test || null;
+    char_block.account_strategy_live_test =
+      char_block.account_strategy_live_test || null;
     char_block.account_gear_reservation_live_test =
       char_block.account_gear_reservation_live_test || null;
     char_block.upgrade_live_test = char_block.upgrade_live_test || null;
