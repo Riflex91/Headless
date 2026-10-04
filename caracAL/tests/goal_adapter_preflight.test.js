@@ -396,10 +396,7 @@ test("ACQUIRE_GEAR preflight requires exact ranger worker and confirmed drop sou
   });
   const mismatch = await wrongWorker.runner.run(gearRequest());
   assert.equal(mismatch.outcome, "BLOCKED");
-  assert.equal(
-    mismatch.reason,
-    "GOAL_ADAPTER_PREFLIGHT_GEAR_WORKER_MISMATCH",
-  );
+  assert.equal(mismatch.reason, "GOAL_ADAPTER_PREFLIGHT_GEAR_WORKER_MISMATCH");
   assert.deepEqual(wrongWorker.calls, []);
 
   const missingSource = setup({
