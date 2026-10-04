@@ -262,6 +262,7 @@ function buildSupervisorSnapshot(
   accountStrategyState = null,
   fullAutonomyState = null,
   goalPlanState = null,
+  goalHandoffState = null,
 ) {
   const characters = Object.entries(characterManage)
     .map(([name, charBlock]) => publicCharacterState(name, charBlock))
@@ -388,6 +389,38 @@ function buildSupervisorSnapshot(
         directLifecycleMutationAllowed: false,
       },
     },
+    goal_handoff: goalHandoffState || {
+      timestamp: null,
+      state: "EMPTY",
+      reason: "GOAL_HANDOFF_NO_READY_GOAL",
+      readOnly: true,
+      executionEnabled: false,
+      handoffDispatched: false,
+      gameplayMutationDispatched: false,
+      valueMutationDispatched: false,
+      lifecycleMutationDispatched: false,
+      selectedGoal: null,
+      handoff: null,
+      blockedGoals: [],
+      summary: {
+        totalGoals: 0,
+        activeGoals: 0,
+        readyGoals: 0,
+        blockedGoals: 0,
+      },
+      policy: {
+        singleGoalSelection: true,
+        highestPriorityReadyFirst: true,
+        blockedGoalsSkipped: true,
+        manualStopRespected: true,
+        existingSubsystemsOnly: true,
+        goalExecutorRequiredForDispatch: true,
+        directGameplayMutationAllowed: false,
+        directValueMutationAllowed: false,
+        directLifecycleMutationAllowed: false,
+        phase20EncounterDeferred: true,
+      },
+    },
     characters,
   };
 }
@@ -458,6 +491,7 @@ function attachHeadlessDashboard({
   getAccountStrategyState,
   getFullAutonomyState,
   getGoalPlanState,
+  getGoalHandoffState,
   createGoal,
   updateGoal,
   getMapScene,
@@ -482,6 +516,7 @@ function attachHeadlessDashboard({
       getAccountStrategyState?.(),
       getFullAutonomyState?.(),
       getGoalPlanState?.(),
+      getGoalHandoffState?.(),
     );
 
   router.use("/headless", (req, res, next) => {
