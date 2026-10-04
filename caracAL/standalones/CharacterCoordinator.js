@@ -1455,4 +1455,12650 @@ function migrate_old_storage(path, localStorage) {
     });
 
     emit_supervisor_event(
-      state.active ? "EMERGENCY_STOP_ACTIVATED" : "EMERGENCY_STO
+      state.active ? "EMERGENCY_STOP_ACTIVATED" : "EMERGENCY_STOP_CLEARED",
+      null,
+      {
+        reason: state.reason,
+        revision: state.revision,
+      },
+    );
+    dashboard?.publishSnapshot();
+    return state;
+  }
+
+  async function control_character_config(char_name, config) {
+    const char_block = character_manage[char_name];
+    if (!char_block) {
+      throw make_control_error(
+        "CHARACTER_NOT_FOUND",
+        `Unknown character: ${char_name}`,
+        404,
+      );
+    }
+
+    let stored;
+    try {
+      stored = await character_config_service.store(
+        char_name,
+        char_block.runtime_config_revision,
+        config,
+      );
+    } catch (error) {
+      if (!String(error.code || "").startsWith("CHARACTER_CONFIG_")) {
+        report_persistence_error("character_config", char_name, error);
+      }
+      throw error;
+    }
+
+    clear_config_push_timer(char_block);
+    char_block.runtime_config = stored.config;
+    char_block.runtime_config_revision = stored.revision;
+    char_block.runtime_config_source = "PERSISTED";
+    char_block.config_push_error = null;
+
+    if (char_block.instance && char_block.connected) {
+      char_block.config_push_status = "PENDING";
+      safe_send(char_block.instance, {
+        type: "config_push",
+        revision: stored.revision,
+        config: stored.config,
+      });
+      arm_config_push_timeout(char_name, stored.revision);
+      emit_supervisor_event("CHARACTER_CONFIG_PUSH_REQUESTED", char_name, {
+        why: "LIVE_CONFIG_UPDATE",
+        revision: stored.revision,
+      });
+    } else {
+      char_block.config_push_status = "STORED";
+      emit_supervisor_event("CHARACTER_CONFIG_STORED", char_name, {
+        why: "APPLY_ON_NEXT_CHARACTER_START",
+        revision: stored.revision,
+      });
+    }
+
+    refresh_merchant_logistics("CONFIG_UPDATED");
+    dashboard?.publishSnapshot();
+    return {
+      character: char_name,
+      revision: stored.revision,
+      status: char_block.config_push_status,
+    };
+  }
+
+  async function control_rotation({ startCharacter, stopCharacter } = {}) {
+    const plan = createRotationPlan(character_manage, {
+      startCharacter,
+      stopCharacter,
+    });
+    const source = character_manage[plan.stop_character];
+    const target = character_manage[plan.start_character];
+
+    clear_restart_timer(source);
+    clear_stable_timer(source);
+    clear_restart_timer(target);
+    clear_stable_timer(target);
+
+    source.enabled = false;
+    source.desired_runtime_state = DESIRED_RUNTIME_STATES.STOPPED;
+    source.rotation_replacement = plan.start_character;
+
+    target.enabled = true;
+    target.desired_runtime_state = DESIRED_RUNTIME_STATES.RUNNING;
+    target.rotation_source = plan.stop_character;
+
+    persist_character_runtime_state(plan.stop_character, "rotation_source");
+    persist_character_runtime_state(plan.start_character, "rotation_target");
+
+    emit_supervisor_event("CHARACTER_ROTATION_REQUESTED", null, {
+      why: "EXPLICIT_SLOT_ROTATION",
+      stop_character: plan.stop_character,
+      start_character: plan.start_character,
+      source_desired_state: plan.source_desired_state,
+      target_desired_state: plan.target_desired_state,
+    });
+    dashboard?.publishSnapshot();
+
+    await softkill_block(source);
+
+    return {
+      ...plan,
+      status: "REQUESTED",
+    };
+  }
+
+  function reject_movement_live_tests_for_character(char_name, reason) {
+    for (const [request_id, pending] of movement_live_test_requests) {
+      if (pending.character !== char_name) continue;
+      clearTimeout(pending.timer);
+      movement_live_test_requests.delete(request_id);
+      pending.reject(new Error(reason));
+    }
+  }
+
+  function reject_combat_live_tests_for_character(char_name, reason) {
+    for (const [request_id, pending] of combat_live_test_requests) {
+      if (pending.character !== char_name) continue;
+      clearTimeout(pending.timer);
+      combat_live_test_requests.delete(request_id);
+      pending.reject(new Error(reason));
+    }
+  }
+  function reject_class_skill_live_tests_for_character(char_name, reason) {
+    for (const [request_id, pending] of class_skill_live_test_requests) {
+      if (pending.character !== char_name) continue;
+      clearTimeout(pending.timer);
+      class_skill_live_test_requests.delete(request_id);
+      pending.reject(new Error(reason));
+    }
+  }
+  function reject_group_live_tests_for_character(char_name, reason) {
+    for (const [request_id, pending] of group_live_test_requests) {
+      if (pending.character !== char_name) continue;
+      clearTimeout(pending.timer);
+      group_live_test_requests.delete(request_id);
+      pending.reject(new Error(reason));
+    }
+  }
+
+  function reject_farm_live_tests_for_character(char_name, reason) {
+    for (const [request_id, pending] of farm_live_test_requests) {
+      if (pending.character !== char_name) continue;
+      clearTimeout(pending.timer);
+      farm_live_test_requests.delete(request_id);
+      pending.reject(new Error(reason));
+    }
+  }
+
+  function reject_inventory_live_tests_for_character(char_name, reason) {
+    for (const [request_id, pending] of inventory_live_test_requests) {
+      if (pending.character !== char_name) continue;
+      clearTimeout(pending.timer);
+      inventory_live_test_requests.delete(request_id);
+      pending.reject(new Error(reason));
+    }
+  }
+
+  function reject_logistics_live_tests_for_character(char_name, reason) {
+    for (const [request_id, pending] of logistics_live_test_requests) {
+      if (pending.character !== char_name) continue;
+      clearTimeout(pending.timer);
+      logistics_live_test_requests.delete(request_id);
+      pending.reject(new Error(reason));
+    }
+  }
+
+  function reject_merchant_live_tests_for_character(char_name, reason) {
+    for (const [request_id, pending] of merchant_live_test_requests) {
+      if (pending.character !== char_name) continue;
+      clearTimeout(pending.timer);
+      merchant_live_test_requests.delete(request_id);
+      pending.reject(new Error(reason));
+    }
+  }
+
+  function reject_merrit_live_tests_for_character(char_name, reason) {
+    for (const [request_id, pending] of merrit_live_test_requests) {
+      if (pending.character !== char_name) continue;
+      clearTimeout(pending.timer);
+      merrit_live_test_requests.delete(request_id);
+      pending.reject(new Error(reason));
+    }
+  }
+
+  function reject_fishing_live_tests_for_character(char_name, reason) {
+    for (const [request_id, pending] of fishing_live_test_requests) {
+      if (pending.character !== char_name) continue;
+      clearTimeout(pending.timer);
+      fishing_live_test_requests.delete(request_id);
+      pending.reject(new Error(reason));
+    }
+  }
+
+  function reject_material_gather_tasks_for_character(char_name, reason) {
+    for (const [request_id, pending] of material_gather_task_requests) {
+      if (pending.character !== char_name) continue;
+      clearTimeout(pending.timer);
+      material_gather_task_requests.delete(request_id);
+      pending.reject(new Error(reason));
+    }
+  }
+
+  function reject_compound_gather_plans_for_character(char_name, reason) {
+    for (const [request_id, pending] of compound_gather_plan_requests) {
+      if (pending.character !== char_name) continue;
+      clearTimeout(pending.timer);
+      compound_gather_plan_requests.delete(request_id);
+      pending.reject(new Error(reason));
+    }
+  }
+
+  async function wait_for_logistics_claim_idle(
+    timeout_ms = LOGISTICS_CLAIM_RESULT_TIMEOUT_MS + 5000,
+  ) {
+    const started_at = Date.now();
+    while (Date.now() - started_at < timeout_ms) {
+      if (logistics_claim_requests.size === 0) return true;
+      await sleep(100);
+    }
+
+    throw make_control_error(
+      "LOGISTICS_LIVE_TEST_EXECUTION_BUSY",
+      "Existing logistics execution did not settle before the live test",
+      504,
+    );
+  }
+
+  async function wait_for_inventory_live_test_runtime(
+    char_name,
+    timeout_ms = MOVEMENT_LIVE_TEST_RUNTIME_TIMEOUT_MS,
+  ) {
+    const started_at = Date.now();
+    while (Date.now() - started_at < timeout_ms) {
+      const char_block = character_manage[char_name];
+      if (
+        char_block?.instance &&
+        char_block.connected &&
+        Number.isFinite(char_block.bot_runtime_started_at)
+      ) {
+        return char_block;
+      }
+      await sleep(100);
+    }
+
+    throw make_control_error(
+      "INVENTORY_LIVE_TEST_RUNTIME_TIMEOUT",
+      `Inventory runtime did not become ready for ${char_name}`,
+      504,
+    );
+  }
+
+  function gear_scoring_equipment_signature(char_block) {
+    const slots =
+      char_block?.live_state?.slots &&
+      typeof char_block.live_state.slots === "object"
+        ? char_block.live_state.slots
+        : {};
+    return JSON.stringify(
+      Object.entries(slots)
+        .filter(([slot, item]) => !slot.startsWith("trade") && !!item)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([slot, item]) => [
+          slot,
+          item?.name || null,
+          Number.isFinite(item?.level) ? item.level : 0,
+          Number.isFinite(item?.q) ? item.q : 1,
+        ]),
+    );
+  }
+
+  function gear_scoring_projection_equipment_signature(char_block) {
+    const entries = Array.isArray(char_block?.gear_scoring_runtime?.entries)
+      ? char_block.gear_scoring_runtime.entries
+      : [];
+    return JSON.stringify(
+      entries
+        .filter((entry) => entry?.location === "EQUIPMENT")
+        .sort((left, right) =>
+          String(left?.slot || "").localeCompare(String(right?.slot || "")),
+        )
+        .map((entry) => [
+          entry?.slot || null,
+          entry?.name || null,
+          Number.isFinite(entry?.level) ? entry.level : 0,
+        ]),
+    );
+  }
+
+  function gear_scoring_live_state_equipment_projection_signature(char_block) {
+    const slots =
+      char_block?.live_state?.slots &&
+      typeof char_block.live_state.slots === "object"
+        ? char_block.live_state.slots
+        : {};
+    return JSON.stringify(
+      Object.entries(slots)
+        .filter(([slot, item]) => !slot.startsWith("trade") && !!item)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([slot, item]) => [
+          slot,
+          item?.name || null,
+          Number.isFinite(item?.level) ? item.level : 0,
+        ]),
+    );
+  }
+
+  function gear_scoring_live_snapshot(char_block) {
+    return {
+      scoring: JSON.parse(
+        JSON.stringify(char_block?.gear_scoring_runtime || null),
+      ),
+      futureGear: JSON.parse(
+        JSON.stringify(char_block?.future_gear_runtime || null),
+      ),
+      expectedValue: JSON.parse(
+        JSON.stringify(char_block?.expected_value_runtime || null),
+      ),
+      riskPolicy: JSON.parse(
+        JSON.stringify(char_block?.risk_policy_runtime || null),
+      ),
+      economyPrebuff: JSON.parse(
+        JSON.stringify(char_block?.economy_prebuff_runtime || null),
+      ),
+      economyPrebuffExecution: JSON.parse(
+        JSON.stringify(char_block?.economy_prebuff_execution_runtime || null),
+      ),
+      economyArbiter: JSON.parse(
+        JSON.stringify(char_block?.economy_arbiter_runtime || null),
+      ),
+      inventoryIntelligence: JSON.parse(
+        JSON.stringify(char_block?.inventory_intelligence_runtime || null),
+      ),
+      slots: JSON.parse(JSON.stringify(char_block?.live_state?.slots || {})),
+    };
+  }
+
+  async function wait_for_gear_scoring_live_runtime(
+    char_name,
+    timeout_ms = MOVEMENT_LIVE_TEST_RUNTIME_TIMEOUT_MS,
+  ) {
+    const started_at = Date.now();
+    while (Date.now() - started_at < timeout_ms) {
+      const char_block = character_manage[char_name];
+      if (
+        char_block?.instance &&
+        char_block.connected &&
+        Number.isFinite(char_block.bot_runtime_started_at) &&
+        char_block.gear_scoring_runtime?.state === "READY"
+      ) {
+        return char_block;
+      }
+      await sleep(100);
+    }
+
+    throw make_control_error(
+      "GEAR_SCORING_LIVE_TEST_RUNTIME_TIMEOUT",
+      `Gear Scoring runtime did not become ready for ${char_name}`,
+      504,
+    );
+  }
+
+  function account_gear_reservation_live_snapshot() {
+    return Object.entries(character_manage)
+      .filter(([, block]) => block?.account_owned === true)
+      .map(([name, block]) => ({
+        name,
+        accountOwned: true,
+        connected: block.connected === true,
+        ctype:
+          block.account_character_type ||
+          block.gear_scoring_runtime?.characterClass ||
+          block.live_state?.ctype ||
+          null,
+        scoring: JSON.parse(JSON.stringify(block.gear_scoring_runtime || null)),
+        futureGear: JSON.parse(
+          JSON.stringify(block.future_gear_runtime || null),
+        ),
+        inventoryIntelligence: JSON.parse(
+          JSON.stringify(block.inventory_intelligence_runtime || null),
+        ),
+        accountReservation: JSON.parse(
+          JSON.stringify(block.account_gear_reservation_runtime || null),
+        ),
+        slots: JSON.parse(JSON.stringify(block.live_state?.slots || {})),
+      }))
+      .sort((left, right) => left.name.localeCompare(right.name));
+  }
+
+  function account_gear_reservation_gear_signature(char_block) {
+    const scoring_entries = Array.isArray(
+      char_block?.gear_scoring_runtime?.entries,
+    )
+      ? char_block.gear_scoring_runtime.entries
+      : [];
+    return JSON.stringify(
+      scoring_entries
+        .filter((entry) => entry?.location === "INVENTORY")
+        .map((entry) => [
+          entry.slot,
+          entry.name || null,
+          Number.isFinite(entry.level) ? entry.level : 0,
+          Number.isFinite(entry.score) ? entry.score : null,
+        ])
+        .sort((left, right) => Number(left[0]) - Number(right[0])),
+    );
+  }
+
+  async function wait_for_account_gear_reservation_live_runtime(
+    character_names,
+    timeout_ms = MOVEMENT_LIVE_TEST_RUNTIME_TIMEOUT_MS,
+    minimum_scoring_timestamps = null,
+  ) {
+    const started_at = Date.now();
+    while (Date.now() - started_at < timeout_ms) {
+      const blocks = character_names.map((name) => character_manage[name]);
+      if (
+        blocks.every((block, index) => {
+          const scoring_timestamp = Number(
+            block?.gear_scoring_runtime?.timestamp,
+          );
+          const minimum_scoring_timestamp = Number(
+            minimum_scoring_timestamps?.[character_names[index]],
+          );
+          const scoring_is_fresh =
+            !Number.isFinite(minimum_scoring_timestamp) ||
+            (Number.isFinite(scoring_timestamp) &&
+              scoring_timestamp > minimum_scoring_timestamp);
+          const equipment_projection_synchronized =
+            gear_scoring_projection_equipment_signature(block) ===
+            gear_scoring_live_state_equipment_projection_signature(block);
+
+          return (
+            block?.instance &&
+            block.connected &&
+            Number.isFinite(block.bot_runtime_started_at) &&
+            block.gear_scoring_runtime?.state === "READY" &&
+            scoring_is_fresh &&
+            ["READY", "EMPTY"].includes(block.future_gear_runtime?.state) &&
+            ["READY", "EMPTY"].includes(
+              block.inventory_intelligence_runtime?.state,
+            ) &&
+            block.account_gear_reservation_runtime?.state === "READY" &&
+            equipment_projection_synchronized
+          );
+        })
+      ) {
+        return blocks;
+      }
+      await sleep(100);
+    }
+
+    throw make_control_error(
+      "ACCOUNT_GEAR_RESERVATION_LIVE_TEST_RUNTIME_TIMEOUT",
+      `Account Gear Reservation runtime did not become ready for ${character_names.join(
+        ", ",
+      )}`,
+      504,
+    );
+  }
+
+  async function wait_for_exchange_live_test_runtime(
+    char_name,
+    timeout_ms = MOVEMENT_LIVE_TEST_RUNTIME_TIMEOUT_MS,
+  ) {
+    const started_at = Date.now();
+    while (Date.now() - started_at < timeout_ms) {
+      const char_block = character_manage[char_name];
+      if (
+        char_block?.instance &&
+        char_block.connected &&
+        Number.isFinite(char_block.bot_runtime_started_at) &&
+        char_block.inventory_intelligence_runtime
+      ) {
+        return char_block;
+      }
+      await sleep(100);
+    }
+
+    throw make_control_error(
+      "EXCHANGE_LIVE_TEST_RUNTIME_TIMEOUT",
+      `Exchange runtime did not become ready for ${char_name}`,
+      504,
+    );
+  }
+
+  async function wait_for_compound_live_test_runtime(
+    char_name,
+    timeout_ms = MOVEMENT_LIVE_TEST_RUNTIME_TIMEOUT_MS,
+  ) {
+    const started_at = Date.now();
+    while (Date.now() - started_at < timeout_ms) {
+      const char_block = character_manage[char_name];
+      if (
+        char_block?.instance &&
+        char_block.connected &&
+        Number.isFinite(char_block.bot_runtime_started_at) &&
+        char_block.inventory_intelligence_runtime
+      ) {
+        return char_block;
+      }
+      await sleep(100);
+    }
+
+    throw make_control_error(
+      "COMPOUND_LIVE_TEST_RUNTIME_TIMEOUT",
+      `Compound runtime did not become ready for ${char_name}`,
+      504,
+    );
+  }
+
+  async function wait_for_upgrade_live_test_runtime(
+    char_name,
+    timeout_ms = MOVEMENT_LIVE_TEST_RUNTIME_TIMEOUT_MS,
+  ) {
+    const started_at = Date.now();
+    while (Date.now() - started_at < timeout_ms) {
+      const char_block = character_manage[char_name];
+      if (
+        char_block?.instance &&
+        char_block.connected &&
+        Number.isFinite(char_block.bot_runtime_started_at) &&
+        char_block.inventory_intelligence_runtime &&
+        char_block.upgrade_runtime
+      ) {
+        return char_block;
+      }
+      await sleep(100);
+    }
+
+    throw make_control_error(
+      "UPGRADE_LIVE_TEST_RUNTIME_TIMEOUT",
+      `Upgrade runtime did not become ready for ${char_name}`,
+      504,
+    );
+  }
+
+  async function wait_for_logistics_live_test_runtime(
+    char_name,
+    timeout_ms = MOVEMENT_LIVE_TEST_RUNTIME_TIMEOUT_MS,
+  ) {
+    const started_at = Date.now();
+    while (Date.now() - started_at < timeout_ms) {
+      const char_block = character_manage[char_name];
+      if (
+        char_block?.instance &&
+        char_block.connected &&
+        Number.isFinite(char_block.bot_runtime_started_at)
+      ) {
+        return char_block;
+      }
+      await sleep(100);
+    }
+
+    throw make_control_error(
+      "LOGISTICS_LIVE_TEST_RUNTIME_TIMEOUT",
+      `Logistics runtime did not become ready for ${char_name}`,
+      504,
+    );
+  }
+
+  async function wait_for_merchant_live_test_runtime(
+    char_name,
+    timeout_ms = MOVEMENT_LIVE_TEST_RUNTIME_TIMEOUT_MS,
+  ) {
+    const started_at = Date.now();
+    while (Date.now() - started_at < timeout_ms) {
+      const char_block = character_manage[char_name];
+      if (
+        char_block?.instance &&
+        char_block.connected &&
+        Number.isFinite(char_block.bot_runtime_started_at)
+      ) {
+        return char_block;
+      }
+      await sleep(100);
+    }
+
+    throw make_control_error(
+      "MERCHANT_LIVE_TEST_RUNTIME_TIMEOUT",
+      `Merchant runtime did not become ready for ${char_name}`,
+      504,
+    );
+  }
+
+  async function wait_for_fishing_live_test_runtime(
+    char_name,
+    timeout_ms = MOVEMENT_LIVE_TEST_RUNTIME_TIMEOUT_MS,
+  ) {
+    const started_at = Date.now();
+    while (Date.now() - started_at < timeout_ms) {
+      const char_block = character_manage[char_name];
+      if (
+        char_block?.instance &&
+        char_block.connected &&
+        Number.isFinite(char_block.bot_runtime_started_at)
+      ) {
+        return char_block;
+      }
+      await sleep(100);
+    }
+
+    throw make_control_error(
+      "FISHING_LIVE_TEST_RUNTIME_TIMEOUT",
+      `Fishing runtime did not become ready for ${char_name}`,
+      504,
+    );
+  }
+
+  async function wait_for_farm_live_test_runtime(
+    char_name,
+    timeout_ms = MOVEMENT_LIVE_TEST_RUNTIME_TIMEOUT_MS,
+  ) {
+    const started_at = Date.now();
+    while (Date.now() - started_at < timeout_ms) {
+      const char_block = character_manage[char_name];
+      if (
+        char_block?.instance &&
+        char_block.connected &&
+        Number.isFinite(char_block.bot_runtime_started_at)
+      ) {
+        return char_block;
+      }
+      await sleep(100);
+    }
+
+    throw make_control_error(
+      "FARM_LIVE_TEST_RUNTIME_TIMEOUT",
+      `Farm runtime did not become ready for ${char_name}`,
+      504,
+    );
+  }
+
+  async function wait_for_movement_live_test_runtime(
+    char_name,
+    timeout_ms = MOVEMENT_LIVE_TEST_RUNTIME_TIMEOUT_MS,
+  ) {
+    const started_at = Date.now();
+    while (Date.now() - started_at < timeout_ms) {
+      const char_block = character_manage[char_name];
+      if (
+        char_block?.instance &&
+        char_block.connected &&
+        Number.isFinite(char_block.bot_runtime_started_at)
+      ) {
+        return char_block;
+      }
+      await sleep(100);
+    }
+
+    throw make_control_error(
+      "MOVEMENT_LIVE_TEST_RUNTIME_TIMEOUT",
+      `Movement runtime did not become ready for ${char_name}`,
+      504,
+    );
+  }
+
+  async function wait_for_group_live_test_runtime(
+    char_name,
+    timeout_ms = MOVEMENT_LIVE_TEST_RUNTIME_TIMEOUT_MS,
+  ) {
+    const started_at = Date.now();
+    while (Date.now() - started_at < timeout_ms) {
+      const char_block = character_manage[char_name];
+      if (
+        char_block?.instance &&
+        char_block.connected &&
+        Number.isFinite(char_block.bot_runtime_started_at)
+      ) {
+        return char_block;
+      }
+      await sleep(100);
+    }
+
+    throw make_control_error(
+      "GROUP_LIVE_TEST_RUNTIME_TIMEOUT",
+      `Group runtime did not become ready for ${char_name}`,
+      504,
+    );
+  }
+
+  async function wait_for_character_connected(
+    char_name,
+    timeout_ms = MOVEMENT_LIVE_TEST_RUNTIME_TIMEOUT_MS,
+  ) {
+    const started_at = Date.now();
+    while (Date.now() - started_at < timeout_ms) {
+      const char_block = character_manage[char_name];
+      if (char_block?.instance && char_block.connected) {
+        return char_block;
+      }
+      await sleep(100);
+    }
+
+    throw make_control_error(
+      "CHARACTER_RESTORE_TIMEOUT",
+      `Character did not reconnect while restoring ${char_name}`,
+      504,
+    );
+  }
+
+  async function restart_character_for_movement_runtime(char_name, char_block) {
+    if (!char_block.instance) {
+      const started = start_char(char_name);
+      if (!started) {
+        throw make_control_error(
+          "MOVEMENT_LIVE_TEST_RUNTIME_START_FAILED",
+          `Could not start movement runtime for ${char_name}`,
+          503,
+        );
+      }
+      return;
+    }
+
+    clear_restart_timer(char_block);
+    clear_stable_timer(char_block);
+    char_block.controlled_restart = true;
+    await softkill_block(char_block);
+  }
+
+  async function restore_movement_live_test_execution_source(
+    char_name,
+    original_desired_state,
+  ) {
+    const char_block = character_manage[char_name];
+    if (!char_block) return;
+
+    char_block.movement_live_test_typescript_override = null;
+    emit_supervisor_event(
+      "MOVEMENT_LIVE_TEST_RUNTIME_OVERRIDE_CLEARED",
+      char_name,
+      {
+        desired_runtime_state: original_desired_state,
+      },
+    );
+
+    if (original_desired_state === DESIRED_RUNTIME_STATES.STOPPED) {
+      await control_character(char_name, CONTROL_ACTIONS.STOP);
+      return;
+    }
+
+    char_block.enabled = true;
+    char_block.desired_runtime_state = DESIRED_RUNTIME_STATES.RUNNING;
+
+    if (char_block.instance) {
+      clear_restart_timer(char_block);
+      clear_stable_timer(char_block);
+      char_block.controlled_restart = true;
+      await softkill_block(char_block);
+    } else {
+      const started = start_char(char_name);
+      if (!started) {
+        throw make_control_error(
+          "CHARACTER_RESTORE_START_FAILED",
+          `Could not restart original runtime for ${char_name}`,
+          503,
+        );
+      }
+    }
+
+    await wait_for_character_connected(char_name);
+
+    if (original_desired_state === DESIRED_RUNTIME_STATES.PAUSED) {
+      await control_character(char_name, CONTROL_ACTIONS.PAUSE);
+    }
+  }
+
+  function wait_for_movement_live_test_result(char_name, request_id) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        movement_live_test_requests.delete(request_id);
+        reject(
+          make_control_error(
+            "MOVEMENT_LIVE_TEST_TIMEOUT",
+            `Movement live test timed out for ${char_name}`,
+            504,
+          ),
+        );
+      }, MOVEMENT_LIVE_TEST_RESULT_TIMEOUT_MS);
+
+      movement_live_test_requests.set(request_id, {
+        character: char_name,
+        resolve,
+        reject,
+        timer,
+      });
+    });
+  }
+
+  function wait_for_combat_live_test_result(char_name, request_id) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        combat_live_test_requests.delete(request_id);
+        reject(
+          make_control_error(
+            "COMBAT_LIVE_TEST_TIMEOUT",
+            `Combat live test timed out for ${char_name}`,
+            504,
+          ),
+        );
+      }, COMBAT_LIVE_TEST_RESULT_TIMEOUT_MS);
+
+      combat_live_test_requests.set(request_id, {
+        character: char_name,
+        resolve,
+        reject,
+        timer,
+      });
+    });
+  }
+  function wait_for_class_skill_live_test_result(char_name, request_id) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        class_skill_live_test_requests.delete(request_id);
+        reject(
+          make_control_error(
+            "CLASS_SKILL_LIVE_TEST_TIMEOUT",
+            `Class skill live test timed out for ${char_name}`,
+            504,
+          ),
+        );
+      }, CLASS_SKILL_LIVE_TEST_RESULT_TIMEOUT_MS);
+
+      class_skill_live_test_requests.set(request_id, {
+        character: char_name,
+        resolve,
+        reject,
+        timer,
+      });
+    });
+  }
+  function wait_for_group_live_test_result(char_name, request_id) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        group_live_test_requests.delete(request_id);
+        reject(
+          make_control_error(
+            "GROUP_LIVE_TEST_TIMEOUT",
+            `Group live test timed out for ${char_name}`,
+            504,
+          ),
+        );
+      }, GROUP_LIVE_TEST_RESULT_TIMEOUT_MS);
+
+      group_live_test_requests.set(request_id, {
+        character: char_name,
+        resolve,
+        reject,
+        timer,
+      });
+    });
+  }
+
+  function wait_for_farm_live_test_result(char_name, request_id) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        farm_live_test_requests.delete(request_id);
+        reject(
+          make_control_error(
+            "FARM_LIVE_TEST_TIMEOUT",
+            `Farm live test timed out for ${char_name}`,
+            504,
+          ),
+        );
+      }, FARM_LIVE_TEST_RESULT_TIMEOUT_MS);
+
+      farm_live_test_requests.set(request_id, {
+        character: char_name,
+        resolve,
+        reject,
+        timer,
+      });
+    });
+  }
+
+  function wait_for_inventory_live_test_result(char_name, request_id) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        inventory_live_test_requests.delete(request_id);
+        reject(
+          make_control_error(
+            "INVENTORY_LIVE_TEST_TIMEOUT",
+            `Inventory live test timed out for ${char_name}`,
+            504,
+          ),
+        );
+      }, INVENTORY_LIVE_TEST_RESULT_TIMEOUT_MS);
+
+      inventory_live_test_requests.set(request_id, {
+        character: char_name,
+        resolve,
+        reject,
+        timer,
+      });
+    });
+  }
+
+  function wait_for_logistics_live_test_result(char_name, request_id) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        logistics_live_test_requests.delete(request_id);
+        reject(
+          make_control_error(
+            "LOGISTICS_LIVE_TEST_TIMEOUT",
+            `Logistics live test timed out for ${char_name}`,
+            504,
+          ),
+        );
+      }, LOGISTICS_LIVE_TEST_RESULT_TIMEOUT_MS);
+
+      logistics_live_test_requests.set(request_id, {
+        character: char_name,
+        resolve,
+        reject,
+        timer,
+      });
+    });
+  }
+
+  function wait_for_merchant_live_test_result(char_name, request_id) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        merchant_live_test_requests.delete(request_id);
+        reject(
+          make_control_error(
+            "MERCHANT_LIVE_TEST_TIMEOUT",
+            `Merchant live test timed out for ${char_name}`,
+            504,
+          ),
+        );
+      }, MERCHANT_LIVE_TEST_RESULT_TIMEOUT_MS);
+
+      merchant_live_test_requests.set(request_id, {
+        character: char_name,
+        resolve,
+        reject,
+        timer,
+      });
+    });
+  }
+
+  function wait_for_market_trading_live_test_result(char_name, request_id) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        market_trading_live_test_requests.delete(request_id);
+        reject(
+          make_control_error(
+            "MARKET_TRADING_LIVE_TEST_TIMEOUT",
+            `Market trading live test timed out for ${char_name}`,
+            504,
+          ),
+        );
+      }, MARKET_TRADING_LIVE_TEST_RESULT_TIMEOUT_MS);
+
+      market_trading_live_test_requests.set(request_id, {
+        character: char_name,
+        resolve,
+        reject,
+        timer,
+      });
+    });
+  }
+
+  function wait_for_npc_trading_live_test_result(char_name, request_id) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        npc_trading_live_test_requests.delete(request_id);
+        reject(
+          make_control_error(
+            "NPC_TRADING_LIVE_TEST_TIMEOUT",
+            `NPC trading live test timed out for ${char_name}`,
+            504,
+          ),
+        );
+      }, NPC_TRADING_LIVE_TEST_RESULT_TIMEOUT_MS);
+
+      npc_trading_live_test_requests.set(request_id, {
+        character: char_name,
+        resolve,
+        reject,
+        timer,
+      });
+    });
+  }
+
+  function wait_for_upgrade_live_preflight_result(char_name, request_id) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        upgrade_live_preflight_requests.delete(request_id);
+        reject(
+          make_control_error(
+            "UPGRADE_PREFLIGHT_TIMEOUT",
+            `Upgrade preflight timed out for ${char_name}`,
+            504,
+          ),
+        );
+      }, UPGRADE_LIVE_TEST_RESULT_TIMEOUT_MS);
+
+      upgrade_live_preflight_requests.set(request_id, {
+        character: char_name,
+        resolve,
+        reject,
+        timer,
+      });
+    });
+  }
+
+  function wait_for_craft_preflight_result(char_name, request_id) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        craft_preflight_requests.delete(request_id);
+        reject(
+          make_control_error(
+            "CRAFT_PREFLIGHT_TIMEOUT",
+            `Craft preflight timed out for ${char_name}`,
+            504,
+          ),
+        );
+      }, UPGRADE_LIVE_TEST_RESULT_TIMEOUT_MS);
+
+      craft_preflight_requests.set(request_id, {
+        character: char_name,
+        resolve,
+        reject,
+        timer,
+      });
+    });
+  }
+
+  function wait_for_craft_live_test_result(char_name, request_id) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        craft_live_test_requests.delete(request_id);
+        reject(
+          make_control_error(
+            "CRAFT_LIVE_TEST_TIMEOUT",
+            `Craft live test timed out for ${char_name}`,
+            504,
+          ),
+        );
+      }, UPGRADE_LIVE_TEST_RESULT_TIMEOUT_MS);
+
+      craft_live_test_requests.set(request_id, {
+        character: char_name,
+        resolve,
+        reject,
+        timer,
+      });
+    });
+  }
+
+  function wait_for_exchange_preflight_result(char_name, request_id) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        exchange_preflight_requests.delete(request_id);
+        reject(
+          make_control_error(
+            "EXCHANGE_PREFLIGHT_TIMEOUT",
+            `Exchange preflight timed out for ${char_name}`,
+            504,
+          ),
+        );
+      }, UPGRADE_LIVE_TEST_RESULT_TIMEOUT_MS);
+
+      exchange_preflight_requests.set(request_id, {
+        character: char_name,
+        resolve,
+        reject,
+        timer,
+      });
+    });
+  }
+
+  function wait_for_exchange_live_test_result(char_name, request_id) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        exchange_live_test_requests.delete(request_id);
+        reject(
+          make_control_error(
+            "EXCHANGE_LIVE_TEST_TIMEOUT",
+            `Exchange live test timed out for ${char_name}`,
+            504,
+          ),
+        );
+      }, UPGRADE_LIVE_TEST_RESULT_TIMEOUT_MS);
+
+      exchange_live_test_requests.set(request_id, {
+        character: char_name,
+        resolve,
+        reject,
+        timer,
+      });
+    });
+  }
+
+  function wait_for_economy_prebuff_execution_live_test_result(
+    char_name,
+    request_id,
+  ) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        economy_prebuff_execution_live_test_requests.delete(request_id);
+        reject(
+          make_control_error(
+            "ECONOMY_PREBUFF_EXECUTION_LIVE_TEST_TIMEOUT",
+            `Economy Prebuff execution live test timed out for ${char_name}`,
+            504,
+          ),
+        );
+      }, UPGRADE_LIVE_TEST_RESULT_TIMEOUT_MS);
+
+      economy_prebuff_execution_live_test_requests.set(request_id, {
+        character: char_name,
+        resolve,
+        reject,
+        timer,
+      });
+    });
+  }
+
+  function wait_for_economy_arbiter_enforcement_probe_result(
+    char_name,
+    request_id,
+  ) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        economy_arbiter_enforcement_probe_requests.delete(request_id);
+        reject(
+          make_control_error(
+            "ECONOMY_ARBITER_ENFORCEMENT_PROBE_TIMEOUT",
+            `Economy Arbiter enforcement probe timed out for ${char_name}`,
+            504,
+          ),
+        );
+      }, UPGRADE_LIVE_TEST_RESULT_TIMEOUT_MS);
+
+      economy_arbiter_enforcement_probe_requests.set(request_id, {
+        character: char_name,
+        resolve,
+        reject,
+        timer,
+      });
+    });
+  }
+
+  function wait_for_upgrade_live_test_result(char_name, request_id) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        upgrade_live_test_requests.delete(request_id);
+        reject(
+          make_control_error(
+            "UPGRADE_LIVE_TEST_TIMEOUT",
+            `Upgrade live test timed out for ${char_name}`,
+            504,
+          ),
+        );
+      }, UPGRADE_LIVE_TEST_RESULT_TIMEOUT_MS);
+
+      upgrade_live_test_requests.set(request_id, {
+        character: char_name,
+        resolve,
+        reject,
+        timer,
+      });
+    });
+  }
+
+  function wait_for_compound_live_test_result(char_name, request_id) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        compound_live_test_requests.delete(request_id);
+        reject(
+          make_control_error(
+            "COMPOUND_LIVE_TEST_TIMEOUT",
+            `Compound live test timed out for ${char_name}`,
+            504,
+          ),
+        );
+      }, UPGRADE_LIVE_TEST_RESULT_TIMEOUT_MS);
+
+      compound_live_test_requests.set(request_id, {
+        character: char_name,
+        resolve,
+        reject,
+        timer,
+      });
+    });
+  }
+
+  function wait_for_craft_material_plan_result(char_name, request_id) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        craft_material_plan_requests.delete(request_id);
+        reject(
+          make_control_error(
+            "CRAFT_MATERIAL_PLAN_TIMEOUT",
+            `Craft material plan timed out for ${char_name}`,
+            504,
+          ),
+        );
+      }, CRAFT_MATERIAL_PLAN_TIMEOUT_MS);
+
+      craft_material_plan_requests.set(request_id, {
+        character: char_name,
+        resolve,
+        reject,
+        timer,
+      });
+    });
+  }
+
+  function wait_for_compound_gather_plan_result(char_name, request_id) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        compound_gather_plan_requests.delete(request_id);
+        reject(
+          make_control_error(
+            "COMPOUND_GATHER_PLAN_TIMEOUT",
+            `Compound gather plan timed out for ${char_name}`,
+            504,
+          ),
+        );
+      }, COMPOUND_GATHER_PLAN_TIMEOUT_MS);
+
+      compound_gather_plan_requests.set(request_id, {
+        character: char_name,
+        resolve,
+        reject,
+        timer,
+      });
+    });
+  }
+
+  function wait_for_bank_gold_live_test_result(char_name, request_id) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        bank_gold_live_test_requests.delete(request_id);
+        reject(
+          make_control_error(
+            "BANK_GOLD_LIVE_TEST_TIMEOUT",
+            `Bank gold live test timed out for ${char_name}`,
+            504,
+          ),
+        );
+      }, BANK_GOLD_LIVE_TEST_RESULT_TIMEOUT_MS);
+
+      bank_gold_live_test_requests.set(request_id, {
+        character: char_name,
+        resolve,
+        reject,
+        timer,
+      });
+    });
+  }
+
+  function wait_for_bank_travel_live_test_result(char_name, request_id) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        bank_travel_live_test_requests.delete(request_id);
+        reject(
+          make_control_error(
+            "BANK_TRAVEL_LIVE_TEST_TIMEOUT",
+            `Bank travel live test timed out for ${char_name}`,
+            504,
+          ),
+        );
+      }, BANK_TRAVEL_LIVE_TEST_RESULT_TIMEOUT_MS);
+
+      bank_travel_live_test_requests.set(request_id, {
+        character: char_name,
+        resolve,
+        reject,
+        timer,
+      });
+    });
+  }
+
+  function wait_for_merrit_live_test_result(char_name, request_id) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        merrit_live_test_requests.delete(request_id);
+        reject(
+          make_control_error(
+            "MERRIT_LIVE_TEST_TIMEOUT",
+            `Merrit live test timed out for ${char_name}`,
+            504,
+          ),
+        );
+      }, MERRIT_LIVE_TEST_RESULT_TIMEOUT_MS);
+
+      merrit_live_test_requests.set(request_id, {
+        character: char_name,
+        resolve,
+        reject,
+        timer,
+      });
+    });
+  }
+
+  function wait_for_fishing_live_test_result(char_name, request_id) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        fishing_live_test_requests.delete(request_id);
+        reject(
+          make_control_error(
+            "FISHING_LIVE_TEST_TIMEOUT",
+            `Fishing live test timed out for ${char_name}`,
+            504,
+          ),
+        );
+      }, FISHING_LIVE_TEST_RESULT_TIMEOUT_MS);
+
+      fishing_live_test_requests.set(request_id, {
+        character: char_name,
+        resolve,
+        reject,
+        timer,
+      });
+    });
+  }
+
+  function wait_for_material_gather_task_result(char_name, request_id) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        material_gather_task_requests.delete(request_id);
+        reject(
+          make_control_error(
+            "MATERIAL_GATHER_TASK_TIMEOUT",
+            `Material gathering task timed out for ${char_name}`,
+            504,
+          ),
+        );
+      }, MATERIAL_GATHER_TASK_RESULT_TIMEOUT_MS);
+
+      material_gather_task_requests.set(request_id, {
+        character: char_name,
+        resolve,
+        reject,
+        timer,
+      });
+    });
+  }
+
+  function live_item_quantity(char_block, item_name) {
+    const items = Array.isArray(char_block?.live_state?.items)
+      ? char_block.live_state.items
+      : [];
+    return items.reduce((sum, item) => {
+      if (!item || item.name !== item_name) return sum;
+      const quantity = Number(item.q);
+      return sum + (Number.isFinite(quantity) && quantity > 0 ? quantity : 1);
+    }, 0);
+  }
+
+  function live_item_quantity_at_level(char_block, item_name, item_level = 0) {
+    const level = Math.max(0, Math.floor(Number(item_level) || 0));
+    const items = Array.isArray(char_block?.live_state?.items)
+      ? char_block.live_state.items
+      : [];
+    return items.reduce((sum, item) => {
+      if (!item || item.name !== item_name) return sum;
+      const current_level = Math.max(0, Math.floor(Number(item.level) || 0));
+      if (current_level !== level) return sum;
+      const quantity = Number(item.q);
+      return sum + (Number.isFinite(quantity) && quantity > 0 ? quantity : 1);
+    }, 0);
+  }
+
+  function live_item_slots_at_level(char_block, item_name, item_level = 0) {
+    const level = Math.max(0, Math.floor(Number(item_level) || 0));
+    const items = Array.isArray(char_block?.live_state?.items)
+      ? char_block.live_state.items
+      : [];
+    return items.flatMap((item, slot) => {
+      if (!item || item.name !== item_name) return [];
+      const current_level = Math.max(0, Math.floor(Number(item.level) || 0));
+      return current_level === level ? [slot] : [];
+    });
+  }
+
+  function live_item_slots(char_block, item_name) {
+    const items = Array.isArray(char_block?.live_state?.items)
+      ? char_block.live_state.items
+      : [];
+    return items.flatMap((item, slot) =>
+      item?.name === item_name ? [slot] : [],
+    );
+  }
+
+  function fishing_material_worker_names(merchant_block) {
+    const config = logistics_record(merchant_block?.runtime_config);
+    const autonomy = logistics_record(
+      config.merchantAutonomy || config.merchant_autonomy,
+    );
+    const fishing = logistics_record(autonomy.fishing);
+    const configured = Array.isArray(
+      fishing.materialWorkers || fishing.material_workers,
+    )
+      ? fishing.materialWorkers || fishing.material_workers
+      : [];
+    const names = configured
+      .filter((name) => typeof name === "string" && name.trim())
+      .map((name) => name.trim());
+    return names.length
+      ? [...new Set(names)]
+      : [...DEFAULT_FISHING_MATERIAL_WORKERS];
+  }
+
+  async function wait_for_material_worker_runtime(
+    char_name,
+    timeout_ms = MOVEMENT_LIVE_TEST_RUNTIME_TIMEOUT_MS,
+  ) {
+    const started_at = Date.now();
+    while (Date.now() - started_at < timeout_ms) {
+      const char_block = character_manage[char_name];
+      if (
+        char_block?.instance &&
+        char_block.connected &&
+        Number.isFinite(char_block.bot_runtime_started_at)
+      ) {
+        return char_block;
+      }
+      await sleep(100);
+    }
+
+    throw make_control_error(
+      "MATERIAL_WORKER_RUNTIME_TIMEOUT",
+      `Material worker runtime did not become ready for ${char_name}`,
+      504,
+    );
+  }
+
+  async function wait_for_merchant_material_quantity(
+    merchant_name,
+    item_name,
+    target_quantity,
+    timeout_ms = 10000,
+  ) {
+    const started_at = Date.now();
+    while (Date.now() - started_at < timeout_ms) {
+      const merchant_block = character_manage[merchant_name];
+      if (live_item_quantity(merchant_block, item_name) >= target_quantity) {
+        return true;
+      }
+      await sleep(100);
+    }
+    return false;
+  }
+
+  function report_fishing_material_result(
+    merchant_name,
+    item_name,
+    success,
+    reason,
+  ) {
+    const merchant_block = character_manage[merchant_name];
+    if (!merchant_block?.instance) return false;
+    return safe_send(merchant_block.instance, {
+      type: "fishing_material_request_result",
+      item_name,
+      success: success === true,
+      reason: reason || null,
+    });
+  }
+
+  async function run_material_worker_task(
+    worker_name,
+    {
+      merchant_name,
+      item_name,
+      monster_type,
+      quantity,
+      item_level = null,
+      recipient_position,
+      purpose = "FISHING_MATERIAL",
+    },
+  ) {
+    const worker_block = character_manage[worker_name];
+    if (!worker_block) {
+      return {
+        outcome: "FAIL",
+        reason: "MATERIAL_WORKER_NOT_FOUND",
+        worker: worker_name,
+      };
+    }
+    if (
+      worker_block.account_owned !== true ||
+      (worker_block.account_character_type ||
+        worker_block.live_state?.ctype) !== "ranger"
+    ) {
+      return {
+        outcome: "FAIL",
+        reason: "MATERIAL_WORKER_NOT_ACCOUNT_RANGER",
+        worker: worker_name,
+      };
+    }
+
+    const original_desired_state =
+      worker_block.desired_runtime_state ||
+      (worker_block.enabled
+        ? DESIRED_RUNTIME_STATES.RUNNING
+        : DESIRED_RUNTIME_STATES.STOPPED);
+    const runtime_ready =
+      !!worker_block.instance &&
+      worker_block.connected &&
+      Number.isFinite(worker_block.bot_runtime_started_at);
+    let runtime_override_applied = false;
+    let runtime_state_restored = false;
+    let request_id = null;
+
+    material_worker_active_count += 1;
+    try {
+      if (!runtime_ready) {
+        const bundle_path = path.join(
+          process.cwd(),
+          "TYPECODE.out",
+          MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE,
+        );
+        if (!fs_regular.existsSync(bundle_path)) {
+          return {
+            outcome: "FAIL",
+            reason: "MATERIAL_WORKER_RUNTIME_BUNDLE_MISSING",
+            worker: worker_name,
+          };
+        }
+
+        worker_block.movement_live_test_typescript_override =
+          MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE;
+        runtime_override_applied = true;
+      }
+
+      if (original_desired_state !== DESIRED_RUNTIME_STATES.RUNNING) {
+        worker_block.enabled = true;
+        worker_block.desired_runtime_state = DESIRED_RUNTIME_STATES.RUNNING;
+      }
+
+      if (runtime_override_applied) {
+        await restart_character_for_movement_runtime(worker_name, worker_block);
+      } else if (!worker_block.instance) {
+        await control_character(worker_name, CONTROL_ACTIONS.START);
+      }
+
+      const ready_block = await wait_for_material_worker_runtime(worker_name);
+      material_gather_task_sequence += 1;
+      request_id = `material-gather-${Date.now()}-${material_gather_task_sequence}`;
+      const result_promise = wait_for_material_gather_task_result(
+        worker_name,
+        request_id,
+      );
+      const sent = safe_send(ready_block.instance, {
+        type: "material_gather_task",
+        request_id,
+        item_name,
+        monster_type,
+        quantity,
+        item_level,
+        recipient: merchant_name,
+        recipient_position,
+        purpose,
+      });
+      if (!sent) {
+        const pending = material_gather_task_requests.get(request_id);
+        if (pending) {
+          clearTimeout(pending.timer);
+          material_gather_task_requests.delete(request_id);
+        }
+        return {
+          outcome: "FAIL",
+          reason: "MATERIAL_GATHER_TASK_DISPATCH_FAILED",
+          worker: worker_name,
+        };
+      }
+
+      emit_supervisor_event(
+        purpose === "COMPOUND_TEST_MATERIAL"
+          ? "COMPOUND_MATERIAL_WORKER_DISPATCHED"
+          : purpose === "CRAFT_TEST_MATERIAL"
+          ? "CRAFT_MATERIAL_WORKER_DISPATCHED"
+          : "FISHING_MATERIAL_WORKER_DISPATCHED",
+        worker_name,
+        {
+          request_id,
+          merchant: merchant_name,
+          item_name,
+          monster_type,
+          quantity,
+          item_level,
+          purpose,
+        },
+      );
+
+      const response = await result_promise;
+      if (response.error || !response.result) {
+        return {
+          outcome: "FAIL",
+          reason: response.error || "MATERIAL_GATHER_TASK_RESULT_MISSING",
+          worker: worker_name,
+        };
+      }
+      return response.result;
+    } finally {
+      if (request_id) {
+        const pending = material_gather_task_requests.get(request_id);
+        if (pending) {
+          clearTimeout(pending.timer);
+          material_gather_task_requests.delete(request_id);
+        }
+      }
+
+      try {
+        if (runtime_override_applied) {
+          await restore_movement_live_test_execution_source(
+            worker_name,
+            original_desired_state,
+          );
+        } else {
+          await restore_movement_live_test_state(
+            worker_name,
+            original_desired_state,
+          );
+        }
+        runtime_state_restored = true;
+      } catch (restore_error) {
+        emit_supervisor_event(
+          "FISHING_MATERIAL_WORKER_RESTORE_FAILED",
+          worker_name,
+          {
+            request_id,
+            error:
+              restore_error instanceof Error
+                ? restore_error.message
+                : String(restore_error),
+          },
+        );
+      }
+
+      material_worker_active_count = Math.max(
+        0,
+        material_worker_active_count - 1,
+      );
+      schedule_merchant_logistics_dispatch();
+      emit_supervisor_event(
+        purpose === "COMPOUND_TEST_MATERIAL"
+          ? "COMPOUND_MATERIAL_WORKER_RESTORED"
+          : purpose === "CRAFT_TEST_MATERIAL"
+          ? "CRAFT_MATERIAL_WORKER_RESTORED"
+          : "FISHING_MATERIAL_WORKER_RESTORED",
+        worker_name,
+        {
+          request_id,
+          runtime_state_restored,
+          desired_runtime_state: original_desired_state,
+        },
+      );
+    }
+  }
+
+  async function run_craft_material_plan_readonly(merchant_name, options = {}) {
+    if (
+      craft_preflight_active ||
+      craft_material_preparation_active ||
+      compound_material_preparation_active ||
+      compound_live_test_active ||
+      upgrade_live_test_active ||
+      upgrade_live_preflight_active ||
+      exchange_preflight_active ||
+      exchange_live_test_active ||
+      craft_live_test_active ||
+      material_worker_active_count > 0
+    ) {
+      throw make_control_error(
+        "MUTATION_VERIFICATION_ALREADY_RUNNING",
+        "A mutation verification or material preparation is already running",
+        409,
+      );
+    }
+
+    const merchant_block = character_manage[merchant_name];
+    if (!merchant_block) {
+      throw make_control_error(
+        "CHARACTER_NOT_FOUND",
+        `Unknown character: ${merchant_name}`,
+        404,
+      );
+    }
+    if (
+      merchant_block.account_owned !== true ||
+      (merchant_block.account_character_type ||
+        merchant_block.live_state?.ctype) !== "merchant"
+    ) {
+      throw make_control_error(
+        "CRAFT_MATERIAL_PLAN_ACCOUNT_MERCHANT_REQUIRED",
+        "Craft material planning requires an account-owned merchant: " +
+          merchant_name,
+        400,
+      );
+    }
+
+    const requested_recipe =
+      typeof options.recipe === "string" && options.recipe.trim()
+        ? options.recipe.trim()
+        : null;
+    const original_desired_state =
+      merchant_block.desired_runtime_state ||
+      (merchant_block.enabled
+        ? DESIRED_RUNTIME_STATES.RUNNING
+        : DESIRED_RUNTIME_STATES.STOPPED);
+    const runtime_ready =
+      !!merchant_block.instance &&
+      merchant_block.connected &&
+      Number.isFinite(merchant_block.bot_runtime_started_at);
+    const started_at = Date.now();
+    const cleanup = {
+      runtimeStateRestored: false,
+      dispatcherRestored: false,
+    };
+    const scope = {
+      readOnly: true,
+      movementMutationForced: false,
+      combatMutationForced: false,
+      lootMutationForced: false,
+      deliveryMutationForced: false,
+      craftMutationForced: false,
+      blindRetryUsed: false,
+    };
+    let runtime_override_applied = false;
+    let runtime_state_restored = false;
+    let plan_request_id = null;
+    let result = null;
+
+    craft_preflight_active = true;
+    emit_supervisor_event(
+      "CRAFT_MATERIAL_PLAN_READ_ONLY_STARTED",
+      merchant_name,
+      {
+        recipe: requested_recipe,
+        original_desired_state,
+        readOnly: true,
+      },
+    );
+
+    try {
+      if (!runtime_ready) {
+        const bundle_path = path.join(
+          process.cwd(),
+          "TYPECODE.out",
+          MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE,
+        );
+        if (!fs_regular.existsSync(bundle_path)) {
+          result = {
+            outcome: "FAIL",
+            reason: "CRAFT_MATERIAL_PLAN_RUNTIME_BUNDLE_MISSING",
+            merchant: merchant_name,
+            requestedRecipe: requested_recipe,
+            plan: null,
+            scope,
+            cleanup,
+          };
+          return result;
+        }
+
+        merchant_block.movement_live_test_typescript_override =
+          MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE;
+        runtime_override_applied = true;
+        merchant_block.enabled = true;
+        merchant_block.desired_runtime_state = DESIRED_RUNTIME_STATES.RUNNING;
+        await restart_character_for_movement_runtime(
+          merchant_name,
+          merchant_block,
+        );
+      }
+
+      const ready_merchant =
+        await wait_for_material_worker_runtime(merchant_name);
+      craft_material_plan_sequence += 1;
+      plan_request_id = `craft-material-plan-readonly-${Date.now()}-${craft_material_plan_sequence}`;
+      const plan_promise = wait_for_craft_material_plan_result(
+        merchant_name,
+        plan_request_id,
+      );
+      const sent = safe_send(ready_merchant.instance, {
+        type: "craft_material_plan",
+        request_id: plan_request_id,
+        ...(requested_recipe && { recipe: requested_recipe }),
+      });
+      if (!sent) {
+        const pending = craft_material_plan_requests.get(plan_request_id);
+        if (pending) {
+          clearTimeout(pending.timer);
+          craft_material_plan_requests.delete(plan_request_id);
+        }
+        result = {
+          outcome: "FAIL",
+          reason: "CRAFT_MATERIAL_PLAN_DISPATCH_FAILED",
+          merchant: merchant_name,
+          requestedRecipe: requested_recipe,
+          plan: null,
+          scope,
+          cleanup,
+        };
+        return result;
+      }
+
+      const response = await plan_promise;
+      if (response.error || !response.result) {
+        result = {
+          outcome: "FAIL",
+          reason: response.error || "CRAFT_MATERIAL_PLAN_RESULT_MISSING",
+          merchant: merchant_name,
+          requestedRecipe: requested_recipe,
+          plan: response.result || null,
+          scope,
+          cleanup,
+        };
+        return result;
+      }
+
+      result = {
+        outcome: "PASS",
+        reason: "CRAFT_MATERIAL_PLAN_E2E_CONFIRMED",
+        merchant: merchant_name,
+        requestedRecipe: requested_recipe,
+        startedAt: started_at,
+        completedAt: Date.now(),
+        plan: response.result,
+        scope,
+        cleanup,
+      };
+      emit_supervisor_event(
+        "CRAFT_MATERIAL_PLAN_READ_ONLY_COMPLETED",
+        merchant_name,
+        {
+          outcome: result.outcome,
+          reason: result.reason,
+          requestedRecipe: requested_recipe,
+          planOutcome: response.result.outcome,
+          planReason: response.result.reason,
+          selected: response.result.selected || null,
+          rejectedSourceCount: Array.isArray(response.result.rejectedSources)
+            ? response.result.rejectedSources.length
+            : 0,
+        },
+      );
+      return result;
+    } finally {
+      if (plan_request_id) {
+        const pending = craft_material_plan_requests.get(plan_request_id);
+        if (pending) {
+          clearTimeout(pending.timer);
+          craft_material_plan_requests.delete(plan_request_id);
+        }
+      }
+
+      try {
+        if (runtime_override_applied) {
+          await restore_movement_live_test_execution_source(
+            merchant_name,
+            original_desired_state,
+          );
+        } else {
+          await restore_movement_live_test_state(
+            merchant_name,
+            original_desired_state,
+          );
+        }
+        runtime_state_restored = true;
+      } catch (restore_error) {
+        emit_supervisor_event(
+          "CRAFT_MATERIAL_PLAN_READ_ONLY_RESTORE_FAILED",
+          merchant_name,
+          {
+            recipe: requested_recipe,
+            error:
+              restore_error instanceof Error
+                ? restore_error.message
+                : String(restore_error),
+          },
+        );
+      }
+
+      cleanup.runtimeStateRestored = runtime_state_restored;
+      craft_preflight_active = false;
+      schedule_merchant_logistics_dispatch();
+      cleanup.dispatcherRestored = true;
+      if (result?.outcome === "PASS" && !cleanup.runtimeStateRestored) {
+        result.outcome = "FAIL";
+        result.reason = "CRAFT_MATERIAL_PLAN_STATE_RESTORE_FAILED";
+      }
+      emit_supervisor_event(
+        "CRAFT_MATERIAL_PLAN_READ_ONLY_RESTORED",
+        merchant_name,
+        {
+          runtimeStateRestored: cleanup.runtimeStateRestored,
+          dispatcherRestored: cleanup.dispatcherRestored,
+        },
+      );
+    }
+  }
+
+  async function run_craft_material_preparation(merchant_name, options = {}) {
+    if (
+      craft_material_preparation_active ||
+      compound_material_preparation_active ||
+      compound_live_test_active ||
+      upgrade_live_test_active ||
+      upgrade_live_preflight_active ||
+      exchange_preflight_active ||
+      craft_preflight_active ||
+      exchange_live_test_active ||
+      craft_live_test_active ||
+      material_worker_active_count > 0
+    ) {
+      throw make_control_error(
+        "MUTATION_VERIFICATION_ALREADY_RUNNING",
+        "A mutation verification or material preparation is already running",
+        409,
+      );
+    }
+
+    const merchant_block = character_manage[merchant_name];
+    if (!merchant_block) {
+      throw make_control_error(
+        "CHARACTER_NOT_FOUND",
+        `Unknown character: ${merchant_name}`,
+        404,
+      );
+    }
+    if (
+      merchant_block.account_owned !== true ||
+      (merchant_block.account_character_type ||
+        merchant_block.live_state?.ctype) !== "merchant"
+    ) {
+      throw make_control_error(
+        "CRAFT_PREPARATION_ACCOUNT_MERCHANT_REQUIRED",
+        "Craft preparation requires an account-owned merchant: " +
+          merchant_name,
+        400,
+      );
+    }
+
+    const requested_workers = Array.isArray(options.workers)
+      ? options.workers
+          .filter((name) => typeof name === "string" && name.trim())
+          .map((name) => name.trim())
+      : [];
+    const workers = [
+      ...new Set(
+        requested_workers.length
+          ? requested_workers
+          : DEFAULT_CRAFT_MATERIAL_WORKERS,
+      ),
+    ];
+    if (workers.length < 1) {
+      throw make_control_error(
+        "CRAFT_PREPARATION_RANGER_REQUIRED",
+        "Craft preparation requires at least one Ranger worker",
+        400,
+      );
+    }
+
+    const requested_recipe =
+      typeof options.recipe === "string" && options.recipe.trim()
+        ? options.recipe.trim()
+        : null;
+    const worker_name = workers[0];
+    const started_at = Date.now();
+    const original_desired_state =
+      merchant_block.desired_runtime_state ||
+      (merchant_block.enabled
+        ? DESIRED_RUNTIME_STATES.RUNNING
+        : DESIRED_RUNTIME_STATES.STOPPED);
+    const runtime_ready =
+      !!merchant_block.instance &&
+      merchant_block.connected &&
+      Number.isFinite(merchant_block.bot_runtime_started_at);
+    let runtime_override_applied = false;
+    let merchant_paused_by_preparation = false;
+    let runtime_state_restored = false;
+    let plan_request_id = null;
+    let worker_result = null;
+    const cleanup = {
+      runtimeStateRestored: false,
+      dispatcherRestored: false,
+    };
+    const evidence = {
+      materialPlanReadOnly: false,
+      workerAttemptedOnce: false,
+      deliveryConfirmed: false,
+      craftMutationDispatched: false,
+      blindRetryUsed: false,
+    };
+    const scope = {
+      movementMutationAllowed: false,
+      combatMutationAllowed: false,
+      lootMutationAllowed: false,
+      deliveryMutationAllowed: false,
+      craftMutationAllowed: false,
+      blindRetryAllowed: false,
+      mutationScope: "single-craft-material-preparation-only",
+    };
+    const resultBase = () => ({
+      merchant: merchant_name,
+      worker: worker_name,
+      evidence,
+      scope,
+      cleanup,
+    });
+
+    craft_material_preparation_active = true;
+    emit_supervisor_event("CRAFT_MATERIAL_PREPARATION_STARTED", merchant_name, {
+      worker: worker_name,
+      recipe: requested_recipe,
+      original_desired_state,
+      irreversibleCraftMutation: false,
+    });
+
+    try {
+      if (!runtime_ready) {
+        const bundle_path = path.join(
+          process.cwd(),
+          "TYPECODE.out",
+          MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE,
+        );
+        if (!fs_regular.existsSync(bundle_path)) {
+          return {
+            ...resultBase(),
+            outcome: "FAIL",
+            reason: "CRAFT_PREPARATION_RUNTIME_BUNDLE_MISSING",
+          };
+        }
+
+        merchant_block.movement_live_test_typescript_override =
+          MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE;
+        runtime_override_applied = true;
+        merchant_block.enabled = true;
+        merchant_block.desired_runtime_state = DESIRED_RUNTIME_STATES.RUNNING;
+        await restart_character_for_movement_runtime(
+          merchant_name,
+          merchant_block,
+        );
+      }
+
+      const ready_merchant =
+        await wait_for_material_worker_runtime(merchant_name);
+      craft_material_plan_sequence += 1;
+      plan_request_id = `craft-material-plan-${Date.now()}-${craft_material_plan_sequence}`;
+      const plan_promise = wait_for_craft_material_plan_result(
+        merchant_name,
+        plan_request_id,
+      );
+      const plan_sent = safe_send(ready_merchant.instance, {
+        type: "craft_material_plan",
+        request_id: plan_request_id,
+        ...(requested_recipe && { recipe: requested_recipe }),
+      });
+      if (!plan_sent) {
+        const pending = craft_material_plan_requests.get(plan_request_id);
+        if (pending) {
+          clearTimeout(pending.timer);
+          craft_material_plan_requests.delete(plan_request_id);
+        }
+        return {
+          ...resultBase(),
+          outcome: "FAIL",
+          reason: "CRAFT_MATERIAL_PLAN_DISPATCH_FAILED",
+        };
+      }
+
+      const plan_response = await plan_promise;
+      if (plan_response.error || !plan_response.result) {
+        return {
+          ...resultBase(),
+          outcome: "FAIL",
+          reason: plan_response.error || "CRAFT_MATERIAL_PLAN_RESULT_MISSING",
+        };
+      }
+
+      const plan = plan_response.result;
+      evidence.materialPlanReadOnly = true;
+      if (plan.reason === "CRAFT_MATERIAL_RECIPE_ALREADY_READY") {
+        const result = {
+          outcome: "PASS",
+          reason: "CRAFT_MATERIAL_ALREADY_READY",
+          merchant: merchant_name,
+          worker: worker_name,
+          startedAt: started_at,
+          completedAt: Date.now(),
+          plan,
+          recipe: requested_recipe,
+          readyForCraftIngredients: true,
+          workerResult: null,
+          evidence: {
+            ...evidence,
+            deliveryConfirmed: true,
+          },
+          scope,
+          cleanup,
+        };
+        emit_supervisor_event(
+          "CRAFT_MATERIAL_PREPARATION_COMPLETED",
+          merchant_name,
+          result,
+        );
+        return result;
+      }
+
+      if (plan.outcome !== "PASS" || !plan.selected) {
+        return {
+          ...resultBase(),
+          outcome: "FAIL",
+          reason: plan.reason || "CRAFT_MATERIAL_TARGET_NOT_FOUND",
+          plan,
+          readyForCraftIngredients: false,
+        };
+      }
+
+      const selected = plan.selected;
+      const missing =
+        selected.missingRequirement &&
+        typeof selected.missingRequirement === "object"
+          ? selected.missingRequirement
+          : null;
+      const source =
+        selected.source && typeof selected.source === "object"
+          ? selected.source
+          : null;
+      const item_name =
+        typeof missing?.name === "string" && missing.name.trim()
+          ? missing.name.trim()
+          : null;
+      const required_quantity = Math.max(
+        0,
+        Math.floor(Number(missing?.quantity) || 0),
+      );
+      const item_level =
+        missing?.level === null || missing?.level === undefined
+          ? 0
+          : Math.max(0, Math.floor(Number(missing.level) || 0));
+      const monster_type =
+        typeof source?.monsterType === "string" && source.monsterType.trim()
+          ? source.monsterType.trim()
+          : null;
+
+      if (!item_name || !required_quantity || !monster_type) {
+        return {
+          ...resultBase(),
+          outcome: "FAIL",
+          reason: "CRAFT_MATERIAL_PLAN_INVALID",
+          plan,
+          readyForCraftIngredients: false,
+        };
+      }
+
+      const current_merchant = character_manage[merchant_name];
+      const observer_position =
+        plan.observerPosition && typeof plan.observerPosition === "object"
+          ? plan.observerPosition
+          : null;
+      const observer_x = Number(observer_position?.x);
+      const observer_y = Number(observer_position?.y);
+      const live_x = Number(current_merchant?.live_state?.x);
+      const live_y = Number(current_merchant?.live_state?.y);
+      const merchant_position = {
+        map:
+          (typeof observer_position?.map === "string" &&
+            observer_position.map.trim()) ||
+          current_merchant?.live_state?.map ||
+          null,
+        x: Number.isFinite(observer_x) ? observer_x : live_x,
+        y: Number.isFinite(observer_y) ? observer_y : live_y,
+      };
+      if (
+        !merchant_position.map ||
+        !Number.isFinite(merchant_position.x) ||
+        !Number.isFinite(merchant_position.y)
+      ) {
+        return {
+          ...resultBase(),
+          outcome: "FAIL",
+          reason: "CRAFT_PREPARATION_MERCHANT_POSITION_UNAVAILABLE",
+          plan,
+          readyForCraftIngredients: false,
+        };
+      }
+
+      const initial_quantity = live_item_quantity_at_level(
+        current_merchant,
+        item_name,
+        item_level,
+      );
+
+      if (
+        original_desired_state === DESIRED_RUNTIME_STATES.RUNNING &&
+        character_manage[merchant_name]?.desired_runtime_state ===
+          DESIRED_RUNTIME_STATES.RUNNING
+      ) {
+        await control_character(merchant_name, CONTROL_ACTIONS.PAUSE);
+        merchant_paused_by_preparation = true;
+        await sleep(250);
+      }
+
+      evidence.workerAttemptedOnce = true;
+      scope.movementMutationAllowed = true;
+      scope.combatMutationAllowed = true;
+      scope.lootMutationAllowed = true;
+      scope.deliveryMutationAllowed = true;
+
+      try {
+        worker_result = await run_material_worker_task(worker_name, {
+          merchant_name,
+          item_name,
+          monster_type,
+          quantity: required_quantity,
+          item_level,
+          recipient_position: merchant_position,
+          purpose: "CRAFT_TEST_MATERIAL",
+        });
+      } catch (error) {
+        const error_code =
+          error && typeof error === "object" && "code" in error
+            ? String(error.code || "")
+            : "";
+        worker_result = {
+          outcome:
+            error_code === "MATERIAL_GATHER_TASK_TIMEOUT" ? "TIMEOUT" : "FAIL",
+          reason:
+            error_code ||
+            (error instanceof Error ? error.message : String(error)),
+          worker: worker_name,
+        };
+      }
+
+      if (
+        worker_result?.outcome === "UNKNOWN" ||
+        worker_result?.outcome === "TIMEOUT"
+      ) {
+        return {
+          ...resultBase(),
+          outcome: worker_result.outcome,
+          reason:
+            worker_result.reason || "CRAFT_MATERIAL_WORKER_OUTCOME_UNCERTAIN",
+          merchant: merchant_name,
+          worker: worker_name,
+          plan,
+          recipe: selected.recipe,
+          itemName: item_name,
+          itemLevel: item_level,
+          requiredQuantity: required_quantity,
+          initialQuantity: initial_quantity,
+          finalQuantity: live_item_quantity_at_level(
+            character_manage[merchant_name],
+            item_name,
+            item_level,
+          ),
+          readyForCraftIngredients: false,
+          workerResult: worker_result,
+          evidence,
+        };
+      }
+
+      const expected_quantity = initial_quantity + required_quantity;
+      const final_quantity = await (async () => {
+        const observed_started = Date.now();
+        while (Date.now() - observed_started < 10000) {
+          const quantity = live_item_quantity_at_level(
+            character_manage[merchant_name],
+            item_name,
+            item_level,
+          );
+          if (quantity >= expected_quantity) return quantity;
+          await sleep(100);
+        }
+        return live_item_quantity_at_level(
+          character_manage[merchant_name],
+          item_name,
+          item_level,
+        );
+      })();
+
+      if (
+        worker_result?.outcome !== "PASS" ||
+        final_quantity < expected_quantity
+      ) {
+        return {
+          ...resultBase(),
+          outcome: "FAIL",
+          reason:
+            worker_result?.reason || "CRAFT_MATERIAL_DELIVERY_NOT_OBSERVED",
+          merchant: merchant_name,
+          worker: worker_name,
+          plan,
+          recipe: selected.recipe,
+          itemName: item_name,
+          itemLevel: item_level,
+          requiredQuantity: required_quantity,
+          initialQuantity: initial_quantity,
+          finalQuantity: final_quantity,
+          readyForCraftIngredients: false,
+          workerResult: worker_result,
+          evidence,
+        };
+      }
+
+      evidence.deliveryConfirmed = true;
+      const result = {
+        outcome: "PASS",
+        reason: "CRAFT_MATERIAL_PREPARATION_CONFIRMED",
+        merchant: merchant_name,
+        worker: worker_name,
+        startedAt: started_at,
+        completedAt: Date.now(),
+        plan,
+        recipe: selected.recipe,
+        existingItemSlots: selected.existingItemSlots || [],
+        itemName: item_name,
+        itemLevel: item_level,
+        monsterType: monster_type,
+        requiredQuantity: required_quantity,
+        initialQuantity: initial_quantity,
+        finalQuantity: final_quantity,
+        readyForCraftIngredients: true,
+        workerResult: worker_result,
+        evidence,
+        scope,
+        cleanup,
+      };
+      emit_supervisor_event(
+        "CRAFT_MATERIAL_PREPARATION_COMPLETED",
+        merchant_name,
+        result,
+      );
+      return result;
+    } finally {
+      if (plan_request_id) {
+        const pending = craft_material_plan_requests.get(plan_request_id);
+        if (pending) {
+          clearTimeout(pending.timer);
+          craft_material_plan_requests.delete(plan_request_id);
+        }
+      }
+
+      try {
+        if (runtime_override_applied) {
+          await restore_movement_live_test_execution_source(
+            merchant_name,
+            original_desired_state,
+          );
+        } else if (merchant_paused_by_preparation) {
+          await restore_movement_live_test_state(
+            merchant_name,
+            original_desired_state,
+          );
+        }
+        runtime_state_restored = true;
+      } catch (restore_error) {
+        emit_supervisor_event(
+          "CRAFT_MATERIAL_PREPARATION_RESTORE_FAILED",
+          merchant_name,
+          {
+            recipe: requested_recipe,
+            error:
+              restore_error instanceof Error
+                ? restore_error.message
+                : String(restore_error),
+          },
+        );
+      }
+
+      cleanup.runtimeStateRestored = runtime_state_restored;
+      craft_material_preparation_active = false;
+      schedule_merchant_logistics_dispatch();
+      cleanup.dispatcherRestored = true;
+      emit_supervisor_event(
+        "CRAFT_MATERIAL_PREPARATION_RESTORED",
+        merchant_name,
+        {
+          runtime_state_restored,
+          desired_runtime_state: original_desired_state,
+          worker: worker_name,
+          worker_outcome: worker_result?.outcome || null,
+        },
+      );
+    }
+  }
+
+  async function run_compound_material_preparation(
+    merchant_name,
+    options = {},
+  ) {
+    if (
+      craft_material_preparation_active ||
+      compound_material_preparation_active ||
+      compound_live_test_active ||
+      upgrade_live_test_active ||
+      upgrade_live_preflight_active ||
+      exchange_preflight_active ||
+      craft_preflight_active ||
+      exchange_live_test_active
+    ) {
+      throw make_control_error(
+        "MUTATION_VERIFICATION_ALREADY_RUNNING",
+        "A mutation verification or Compound preparation is already running",
+        409,
+      );
+    }
+
+    const merchant_block = character_manage[merchant_name];
+    if (!merchant_block) {
+      throw make_control_error(
+        "CHARACTER_NOT_FOUND",
+        `Unknown character: ${merchant_name}`,
+        404,
+      );
+    }
+    if (
+      merchant_block.account_owned !== true ||
+      (merchant_block.account_character_type ||
+        merchant_block.live_state?.ctype) !== "merchant"
+    ) {
+      throw make_control_error(
+        "COMPOUND_PREPARATION_ACCOUNT_MERCHANT_REQUIRED",
+        "Compound preparation requires an account-owned merchant: " +
+          merchant_name,
+        400,
+      );
+    }
+
+    const requested_workers = Array.isArray(options.workers)
+      ? options.workers
+          .filter((name) => typeof name === "string" && name.trim())
+          .map((name) => name.trim())
+      : [];
+    const workers = [
+      ...new Set(
+        requested_workers.length
+          ? requested_workers
+          : DEFAULT_COMPOUND_MATERIAL_WORKERS,
+      ),
+    ];
+    if (workers.length < 3) {
+      throw make_control_error(
+        "COMPOUND_PREPARATION_THREE_RANGERS_REQUIRED",
+        "Compound preparation requires three Ranger workers",
+        400,
+      );
+    }
+
+    const started_at = Date.now();
+    const original_desired_state =
+      merchant_block.desired_runtime_state ||
+      (merchant_block.enabled
+        ? DESIRED_RUNTIME_STATES.RUNNING
+        : DESIRED_RUNTIME_STATES.STOPPED);
+    const runtime_ready =
+      !!merchant_block.instance &&
+      merchant_block.connected &&
+      Number.isFinite(merchant_block.bot_runtime_started_at);
+    let runtime_override_applied = false;
+    let merchant_paused_by_preparation = false;
+    let runtime_state_restored = false;
+    let plan_request_id = null;
+    const worker_results = [];
+
+    compound_material_preparation_active = true;
+    emit_supervisor_event(
+      "COMPOUND_MATERIAL_PREPARATION_STARTED",
+      merchant_name,
+      {
+        workers,
+        original_desired_state,
+      },
+    );
+
+    try {
+      if (!runtime_ready) {
+        const bundle_path = path.join(
+          process.cwd(),
+          "TYPECODE.out",
+          MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE,
+        );
+        if (!fs_regular.existsSync(bundle_path)) {
+          return {
+            outcome: "FAIL",
+            reason: "COMPOUND_PREPARATION_RUNTIME_BUNDLE_MISSING",
+            merchant: merchant_name,
+            workers,
+            workerResults: worker_results,
+          };
+        }
+
+        merchant_block.movement_live_test_typescript_override =
+          MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE;
+        runtime_override_applied = true;
+        merchant_block.enabled = true;
+        merchant_block.desired_runtime_state = DESIRED_RUNTIME_STATES.RUNNING;
+        await restart_character_for_movement_runtime(
+          merchant_name,
+          merchant_block,
+        );
+      }
+
+      const ready_merchant =
+        await wait_for_material_worker_runtime(merchant_name);
+      plan_request_id = `compound-gather-plan-${Date.now()}`;
+      const plan_promise = wait_for_compound_gather_plan_result(
+        merchant_name,
+        plan_request_id,
+      );
+      const plan_sent = safe_send(ready_merchant.instance, {
+        type: "compound_gather_plan",
+        request_id: plan_request_id,
+      });
+      if (!plan_sent) {
+        const pending = compound_gather_plan_requests.get(plan_request_id);
+        if (pending) {
+          clearTimeout(pending.timer);
+          compound_gather_plan_requests.delete(plan_request_id);
+        }
+        return {
+          outcome: "FAIL",
+          reason: "COMPOUND_GATHER_PLAN_DISPATCH_FAILED",
+          merchant: merchant_name,
+          workers,
+          workerResults: worker_results,
+        };
+      }
+
+      const plan_response = await plan_promise;
+      if (
+        plan_response.error ||
+        plan_response.result?.outcome !== "PASS" ||
+        !plan_response.result?.selected
+      ) {
+        return {
+          outcome: "FAIL",
+          reason:
+            plan_response.error ||
+            plan_response.result?.reason ||
+            "COMPOUND_GATHER_TARGET_NOT_FOUND",
+          merchant: merchant_name,
+          workers,
+          plan: plan_response.result || null,
+          workerResults: worker_results,
+        };
+      }
+
+      const plan = plan_response.result;
+      const selected = plan.selected;
+      const item_name = selected.itemName;
+      const monster_type =
+        typeof selected.monsterType === "string" && selected.monsterType
+          ? selected.monsterType
+          : null;
+      const item_level = Number.isInteger(Number(selected.itemLevel))
+        ? Math.max(0, Number(selected.itemLevel))
+        : 0;
+      const current_merchant = character_manage[merchant_name];
+
+      if (selected.source === "MERCHANT_INVENTORY") {
+        const matching_item_slots = Array.isArray(selected.itemSlots)
+          ? selected.itemSlots
+              .map((slot) => Number(slot))
+              .filter((slot) => Number.isInteger(slot) && slot >= 0)
+              .sort((left, right) => left - right)
+          : [];
+        const matching_scroll_slots = Array.isArray(selected.scrollSlots)
+          ? selected.scrollSlots
+              .map((slot) => Number(slot))
+              .filter((slot) => Number.isInteger(slot) && slot >= 0)
+              .sort((left, right) => left - right)
+          : [];
+        const item_locked_slots = Array.isArray(selected.itemLockedSlots)
+          ? selected.itemLockedSlots
+              .map((slot) => Number(slot))
+              .filter((slot) => Number.isInteger(slot) && slot >= 0)
+              .sort((left, right) => left - right)
+          : [];
+        const scroll_locked_slots = Array.isArray(selected.scrollLockedSlots)
+          ? selected.scrollLockedSlots
+              .map((slot) => Number(slot))
+              .filter((slot) => Number.isInteger(slot) && slot >= 0)
+              .sort((left, right) => left - right)
+          : [];
+        const runtime_guard =
+          plan.runtimeGuard && typeof plan.runtimeGuard === "object"
+            ? plan.runtimeGuard
+            : {};
+        const runtime_map =
+          typeof runtime_guard.map === "string" && runtime_guard.map.trim()
+            ? runtime_guard.map.trim()
+            : null;
+        const compound_operation_idle =
+          runtime_guard.compoundInProgress !== true;
+        const item_locks_clear = item_locked_slots.length === 0;
+        const scroll_locks_clear = scroll_locked_slots.length === 0;
+        const map_allows_compound =
+          !!runtime_map && !runtime_map.toLowerCase().startsWith("bank");
+        const local_preflight_ready =
+          compound_operation_idle &&
+          item_locks_clear &&
+          scroll_locks_clear &&
+          map_allows_compound;
+        const current_quantity = matching_item_slots.length;
+        const scroll_quantity = Math.max(
+          0,
+          Number(selected.scrollQuantity) || 0,
+        );
+        const result = {
+          outcome: local_preflight_ready ? "PASS" : "FAIL",
+          reason: local_preflight_ready
+            ? "COMPOUND_MATERIAL_PREPARATION_CONFIRMED"
+            : "COMPOUND_PREPARATION_LOCAL_PREFLIGHT_BLOCKED",
+          merchant: merchant_name,
+          workers,
+          startedAt: started_at,
+          completedAt: Date.now(),
+          plan,
+          source: "MERCHANT_INVENTORY",
+          itemName: item_name,
+          itemLevel: item_level,
+          monsterType: null,
+          itemGrade: selected.itemGrade,
+          scrollName: selected.scrollName,
+          initialQuantity: current_quantity,
+          finalQuantity: current_quantity,
+          targetQuantity: 3,
+          scrollQuantity: scroll_quantity,
+          matchingItemSlots: matching_item_slots,
+          matchingScrollSlots: matching_scroll_slots,
+          itemLockedSlots: item_locked_slots,
+          scrollLockedSlots: scroll_locked_slots,
+          runtimeMap: runtime_map,
+          readyForCompound:
+            local_preflight_ready &&
+            current_quantity >= 3 &&
+            matching_item_slots.length >= 3 &&
+            matching_scroll_slots.length >= 1 &&
+            scroll_quantity >= 1,
+          workerResults: worker_results,
+          evidence: {
+            gatherPlanReadOnly: true,
+            runtimeSnapshotReadiness: true,
+            localPreflightReadOnly: true,
+            compoundOperationIdle: compound_operation_idle,
+            itemLocksClear: item_locks_clear,
+            scrollLocksClear: scroll_locks_clear,
+            mapAllowsCompound: map_allows_compound,
+            threeMatchingItemsObserved:
+              current_quantity >= 3 && matching_item_slots.length >= 3,
+            allDeliveredItemsLevelMatched: true,
+            blindRetryUsed: false,
+          },
+        };
+        emit_supervisor_event(
+          "COMPOUND_MATERIAL_PREPARATION_COMPLETED",
+          merchant_name,
+          result,
+        );
+        return result;
+      }
+
+      const initial_quantity = live_item_quantity_at_level(
+        current_merchant,
+        item_name,
+        item_level,
+      );
+      const target_quantity = Math.max(3, initial_quantity);
+      let current_quantity = initial_quantity;
+      let merchant_position = null;
+
+      if (current_quantity < 3) {
+        if (!monster_type) {
+          return {
+            outcome: "FAIL",
+            reason: "COMPOUND_EXISTING_TRIPLE_CHANGED_BEFORE_PREPARATION",
+            merchant: merchant_name,
+            workers,
+            plan,
+            initialQuantity: initial_quantity,
+            finalQuantity: current_quantity,
+            targetQuantity: target_quantity,
+            workerResults: worker_results,
+          };
+        }
+
+        const observer_position =
+          plan.observerPosition && typeof plan.observerPosition === "object"
+            ? plan.observerPosition
+            : null;
+        const observer_x = Number(observer_position?.x);
+        const observer_y = Number(observer_position?.y);
+        const live_x = Number(current_merchant?.live_state?.x);
+        const live_y = Number(current_merchant?.live_state?.y);
+        merchant_position = {
+          map:
+            (typeof observer_position?.map === "string" &&
+              observer_position.map.trim()) ||
+            current_merchant?.live_state?.map ||
+            null,
+          x: Number.isFinite(observer_x) ? observer_x : live_x,
+          y: Number.isFinite(observer_y) ? observer_y : live_y,
+        };
+        if (
+          !merchant_position.map ||
+          !Number.isFinite(merchant_position.x) ||
+          !Number.isFinite(merchant_position.y)
+        ) {
+          return {
+            outcome: "FAIL",
+            reason: "COMPOUND_PREPARATION_MERCHANT_POSITION_UNAVAILABLE",
+            merchant: merchant_name,
+            workers,
+            plan,
+            workerResults: worker_results,
+          };
+        }
+      }
+
+      if (
+        original_desired_state === DESIRED_RUNTIME_STATES.RUNNING &&
+        character_manage[merchant_name]?.desired_runtime_state ===
+          DESIRED_RUNTIME_STATES.RUNNING
+      ) {
+        await control_character(merchant_name, CONTROL_ACTIONS.PAUSE);
+        merchant_paused_by_preparation = true;
+        await sleep(250);
+      }
+
+      current_quantity = live_item_quantity_at_level(
+        character_manage[merchant_name],
+        item_name,
+        item_level,
+      );
+      if (current_quantity < 3 && !monster_type) {
+        return {
+          outcome: "FAIL",
+          reason: "COMPOUND_EXISTING_TRIPLE_CHANGED_BEFORE_PREPARATION",
+          merchant: merchant_name,
+          workers,
+          plan,
+          initialQuantity: initial_quantity,
+          finalQuantity: current_quantity,
+          targetQuantity: target_quantity,
+          workerResults: worker_results,
+        };
+      }
+
+      for (const worker_name of workers) {
+        if (current_quantity >= 3) break;
+
+        const before_worker_quantity = current_quantity;
+        let worker_result;
+        try {
+          worker_result = await run_material_worker_task(worker_name, {
+            merchant_name,
+            item_name,
+            monster_type,
+            quantity: 1,
+            item_level,
+            recipient_position: merchant_position,
+            purpose: "COMPOUND_TEST_MATERIAL",
+          });
+        } catch (error) {
+          const error_code =
+            error && typeof error === "object" && "code" in error
+              ? String(error.code || "")
+              : "";
+          worker_result = {
+            outcome:
+              error_code === "MATERIAL_GATHER_TASK_TIMEOUT"
+                ? "TIMEOUT"
+                : "FAIL",
+            reason:
+              error_code ||
+              (error instanceof Error ? error.message : String(error)),
+            worker: worker_name,
+          };
+        }
+        worker_results.push(worker_result);
+
+        if (
+          worker_result?.outcome === "UNKNOWN" ||
+          worker_result?.outcome === "TIMEOUT"
+        ) {
+          return {
+            outcome: worker_result.outcome,
+            reason:
+              worker_result.reason ||
+              "COMPOUND_MATERIAL_WORKER_OUTCOME_UNCERTAIN",
+            merchant: merchant_name,
+            workers,
+            plan,
+            initialQuantity: initial_quantity,
+            finalQuantity: current_quantity,
+            targetQuantity: target_quantity,
+            workerResults: worker_results,
+          };
+        }
+
+        const expected_quantity = Math.min(3, before_worker_quantity + 1);
+        const observed = await (async () => {
+          const observed_started = Date.now();
+          while (Date.now() - observed_started < 10000) {
+            const quantity = live_item_quantity_at_level(
+              character_manage[merchant_name],
+              item_name,
+              item_level,
+            );
+            if (quantity >= expected_quantity) return quantity;
+            await sleep(100);
+          }
+          return live_item_quantity_at_level(
+            character_manage[merchant_name],
+            item_name,
+            item_level,
+          );
+        })();
+        current_quantity = observed;
+
+        if (
+          worker_result?.outcome !== "PASS" ||
+          current_quantity < expected_quantity
+        ) {
+          return {
+            outcome: "FAIL",
+            reason:
+              worker_result?.reason ||
+              "COMPOUND_MATERIAL_DELIVERY_NOT_OBSERVED",
+            merchant: merchant_name,
+            workers,
+            plan,
+            initialQuantity: initial_quantity,
+            finalQuantity: current_quantity,
+            targetQuantity: target_quantity,
+            workerResults: worker_results,
+          };
+        }
+      }
+
+      current_quantity = live_item_quantity_at_level(
+        character_manage[merchant_name],
+        item_name,
+        item_level,
+      );
+      if (current_quantity < 3) {
+        return {
+          outcome: "FAIL",
+          reason: "COMPOUND_MATERIAL_TRIPLE_NOT_READY",
+          merchant: merchant_name,
+          workers,
+          plan,
+          initialQuantity: initial_quantity,
+          finalQuantity: current_quantity,
+          targetQuantity: target_quantity,
+          workerResults: worker_results,
+        };
+      }
+
+      const scroll_quantity = live_item_quantity(
+        character_manage[merchant_name],
+        selected.scrollName,
+      );
+      const matching_item_slots = live_item_slots_at_level(
+        character_manage[merchant_name],
+        item_name,
+        item_level,
+      );
+      const matching_scroll_slots = live_item_slots(
+        character_manage[merchant_name],
+        selected.scrollName,
+      );
+
+      const result = {
+        outcome: "PASS",
+        reason: "COMPOUND_MATERIAL_PREPARATION_CONFIRMED",
+        merchant: merchant_name,
+        workers,
+        startedAt: started_at,
+        completedAt: Date.now(),
+        plan,
+        source: selected.source || "MONSTER_DROP",
+        itemName: item_name,
+        itemLevel: item_level,
+        monsterType: monster_type,
+        itemGrade: selected.itemGrade,
+        scrollName: selected.scrollName,
+        initialQuantity: initial_quantity,
+        finalQuantity: current_quantity,
+        targetQuantity: target_quantity,
+        scrollQuantity: scroll_quantity,
+        matchingItemSlots: matching_item_slots,
+        matchingScrollSlots: matching_scroll_slots,
+        readyForCompound: current_quantity >= 3 && scroll_quantity >= 1,
+        workerResults: worker_results,
+        evidence: {
+          gatherPlanReadOnly: true,
+          threeMatchingItemsObserved: current_quantity >= 3,
+          allDeliveredItemsLevelMatched: true,
+          blindRetryUsed: false,
+        },
+      };
+      emit_supervisor_event(
+        "COMPOUND_MATERIAL_PREPARATION_COMPLETED",
+        merchant_name,
+        result,
+      );
+      return result;
+    } finally {
+      if (plan_request_id) {
+        const pending = compound_gather_plan_requests.get(plan_request_id);
+        if (pending) {
+          clearTimeout(pending.timer);
+          compound_gather_plan_requests.delete(plan_request_id);
+        }
+      }
+
+      try {
+        if (runtime_override_applied) {
+          await restore_movement_live_test_execution_source(
+            merchant_name,
+            original_desired_state,
+          );
+        } else if (merchant_paused_by_preparation) {
+          await restore_movement_live_test_state(
+            merchant_name,
+            original_desired_state,
+          );
+        }
+        runtime_state_restored = true;
+      } catch (restore_error) {
+        emit_supervisor_event(
+          "COMPOUND_MATERIAL_PREPARATION_RESTORE_FAILED",
+          merchant_name,
+          {
+            error:
+              restore_error instanceof Error
+                ? restore_error.message
+                : String(restore_error),
+          },
+        );
+      }
+
+      compound_material_preparation_active = false;
+      schedule_merchant_logistics_dispatch();
+      emit_supervisor_event(
+        "COMPOUND_MATERIAL_PREPARATION_RESTORED",
+        merchant_name,
+        {
+          runtime_state_restored,
+          desired_runtime_state: original_desired_state,
+        },
+      );
+      dashboard?.publishSnapshot();
+    }
+  }
+
+  async function coordinate_fishing_material_request(merchant_name, request) {
+    const item_name =
+      typeof request?.itemName === "string" ? request.itemName.trim() : "";
+    const quantity = Math.max(1, Math.floor(Number(request?.quantity) || 1));
+    const monster_type = item_name === "spidersilk" ? "spider" : null;
+    const key = `${merchant_name}:${item_name}`;
+
+    if (!item_name || !monster_type) {
+      report_fishing_material_result(
+        merchant_name,
+        item_name,
+        false,
+        "MATERIAL_REQUEST_UNSUPPORTED",
+      );
+      return;
+    }
+    if (fishing_material_requests.has(key)) return;
+
+    const merchant_block = character_manage[merchant_name];
+    if (!merchant_block) return;
+    const baseline = live_item_quantity(merchant_block, item_name);
+    const target_quantity = baseline + quantity;
+    let event_position = null;
+    if (
+      request?.recipientPosition &&
+      typeof request.recipientPosition === "object"
+    ) {
+      event_position = request.recipientPosition;
+    }
+
+    const finite_coordinate = (value) => {
+      if (value === null || value === undefined) return null;
+      const numeric = Number(value);
+      return Number.isFinite(numeric) ? numeric : null;
+    };
+    const event_x = finite_coordinate(event_position?.x);
+    const event_y = finite_coordinate(event_position?.y);
+    const live_x = finite_coordinate(merchant_block.live_state?.x);
+    const live_y = finite_coordinate(merchant_block.live_state?.y);
+
+    let event_map = null;
+    if (typeof event_position?.map === "string") {
+      event_map = event_position.map.trim() || null;
+    }
+
+    const recipient_position = {
+      map: event_map || merchant_block.live_state?.map || null,
+      x: event_x ?? live_x,
+      y: event_y ?? live_y,
+    };
+    if (
+      !recipient_position.map ||
+      !Number.isFinite(recipient_position.x) ||
+      !Number.isFinite(recipient_position.y)
+    ) {
+      report_fishing_material_result(
+        merchant_name,
+        item_name,
+        false,
+        "MERCHANT_POSITION_UNAVAILABLE",
+      );
+      return;
+    }
+
+    const state = {
+      merchant: merchant_name,
+      itemName: item_name,
+      quantity,
+      targetQuantity: target_quantity,
+      workers: fishing_material_worker_names(merchant_block),
+      activeWorker: null,
+      outcome: "RUNNING",
+      reason: null,
+      startedAt: Date.now(),
+      completedAt: null,
+    };
+    fishing_material_requests.set(key, state);
+    merchant_block.fishing_material_request = state;
+    dashboard?.publishSnapshot();
+
+    emit_supervisor_event(
+      "FISHING_MATERIAL_REQUEST_STARTED",
+      merchant_name,
+      state,
+    );
+
+    try {
+      for (const worker_name of state.workers) {
+        const worker_block = character_manage[worker_name];
+        if (
+          !worker_block ||
+          worker_block.account_owned !== true ||
+          (worker_block.account_character_type ||
+            worker_block.live_state?.ctype) !== "ranger"
+        ) {
+          continue;
+        }
+
+        state.activeWorker = worker_name;
+        merchant_block.fishing_material_request = { ...state };
+        dashboard?.publishSnapshot();
+
+        let worker_result;
+        try {
+          worker_result = await run_material_worker_task(worker_name, {
+            merchant_name,
+            item_name,
+            monster_type,
+            quantity,
+            recipient_position,
+          });
+        } catch (error) {
+          const error_code =
+            error && typeof error === "object" && "code" in error
+              ? String(error.code || "")
+              : "";
+          worker_result = {
+            outcome:
+              error_code === "MATERIAL_GATHER_TASK_TIMEOUT"
+                ? "TIMEOUT"
+                : "FAIL",
+            reason:
+              error_code ||
+              (error instanceof Error ? error.message : String(error)),
+            worker: worker_name,
+          };
+        }
+
+        const delivered = await wait_for_merchant_material_quantity(
+          merchant_name,
+          item_name,
+          target_quantity,
+          worker_result?.outcome === "PASS" ? 10000 : 1500,
+        );
+
+        if (delivered) {
+          state.outcome = "PASS";
+          state.reason = "FISHING_MATERIAL_DELIVERY_CONFIRMED";
+          state.completedAt = Date.now();
+          report_fishing_material_result(
+            merchant_name,
+            item_name,
+            true,
+            state.reason,
+          );
+          emit_supervisor_event(
+            "FISHING_MATERIAL_REQUEST_COMPLETED",
+            merchant_name,
+            {
+              ...state,
+              worker_result,
+            },
+          );
+          return;
+        }
+
+        if (
+          worker_result?.outcome === "UNKNOWN" ||
+          worker_result?.outcome === "TIMEOUT"
+        ) {
+          state.outcome = worker_result.outcome;
+          state.reason =
+            worker_result.reason || "FISHING_MATERIAL_WORKER_OUTCOME_UNCERTAIN";
+          state.completedAt = Date.now();
+          report_fishing_material_result(
+            merchant_name,
+            item_name,
+            false,
+            state.reason,
+          );
+          emit_supervisor_event(
+            "FISHING_MATERIAL_REQUEST_UNCERTAIN",
+            merchant_name,
+            {
+              ...state,
+              worker_result,
+            },
+          );
+          return;
+        }
+
+        state.reason =
+          worker_result?.reason || "FISHING_MATERIAL_WORKER_FAILED";
+      }
+
+      state.outcome = "FAIL";
+      state.reason = state.reason || "FISHING_MATERIAL_NO_WORKER_SUCCEEDED";
+      state.completedAt = Date.now();
+      report_fishing_material_result(
+        merchant_name,
+        item_name,
+        false,
+        state.reason,
+      );
+      emit_supervisor_event(
+        "FISHING_MATERIAL_REQUEST_FAILED",
+        merchant_name,
+        state,
+      );
+    } finally {
+      merchant_block.fishing_material_request = { ...state };
+      fishing_material_requests.delete(key);
+      dashboard?.publishSnapshot();
+    }
+  }
+
+  async function restore_movement_live_test_state(
+    char_name,
+    desired_runtime_state,
+  ) {
+    const char_block = character_manage[char_name];
+    if (!char_block) return;
+
+    if (desired_runtime_state === DESIRED_RUNTIME_STATES.STOPPED) {
+      await control_character(char_name, CONTROL_ACTIONS.STOP);
+    } else if (desired_runtime_state === DESIRED_RUNTIME_STATES.PAUSED) {
+      if (char_block.instance) {
+        await control_character(char_name, CONTROL_ACTIONS.PAUSE);
+      }
+    } else if (
+      desired_runtime_state === DESIRED_RUNTIME_STATES.RUNNING &&
+      char_block.desired_runtime_state !== DESIRED_RUNTIME_STATES.RUNNING
+    ) {
+      await control_character(char_name, CONTROL_ACTIONS.START);
+    }
+  }
+
+  async function restore_combat_live_test_execution_source(
+    char_name,
+    original_desired_state,
+  ) {
+    const char_block = character_manage[char_name];
+    if (!char_block) return;
+
+    char_block.movement_live_test_typescript_override = null;
+    emit_supervisor_event(
+      "COMBAT_LIVE_TEST_RUNTIME_OVERRIDE_CLEARED",
+      char_name,
+      {
+        desired_runtime_state: original_desired_state,
+      },
+    );
+
+    if (original_desired_state === DESIRED_RUNTIME_STATES.STOPPED) {
+      await control_character(char_name, CONTROL_ACTIONS.STOP);
+      return;
+    }
+
+    char_block.enabled = true;
+    char_block.desired_runtime_state = DESIRED_RUNTIME_STATES.RUNNING;
+
+    if (char_block.instance) {
+      clear_restart_timer(char_block);
+      clear_stable_timer(char_block);
+      char_block.controlled_restart = true;
+      await softkill_block(char_block);
+    } else {
+      const started = start_char(char_name);
+      if (!started) {
+        throw make_control_error(
+          "CHARACTER_RESTORE_START_FAILED",
+          `Could not restart original runtime for ${char_name}`,
+          503,
+        );
+      }
+    }
+
+    await wait_for_character_connected(char_name);
+
+    if (original_desired_state === DESIRED_RUNTIME_STATES.PAUSED) {
+      await control_character(char_name, CONTROL_ACTIONS.PAUSE);
+    }
+  }
+  async function restore_class_skill_live_test_execution_source(
+    char_name,
+    original_desired_state,
+  ) {
+    const char_block = character_manage[char_name];
+    if (!char_block) return;
+
+    char_block.movement_live_test_typescript_override = null;
+    emit_supervisor_event(
+      "CLASS_SKILL_LIVE_TEST_RUNTIME_OVERRIDE_CLEARED",
+      char_name,
+      {
+        desired_runtime_state: original_desired_state,
+      },
+    );
+
+    if (original_desired_state === DESIRED_RUNTIME_STATES.STOPPED) {
+      await control_character(char_name, CONTROL_ACTIONS.STOP);
+      return;
+    }
+
+    char_block.enabled = true;
+    char_block.desired_runtime_state = DESIRED_RUNTIME_STATES.RUNNING;
+
+    if (char_block.instance) {
+      clear_restart_timer(char_block);
+      clear_stable_timer(char_block);
+      char_block.controlled_restart = true;
+      await softkill_block(char_block);
+    } else {
+      const started = start_char(char_name);
+      if (!started) {
+        throw make_control_error(
+          "CHARACTER_RESTORE_START_FAILED",
+          `Could not restart original runtime for ${char_name}`,
+          503,
+        );
+      }
+    }
+
+    await wait_for_character_connected(char_name);
+
+    if (original_desired_state === DESIRED_RUNTIME_STATES.PAUSED) {
+      await control_character(char_name, CONTROL_ACTIONS.PAUSE);
+    }
+  }
+  async function restore_group_live_test_execution_source(
+    char_name,
+    original_desired_state,
+  ) {
+    const char_block = character_manage[char_name];
+    if (!char_block) return;
+
+    char_block.movement_live_test_typescript_override = null;
+    emit_supervisor_event(
+      "GROUP_LIVE_TEST_RUNTIME_OVERRIDE_CLEARED",
+      char_name,
+      {
+        desired_runtime_state: original_desired_state,
+      },
+    );
+
+    if (original_desired_state === DESIRED_RUNTIME_STATES.STOPPED) {
+      await control_character(char_name, CONTROL_ACTIONS.STOP);
+      return;
+    }
+
+    char_block.enabled = true;
+    char_block.desired_runtime_state = DESIRED_RUNTIME_STATES.RUNNING;
+
+    if (char_block.instance) {
+      clear_restart_timer(char_block);
+      clear_stable_timer(char_block);
+      char_block.controlled_restart = true;
+      await softkill_block(char_block);
+    } else {
+      const started = start_char(char_name);
+      if (!started) {
+        throw make_control_error(
+          "CHARACTER_RESTORE_START_FAILED",
+          `Could not restart original runtime for ${char_name}`,
+          503,
+        );
+      }
+    }
+
+    await wait_for_character_connected(char_name);
+
+    if (original_desired_state === DESIRED_RUNTIME_STATES.PAUSED) {
+      await control_character(char_name, CONTROL_ACTIONS.PAUSE);
+    }
+  }
+
+  function capture_movement_live_test_incident(char_name, test_result) {
+    const incident = incident_recorder.capture({
+      reason: test_result.reason || "MOVEMENT_LIVE_TEST_FAILED",
+      severity:
+        test_result.outcome === "UNKNOWN" || test_result.outcome === "TIMEOUT"
+          ? "HIGH"
+          : "ERROR",
+      character: char_name,
+      event: {
+        type: "movement_live_test",
+        event: "MOVEMENT_LIVE_TEST_FAILED",
+        character: char_name,
+        timestamp: Date.now(),
+        request_id: test_result.request_id || test_result.requestId || null,
+        outcome: test_result.outcome || "FAIL",
+        reason: test_result.reason || "MOVEMENT_LIVE_TEST_FAILED",
+      },
+      extra: {
+        test: test_result,
+      },
+    });
+
+    void observe_persistence(
+      persistence.indexIncident(
+        incident,
+        path.join("logs", "incidents", incident.incident_id),
+      ),
+      "movement_live_test_incident",
+      char_name,
+    );
+    return incident.incident_id;
+  }
+
+  function capture_combat_live_test_incident(char_name, test_result) {
+    const incident = incident_recorder.capture({
+      reason: test_result.reason || "COMBAT_LIVE_TEST_FAILED",
+      severity:
+        test_result.outcome === "UNKNOWN" || test_result.outcome === "TIMEOUT"
+          ? "HIGH"
+          : "ERROR",
+      character: char_name,
+      event: {
+        type: "combat_live_test",
+        event: "COMBAT_LIVE_TEST_FAILED",
+        character: char_name,
+        timestamp: Date.now(),
+        request_id: test_result.request_id || test_result.requestId || null,
+        outcome: test_result.outcome || "FAIL",
+        reason: test_result.reason || "COMBAT_LIVE_TEST_FAILED",
+      },
+      extra: {
+        test: test_result,
+      },
+    });
+
+    void observe_persistence(
+      persistence.indexIncident(
+        incident,
+        path.join("logs", "incidents", incident.incident_id),
+      ),
+      "combat_live_test_incident",
+      char_name,
+    );
+    return incident.incident_id;
+  }
+  function capture_class_skill_live_test_incident(char_name, test_result) {
+    const incident = incident_recorder.capture({
+      reason: test_result.reason || "CLASS_SKILL_LIVE_TEST_FAILED",
+      severity:
+        test_result.outcome === "UNKNOWN" || test_result.outcome === "TIMEOUT"
+          ? "HIGH"
+          : "ERROR",
+      character: char_name,
+      event: {
+        type: "class_skill_live_test",
+        event: "CLASS_SKILL_LIVE_TEST_FAILED",
+        character: char_name,
+        timestamp: Date.now(),
+        request_id: test_result.request_id || test_result.requestId || null,
+        outcome: test_result.outcome || "FAIL",
+        reason: test_result.reason || "CLASS_SKILL_LIVE_TEST_FAILED",
+      },
+      extra: {
+        test: test_result,
+      },
+    });
+
+    void observe_persistence(
+      persistence.indexIncident(
+        incident,
+        path.join("logs", "incidents", incident.incident_id),
+      ),
+      "class_skill_live_test_incident",
+      char_name,
+    );
+    return incident.incident_id;
+  }
+  function capture_group_live_test_incident(char_name, test_result) {
+    const incident = incident_recorder.capture({
+      reason: test_result.reason || "GROUP_LIVE_TEST_FAILED",
+      severity:
+        test_result.outcome === "UNKNOWN" || test_result.outcome === "TIMEOUT"
+          ? "HIGH"
+          : "ERROR",
+      character: char_name,
+      event: {
+        type: "group_live_test",
+        event: "GROUP_LIVE_TEST_FAILED",
+        character: char_name,
+        timestamp: Date.now(),
+        request_id: test_result.request_id || test_result.requestId || null,
+        outcome: test_result.outcome || "FAIL",
+        reason: test_result.reason || "GROUP_LIVE_TEST_FAILED",
+      },
+      extra: {
+        test: test_result,
+      },
+    });
+
+    void observe_persistence(
+      persistence.indexIncident(
+        incident,
+        path.join("logs", "incidents", incident.incident_id),
+      ),
+      "group_live_test_incident",
+      char_name,
+    );
+    return incident.incident_id;
+  }
+
+  function capture_farm_live_test_incident(char_name, test_result) {
+    const incident = incident_recorder.capture({
+      reason: test_result.reason || "FARM_LIVE_TEST_FAILED",
+      severity: test_result.outcome === "TIMEOUT" ? "HIGH" : "ERROR",
+      character: char_name,
+      event: {
+        type: "farm_live_test",
+        event: "FARM_LIVE_TEST_FAILED",
+        character: char_name,
+        timestamp: Date.now(),
+        request_id: test_result.request_id || test_result.requestId || null,
+        outcome: test_result.outcome || "FAIL",
+        reason: test_result.reason || "FARM_LIVE_TEST_FAILED",
+      },
+      extra: {
+        test: test_result,
+      },
+    });
+
+    void observe_persistence(
+      persistence.indexIncident(
+        incident,
+        path.join("logs", "incidents", incident.incident_id),
+      ),
+      "farm_live_test_incident",
+      char_name,
+    );
+    return incident.incident_id;
+  }
+
+  function capture_inventory_live_test_incident(char_name, test_result) {
+    const incident = incident_recorder.capture({
+      reason: test_result.reason || "INVENTORY_LIVE_TEST_FAILED",
+      severity: test_result.outcome === "TIMEOUT" ? "HIGH" : "ERROR",
+      character: char_name,
+      event: {
+        type: "inventory_live_test",
+        event: "INVENTORY_LIVE_TEST_FAILED",
+        character: char_name,
+        timestamp: Date.now(),
+        request_id: test_result.request_id || test_result.requestId || null,
+        outcome: test_result.outcome || "FAIL",
+        reason: test_result.reason || "INVENTORY_LIVE_TEST_FAILED",
+      },
+      extra: {
+        test: test_result,
+      },
+    });
+
+    void observe_persistence(
+      persistence.indexIncident(
+        incident,
+        path.join("logs", "incidents", incident.incident_id),
+      ),
+      "inventory_live_test_incident",
+      char_name,
+    );
+    return incident.incident_id;
+  }
+
+  function capture_logistics_live_test_incident(char_name, test_result) {
+    const incident = incident_recorder.capture({
+      reason: test_result.reason || "LOGISTICS_LIVE_TEST_FAILED",
+      severity: test_result.outcome === "TIMEOUT" ? "HIGH" : "ERROR",
+      character: char_name,
+      event: {
+        type: "logistics_live_test",
+        event: "LOGISTICS_LIVE_TEST_FAILED",
+        character: char_name,
+        timestamp: Date.now(),
+        request_id: test_result.request_id || test_result.requestId || null,
+        outcome: test_result.outcome || "FAIL",
+        reason: test_result.reason || "LOGISTICS_LIVE_TEST_FAILED",
+      },
+      extra: {
+        test: test_result,
+      },
+    });
+
+    void observe_persistence(
+      persistence.indexIncident(
+        incident,
+        path.join("logs", "incidents", incident.incident_id),
+      ),
+      "logistics_live_test_incident",
+      char_name,
+    );
+    return incident.incident_id;
+  }
+
+  function capture_merchant_live_test_incident(char_name, test_result) {
+    const incident = incident_recorder.capture({
+      reason: test_result.reason || "MERCHANT_LIVE_TEST_FAILED",
+      severity: test_result.outcome === "TIMEOUT" ? "HIGH" : "ERROR",
+      character: char_name,
+      event: {
+        type: "merchant_live_test",
+        event: "MERCHANT_LIVE_TEST_FAILED",
+        character: char_name,
+        timestamp: Date.now(),
+        request_id: test_result.request_id || test_result.requestId || null,
+        outcome: test_result.outcome || "FAIL",
+        reason: test_result.reason || "MERCHANT_LIVE_TEST_FAILED",
+      },
+      extra: {
+        test: test_result,
+      },
+    });
+
+    void observe_persistence(
+      persistence.indexIncident(
+        incident,
+        path.join("logs", "incidents", incident.incident_id),
+      ),
+      "merchant_live_test_incident",
+      char_name,
+    );
+    return incident.incident_id;
+  }
+
+  function capture_merrit_live_test_incident(char_name, test_result) {
+    const incident = incident_recorder.capture({
+      reason: test_result.reason || "MERRIT_LIVE_TEST_FAILED",
+      severity: test_result.outcome === "TIMEOUT" ? "HIGH" : "ERROR",
+      character: char_name,
+      event: {
+        type: "merrit_live_test",
+        event: "MERRIT_LIVE_TEST_FAILED",
+        character: char_name,
+        timestamp: Date.now(),
+        request_id: test_result.request_id || test_result.requestId || null,
+        outcome: test_result.outcome || "FAIL",
+        reason: test_result.reason || "MERRIT_LIVE_TEST_FAILED",
+      },
+      extra: {
+        test: test_result,
+      },
+    });
+
+    void observe_persistence(
+      persistence.indexIncident(
+        incident,
+        path.join("logs", "incidents", incident.incident_id),
+      ),
+      "merrit_live_test_incident",
+      char_name,
+    );
+    return incident.incident_id;
+  }
+
+  function capture_fishing_live_test_incident(char_name, test_result) {
+    const incident = incident_recorder.capture({
+      reason: test_result.reason || "FISHING_LIVE_TEST_FAILED",
+      severity: test_result.outcome === "TIMEOUT" ? "HIGH" : "ERROR",
+      character: char_name,
+      event: {
+        type: "fishing_live_test",
+        event: "FISHING_LIVE_TEST_FAILED",
+        character: char_name,
+        timestamp: Date.now(),
+        request_id: test_result.request_id || test_result.requestId || null,
+        outcome: test_result.outcome || "FAIL",
+        reason: test_result.reason || "FISHING_LIVE_TEST_FAILED",
+      },
+      extra: {
+        test: test_result,
+      },
+    });
+
+    void observe_persistence(
+      persistence.indexIncident(
+        incident,
+        path.join("logs", "incidents", incident.incident_id),
+      ),
+      "fishing_live_test_incident",
+      char_name,
+    );
+    return incident.incident_id;
+  }
+
+  async function run_movement_live_test(char_name) {
+    const char_block = character_manage[char_name];
+    if (!char_block) {
+      throw make_control_error(
+        "CHARACTER_NOT_FOUND",
+        `Unknown character: ${char_name}`,
+        404,
+      );
+    }
+    if (
+      ["STARTING", "RUNNING"].includes(char_block.movement_live_test?.status)
+    ) {
+      throw make_control_error(
+        "MOVEMENT_LIVE_TEST_ALREADY_RUNNING",
+        `Movement live test already running for ${char_name}`,
+        409,
+      );
+    }
+    if (["STARTING", "RUNNING"].includes(char_block.combat_live_test?.status)) {
+      throw make_control_error(
+        "COMBAT_LIVE_TEST_ALREADY_RUNNING",
+        `Combat live test already running for ${char_name}`,
+        409,
+      );
+    }
+
+    if (
+      ["STARTING", "RUNNING"].includes(char_block.class_skill_live_test?.status)
+    ) {
+      throw make_control_error(
+        "CLASS_SKILL_LIVE_TEST_ALREADY_RUNNING",
+        `Class skill live test already running for ${char_name}`,
+        409,
+      );
+    }
+
+    if (["STARTING", "RUNNING"].includes(char_block.group_live_test?.status)) {
+      throw make_control_error(
+        "GROUP_LIVE_TEST_ALREADY_RUNNING",
+        "Group live test already running for " + char_name,
+        409,
+      );
+    }
+
+    const original_desired_state =
+      char_block.desired_runtime_state ||
+      (char_block.enabled
+        ? DESIRED_RUNTIME_STATES.RUNNING
+        : DESIRED_RUNTIME_STATES.STOPPED);
+    const start_state = {
+      lifecycle_state: char_block.lifecycle_state || null,
+      desired_runtime_state: original_desired_state,
+      enabled: !!char_block.enabled,
+      connected: !!char_block.connected,
+      map: char_block.live_state?.map || null,
+      x: Number.isFinite(char_block.live_state?.x)
+        ? char_block.live_state.x
+        : null,
+      y: Number.isFinite(char_block.live_state?.y)
+        ? char_block.live_state.y
+        : null,
+    };
+    const started_at = Date.now();
+    movement_live_test_sequence += 1;
+    const request_id = `movement-live-${started_at}-${movement_live_test_sequence}`;
+
+    char_block.movement_live_test = {
+      request_id,
+      status: "STARTING",
+      outcome: null,
+      reason: null,
+      started_at,
+      completed_at: null,
+    };
+    emit_supervisor_event("MOVEMENT_LIVE_TEST_REQUESTED", char_name, {
+      request_id,
+      original_desired_state,
+    });
+    dashboard?.publishSnapshot();
+
+    let runtime_override_applied = false;
+
+    try {
+      const runtime_ready =
+        !!char_block.instance &&
+        char_block.connected &&
+        Number.isFinite(char_block.bot_runtime_started_at);
+
+      if (!runtime_ready) {
+        const bundle_path = path.join(
+          process.cwd(),
+          "TYPECODE.out",
+          MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE,
+        );
+        if (!fs_regular.existsSync(bundle_path)) {
+          throw make_control_error(
+            "MOVEMENT_LIVE_TEST_RUNTIME_BUNDLE_MISSING",
+            `Movement runtime bundle is missing: ${bundle_path}`,
+            503,
+          );
+        }
+
+        char_block.movement_live_test_typescript_override =
+          MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE;
+        runtime_override_applied = true;
+        emit_supervisor_event(
+          "MOVEMENT_LIVE_TEST_RUNTIME_OVERRIDE_APPLIED",
+          char_name,
+          {
+            typescript_file: MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE,
+          },
+        );
+      }
+
+      if (original_desired_state !== DESIRED_RUNTIME_STATES.RUNNING) {
+        char_block.enabled = true;
+        char_block.desired_runtime_state = DESIRED_RUNTIME_STATES.RUNNING;
+      }
+
+      if (runtime_override_applied) {
+        await restart_character_for_movement_runtime(char_name, char_block);
+      } else if (!char_block.instance) {
+        await control_character(char_name, CONTROL_ACTIONS.START);
+      }
+
+      await wait_for_movement_live_test_runtime(char_name);
+      const ready_block = character_manage[char_name];
+      const result_promise = wait_for_movement_live_test_result(
+        char_name,
+        request_id,
+      );
+
+      ready_block.movement_live_test = {
+        ...ready_block.movement_live_test,
+        status: "RUNNING",
+      };
+      dashboard?.publishSnapshot();
+
+      const sent = safe_send(ready_block.instance, {
+        type: "movement_live_test",
+        request_id,
+      });
+      if (!sent) {
+        const pending = movement_live_test_requests.get(request_id);
+        if (pending) {
+          clearTimeout(pending.timer);
+          movement_live_test_requests.delete(request_id);
+        }
+        throw make_control_error(
+          "MOVEMENT_LIVE_TEST_DISPATCH_FAILED",
+          `Could not dispatch movement live test to ${char_name}`,
+          503,
+        );
+      }
+
+      const child_response = await result_promise;
+      if (child_response.error || !child_response.result) {
+        throw make_control_error(
+          "MOVEMENT_LIVE_TEST_RUNTIME_FAILED",
+          child_response.error || "Movement live test returned no result",
+          500,
+        );
+      }
+
+      const events = diagnostic_store.getEvents({
+        character: char_name,
+        since: started_at,
+      });
+      const evidence = movementLiveTestEvidence(events, ready_block, {
+        startedAt: started_at,
+      });
+      const combined = combineMovementLiveTestResult(
+        child_response.result,
+        evidence,
+      );
+      const incident_id =
+        combined.outcome === "PASS"
+          ? null
+          : capture_movement_live_test_incident(char_name, {
+              ...combined,
+              request_id,
+            });
+      const diagnostics = movementLiveTestDiagnostics(combined, {
+        character: char_name,
+        originalDesiredState: original_desired_state,
+        startState: start_state,
+        evidence,
+        incidentId: incident_id,
+      });
+
+      ready_block.movement_live_test = {
+        ...combined,
+        request_id,
+        status: "COMPLETED",
+        started_at,
+        completed_at: Date.now(),
+        incident_id,
+        diagnostics,
+      };
+      emit_supervisor_event("MOVEMENT_LIVE_TEST_COMPLETED", char_name, {
+        request_id,
+        outcome: combined.outcome,
+        reason: combined.reason,
+        incident_id,
+        supervisor: evidence,
+      });
+      dashboard?.publishSnapshot();
+      return ready_block.movement_live_test;
+    } catch (error) {
+      const failed_result = {
+        request_id,
+        outcome:
+          error.code === "MOVEMENT_LIVE_TEST_TIMEOUT" ||
+          error.code === "MOVEMENT_LIVE_TEST_RUNTIME_TIMEOUT"
+            ? "TIMEOUT"
+            : "FAIL",
+        reason: error.code || error.message || "MOVEMENT_LIVE_TEST_FAILED",
+        error: error.message || String(error),
+        started_at,
+        completed_at: Date.now(),
+        durationMs: Date.now() - started_at,
+      };
+      const failure_events = diagnostic_store.getEvents({
+        character: char_name,
+        since: started_at,
+      });
+      const failure_evidence = movementLiveTestEvidence(
+        failure_events,
+        char_block,
+        { startedAt: started_at },
+      );
+      const incident_id = capture_movement_live_test_incident(
+        char_name,
+        failed_result,
+      );
+      const failed = {
+        ...failed_result,
+        status: "FAILED",
+        incident_id,
+        diagnostics: movementLiveTestDiagnostics(failed_result, {
+          character: char_name,
+          originalDesiredState: original_desired_state,
+          startState: start_state,
+          evidence: failure_evidence,
+          incidentId: incident_id,
+        }),
+      };
+      char_block.movement_live_test = failed;
+      emit_supervisor_event("MOVEMENT_LIVE_TEST_FAILED", char_name, failed);
+      dashboard?.publishSnapshot();
+      return failed;
+    } finally {
+      const pending = movement_live_test_requests.get(request_id);
+      if (pending) {
+        clearTimeout(pending.timer);
+        movement_live_test_requests.delete(request_id);
+      }
+
+      try {
+        if (runtime_override_applied) {
+          await restore_movement_live_test_execution_source(
+            char_name,
+            original_desired_state,
+          );
+        } else {
+          await restore_movement_live_test_state(
+            char_name,
+            original_desired_state,
+          );
+        }
+      } catch (restore_error) {
+        emit_supervisor_event(
+          "MOVEMENT_LIVE_TEST_STATE_RESTORE_FAILED",
+          char_name,
+          {
+            request_id,
+            desired_runtime_state: original_desired_state,
+            error:
+              restore_error instanceof Error
+                ? restore_error.message
+                : String(restore_error),
+          },
+        );
+      }
+      dashboard?.publishSnapshot();
+    }
+  }
+
+  async function run_combat_live_test(char_name) {
+    const char_block = character_manage[char_name];
+    if (!char_block) {
+      throw make_control_error(
+        "CHARACTER_NOT_FOUND",
+        `Unknown character: ${char_name}`,
+        404,
+      );
+    }
+    if (char_block.account_character_type === "merchant") {
+      throw make_control_error(
+        "COMBAT_CHARACTER_REQUIRED",
+        `Combat live test requires a non-merchant character: ${char_name}`,
+        400,
+      );
+    }
+    if (["STARTING", "RUNNING"].includes(char_block.combat_live_test?.status)) {
+      throw make_control_error(
+        "COMBAT_LIVE_TEST_ALREADY_RUNNING",
+        `Combat live test already running for ${char_name}`,
+        409,
+      );
+    }
+    if (
+      ["STARTING", "RUNNING"].includes(char_block.movement_live_test?.status)
+    ) {
+      throw make_control_error(
+        "MOVEMENT_LIVE_TEST_ALREADY_RUNNING",
+        `Movement live test already running for ${char_name}`,
+        409,
+      );
+    }
+
+    if (
+      ["STARTING", "RUNNING"].includes(char_block.class_skill_live_test?.status)
+    ) {
+      throw make_control_error(
+        "CLASS_SKILL_LIVE_TEST_ALREADY_RUNNING",
+        `Class skill live test already running for ${char_name}`,
+        409,
+      );
+    }
+
+    if (["STARTING", "RUNNING"].includes(char_block.group_live_test?.status)) {
+      throw make_control_error(
+        "GROUP_LIVE_TEST_ALREADY_RUNNING",
+        "Group live test already running for " + char_name,
+        409,
+      );
+    }
+
+    const original_desired_state =
+      char_block.desired_runtime_state ||
+      (char_block.enabled
+        ? DESIRED_RUNTIME_STATES.RUNNING
+        : DESIRED_RUNTIME_STATES.STOPPED);
+    const start_state = {
+      lifecycle_state: char_block.lifecycle_state || null,
+      desired_runtime_state: original_desired_state,
+      enabled: !!char_block.enabled,
+      connected: !!char_block.connected,
+      map: char_block.live_state?.map || null,
+      x: Number.isFinite(char_block.live_state?.x)
+        ? char_block.live_state.x
+        : null,
+      y: Number.isFinite(char_block.live_state?.y)
+        ? char_block.live_state.y
+        : null,
+      hp: Number.isFinite(char_block.live_state?.hp)
+        ? char_block.live_state.hp
+        : null,
+      mp: Number.isFinite(char_block.live_state?.mp)
+        ? char_block.live_state.mp
+        : null,
+    };
+    const started_at = Date.now();
+    combat_live_test_sequence += 1;
+    const request_id = `combat-live-${started_at}-${combat_live_test_sequence}`;
+
+    char_block.combat_live_test = {
+      request_id,
+      status: "STARTING",
+      outcome: null,
+      reason: null,
+      started_at,
+      completed_at: null,
+    };
+    emit_supervisor_event("COMBAT_LIVE_TEST_REQUESTED", char_name, {
+      request_id,
+      original_desired_state,
+    });
+    dashboard?.publishSnapshot();
+
+    let runtime_override_applied = false;
+
+    try {
+      const runtime_ready =
+        !!char_block.instance &&
+        char_block.connected &&
+        Number.isFinite(char_block.bot_runtime_started_at);
+
+      if (!runtime_ready) {
+        const bundle_path = path.join(
+          process.cwd(),
+          "TYPECODE.out",
+          MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE,
+        );
+        if (!fs_regular.existsSync(bundle_path)) {
+          throw make_control_error(
+            "COMBAT_LIVE_TEST_RUNTIME_BUNDLE_MISSING",
+            `Combat runtime bundle is missing: ${bundle_path}`,
+            503,
+          );
+        }
+
+        char_block.movement_live_test_typescript_override =
+          MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE;
+        runtime_override_applied = true;
+        emit_supervisor_event(
+          "COMBAT_LIVE_TEST_RUNTIME_OVERRIDE_APPLIED",
+          char_name,
+          {
+            typescript_file: MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE,
+          },
+        );
+      }
+
+      if (original_desired_state !== DESIRED_RUNTIME_STATES.RUNNING) {
+        char_block.enabled = true;
+        char_block.desired_runtime_state = DESIRED_RUNTIME_STATES.RUNNING;
+      }
+
+      if (runtime_override_applied) {
+        await restart_character_for_movement_runtime(char_name, char_block);
+      } else if (!char_block.instance) {
+        await control_character(char_name, CONTROL_ACTIONS.START);
+      }
+
+      await wait_for_movement_live_test_runtime(char_name);
+      const ready_block = character_manage[char_name];
+      const result_promise = wait_for_combat_live_test_result(
+        char_name,
+        request_id,
+      );
+
+      ready_block.combat_live_test = {
+        ...ready_block.combat_live_test,
+        status: "RUNNING",
+      };
+      dashboard?.publishSnapshot();
+
+      const sent = safe_send(ready_block.instance, {
+        type: "combat_live_test",
+        request_id,
+      });
+      if (!sent) {
+        const pending = combat_live_test_requests.get(request_id);
+        if (pending) {
+          clearTimeout(pending.timer);
+          combat_live_test_requests.delete(request_id);
+        }
+        throw make_control_error(
+          "COMBAT_LIVE_TEST_DISPATCH_FAILED",
+          `Could not dispatch combat live test to ${char_name}`,
+          503,
+        );
+      }
+
+      const child_response = await result_promise;
+      if (child_response.error || !child_response.result) {
+        throw make_control_error(
+          "COMBAT_LIVE_TEST_RUNTIME_FAILED",
+          child_response.error || "Combat live test returned no result",
+          500,
+        );
+      }
+
+      const events = diagnostic_store.getEvents({
+        character: char_name,
+        since: started_at,
+      });
+      const evidence = combatLiveTestEvidence(events, ready_block);
+      const combined = combineCombatLiveTestResult(
+        child_response.result,
+        evidence,
+      );
+      const incident_id =
+        combined.outcome === "PASS"
+          ? null
+          : capture_combat_live_test_incident(char_name, {
+              ...combined,
+              request_id,
+            });
+      const diagnostics = combatLiveTestDiagnostics(combined, {
+        character: char_name,
+        originalDesiredState: original_desired_state,
+        startState: start_state,
+        evidence,
+        incidentId: incident_id,
+      });
+
+      ready_block.combat_live_test = {
+        ...combined,
+        request_id,
+        status: "COMPLETED",
+        started_at,
+        completed_at: Date.now(),
+        incident_id,
+        diagnostics,
+      };
+      emit_supervisor_event("COMBAT_LIVE_TEST_COMPLETED", char_name, {
+        request_id,
+        outcome: combined.outcome,
+        reason: combined.reason,
+        incident_id,
+        supervisor: evidence,
+      });
+      dashboard?.publishSnapshot();
+      return ready_block.combat_live_test;
+    } catch (error) {
+      const failed_result = {
+        request_id,
+        outcome: error.code === "COMBAT_LIVE_TEST_TIMEOUT" ? "TIMEOUT" : "FAIL",
+        reason: error.code || error.message || "COMBAT_LIVE_TEST_FAILED",
+        error: error.message || String(error),
+        started_at,
+        completed_at: Date.now(),
+        durationMs: Date.now() - started_at,
+      };
+      const failure_events = diagnostic_store.getEvents({
+        character: char_name,
+        since: started_at,
+      });
+      const failure_evidence = combatLiveTestEvidence(
+        failure_events,
+        char_block,
+      );
+      const incident_id = capture_combat_live_test_incident(
+        char_name,
+        failed_result,
+      );
+      const failed = {
+        ...failed_result,
+        status: "FAILED",
+        incident_id,
+        diagnostics: combatLiveTestDiagnostics(failed_result, {
+          character: char_name,
+          originalDesiredState: original_desired_state,
+          startState: start_state,
+          evidence: failure_evidence,
+          incidentId: incident_id,
+        }),
+      };
+      char_block.combat_live_test = failed;
+      emit_supervisor_event("COMBAT_LIVE_TEST_FAILED", char_name, failed);
+      dashboard?.publishSnapshot();
+      return failed;
+    } finally {
+      const pending = combat_live_test_requests.get(request_id);
+      if (pending) {
+        clearTimeout(pending.timer);
+        combat_live_test_requests.delete(request_id);
+      }
+
+      try {
+        if (runtime_override_applied) {
+          await restore_combat_live_test_execution_source(
+            char_name,
+            original_desired_state,
+          );
+        } else {
+          await restore_movement_live_test_state(
+            char_name,
+            original_desired_state,
+          );
+        }
+      } catch (restore_error) {
+        emit_supervisor_event(
+          "COMBAT_LIVE_TEST_STATE_RESTORE_FAILED",
+          char_name,
+          {
+            request_id,
+            desired_runtime_state: original_desired_state,
+            error:
+              restore_error instanceof Error
+                ? restore_error.message
+                : String(restore_error),
+          },
+        );
+      }
+      dashboard?.publishSnapshot();
+    }
+  }
+  async function run_class_skill_live_test(char_name) {
+    const char_block = character_manage[char_name];
+    if (!char_block) {
+      throw make_control_error(
+        "CHARACTER_NOT_FOUND",
+        `Unknown character: ${char_name}`,
+        404,
+      );
+    }
+    const class_skill_type =
+      char_block.account_character_type || char_block.live_state?.ctype;
+    if (!["ranger", "merchant"].includes(class_skill_type)) {
+      throw make_control_error(
+        "CLASS_SKILL_LIVE_TEST_CLASS_UNSUPPORTED",
+        `Class skill live test requires a Ranger or Merchant: ${char_name}`,
+        400,
+      );
+    }
+    if (
+      ["STARTING", "RUNNING"].includes(char_block.class_skill_live_test?.status)
+    ) {
+      throw make_control_error(
+        "CLASS_SKILL_LIVE_TEST_ALREADY_RUNNING",
+        `Class skill live test already running for ${char_name}`,
+        409,
+      );
+    }
+    if (
+      ["STARTING", "RUNNING"].includes(char_block.movement_live_test?.status)
+    ) {
+      throw make_control_error(
+        "MOVEMENT_LIVE_TEST_ALREADY_RUNNING",
+        `Movement live test already running for ${char_name}`,
+        409,
+      );
+    }
+    if (["STARTING", "RUNNING"].includes(char_block.combat_live_test?.status)) {
+      throw make_control_error(
+        "COMBAT_LIVE_TEST_ALREADY_RUNNING",
+        `Combat live test already running for ${char_name}`,
+        409,
+      );
+    }
+
+    if (["STARTING", "RUNNING"].includes(char_block.group_live_test?.status)) {
+      throw make_control_error(
+        "GROUP_LIVE_TEST_ALREADY_RUNNING",
+        "Group live test already running for " + char_name,
+        409,
+      );
+    }
+
+    const original_desired_state =
+      char_block.desired_runtime_state ||
+      (char_block.enabled
+        ? DESIRED_RUNTIME_STATES.RUNNING
+        : DESIRED_RUNTIME_STATES.STOPPED);
+    const start_state = {
+      lifecycle_state: char_block.lifecycle_state || null,
+      desired_runtime_state: original_desired_state,
+      enabled: !!char_block.enabled,
+      connected: !!char_block.connected,
+      map: char_block.live_state?.map || null,
+      x: Number.isFinite(char_block.live_state?.x)
+        ? char_block.live_state.x
+        : null,
+      y: Number.isFinite(char_block.live_state?.y)
+        ? char_block.live_state.y
+        : null,
+      hp: Number.isFinite(char_block.live_state?.hp)
+        ? char_block.live_state.hp
+        : null,
+      mp: Number.isFinite(char_block.live_state?.mp)
+        ? char_block.live_state.mp
+        : null,
+    };
+    const started_at = Date.now();
+    class_skill_live_test_sequence += 1;
+    const request_id = `class-skill-live-${started_at}-${class_skill_live_test_sequence}`;
+
+    char_block.class_skill_live_test = {
+      request_id,
+      status: "STARTING",
+      outcome: null,
+      reason: null,
+      started_at,
+      completed_at: null,
+    };
+    emit_supervisor_event("CLASS_SKILL_LIVE_TEST_REQUESTED", char_name, {
+      request_id,
+      original_desired_state,
+    });
+    dashboard?.publishSnapshot();
+
+    let runtime_override_applied = false;
+
+    try {
+      const runtime_ready =
+        !!char_block.instance &&
+        char_block.connected &&
+        Number.isFinite(char_block.bot_runtime_started_at);
+
+      if (!runtime_ready) {
+        const bundle_path = path.join(
+          process.cwd(),
+          "TYPECODE.out",
+          MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE,
+        );
+        if (!fs_regular.existsSync(bundle_path)) {
+          throw make_control_error(
+            "CLASS_SKILL_LIVE_TEST_RUNTIME_BUNDLE_MISSING",
+            `Class skill runtime bundle is missing: ${bundle_path}`,
+            503,
+          );
+        }
+
+        char_block.movement_live_test_typescript_override =
+          MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE;
+        runtime_override_applied = true;
+        emit_supervisor_event(
+          "CLASS_SKILL_LIVE_TEST_RUNTIME_OVERRIDE_APPLIED",
+          char_name,
+          {
+            typescript_file: MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE,
+          },
+        );
+      }
+
+      if (original_desired_state !== DESIRED_RUNTIME_STATES.RUNNING) {
+        char_block.enabled = true;
+        char_block.desired_runtime_state = DESIRED_RUNTIME_STATES.RUNNING;
+      }
+
+      if (runtime_override_applied) {
+        await restart_character_for_movement_runtime(char_name, char_block);
+      } else if (!char_block.instance) {
+        await control_character(char_name, CONTROL_ACTIONS.START);
+      }
+
+      await wait_for_movement_live_test_runtime(char_name);
+      const ready_block = character_manage[char_name];
+      const result_promise = wait_for_class_skill_live_test_result(
+        char_name,
+        request_id,
+      );
+
+      ready_block.class_skill_live_test = {
+        ...ready_block.class_skill_live_test,
+        status: "RUNNING",
+      };
+      dashboard?.publishSnapshot();
+
+      const sent = safe_send(ready_block.instance, {
+        type: "class_skill_live_test",
+        request_id,
+      });
+      if (!sent) {
+        const pending = class_skill_live_test_requests.get(request_id);
+        if (pending) {
+          clearTimeout(pending.timer);
+          class_skill_live_test_requests.delete(request_id);
+        }
+        throw make_control_error(
+          "CLASS_SKILL_LIVE_TEST_DISPATCH_FAILED",
+          `Could not dispatch combat live test to ${char_name}`,
+          503,
+        );
+      }
+
+      const child_response = await result_promise;
+      if (child_response.error || !child_response.result) {
+        throw make_control_error(
+          "CLASS_SKILL_LIVE_TEST_RUNTIME_FAILED",
+          child_response.error || "Class skill live test returned no result",
+          500,
+        );
+      }
+
+      const events = diagnostic_store.getEvents({
+        character: char_name,
+        since: started_at,
+      });
+      const evidence = classSkillLiveTestEvidence(events, ready_block);
+      const combined = combineClassSkillLiveTestResult(
+        child_response.result,
+        evidence,
+      );
+      const incident_id =
+        combined.outcome === "PASS"
+          ? null
+          : capture_class_skill_live_test_incident(char_name, {
+              ...combined,
+              request_id,
+            });
+      const diagnostics = classSkillLiveTestDiagnostics(combined, {
+        character: char_name,
+        originalDesiredState: original_desired_state,
+        startState: start_state,
+        evidence,
+        incidentId: incident_id,
+      });
+
+      ready_block.class_skill_live_test = {
+        ...combined,
+        request_id,
+        status: "COMPLETED",
+        started_at,
+        completed_at: Date.now(),
+        incident_id,
+        diagnostics,
+      };
+      emit_supervisor_event("CLASS_SKILL_LIVE_TEST_COMPLETED", char_name, {
+        request_id,
+        outcome: combined.outcome,
+        reason: combined.reason,
+        incident_id,
+        supervisor: evidence,
+      });
+      dashboard?.publishSnapshot();
+      return ready_block.class_skill_live_test;
+    } catch (error) {
+      const failed_result = {
+        request_id,
+        outcome:
+          error.code === "CLASS_SKILL_LIVE_TEST_TIMEOUT" ? "TIMEOUT" : "FAIL",
+        reason: error.code || error.message || "CLASS_SKILL_LIVE_TEST_FAILED",
+        error: error.message || String(error),
+        started_at,
+        completed_at: Date.now(),
+        durationMs: Date.now() - started_at,
+      };
+      const failure_events = diagnostic_store.getEvents({
+        character: char_name,
+        since: started_at,
+      });
+      const failure_evidence = classSkillLiveTestEvidence(
+        failure_events,
+        char_block,
+      );
+      const incident_id = capture_class_skill_live_test_incident(
+        char_name,
+        failed_result,
+      );
+      const failed = {
+        ...failed_result,
+        status: "FAILED",
+        incident_id,
+        diagnostics: classSkillLiveTestDiagnostics(failed_result, {
+          character: char_name,
+          originalDesiredState: original_desired_state,
+          startState: start_state,
+          evidence: failure_evidence,
+          incidentId: incident_id,
+        }),
+      };
+      char_block.class_skill_live_test = failed;
+      emit_supervisor_event("CLASS_SKILL_LIVE_TEST_FAILED", char_name, failed);
+      dashboard?.publishSnapshot();
+      return failed;
+    } finally {
+      const pending = class_skill_live_test_requests.get(request_id);
+      if (pending) {
+        clearTimeout(pending.timer);
+        class_skill_live_test_requests.delete(request_id);
+      }
+
+      try {
+        if (runtime_override_applied) {
+          await restore_class_skill_live_test_execution_source(
+            char_name,
+            original_desired_state,
+          );
+        } else {
+          await restore_movement_live_test_state(
+            char_name,
+            original_desired_state,
+          );
+        }
+      } catch (restore_error) {
+        emit_supervisor_event(
+          "CLASS_SKILL_LIVE_TEST_STATE_RESTORE_FAILED",
+          char_name,
+          {
+            request_id,
+            desired_runtime_state: original_desired_state,
+            error:
+              restore_error instanceof Error
+                ? restore_error.message
+                : String(restore_error),
+          },
+        );
+      }
+      dashboard?.publishSnapshot();
+    }
+  }
+  async function run_group_live_test(char_name, options = {}) {
+    const char_block = character_manage[char_name];
+    if (!char_block) {
+      throw make_control_error(
+        "CHARACTER_NOT_FOUND",
+        `Unknown character: ${char_name}`,
+        404,
+      );
+    }
+    if (
+      (char_block.account_character_type || char_block.live_state?.ctype) ===
+      "merchant"
+    ) {
+      throw make_control_error(
+        "GROUP_COMBAT_CHARACTER_REQUIRED",
+        "Group live test requires a non-merchant character: " + char_name,
+        400,
+      );
+    }
+    if (
+      !["leader", "follower"].includes(options.role) ||
+      typeof options.leader !== "string" ||
+      typeof options.peer !== "string" ||
+      options.leader === options.peer ||
+      ![options.leader, options.peer].includes(char_name)
+    ) {
+      throw make_control_error(
+        "GROUP_LIVE_TEST_PAIR_INVALID",
+        "Invalid group live test pair for " + char_name,
+        400,
+      );
+    }
+
+    if (["STARTING", "RUNNING"].includes(char_block.group_live_test?.status)) {
+      throw make_control_error(
+        "GROUP_LIVE_TEST_ALREADY_RUNNING",
+        `Group live test already running for ${char_name}`,
+        409,
+      );
+    }
+    if (
+      ["STARTING", "RUNNING"].includes(char_block.movement_live_test?.status)
+    ) {
+      throw make_control_error(
+        "MOVEMENT_LIVE_TEST_ALREADY_RUNNING",
+        `Movement live test already running for ${char_name}`,
+        409,
+      );
+    }
+    if (["STARTING", "RUNNING"].includes(char_block.combat_live_test?.status)) {
+      throw make_control_error(
+        "COMBAT_LIVE_TEST_ALREADY_RUNNING",
+        `Combat live test already running for ${char_name}`,
+        409,
+      );
+    }
+
+    if (["STARTING", "RUNNING"].includes(char_block.group_live_test?.status)) {
+      throw make_control_error(
+        "GROUP_LIVE_TEST_ALREADY_RUNNING",
+        "Group live test already running for " + char_name,
+        409,
+      );
+    }
+
+    const original_desired_state =
+      char_block.desired_runtime_state ||
+      (char_block.enabled
+        ? DESIRED_RUNTIME_STATES.RUNNING
+        : DESIRED_RUNTIME_STATES.STOPPED);
+    const start_state = {
+      lifecycle_state: char_block.lifecycle_state || null,
+      desired_runtime_state: original_desired_state,
+      enabled: !!char_block.enabled,
+      connected: !!char_block.connected,
+      map: char_block.live_state?.map || null,
+      x: Number.isFinite(char_block.live_state?.x)
+        ? char_block.live_state.x
+        : null,
+      y: Number.isFinite(char_block.live_state?.y)
+        ? char_block.live_state.y
+        : null,
+      hp: Number.isFinite(char_block.live_state?.hp)
+        ? char_block.live_state.hp
+        : null,
+      mp: Number.isFinite(char_block.live_state?.mp)
+        ? char_block.live_state.mp
+        : null,
+    };
+    const started_at = Date.now();
+    group_live_test_sequence += 1;
+    const request_id = `group-live-${started_at}-${group_live_test_sequence}`;
+
+    char_block.group_live_test = {
+      request_id,
+      status: "STARTING",
+      outcome: null,
+      reason: null,
+      started_at,
+      completed_at: null,
+    };
+    emit_supervisor_event("GROUP_LIVE_TEST_REQUESTED", char_name, {
+      request_id,
+      original_desired_state,
+      role: options.role,
+      leader: options.leader,
+      peer: options.peer,
+      baseline_pair_formed:
+        typeof options.baselinePairFormed === "boolean"
+          ? options.baselinePairFormed
+          : null,
+      coordinated_pair: options.coordinatedPair === true,
+    });
+    dashboard?.publishSnapshot();
+
+    let runtime_override_applied = false;
+
+    try {
+      const runtime_ready =
+        !!char_block.instance &&
+        char_block.connected &&
+        Number.isFinite(char_block.bot_runtime_started_at);
+
+      if (!runtime_ready) {
+        const bundle_path = path.join(
+          process.cwd(),
+          "TYPECODE.out",
+          MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE,
+        );
+        if (!fs_regular.existsSync(bundle_path)) {
+          throw make_control_error(
+            "GROUP_LIVE_TEST_RUNTIME_BUNDLE_MISSING",
+            `Group runtime bundle is missing: ${bundle_path}`,
+            503,
+          );
+        }
+
+        char_block.movement_live_test_typescript_override =
+          MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE;
+        runtime_override_applied = true;
+        emit_supervisor_event(
+          "GROUP_LIVE_TEST_RUNTIME_OVERRIDE_APPLIED",
+          char_name,
+          {
+            typescript_file: MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE,
+          },
+        );
+      }
+
+      if (original_desired_state !== DESIRED_RUNTIME_STATES.RUNNING) {
+        char_block.enabled = true;
+        char_block.desired_runtime_state = DESIRED_RUNTIME_STATES.RUNNING;
+      }
+
+      if (runtime_override_applied) {
+        await restart_character_for_movement_runtime(char_name, char_block);
+      } else if (!char_block.instance) {
+        await control_character(char_name, CONTROL_ACTIONS.START);
+      }
+
+      await wait_for_group_live_test_runtime(char_name);
+      const ready_block = character_manage[char_name];
+      const result_promise = wait_for_group_live_test_result(
+        char_name,
+        request_id,
+      );
+
+      ready_block.group_live_test = {
+        ...ready_block.group_live_test,
+        status: "RUNNING",
+      };
+      dashboard?.publishSnapshot();
+
+      const sent = safe_send(ready_block.instance, {
+        type: "group_live_test",
+        request_id,
+        role: options.role,
+        leader: options.leader,
+        peer: options.peer,
+        baselinePairFormed:
+          typeof options.baselinePairFormed === "boolean"
+            ? options.baselinePairFormed
+            : undefined,
+        coordinatedPair: options.coordinatedPair === true,
+      });
+      if (!sent) {
+        const pending = group_live_test_requests.get(request_id);
+        if (pending) {
+          clearTimeout(pending.timer);
+          group_live_test_requests.delete(request_id);
+        }
+        throw make_control_error(
+          "GROUP_LIVE_TEST_DISPATCH_FAILED",
+          `Could not dispatch group live test to ${char_name}`,
+          503,
+        );
+      }
+
+      const child_response = await result_promise;
+      if (child_response.error || !child_response.result) {
+        throw make_control_error(
+          "GROUP_LIVE_TEST_RUNTIME_FAILED",
+          child_response.error || "Group live test returned no result",
+          500,
+        );
+      }
+
+      const events = diagnostic_store.getEvents({
+        character: char_name,
+        since: started_at,
+      });
+      const evidence = groupLiveTestEvidence(events, ready_block);
+      const combined = combineGroupLiveTestResult(
+        child_response.result,
+        evidence,
+      );
+      const incident_id =
+        combined.outcome === "PASS"
+          ? null
+          : capture_group_live_test_incident(char_name, {
+              ...combined,
+              request_id,
+            });
+      const diagnostics = groupLiveTestDiagnostics(combined, {
+        character: char_name,
+        originalDesiredState: original_desired_state,
+        startState: start_state,
+        evidence,
+        incidentId: incident_id,
+      });
+
+      ready_block.group_live_test = {
+        ...combined,
+        request_id,
+        status: "COMPLETED",
+        started_at,
+        completed_at: Date.now(),
+        incident_id,
+        diagnostics,
+      };
+      emit_supervisor_event("GROUP_LIVE_TEST_COMPLETED", char_name, {
+        request_id,
+        outcome: combined.outcome,
+        reason: combined.reason,
+        incident_id,
+        supervisor: evidence,
+      });
+      dashboard?.publishSnapshot();
+      return ready_block.group_live_test;
+    } catch (error) {
+      const failed_result = {
+        request_id,
+        outcome: error.code === "GROUP_LIVE_TEST_TIMEOUT" ? "TIMEOUT" : "FAIL",
+        reason: error.code || error.message || "GROUP_LIVE_TEST_FAILED",
+        error: error.message || String(error),
+        started_at,
+        completed_at: Date.now(),
+        durationMs: Date.now() - started_at,
+      };
+      const failure_events = diagnostic_store.getEvents({
+        character: char_name,
+        since: started_at,
+      });
+      const failure_evidence = groupLiveTestEvidence(
+        failure_events,
+        char_block,
+      );
+      const incident_id = capture_group_live_test_incident(
+        char_name,
+        failed_result,
+      );
+      const failed = {
+        ...failed_result,
+        status: "FAILED",
+        incident_id,
+        diagnostics: groupLiveTestDiagnostics(failed_result, {
+          character: char_name,
+          originalDesiredState: original_desired_state,
+          startState: start_state,
+          evidence: failure_evidence,
+          incidentId: incident_id,
+        }),
+      };
+      char_block.group_live_test = failed;
+      emit_supervisor_event("GROUP_LIVE_TEST_FAILED", char_name, failed);
+      dashboard?.publishSnapshot();
+      return failed;
+    } finally {
+      const pending = group_live_test_requests.get(request_id);
+      if (pending) {
+        clearTimeout(pending.timer);
+        group_live_test_requests.delete(request_id);
+      }
+
+      try {
+        if (runtime_override_applied) {
+          await restore_group_live_test_execution_source(
+            char_name,
+            original_desired_state,
+          );
+        } else {
+          await restore_movement_live_test_state(
+            char_name,
+            original_desired_state,
+          );
+        }
+      } catch (restore_error) {
+        emit_supervisor_event(
+          "GROUP_LIVE_TEST_STATE_RESTORE_FAILED",
+          char_name,
+          {
+            request_id,
+            desired_runtime_state: original_desired_state,
+            error:
+              restore_error instanceof Error
+                ? restore_error.message
+                : String(restore_error),
+          },
+        );
+      }
+      dashboard?.publishSnapshot();
+    }
+  }
+
+  async function run_farm_live_test(char_name, options = {}) {
+    const char_block = character_manage[char_name];
+    if (!char_block) {
+      throw make_control_error(
+        "CHARACTER_NOT_FOUND",
+        `Unknown character: ${char_name}`,
+        404,
+      );
+    }
+    if (
+      (char_block.account_character_type || char_block.live_state?.ctype) ===
+      "merchant"
+    ) {
+      throw make_control_error(
+        "FARM_CHARACTER_REQUIRED",
+        "Farm live test requires a non-merchant character: " + char_name,
+        400,
+      );
+    }
+    if (["STARTING", "RUNNING"].includes(char_block.farm_live_test?.status)) {
+      throw make_control_error(
+        "FARM_LIVE_TEST_ALREADY_RUNNING",
+        `Farm live test already running for ${char_name}`,
+        409,
+      );
+    }
+    for (const active of [
+      ["MOVEMENT", char_block.movement_live_test],
+      ["COMBAT", char_block.combat_live_test],
+      ["CLASS_SKILL", char_block.class_skill_live_test],
+      ["GROUP", char_block.group_live_test],
+    ]) {
+      if (["STARTING", "RUNNING"].includes(active[1]?.status)) {
+        throw make_control_error(
+          active[0] + "_LIVE_TEST_ALREADY_RUNNING",
+          active[0] + " live test already running for " + char_name,
+          409,
+        );
+      }
+    }
+
+    const original_desired_state =
+      char_block.desired_runtime_state ||
+      (char_block.enabled
+        ? DESIRED_RUNTIME_STATES.RUNNING
+        : DESIRED_RUNTIME_STATES.STOPPED);
+    const start_state = {
+      lifecycle_state: char_block.lifecycle_state || null,
+      desired_runtime_state: original_desired_state,
+      enabled: !!char_block.enabled,
+      connected: !!char_block.connected,
+      map: char_block.live_state?.map || null,
+      x: Number.isFinite(char_block.live_state?.x)
+        ? char_block.live_state.x
+        : null,
+      y: Number.isFinite(char_block.live_state?.y)
+        ? char_block.live_state.y
+        : null,
+      xp: Number.isFinite(char_block.live_state?.xp)
+        ? char_block.live_state.xp
+        : null,
+      gold: Number.isFinite(char_block.live_state?.gold)
+        ? char_block.live_state.gold
+        : null,
+    };
+    const started_at = Date.now();
+    farm_live_test_sequence += 1;
+    const request_id = `farm-live-${started_at}-${farm_live_test_sequence}`;
+
+    char_block.farm_live_test = {
+      request_id,
+      status: "STARTING",
+      outcome: null,
+      reason: null,
+      started_at,
+      completed_at: null,
+    };
+    emit_supervisor_event("FARM_LIVE_TEST_REQUESTED", char_name, {
+      request_id,
+      original_desired_state,
+    });
+    dashboard?.publishSnapshot();
+
+    let runtime_override_applied = false;
+
+    try {
+      const runtime_ready =
+        !!char_block.instance &&
+        char_block.connected &&
+        Number.isFinite(char_block.bot_runtime_started_at);
+
+      if (!runtime_ready) {
+        const bundle_path = path.join(
+          process.cwd(),
+          "TYPECODE.out",
+          MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE,
+        );
+        if (!fs_regular.existsSync(bundle_path)) {
+          throw make_control_error(
+            "FARM_LIVE_TEST_RUNTIME_BUNDLE_MISSING",
+            `Farm runtime bundle is missing: ${bundle_path}`,
+            503,
+          );
+        }
+
+        char_block.movement_live_test_typescript_override =
+          MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE;
+        runtime_override_applied = true;
+        emit_supervisor_event(
+          "FARM_LIVE_TEST_RUNTIME_OVERRIDE_APPLIED",
+          char_name,
+          {
+            typescript_file: MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE,
+          },
+        );
+      }
+
+      if (original_desired_state !== DESIRED_RUNTIME_STATES.RUNNING) {
+        char_block.enabled = true;
+        char_block.desired_runtime_state = DESIRED_RUNTIME_STATES.RUNNING;
+      }
+
+      if (runtime_override_applied) {
+        await restart_character_for_movement_runtime(char_name, char_block);
+      } else if (!char_block.instance) {
+        await control_character(char_name, CONTROL_ACTIONS.START);
+      }
+
+      await wait_for_farm_live_test_runtime(char_name);
+      const ready_block = character_manage[char_name];
+      const result_promise = wait_for_farm_live_test_result(
+        char_name,
+        request_id,
+      );
+
+      ready_block.farm_live_test = {
+        ...ready_block.farm_live_test,
+        status: "RUNNING",
+      };
+      dashboard?.publishSnapshot();
+
+      const sent = safe_send(ready_block.instance, {
+        type: "farm_live_test",
+        request_id,
+        sample_ms: Number.isFinite(Number(options.sampleMs))
+          ? Number(options.sampleMs)
+          : undefined,
+      });
+      if (!sent) {
+        const pending = farm_live_test_requests.get(request_id);
+        if (pending) {
+          clearTimeout(pending.timer);
+          farm_live_test_requests.delete(request_id);
+        }
+        throw make_control_error(
+          "FARM_LIVE_TEST_DISPATCH_FAILED",
+          `Could not dispatch farm live test to ${char_name}`,
+          503,
+        );
+      }
+
+      const child_response = await result_promise;
+      if (child_response.error || !child_response.result) {
+        throw make_control_error(
+          "FARM_LIVE_TEST_RUNTIME_FAILED",
+          child_response.error || "Farm live test returned no result",
+          500,
+        );
+      }
+
+      const events = diagnostic_store.getEvents({
+        character: char_name,
+        since: started_at,
+      });
+      const evidence = farmLiveTestEvidence(events, ready_block);
+      const combined = combineFarmLiveTestResult(
+        child_response.result,
+        evidence,
+      );
+      const incident_id =
+        combined.outcome === "PASS"
+          ? null
+          : capture_farm_live_test_incident(char_name, {
+              ...combined,
+              request_id,
+            });
+      const diagnostics = farmLiveTestDiagnostics(combined, {
+        character: char_name,
+        originalDesiredState: original_desired_state,
+        startState: start_state,
+        evidence,
+        incidentId: incident_id,
+      });
+
+      ready_block.farm_live_test = {
+        ...combined,
+        request_id,
+        status: "COMPLETED",
+        started_at,
+        completed_at: Date.now(),
+        incident_id,
+        diagnostics,
+      };
+      emit_supervisor_event("FARM_LIVE_TEST_COMPLETED", char_name, {
+        request_id,
+        outcome: combined.outcome,
+        reason: combined.reason,
+        incident_id,
+        supervisor: evidence,
+      });
+      dashboard?.publishSnapshot();
+      return ready_block.farm_live_test;
+    } catch (error) {
+      const failed_result = {
+        request_id,
+        outcome:
+          error.code === "FARM_LIVE_TEST_TIMEOUT" ||
+          error.code === "FARM_LIVE_TEST_RUNTIME_TIMEOUT"
+            ? "TIMEOUT"
+            : "FAIL",
+        reason: error.code || error.message || "FARM_LIVE_TEST_FAILED",
+        error: error.message || String(error),
+        started_at,
+        completed_at: Date.now(),
+        durationMs: Date.now() - started_at,
+      };
+      const failure_events = diagnostic_store.getEvents({
+        character: char_name,
+        since: started_at,
+      });
+      const failure_evidence = farmLiveTestEvidence(failure_events, char_block);
+      const incident_id = capture_farm_live_test_incident(
+        char_name,
+        failed_result,
+      );
+      const failed = {
+        ...failed_result,
+        status: "FAILED",
+        incident_id,
+        diagnostics: farmLiveTestDiagnostics(failed_result, {
+          character: char_name,
+          originalDesiredState: original_desired_state,
+          startState: start_state,
+          evidence: failure_evidence,
+          incidentId: incident_id,
+        }),
+      };
+      char_block.farm_live_test = failed;
+      emit_supervisor_event("FARM_LIVE_TEST_FAILED", char_name, failed);
+      dashboard?.publishSnapshot();
+      return failed;
+    } finally {
+      const pending = farm_live_test_requests.get(request_id);
+      if (pending) {
+        clearTimeout(pending.timer);
+        farm_live_test_requests.delete(request_id);
+      }
+
+      try {
+        if (runtime_override_applied) {
+          await restore_movement_live_test_execution_source(
+            char_name,
+            original_desired_state,
+          );
+        } else {
+          await restore_movement_live_test_state(
+            char_name,
+            original_desired_state,
+          );
+        }
+      } catch (restore_error) {
+        emit_supervisor_event(
+          "FARM_LIVE_TEST_STATE_RESTORE_FAILED",
+          char_name,
+          {
+            request_id,
+            desired_runtime_state: original_desired_state,
+            error:
+              restore_error instanceof Error
+                ? restore_error.message
+                : String(restore_error),
+          },
+        );
+      }
+      dashboard?.publishSnapshot();
+    }
+  }
+
+  async function run_inventory_live_test(char_name) {
+    const char_block = character_manage[char_name];
+    if (!char_block) {
+      throw make_control_error(
+        "CHARACTER_NOT_FOUND",
+        `Unknown character: ${char_name}`,
+        404,
+      );
+    }
+    if (
+      ["STARTING", "RUNNING"].includes(char_block.inventory_live_test?.status)
+    ) {
+      throw make_control_error(
+        "INVENTORY_LIVE_TEST_ALREADY_RUNNING",
+        `Inventory live test already running for ${char_name}`,
+        409,
+      );
+    }
+    for (const active of [
+      ["MOVEMENT", char_block.movement_live_test],
+      ["COMBAT", char_block.combat_live_test],
+      ["CLASS_SKILL", char_block.class_skill_live_test],
+      ["GROUP", char_block.group_live_test],
+      ["FARM", char_block.farm_live_test],
+    ]) {
+      if (["STARTING", "RUNNING"].includes(active[1]?.status)) {
+        throw make_control_error(
+          active[0] + "_LIVE_TEST_ALREADY_RUNNING",
+          active[0] + " live test already running for " + char_name,
+          409,
+        );
+      }
+    }
+
+    const original_desired_state =
+      char_block.desired_runtime_state ||
+      (char_block.enabled
+        ? DESIRED_RUNTIME_STATES.RUNNING
+        : DESIRED_RUNTIME_STATES.STOPPED);
+    const start_state = {
+      lifecycle_state: char_block.lifecycle_state || null,
+      desired_runtime_state: original_desired_state,
+      enabled: !!char_block.enabled,
+      connected: !!char_block.connected,
+      inventory_slots: Array.isArray(char_block.live_state?.items)
+        ? char_block.live_state.items.filter(Boolean).length
+        : null,
+    };
+    const started_at = Date.now();
+    inventory_live_test_sequence += 1;
+    const request_id = `inventory-live-${started_at}-${inventory_live_test_sequence}`;
+
+    char_block.inventory_live_test = {
+      request_id,
+      status: "STARTING",
+      outcome: null,
+      reason: null,
+      started_at,
+      completed_at: null,
+    };
+    emit_supervisor_event("INVENTORY_LIVE_TEST_REQUESTED", char_name, {
+      request_id,
+      original_desired_state,
+    });
+    dashboard?.publishSnapshot();
+
+    let runtime_override_applied = false;
+
+    try {
+      const runtime_ready =
+        !!char_block.instance &&
+        char_block.connected &&
+        Number.isFinite(char_block.bot_runtime_started_at);
+
+      if (!runtime_ready) {
+        const bundle_path = path.join(
+          process.cwd(),
+          "TYPECODE.out",
+          MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE,
+        );
+        if (!fs_regular.existsSync(bundle_path)) {
+          throw make_control_error(
+            "INVENTORY_LIVE_TEST_RUNTIME_BUNDLE_MISSING",
+            `Inventory runtime bundle is missing: ${bundle_path}`,
+            503,
+          );
+        }
+
+        char_block.movement_live_test_typescript_override =
+          MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE;
+        runtime_override_applied = true;
+        emit_supervisor_event(
+          "INVENTORY_LIVE_TEST_RUNTIME_OVERRIDE_APPLIED",
+          char_name,
+          {
+            typescript_file: MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE,
+          },
+        );
+      }
+
+      if (original_desired_state !== DESIRED_RUNTIME_STATES.RUNNING) {
+        char_block.enabled = true;
+        char_block.desired_runtime_state = DESIRED_RUNTIME_STATES.RUNNING;
+      }
+
+      if (runtime_override_applied) {
+        await restart_character_for_movement_runtime(char_name, char_block);
+      } else if (!char_block.instance) {
+        await control_character(char_name, CONTROL_ACTIONS.START);
+      }
+
+      await wait_for_inventory_live_test_runtime(char_name);
+      const ready_block = character_manage[char_name];
+      const result_promise = wait_for_inventory_live_test_result(
+        char_name,
+        request_id,
+      );
+
+      ready_block.inventory_live_test = {
+        ...ready_block.inventory_live_test,
+        status: "RUNNING",
+      };
+      dashboard?.publishSnapshot();
+
+      const sent = safe_send(ready_block.instance, {
+        type: "inventory_live_test",
+        request_id,
+      });
+      if (!sent) {
+        const pending = inventory_live_test_requests.get(request_id);
+        if (pending) {
+          clearTimeout(pending.timer);
+          inventory_live_test_requests.delete(request_id);
+        }
+        throw make_control_error(
+          "INVENTORY_LIVE_TEST_DISPATCH_FAILED",
+          `Could not dispatch inventory live test to ${char_name}`,
+          503,
+        );
+      }
+
+      const child_response = await result_promise;
+      if (child_response.error || !child_response.result) {
+        throw make_control_error(
+          "INVENTORY_LIVE_TEST_RUNTIME_FAILED",
+          child_response.error || "Inventory live test returned no result",
+          500,
+        );
+      }
+
+      const events = diagnostic_store.getEvents({
+        character: char_name,
+        since: started_at,
+      });
+      const evidence = inventoryLiveTestEvidence(events, ready_block);
+      const combined = combineInventoryLiveTestResult(
+        child_response.result,
+        evidence,
+      );
+      const incident_id =
+        combined.outcome === "PASS"
+          ? null
+          : capture_inventory_live_test_incident(char_name, {
+              ...combined,
+              request_id,
+            });
+      const diagnostics = inventoryLiveTestDiagnostics(combined, {
+        character: char_name,
+        originalDesiredState: original_desired_state,
+        startState: start_state,
+        evidence,
+        incidentId: incident_id,
+      });
+
+      ready_block.inventory_live_test = {
+        ...combined,
+        request_id,
+        status: "COMPLETED",
+        started_at,
+        completed_at: Date.now(),
+        incident_id,
+        diagnostics,
+      };
+      emit_supervisor_event("INVENTORY_LIVE_TEST_COMPLETED", char_name, {
+        request_id,
+        outcome: combined.outcome,
+        reason: combined.reason,
+        incident_id,
+        supervisor: evidence,
+      });
+      dashboard?.publishSnapshot();
+      return ready_block.inventory_live_test;
+    } catch (error) {
+      const failed_result = {
+        request_id,
+        outcome:
+          error.code === "INVENTORY_LIVE_TEST_TIMEOUT" ||
+          error.code === "INVENTORY_LIVE_TEST_RUNTIME_TIMEOUT"
+            ? "TIMEOUT"
+            : "FAIL",
+        reason: error.code || error.message || "INVENTORY_LIVE_TEST_FAILED",
+        error: error.message || String(error),
+        started_at,
+        completed_at: Date.now(),
+        durationMs: Date.now() - started_at,
+      };
+      const failure_events = diagnostic_store.getEvents({
+        character: char_name,
+        since: started_at,
+      });
+      const failure_evidence = inventoryLiveTestEvidence(
+        failure_events,
+        char_block,
+      );
+      const incident_id = capture_inventory_live_test_incident(
+        char_name,
+        failed_result,
+      );
+      const failed = {
+        ...failed_result,
+        status: "FAILED",
+        incident_id,
+        diagnostics: inventoryLiveTestDiagnostics(failed_result, {
+          character: char_name,
+          originalDesiredState: original_desired_state,
+          startState: start_state,
+          evidence: failure_evidence,
+          incidentId: incident_id,
+        }),
+      };
+      char_block.inventory_live_test = failed;
+      emit_supervisor_event("INVENTORY_LIVE_TEST_FAILED", char_name, failed);
+      dashboard?.publishSnapshot();
+      return failed;
+    } finally {
+      const pending = inventory_live_test_requests.get(request_id);
+      if (pending) {
+        clearTimeout(pending.timer);
+        inventory_live_test_requests.delete(request_id);
+      }
+
+      try {
+        if (runtime_override_applied) {
+          await restore_movement_live_test_execution_source(
+            char_name,
+            original_desired_state,
+          );
+        } else {
+          await restore_movement_live_test_state(
+            char_name,
+            original_desired_state,
+          );
+        }
+      } catch (restore_error) {
+        emit_supervisor_event(
+          "INVENTORY_LIVE_TEST_STATE_RESTORE_FAILED",
+          char_name,
+          {
+            request_id,
+            desired_runtime_state: original_desired_state,
+            error:
+              restore_error instanceof Error
+                ? restore_error.message
+                : String(restore_error),
+          },
+        );
+      }
+      dashboard?.publishSnapshot();
+    }
+  }
+
+  async function run_gear_scoring_live_test(
+    char_name,
+    sample_ms = 1200,
+    options = {},
+  ) {
+    const enforcement_probe_requested =
+      options.economyArbiterEnforcementProbe === true;
+    const coupled_execution_requested =
+      options.economyPrebuffExecutionLiveTest === true;
+    const expected_kind =
+      options.expectedKind === "UPGRADE" || options.expectedKind === "COMPOUND"
+        ? options.expectedKind
+        : null;
+    const expected_name =
+      typeof options.expectedName === "string"
+        ? options.expectedName.trim()
+        : "";
+    const expected_slots = Array.isArray(options.expectedSlots)
+      ? options.expectedSlots
+          .map((slot) => Number(slot))
+          .filter(
+            (slot) =>
+              Number.isInteger(slot) &&
+              Number.isFinite(slot) &&
+              slot >= 0,
+          )
+          .sort((left, right) => left - right)
+      : [];
+    const expected_slot_count = expected_kind === "UPGRADE" ? 1 : 3;
+
+    if (enforcement_probe_requested && coupled_execution_requested) {
+      throw make_control_error(
+        "GEAR_SCORING_LIVE_TEST_PROBE_CONFLICT",
+        "Economy Arbiter enforcement probe and coupled Economy Prebuff execution cannot run together",
+        400,
+      );
+    }
+    if (coupled_execution_requested) {
+      if (
+        options.confirmationToken !== ECONOMY_PREBUFF_EXECUTION_CONFIRMATION
+      ) {
+        throw make_control_error(
+          "ECONOMY_PREBUFF_EXECUTION_CONFIRMATION_REQUIRED",
+          "Coupled Economy Prebuff live execution requires CONFIRM_ONE_MUTATION",
+          400,
+        );
+      }
+      if (
+        !expected_kind ||
+        !expected_name ||
+        expected_slots.length !== expected_slot_count ||
+        new Set(expected_slots).size !== expected_slot_count
+      ) {
+        throw make_control_error(
+          "ECONOMY_PREBUFF_EXECUTION_EXPECTATION_INVALID",
+          "Coupled Economy Prebuff live execution requires an exact kind, item name, and item slots",
+          400,
+        );
+      }
+    }
+
+    const char_block = character_manage[char_name];
+    if (!char_block) {
+      throw make_control_error(
+        "CHARACTER_NOT_FOUND",
+        `Unknown character: ${char_name}`,
+        404,
+      );
+    }
+    if (
+      ["STARTING", "RUNNING"].includes(
+        char_block.gear_scoring_live_test?.status,
+      )
+    ) {
+      throw make_control_error(
+        "GEAR_SCORING_LIVE_TEST_ALREADY_RUNNING",
+        `Gear Scoring live test already running for ${char_name}`,
+        409,
+      );
+    }
+    for (const active of [
+      ["MOVEMENT", char_block.movement_live_test],
+      ["COMBAT", char_block.combat_live_test],
+      ["CLASS_SKILL", char_block.class_skill_live_test],
+      ["GROUP", char_block.group_live_test],
+      ["FARM", char_block.farm_live_test],
+      ["INVENTORY", char_block.inventory_live_test],
+    ]) {
+      if (["STARTING", "RUNNING"].includes(active[1]?.status)) {
+        throw make_control_error(
+          active[0] + "_LIVE_TEST_ALREADY_RUNNING",
+          active[0] + " live test already running for " + char_name,
+          409,
+        );
+      }
+    }
+
+    const original_desired_state =
+      char_block.desired_runtime_state ||
+      (char_block.enabled
+        ? DESIRED_RUNTIME_STATES.RUNNING
+        : DESIRED_RUNTIME_STATES.STOPPED);
+    const started_at = Date.now();
+    const bounded_sample_ms = Math.max(
+      250,
+      Math.min(5000, Number(sample_ms) || 1200),
+    );
+    gear_scoring_live_test_sequence += 1;
+    const request_id = `gear-scoring-live-${started_at}-${gear_scoring_live_test_sequence}`;
+
+    char_block.gear_scoring_live_test = {
+      request_id,
+      status: "STARTING",
+      outcome: null,
+      reason: null,
+      started_at,
+      completed_at: null,
+    };
+    emit_supervisor_event("GEAR_SCORING_LIVE_TEST_REQUESTED", char_name, {
+      request_id,
+      original_desired_state,
+      sample_ms: bounded_sample_ms,
+      economy_arbiter_enforcement_probe: enforcement_probe_requested,
+      economy_prebuff_execution_live_test: coupled_execution_requested,
+      ...(coupled_execution_requested && {
+        expected_kind,
+        expected_name,
+        expected_slots: [...expected_slots],
+        irreversible_mutation: true,
+        max_value_mutations: 1,
+        blind_retry_allowed: false,
+      }),
+    });
+    dashboard?.publishSnapshot();
+
+    let runtime_override_applied = false;
+    let runtime_state_restored = false;
+    let enforcement_probe_result = null;
+    let enforcement_probe_request_id = null;
+    let coupled_execution_result = null;
+    let coupled_execution_request_id = null;
+    let result = null;
+
+    try {
+      const bundle_path = path.join(
+        process.cwd(),
+        "TYPECODE.out",
+        MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE,
+      );
+      if (!fs_regular.existsSync(bundle_path)) {
+        throw make_control_error(
+          "GEAR_SCORING_LIVE_TEST_RUNTIME_BUNDLE_MISSING",
+          `Gear Scoring runtime bundle is missing: ${bundle_path}`,
+          503,
+        );
+      }
+
+      char_block.movement_live_test_typescript_override =
+        MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE;
+      runtime_override_applied = true;
+      char_block.gear_scoring_runtime = null;
+      emit_supervisor_event(
+        "GEAR_SCORING_LIVE_TEST_RUNTIME_OVERRIDE_APPLIED",
+        char_name,
+        {
+          request_id,
+          typescript_file: MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE,
+        },
+      );
+
+      if (original_desired_state !== DESIRED_RUNTIME_STATES.RUNNING) {
+        char_block.enabled = true;
+        char_block.desired_runtime_state = DESIRED_RUNTIME_STATES.RUNNING;
+      }
+
+      await restart_character_for_movement_runtime(char_name, char_block);
+      const ready_block = await wait_for_gear_scoring_live_runtime(char_name);
+      const baseline_signature = gear_scoring_equipment_signature(ready_block);
+      const before = gear_scoring_live_snapshot(ready_block);
+
+      if (coupled_execution_requested) {
+        coupled_execution_request_id = `${request_id}-coupled-execution`;
+        const execution_promise =
+          wait_for_economy_prebuff_execution_live_test_result(
+            char_name,
+            coupled_execution_request_id,
+          );
+        const sent = safe_send(ready_block.instance, {
+          type: "economy_prebuff_execution_live_test",
+          request_id: coupled_execution_request_id,
+          expected_kind,
+          expected_name,
+          expected_slots: [...expected_slots],
+        });
+        if (!sent) {
+          const pending = economy_prebuff_execution_live_test_requests.get(
+            coupled_execution_request_id,
+          );
+          if (pending) {
+            clearTimeout(pending.timer);
+            economy_prebuff_execution_live_test_requests.delete(
+              coupled_execution_request_id,
+            );
+          }
+          throw make_control_error(
+            "ECONOMY_PREBUFF_EXECUTION_LIVE_TEST_DISPATCH_FAILED",
+            `Could not dispatch coupled Economy Prebuff execution to ${char_name}`,
+            503,
+          );
+        }
+
+        const child_response = await execution_promise;
+        if (child_response.error || !child_response.result) {
+          throw make_control_error(
+            "ECONOMY_PREBUFF_EXECUTION_LIVE_TEST_RUNTIME_FAILED",
+            child_response.error ||
+              "Coupled Economy Prebuff execution returned no result",
+            500,
+          );
+        }
+        coupled_execution_result = child_response.result;
+      }
+
+      if (enforcement_probe_requested) {
+        enforcement_probe_request_id = `${request_id}-enforcement-probe`;
+        const probe_promise = wait_for_economy_arbiter_enforcement_probe_result(
+          char_name,
+          enforcement_probe_request_id,
+        );
+        const sent = safe_send(ready_block.instance, {
+          type: "economy_arbiter_enforcement_probe",
+          request_id: enforcement_probe_request_id,
+        });
+        if (!sent) {
+          const pending = economy_arbiter_enforcement_probe_requests.get(
+            enforcement_probe_request_id,
+          );
+          if (pending) {
+            clearTimeout(pending.timer);
+            economy_arbiter_enforcement_probe_requests.delete(
+              enforcement_probe_request_id,
+            );
+          }
+          throw make_control_error(
+            "ECONOMY_ARBITER_ENFORCEMENT_PROBE_DISPATCH_FAILED",
+            `Could not dispatch Economy Arbiter enforcement probe to ${char_name}`,
+            503,
+          );
+        }
+
+        const child_response = await probe_promise;
+        if (child_response.error || !child_response.result) {
+          throw make_control_error(
+            "ECONOMY_ARBITER_ENFORCEMENT_PROBE_RUNTIME_FAILED",
+            child_response.error ||
+              "Economy Arbiter enforcement probe returned no result",
+            500,
+          );
+        }
+        enforcement_probe_result = child_response.result;
+      }
+
+      ready_block.gear_scoring_live_test = {
+        ...ready_block.gear_scoring_live_test,
+        status: "RUNNING",
+      };
+      dashboard?.publishSnapshot();
+
+      await sleep(bounded_sample_ms);
+
+      const final_block = character_manage[char_name];
+      if (final_block?.gear_scoring_runtime?.state !== "READY") {
+        throw make_control_error(
+          "GEAR_SCORING_LIVE_TEST_PROJECTION_LOST",
+          `Gear Scoring projection was lost for ${char_name}`,
+          500,
+        );
+      }
+      const after = gear_scoring_live_snapshot(final_block);
+      const equipment_baseline_restored =
+        gear_scoring_equipment_signature(final_block) === baseline_signature;
+
+      const coupled_outcome = coupled_execution_result?.outcome || null;
+      const supervisor_outcome = !equipment_baseline_restored
+        ? "FAIL"
+        : coupled_execution_requested && coupled_outcome !== "PASS"
+          ? coupled_outcome || "FAIL"
+          : "PASS";
+      const supervisor_reason = !equipment_baseline_restored
+        ? "GEAR_SCORING_LIVE_EQUIPMENT_CHANGED"
+        : coupled_execution_requested && coupled_outcome !== "PASS"
+          ? coupled_execution_result?.reason ||
+            "ECONOMY_PREBUFF_EXECUTION_LIVE_TEST_FAILED"
+          : "GEAR_SCORING_LIVE_RUNTIME_E2E_CONFIRMED";
+      const coupled_prebuff_attempted =
+        coupled_execution_result?.execution?.prebuffAction != null;
+      const coupled_value_mutation_attempted =
+        coupled_execution_result?.execution?.economyAction != null;
+      const coupled_kind = coupled_execution_result?.execution?.kind || null;
+
+      result = {
+        request_id,
+        outcome: supervisor_outcome,
+        reason: supervisor_reason,
+        character: char_name,
+        started_at,
+        completed_at: Date.now(),
+        durationMs: Date.now() - started_at,
+        before,
+        after,
+        enforcementProbe: enforcement_probe_result,
+        coupledExecution: coupled_execution_result,
+        scope: {
+          readOnly: !coupled_execution_requested,
+          movementMutationForced: false,
+          combatMutationForced: false,
+          valueMutationForced: coupled_value_mutation_attempted,
+          prebuffMutationForced: coupled_prebuff_attempted,
+          equipmentMutationForced: false,
+          upgradeMutationForced:
+            coupled_value_mutation_attempted && coupled_kind === "UPGRADE",
+          compoundMutationForced:
+            coupled_value_mutation_attempted && coupled_kind === "COMPOUND",
+          exchangeMutationForced: false,
+          craftMutationForced: false,
+          logisticsMutationForced: false,
+          runtimeOverrideApplied: true,
+          maxValueMutations: coupled_execution_requested ? 1 : 0,
+          blindRetryAllowed: false,
+        },
+        cleanup: {
+          equipmentBaselineRestored: equipment_baseline_restored,
+          runtimeStateRestored: false,
+        },
+      };
+    } catch (error) {
+      result = {
+        request_id,
+        outcome:
+          error.code === "GEAR_SCORING_LIVE_TEST_RUNTIME_TIMEOUT"
+            ? "TIMEOUT"
+            : "FAIL",
+        reason: error.code || error.message || "GEAR_SCORING_LIVE_TEST_FAILED",
+        error: error.message || String(error),
+        character: char_name,
+        started_at,
+        completed_at: Date.now(),
+        durationMs: Date.now() - started_at,
+        before: null,
+        after: null,
+        enforcementProbe: enforcement_probe_result,
+        coupledExecution: coupled_execution_result,
+        scope: {
+          readOnly: !coupled_execution_requested,
+          movementMutationForced: false,
+          combatMutationForced: false,
+          valueMutationForced:
+            coupled_execution_result?.execution?.economyAction != null,
+          prebuffMutationForced:
+            coupled_execution_result?.execution?.prebuffAction != null,
+          equipmentMutationForced: false,
+          upgradeMutationForced:
+            coupled_execution_result?.execution?.economyAction != null &&
+            coupled_execution_result?.execution?.kind === "UPGRADE",
+          compoundMutationForced:
+            coupled_execution_result?.execution?.economyAction != null &&
+            coupled_execution_result?.execution?.kind === "COMPOUND",
+          exchangeMutationForced: false,
+          craftMutationForced: false,
+          logisticsMutationForced: false,
+          runtimeOverrideApplied: runtime_override_applied,
+          maxValueMutations: coupled_execution_requested ? 1 : 0,
+          blindRetryAllowed: false,
+        },
+        cleanup: {
+          equipmentBaselineRestored: false,
+          runtimeStateRestored: false,
+        },
+      };
+    } finally {
+      if (coupled_execution_request_id) {
+        const pending = economy_prebuff_execution_live_test_requests.get(
+          coupled_execution_request_id,
+        );
+        if (pending) {
+          clearTimeout(pending.timer);
+          economy_prebuff_execution_live_test_requests.delete(
+            coupled_execution_request_id,
+          );
+        }
+      }
+
+      if (enforcement_probe_request_id) {
+        const pending = economy_arbiter_enforcement_probe_requests.get(
+          enforcement_probe_request_id,
+        );
+        if (pending) {
+          clearTimeout(pending.timer);
+          economy_arbiter_enforcement_probe_requests.delete(
+            enforcement_probe_request_id,
+          );
+        }
+      }
+
+      try {
+        if (runtime_override_applied) {
+          await restore_movement_live_test_execution_source(
+            char_name,
+            original_desired_state,
+          );
+        } else {
+          await restore_movement_live_test_state(
+            char_name,
+            original_desired_state,
+          );
+        }
+        runtime_state_restored = true;
+      } catch (restore_error) {
+        emit_supervisor_event(
+          "GEAR_SCORING_LIVE_TEST_STATE_RESTORE_FAILED",
+          char_name,
+          {
+            request_id,
+            desired_runtime_state: original_desired_state,
+            error:
+              restore_error instanceof Error
+                ? restore_error.message
+                : String(restore_error),
+          },
+        );
+        result = {
+          ...result,
+          outcome: "FAIL",
+          reason: "GEAR_SCORING_LIVE_TEST_STATE_RESTORE_FAILED",
+          restore_error:
+            restore_error instanceof Error
+              ? restore_error.message
+              : String(restore_error),
+        };
+      }
+
+      const completed_at = Date.now();
+      result = {
+        ...result,
+        completed_at,
+        durationMs: Math.max(0, completed_at - started_at),
+        cleanup: {
+          ...(result?.cleanup || {}),
+          runtimeStateRestored: runtime_state_restored,
+        },
+      };
+      char_block.gear_scoring_runtime = null;
+      char_block.gear_scoring_live_test = {
+        ...result,
+        status: result.outcome === "PASS" ? "COMPLETED" : "FAILED",
+      };
+      emit_supervisor_event(
+        result.outcome === "PASS"
+          ? "GEAR_SCORING_LIVE_TEST_COMPLETED"
+          : "GEAR_SCORING_LIVE_TEST_FAILED",
+        char_name,
+        {
+          request_id,
+          outcome: result.outcome,
+          reason: result.reason,
+          runtime_state_restored,
+        },
+      );
+      dashboard?.publishSnapshot();
+    }
+
+    return char_block.gear_scoring_live_test;
+  }
+
+  async function run_account_gear_reservation_live_test(
+    source_name,
+    target_name,
+    sample_ms = 1200,
+  ) {
+    if (account_gear_reservation_live_test_active) {
+      throw make_control_error(
+        "ACCOUNT_GEAR_RESERVATION_LIVE_TEST_ALREADY_RUNNING",
+        "Account Gear Reservation live test already running",
+        409,
+      );
+    }
+
+    const names = [source_name, target_name];
+    if (
+      !source_name ||
+      !target_name ||
+      source_name === target_name ||
+      names.some((name) => !character_manage[name])
+    ) {
+      throw make_control_error(
+        "ACCOUNT_GEAR_RESERVATION_LIVE_TEST_PAIR_INVALID",
+        "Account Gear Reservation live test requires two different known characters",
+        400,
+      );
+    }
+
+    const blocks = names.map((name) => character_manage[name]);
+    if (blocks.some((block) => block?.account_owned !== true)) {
+      throw make_control_error(
+        "ACCOUNT_GEAR_RESERVATION_LIVE_TEST_ACCOUNT_REQUIRED",
+        "Both Gear Reservation live-test characters must be account-owned",
+        400,
+      );
+    }
+
+    const classes = blocks.map(
+      (block) =>
+        block.account_character_type ||
+        block.live_state?.ctype ||
+        block.gear_scoring_runtime?.characterClass ||
+        null,
+    );
+    if (!classes[0] || classes[0] !== classes[1]) {
+      throw make_control_error(
+        "ACCOUNT_GEAR_RESERVATION_LIVE_TEST_CLASS_MISMATCH",
+        "Gear Reservation live-test characters must have the same class",
+        400,
+      );
+    }
+
+    for (const [index, block] of blocks.entries()) {
+      for (const active of [
+        ["MOVEMENT", block.movement_live_test],
+        ["COMBAT", block.combat_live_test],
+        ["CLASS_SKILL", block.class_skill_live_test],
+        ["GROUP", block.group_live_test],
+        ["FARM", block.farm_live_test],
+        ["INVENTORY", block.inventory_live_test],
+        ["GEAR_SCORING", block.gear_scoring_live_test],
+      ]) {
+        if (["STARTING", "RUNNING"].includes(active[1]?.status)) {
+          throw make_control_error(
+            active[0] + "_LIVE_TEST_ALREADY_RUNNING",
+            active[0] + " live test already running for " + names[index],
+            409,
+          );
+        }
+      }
+    }
+
+    const original_states = Object.fromEntries(
+      names.map((name) => {
+        const block = character_manage[name];
+        return [
+          name,
+          block.desired_runtime_state ||
+            (block.enabled
+              ? DESIRED_RUNTIME_STATES.RUNNING
+              : DESIRED_RUNTIME_STATES.STOPPED),
+        ];
+      }),
+    );
+    const started_at = Date.now();
+    const bounded_sample_ms = Math.max(
+      500,
+      Math.min(5000, Number(sample_ms) || 1200),
+    );
+    account_gear_reservation_live_test_sequence += 1;
+    const request_id = `account-gear-reservation-live-${started_at}-${account_gear_reservation_live_test_sequence}`;
+
+    account_gear_reservation_live_test_active = true;
+    for (const name of names) {
+      character_manage[name].account_gear_reservation_live_test = {
+        request_id,
+        status: "STARTING",
+        outcome: null,
+        reason: null,
+        source: source_name,
+        target: target_name,
+        started_at,
+        completed_at: null,
+      };
+    }
+    emit_supervisor_event(
+      "ACCOUNT_GEAR_RESERVATION_LIVE_TEST_REQUESTED",
+      source_name,
+      {
+        request_id,
+        source: source_name,
+        target: target_name,
+        character_class: classes[0],
+        sample_ms: bounded_sample_ms,
+      },
+    );
+    dashboard?.publishSnapshot();
+
+    const override_applied = new Set();
+    const restored = new Set();
+    let result = null;
+
+    try {
+      const bundle_path = path.join(
+        process.cwd(),
+        "TYPECODE.out",
+        MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE,
+      );
+      if (!fs_regular.existsSync(bundle_path)) {
+        throw make_control_error(
+          "ACCOUNT_GEAR_RESERVATION_LIVE_TEST_RUNTIME_BUNDLE_MISSING",
+          `Account Gear Reservation runtime bundle is missing: ${bundle_path}`,
+          503,
+        );
+      }
+
+      for (const name of names) {
+        const block = character_manage[name];
+        block.movement_live_test_typescript_override =
+          MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE;
+        block.gear_scoring_runtime = null;
+        block.future_gear_runtime = null;
+        block.inventory_intelligence_runtime = null;
+        block.account_gear_reservation_runtime = null;
+        override_applied.add(name);
+
+        if (original_states[name] !== DESIRED_RUNTIME_STATES.RUNNING) {
+          block.enabled = true;
+          block.desired_runtime_state = DESIRED_RUNTIME_STATES.RUNNING;
+        }
+      }
+
+      for (const name of names) {
+        await restart_character_for_movement_runtime(
+          name,
+          character_manage[name],
+        );
+      }
+
+      await wait_for_account_gear_reservation_live_runtime(names);
+
+      const baseline_scoring_timestamps = Object.fromEntries(
+        names.map((name) => [
+          name,
+          Number(character_manage[name]?.gear_scoring_runtime?.timestamp),
+        ]),
+      );
+      const baseline_equipment = Object.fromEntries(
+        names.map((name) => [
+          name,
+          gear_scoring_equipment_signature(character_manage[name]),
+        ]),
+      );
+      const baseline_inventory_gear = Object.fromEntries(
+        names.map((name) => [
+          name,
+          account_gear_reservation_gear_signature(character_manage[name]),
+        ]),
+      );
+      const before = account_gear_reservation_live_snapshot();
+
+      for (const name of names) {
+        character_manage[name].account_gear_reservation_live_test = {
+          ...character_manage[name].account_gear_reservation_live_test,
+          status: "RUNNING",
+        };
+      }
+      dashboard?.publishSnapshot();
+
+      await sleep(bounded_sample_ms);
+      await wait_for_account_gear_reservation_live_runtime(
+        names,
+        5000,
+        baseline_scoring_timestamps,
+      );
+
+      const after = account_gear_reservation_live_snapshot();
+      const equipment_baseline_restored = names.every(
+        (name) =>
+          gear_scoring_equipment_signature(character_manage[name]) ===
+          baseline_equipment[name],
+      );
+      const inventory_gear_baseline_restored = names.every(
+        (name) =>
+          account_gear_reservation_gear_signature(character_manage[name]) ===
+          baseline_inventory_gear[name],
+      );
+
+      result = {
+        request_id,
+        outcome:
+          equipment_baseline_restored && inventory_gear_baseline_restored
+            ? "PASS"
+            : "FAIL",
+        reason:
+          equipment_baseline_restored && inventory_gear_baseline_restored
+            ? "ACCOUNT_GEAR_RESERVATION_LIVE_RUNTIME_E2E_CONFIRMED"
+            : "ACCOUNT_GEAR_RESERVATION_LIVE_GEAR_CHANGED",
+        source: source_name,
+        target: target_name,
+        characterClass: classes[0],
+        started_at,
+        completed_at: Date.now(),
+        durationMs: Date.now() - started_at,
+        before,
+        after,
+        scope: {
+          readOnly: true,
+          itemTransferMutationForced: false,
+          equipmentMutationForced: false,
+          valueMutationForced: false,
+          upgradeMutationForced: false,
+          runtimeOverrideApplied: true,
+        },
+        cleanup: {
+          equipmentBaselineRestored: equipment_baseline_restored,
+          inventoryGearBaselineRestored: inventory_gear_baseline_restored,
+          runtimeStatesRestored: false,
+        },
+      };
+    } catch (error) {
+      result = {
+        request_id,
+        outcome:
+          error.code === "ACCOUNT_GEAR_RESERVATION_LIVE_TEST_RUNTIME_TIMEOUT"
+            ? "TIMEOUT"
+            : "FAIL",
+        reason:
+          error.code ||
+          error.message ||
+          "ACCOUNT_GEAR_RESERVATION_LIVE_TEST_FAILED",
+        error: error.message || String(error),
+        source: source_name,
+        target: target_name,
+        characterClass: classes[0],
+        started_at,
+        completed_at: Date.now(),
+        durationMs: Date.now() - started_at,
+        before: null,
+        after: null,
+        scope: {
+          readOnly: true,
+          itemTransferMutationForced: false,
+          equipmentMutationForced: false,
+          valueMutationForced: false,
+          upgradeMutationForced: false,
+          runtimeOverrideApplied: override_applied.size > 0,
+        },
+        cleanup: {
+          equipmentBaselineRestored: false,
+          inventoryGearBaselineRestored: false,
+          runtimeStatesRestored: false,
+        },
+      };
+    } finally {
+      for (const name of [...names].reverse()) {
+        try {
+          if (override_applied.has(name)) {
+            await restore_movement_live_test_execution_source(
+              name,
+              original_states[name],
+            );
+          } else {
+            await restore_movement_live_test_state(name, original_states[name]);
+          }
+          restored.add(name);
+        } catch (restore_error) {
+          emit_supervisor_event(
+            "ACCOUNT_GEAR_RESERVATION_LIVE_TEST_STATE_RESTORE_FAILED",
+            name,
+            {
+              request_id,
+              desired_runtime_state: original_states[name],
+              error:
+                restore_error instanceof Error
+                  ? restore_error.message
+                  : String(restore_error),
+            },
+          );
+          result = {
+            ...result,
+            outcome: "FAIL",
+            reason: "ACCOUNT_GEAR_RESERVATION_LIVE_TEST_STATE_RESTORE_FAILED",
+            restore_error:
+              restore_error instanceof Error
+                ? restore_error.message
+                : String(restore_error),
+          };
+        }
+      }
+
+      account_gear_reservation_live_test_active = false;
+      const completed_at = Date.now();
+      result = {
+        ...result,
+        completed_at,
+        durationMs: Math.max(0, completed_at - started_at),
+        cleanup: {
+          ...(result?.cleanup || {}),
+          runtimeStatesRestored: restored.size === names.length,
+        },
+      };
+
+      for (const name of names) {
+        character_manage[name].account_gear_reservation_live_test = {
+          ...result,
+          status: result.outcome === "PASS" ? "COMPLETED" : "FAILED",
+        };
+      }
+      emit_supervisor_event(
+        result.outcome === "PASS"
+          ? "ACCOUNT_GEAR_RESERVATION_LIVE_TEST_COMPLETED"
+          : "ACCOUNT_GEAR_RESERVATION_LIVE_TEST_FAILED",
+        source_name,
+        {
+          request_id,
+          outcome: result.outcome,
+          reason: result.reason,
+          source: source_name,
+          target: target_name,
+          runtime_states_restored: restored.size === names.length,
+        },
+      );
+      dashboard?.publishSnapshot();
+    }
+
+    return character_manage[source_name].account_gear_reservation_live_test;
+  }
+
+  async function run_logistics_live_test(char_name) {
+    const char_block = character_manage[char_name];
+    if (!char_block) {
+      throw make_control_error(
+        "CHARACTER_NOT_FOUND",
+        `Unknown character: ${char_name}`,
+        404,
+      );
+    }
+    if (
+      (char_block.account_character_type || char_block.live_state?.ctype) !==
+      "merchant"
+    ) {
+      throw make_control_error(
+        "LOGISTICS_MERCHANT_REQUIRED",
+        "Logistics live test requires an account-owned merchant: " + char_name,
+        400,
+      );
+    }
+    if (char_block.account_owned !== true) {
+      throw make_control_error(
+        "LOGISTICS_ACCOUNT_MERCHANT_REQUIRED",
+        "Logistics live test requires an account-owned merchant: " + char_name,
+        400,
+      );
+    }
+    if (
+      ["STARTING", "RUNNING"].includes(
+        char_block.logistics_live_test?.status,
+      ) ||
+      logistics_live_test_active
+    ) {
+      throw make_control_error(
+        "LOGISTICS_LIVE_TEST_ALREADY_RUNNING",
+        "A logistics live test is already running",
+        409,
+      );
+    }
+    for (const active of [
+      ["MOVEMENT", char_block.movement_live_test],
+      ["COMBAT", char_block.combat_live_test],
+      ["CLASS_SKILL", char_block.class_skill_live_test],
+      ["GROUP", char_block.group_live_test],
+      ["FARM", char_block.farm_live_test],
+      ["INVENTORY", char_block.inventory_live_test],
+    ]) {
+      if (["STARTING", "RUNNING"].includes(active[1]?.status)) {
+        throw make_control_error(
+          active[0] + "_LIVE_TEST_ALREADY_RUNNING",
+          active[0] + " live test already running for " + char_name,
+          409,
+        );
+      }
+    }
+
+    const original_desired_state =
+      char_block.desired_runtime_state ||
+      (char_block.enabled
+        ? DESIRED_RUNTIME_STATES.RUNNING
+        : DESIRED_RUNTIME_STATES.STOPPED);
+    const start_state = {
+      lifecycle_state: char_block.lifecycle_state || null,
+      desired_runtime_state: original_desired_state,
+      enabled: !!char_block.enabled,
+      connected: !!char_block.connected,
+      map: char_block.live_state?.map || null,
+      x: Number.isFinite(char_block.live_state?.x)
+        ? char_block.live_state.x
+        : null,
+      y: Number.isFinite(char_block.live_state?.y)
+        ? char_block.live_state.y
+        : null,
+      gold: Number.isFinite(char_block.live_state?.gold)
+        ? char_block.live_state.gold
+        : null,
+      inventory_slots: Array.isArray(char_block.live_state?.items)
+        ? char_block.live_state.items.filter(Boolean).length
+        : null,
+    };
+    const started_at = Date.now();
+    logistics_live_test_sequence += 1;
+    const request_id = `logistics-live-${started_at}-${logistics_live_test_sequence}`;
+
+    char_block.logistics_live_test = {
+      request_id,
+      status: "STARTING",
+      outcome: null,
+      reason: null,
+      started_at,
+      completed_at: null,
+    };
+    emit_supervisor_event("LOGISTICS_LIVE_TEST_REQUESTED", char_name, {
+      request_id,
+      original_desired_state,
+    });
+    dashboard?.publishSnapshot();
+
+    let runtime_override_applied = false;
+    let runtime_state_restored = false;
+    logistics_live_test_active = true;
+
+    try {
+      await wait_for_logistics_claim_idle();
+
+      const runtime_ready =
+        !!char_block.instance &&
+        char_block.connected &&
+        Number.isFinite(char_block.bot_runtime_started_at);
+
+      if (!runtime_ready) {
+        const bundle_path = path.join(
+          process.cwd(),
+          "TYPECODE.out",
+          MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE,
+        );
+        if (!fs_regular.existsSync(bundle_path)) {
+          throw make_control_error(
+            "LOGISTICS_LIVE_TEST_RUNTIME_BUNDLE_MISSING",
+            `Logistics runtime bundle is missing: ${bundle_path}`,
+            503,
+          );
+        }
+
+        char_block.movement_live_test_typescript_override =
+          MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE;
+        runtime_override_applied = true;
+        emit_supervisor_event(
+          "LOGISTICS_LIVE_TEST_RUNTIME_OVERRIDE_APPLIED",
+          char_name,
+          {
+            typescript_file: MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE,
+          },
+        );
+      }
+
+      if (original_desired_state !== DESIRED_RUNTIME_STATES.RUNNING) {
+        char_block.enabled = true;
+        char_block.desired_runtime_state = DESIRED_RUNTIME_STATES.RUNNING;
+      }
+
+      if (runtime_override_applied) {
+        await restart_character_for_movement_runtime(char_name, char_block);
+      } else if (!char_block.instance) {
+        await control_character(char_name, CONTROL_ACTIONS.START);
+      }
+
+      await wait_for_logistics_live_test_runtime(char_name);
+      const ready_block = character_manage[char_name];
+      const result_promise = wait_for_logistics_live_test_result(
+        char_name,
+        request_id,
+      );
+
+      ready_block.logistics_live_test = {
+        ...ready_block.logistics_live_test,
+        status: "RUNNING",
+      };
+      dashboard?.publishSnapshot();
+
+      const sent = safe_send(ready_block.instance, {
+        type: "logistics_live_test",
+        request_id,
+      });
+      if (!sent) {
+        const pending = logistics_live_test_requests.get(request_id);
+        if (pending) {
+          clearTimeout(pending.timer);
+          logistics_live_test_requests.delete(request_id);
+        }
+        throw make_control_error(
+          "LOGISTICS_LIVE_TEST_DISPATCH_FAILED",
+          `Could not dispatch logistics live test to ${char_name}`,
+          503,
+        );
+      }
+
+      const child_response = await result_promise;
+      if (child_response.error || !child_response.result) {
+        throw make_control_error(
+          "LOGISTICS_LIVE_TEST_RUNTIME_FAILED",
+          child_response.error || "Logistics live test returned no result",
+          500,
+        );
+      }
+
+      const board = refresh_merchant_logistics("LOGISTICS_LIVE_TEST_EVIDENCE");
+      const planner = merchant_logistics_planner.diagnostics();
+      const account_blocks = Object.values(character_manage).filter(
+        (block) => block?.account_owned === true,
+      );
+      const merchant_count = account_blocks.filter(
+        (block) =>
+          (block.account_character_type || block.live_state?.ctype) ===
+          "merchant",
+      ).length;
+      const farmer_count = account_blocks.filter(
+        (block) =>
+          (block.account_character_type || block.live_state?.ctype) !==
+          "merchant",
+      ).length;
+      const execution = logistics_live_execution_summary(board);
+      const events = diagnostic_store.getEvents({
+        character: char_name,
+        since: started_at,
+      });
+      const evidence = logisticsLiveTestEvidence(events, {
+        board,
+        planner,
+        account: {
+          merchantCount: merchant_count,
+          farmerCount: farmer_count,
+        },
+        execution,
+        dispatcherSuppressedDuringTest: logistics_live_test_active,
+      });
+      const combined = combineLogisticsLiveTestResult(
+        child_response.result,
+        evidence,
+      );
+      const incident_id =
+        combined.outcome === "PASS"
+          ? null
+          : capture_logistics_live_test_incident(char_name, {
+              ...combined,
+              request_id,
+            });
+      const diagnostics = logisticsLiveTestDiagnostics(combined, {
+        character: char_name,
+        originalDesiredState: original_desired_state,
+        startState: start_state,
+        evidence,
+        board,
+        planner,
+        incidentId: incident_id,
+      });
+
+      ready_block.logistics_live_test = {
+        ...combined,
+        request_id,
+        status: "COMPLETED",
+        started_at,
+        completed_at: Date.now(),
+        incident_id,
+        diagnostics,
+        board_summary: board.summary,
+        execution,
+        cleanup: {
+          ...(combined.cleanup || {}),
+          runtimeStateRestored: false,
+          dispatcherRestored: false,
+        },
+      };
+      emit_supervisor_event("LOGISTICS_LIVE_TEST_COMPLETED", char_name, {
+        request_id,
+        outcome: combined.outcome,
+        reason: combined.reason,
+        incident_id,
+        supervisor: evidence,
+      });
+    } catch (error) {
+      const failed_result = {
+        request_id,
+        outcome:
+          error.code === "LOGISTICS_LIVE_TEST_TIMEOUT" ||
+          error.code === "LOGISTICS_LIVE_TEST_RUNTIME_TIMEOUT" ||
+          error.code === "LOGISTICS_LIVE_TEST_EXECUTION_BUSY"
+            ? "TIMEOUT"
+            : "FAIL",
+        reason: error.code || error.message || "LOGISTICS_LIVE_TEST_FAILED",
+        error: error.message || String(error),
+        started_at,
+        completed_at: Date.now(),
+        durationMs: Date.now() - started_at,
+        scope: {
+          readOnly: true,
+          valueMutationForced: false,
+          sendItemForced: false,
+          sendGoldForced: false,
+          mluckForced: false,
+          mutationScope: "not forced",
+        },
+      };
+      const board = refresh_merchant_logistics(
+        "LOGISTICS_LIVE_TEST_FAILURE_EVIDENCE",
+      );
+      const planner = merchant_logistics_planner.diagnostics();
+      const failure_events = diagnostic_store.getEvents({
+        character: char_name,
+        since: started_at,
+      });
+      const failure_evidence = logisticsLiveTestEvidence(failure_events, {
+        board,
+        planner,
+        account: {
+          merchantCount: Object.values(character_manage).filter(
+            (block) =>
+              block?.account_owned === true &&
+              (block.account_character_type || block.live_state?.ctype) ===
+                "merchant",
+          ).length,
+          farmerCount: Object.values(character_manage).filter(
+            (block) =>
+              block?.account_owned === true &&
+              (block.account_character_type || block.live_state?.ctype) !==
+                "merchant",
+          ).length,
+        },
+        execution: logistics_live_execution_summary(board),
+        dispatcherSuppressedDuringTest: logistics_live_test_active,
+      });
+      const incident_id = capture_logistics_live_test_incident(
+        char_name,
+        failed_result,
+      );
+      char_block.logistics_live_test = {
+        ...failed_result,
+        status: "FAILED",
+        incident_id,
+        diagnostics: logisticsLiveTestDiagnostics(failed_result, {
+          character: char_name,
+          originalDesiredState: original_desired_state,
+          startState: start_state,
+          evidence: failure_evidence,
+          board,
+          planner,
+          incidentId: incident_id,
+        }),
+        cleanup: {
+          runtimeStateRestored: false,
+          dispatcherRestored: false,
+        },
+      };
+      emit_supervisor_event(
+        "LOGISTICS_LIVE_TEST_FAILED",
+        char_name,
+        char_block.logistics_live_test,
+      );
+    } finally {
+      const pending = logistics_live_test_requests.get(request_id);
+      if (pending) {
+        clearTimeout(pending.timer);
+        logistics_live_test_requests.delete(request_id);
+      }
+
+      try {
+        if (runtime_override_applied) {
+          await restore_movement_live_test_execution_source(
+            char_name,
+            original_desired_state,
+          );
+        } else {
+          await restore_movement_live_test_state(
+            char_name,
+            original_desired_state,
+          );
+        }
+        runtime_state_restored = true;
+      } catch (restore_error) {
+        emit_supervisor_event(
+          "LOGISTICS_LIVE_TEST_STATE_RESTORE_FAILED",
+          char_name,
+          {
+            request_id,
+            desired_runtime_state: original_desired_state,
+            error:
+              restore_error instanceof Error
+                ? restore_error.message
+                : String(restore_error),
+          },
+        );
+      }
+
+      logistics_live_test_active = false;
+      schedule_merchant_logistics_dispatch();
+
+      const final_block = character_manage[char_name];
+      if (final_block?.logistics_live_test) {
+        final_block.logistics_live_test.cleanup = {
+          ...(final_block.logistics_live_test.cleanup || {}),
+          runtimeStateRestored: runtime_state_restored,
+          dispatcherRestored: true,
+        };
+        if (
+          !runtime_state_restored &&
+          final_block.logistics_live_test.outcome === "PASS"
+        ) {
+          final_block.logistics_live_test.outcome = "FAIL";
+          final_block.logistics_live_test.reason =
+            "LOGISTICS_LIVE_E2E_STATE_RESTORE_FAILED";
+          final_block.logistics_live_test.status = "FAILED";
+          const incident_id = capture_logistics_live_test_incident(
+            char_name,
+            final_block.logistics_live_test,
+          );
+          final_block.logistics_live_test.incident_id = incident_id;
+          if (final_block.logistics_live_test.diagnostics) {
+            final_block.logistics_live_test.diagnostics.incident_id =
+              incident_id;
+            final_block.logistics_live_test.diagnostics.result = {
+              outcome: "FAIL",
+              reason: "LOGISTICS_LIVE_E2E_STATE_RESTORE_FAILED",
+            };
+            final_block.logistics_live_test.diagnostics.cleanup =
+              final_block.logistics_live_test.cleanup;
+          }
+        } else if (final_block.logistics_live_test.diagnostics) {
+          final_block.logistics_live_test.diagnostics.cleanup =
+            final_block.logistics_live_test.cleanup;
+        }
+      }
+      dashboard?.publishSnapshot();
+    }
+
+    return character_manage[char_name]?.logistics_live_test;
+  }
+
+  async function run_fishing_live_test(char_name) {
+    const char_block = character_manage[char_name];
+    if (!char_block) {
+      throw make_control_error(
+        "CHARACTER_NOT_FOUND",
+        `Unknown character: ${char_name}`,
+        404,
+      );
+    }
+    if (
+      (char_block.account_character_type || char_block.live_state?.ctype) !==
+      "merchant"
+    ) {
+      throw make_control_error(
+        "FISHING_LIVE_TEST_MERCHANT_REQUIRED",
+        "Fishing live test requires a merchant: " + char_name,
+        400,
+      );
+    }
+    if (char_block.account_owned !== true) {
+      throw make_control_error(
+        "FISHING_LIVE_TEST_ACCOUNT_MERCHANT_REQUIRED",
+        "Fishing live test requires an account-owned merchant: " + char_name,
+        400,
+      );
+    }
+    if (
+      ["STARTING", "RUNNING"].includes(char_block.fishing_live_test?.status) ||
+      fishing_live_test_active
+    ) {
+      throw make_control_error(
+        "FISHING_LIVE_TEST_ALREADY_RUNNING",
+        "A Fishing live test is already running",
+        409,
+      );
+    }
+
+    for (const active of [
+      ["MOVEMENT", char_block.movement_live_test],
+      ["COMBAT", char_block.combat_live_test],
+      ["CLASS_SKILL", char_block.class_skill_live_test],
+      ["GROUP", char_block.group_live_test],
+      ["FARM", char_block.farm_live_test],
+      ["INVENTORY", char_block.inventory_live_test],
+      ["LOGISTICS", char_block.logistics_live_test],
+      ["MERCHANT", char_block.merchant_live_test],
+      ["MERRIT", char_block.merrit_live_test],
+    ]) {
+      if (["STARTING", "RUNNING"].includes(active[1]?.status)) {
+        throw make_control_error(
+          active[0] + "_LIVE_TEST_ALREADY_RUNNING",
+          active[0] + " live test already running for " + char_name,
+          409,
+        );
+      }
+    }
+
+    const original_desired_state =
+      char_block.desired_runtime_state ||
+      (char_block.enabled
+        ? DESIRED_RUNTIME_STATES.RUNNING
+        : DESIRED_RUNTIME_STATES.STOPPED);
+    const start_state = {
+      lifecycle_state: char_block.lifecycle_state || null,
+      desired_runtime_state: original_desired_state,
+      enabled: !!char_block.enabled,
+      connected: !!char_block.connected,
+      map: char_block.live_state?.map || null,
+      gold: Number.isFinite(char_block.live_state?.gold)
+        ? char_block.live_state.gold
+        : null,
+      inventory_slots: Array.isArray(char_block.live_state?.items)
+        ? char_block.live_state.items.filter(Boolean).length
+        : null,
+      mainhand: char_block.live_state?.slots?.mainhand || null,
+    };
+    const started_at = Date.now();
+    fishing_live_test_sequence += 1;
+    const request_id = `fishing-live-${started_at}-${fishing_live_test_sequence}`;
+
+    char_block.fishing_live_test = {
+      request_id,
+      status: "STARTING",
+      outcome: null,
+      reason: null,
+      started_at,
+      completed_at: null,
+    };
+    emit_supervisor_event("FISHING_LIVE_TEST_REQUESTED", char_name, {
+      request_id,
+      original_desired_state,
+    });
+    dashboard?.publishSnapshot();
+
+    let runtime_override_applied = false;
+    let runtime_state_restored = false;
+    fishing_live_test_active = true;
+
+    try {
+      await wait_for_logistics_claim_idle();
+
+      const runtime_ready =
+        !!char_block.instance &&
+        char_block.connected &&
+        Number.isFinite(char_block.bot_runtime_started_at);
+
+      if (!runtime_ready) {
+        const bundle_path = path.join(
+          process.cwd(),
+          "TYPECODE.out",
+          MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE,
+        );
+        if (!fs_regular.existsSync(bundle_path)) {
+          throw make_control_error(
+            "FISHING_LIVE_TEST_RUNTIME_BUNDLE_MISSING",
+            `Fishing runtime bundle is missing: ${bundle_path}`,
+            503,
+          );
+        }
+
+        char_block.movement_live_test_typescript_override =
+          MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE;
+        runtime_override_applied = true;
+        emit_supervisor_event(
+          "FISHING_LIVE_TEST_RUNTIME_OVERRIDE_APPLIED",
+          char_name,
+          {
+            typescript_file: MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE,
+          },
+        );
+      }
+
+      if (original_desired_state !== DESIRED_RUNTIME_STATES.RUNNING) {
+        char_block.enabled = true;
+        char_block.desired_runtime_state = DESIRED_RUNTIME_STATES.RUNNING;
+      }
+
+      if (runtime_override_applied) {
+        await restart_character_for_movement_runtime(char_name, char_block);
+      } else if (!char_block.instance) {
+        await control_character(char_name, CONTROL_ACTIONS.START);
+      }
+
+      await wait_for_fishing_live_test_runtime(char_name);
+      const ready_block = character_manage[char_name];
+      const result_promise = wait_for_fishing_live_test_result(
+        char_name,
+        request_id,
+      );
+
+      ready_block.fishing_live_test = {
+        ...ready_block.fishing_live_test,
+        status: "RUNNING",
+      };
+      dashboard?.publishSnapshot();
+
+      const sent = safe_send(ready_block.instance, {
+        type: "fishing_live_test",
+        request_id,
+      });
+      if (!sent) {
+        const pending = fishing_live_test_requests.get(request_id);
+        if (pending) {
+          clearTimeout(pending.timer);
+          fishing_live_test_requests.delete(request_id);
+        }
+        throw make_control_error(
+          "FISHING_LIVE_TEST_DISPATCH_FAILED",
+          `Could not dispatch Fishing live test to ${char_name}`,
+          503,
+        );
+      }
+
+      const child_response = await result_promise;
+      if (child_response.error || !child_response.result) {
+        throw make_control_error(
+          "FISHING_LIVE_TEST_RUNTIME_FAILED",
+          child_response.error || "Fishing live test returned no result",
+          500,
+        );
+      }
+
+      const events = diagnostic_store.getEvents({
+        character: char_name,
+        since: started_at,
+      });
+      const evidence = fishingLiveTestEvidence(events, ready_block, {
+        dispatcherSuppressedDuringTest: fishing_live_test_active,
+      });
+      const combined = combineFishingLiveTestResult(
+        child_response.result,
+        evidence,
+      );
+      const cooldown_blocked =
+        combined.reason === "FISHING_LIVE_COOLDOWN_ACTIVE";
+      const incident_id =
+        combined.outcome === "PASS" || cooldown_blocked
+          ? null
+          : capture_fishing_live_test_incident(char_name, {
+              ...combined,
+              request_id,
+            });
+      const diagnostics = fishingLiveTestDiagnostics(combined, {
+        character: char_name,
+        originalDesiredState: original_desired_state,
+        startState: start_state,
+        evidence,
+        incidentId: incident_id,
+      });
+
+      ready_block.fishing_live_test = {
+        ...combined,
+        request_id,
+        status: combined.outcome === "PASS" ? "COMPLETED" : "FAILED",
+        started_at,
+        completed_at: Date.now(),
+        incident_id,
+        diagnostics,
+        cleanup: {
+          ...(combined.cleanup || {}),
+          runtimeStateRestored: false,
+          dispatcherRestored: false,
+        },
+      };
+      emit_supervisor_event("FISHING_LIVE_TEST_COMPLETED", char_name, {
+        request_id,
+        outcome: combined.outcome,
+        reason: combined.reason,
+        incident_id,
+        supervisor: evidence,
+      });
+    } catch (error) {
+      const failed_result = {
+        request_id,
+        outcome:
+          error.code === "FISHING_LIVE_TEST_TIMEOUT" ||
+          error.code === "FISHING_LIVE_TEST_RUNTIME_TIMEOUT"
+            ? "TIMEOUT"
+            : "FAIL",
+        reason: error.code || error.message || "FISHING_LIVE_TEST_FAILED",
+        error: error.message || String(error),
+        started_at,
+        completed_at: Date.now(),
+        durationMs: Date.now() - started_at,
+        scope: {
+          movementMutationAllowed: true,
+          combatMutationAllowed: false,
+          lootMutationAllowed: false,
+          prerequisitePurchaseAllowed: true,
+          craftMutationAllowed: true,
+          equipmentMutationAllowed: true,
+          fishingSkillMutationAllowed: true,
+          blindRetryAllowed: false,
+          standMutationAllowed: false,
+          wishlistMutationAllowed: false,
+          pontyPurchaseAllowed: false,
+          giveawayMutationAllowed: false,
+          miningMutationAllowed: false,
+          mutationScope: "fishing-only",
+        },
+      };
+      const failure_events = diagnostic_store.getEvents({
+        character: char_name,
+        since: started_at,
+      });
+      const failure_evidence = fishingLiveTestEvidence(
+        failure_events,
+        char_block,
+        {
+          dispatcherSuppressedDuringTest: fishing_live_test_active,
+        },
+      );
+      const incident_id = capture_fishing_live_test_incident(
+        char_name,
+        failed_result,
+      );
+      char_block.fishing_live_test = {
+        ...failed_result,
+        status: "FAILED",
+        incident_id,
+        diagnostics: fishingLiveTestDiagnostics(failed_result, {
+          character: char_name,
+          originalDesiredState: original_desired_state,
+          startState: start_state,
+          evidence: failure_evidence,
+          incidentId: incident_id,
+        }),
+        cleanup: {
+          runtimeStateRestored: false,
+          dispatcherRestored: false,
+        },
+      };
+      emit_supervisor_event(
+        "FISHING_LIVE_TEST_FAILED",
+        char_name,
+        char_block.fishing_live_test,
+      );
+    } finally {
+      const pending = fishing_live_test_requests.get(request_id);
+      if (pending) {
+        clearTimeout(pending.timer);
+        fishing_live_test_requests.delete(request_id);
+      }
+
+      try {
+        if (runtime_override_applied) {
+          await restore_movement_live_test_execution_source(
+            char_name,
+            original_desired_state,
+          );
+        } else {
+          await restore_movement_live_test_state(
+            char_name,
+            original_desired_state,
+          );
+        }
+        runtime_state_restored = true;
+      } catch (restore_error) {
+        emit_supervisor_event(
+          "FISHING_LIVE_TEST_STATE_RESTORE_FAILED",
+          char_name,
+          {
+            request_id,
+            desired_runtime_state: original_desired_state,
+            error:
+              restore_error instanceof Error
+                ? restore_error.message
+                : String(restore_error),
+          },
+        );
+      }
+
+      fishing_live_test_active = false;
+      schedule_merchant_logistics_dispatch();
+
+      const final_block = character_manage[char_name];
+      if (final_block?.fishing_live_test) {
+        final_block.fishing_live_test.cleanup = {
+          ...(final_block.fishing_live_test.cleanup || {}),
+          runtimeStateRestored: runtime_state_restored,
+          dispatcherRestored: true,
+        };
+        if (
+          !runtime_state_restored &&
+          final_block.fishing_live_test.outcome === "PASS"
+        ) {
+          final_block.fishing_live_test.outcome = "FAIL";
+          final_block.fishing_live_test.reason =
+            "FISHING_LIVE_E2E_STATE_RESTORE_FAILED";
+          final_block.fishing_live_test.status = "FAILED";
+          const incident_id = capture_fishing_live_test_incident(
+            char_name,
+            final_block.fishing_live_test,
+          );
+          final_block.fishing_live_test.incident_id = incident_id;
+          if (final_block.fishing_live_test.diagnostics) {
+            final_block.fishing_live_test.diagnostics.incident_id = incident_id;
+            final_block.fishing_live_test.diagnostics.result = {
+              outcome: "FAIL",
+              reason: "FISHING_LIVE_E2E_STATE_RESTORE_FAILED",
+            };
+            final_block.fishing_live_test.diagnostics.cleanup =
+              final_block.fishing_live_test.cleanup;
+          }
+        } else if (final_block.fishing_live_test.diagnostics) {
+          final_block.fishing_live_test.diagnostics.cleanup =
+            final_block.fishing_live_test.cleanup;
+        }
+      }
+      dashboard?.publishSnapshot();
+    }
+
+    return character_manage[char_name]?.fishing_live_test;
+  }
+
+  async function run_market_trading_live_test(char_name) {
+    const char_block = character_manage[char_name];
+    if (!char_block) {
+      throw make_control_error(
+        "CHARACTER_NOT_FOUND",
+        `Unknown character: ${char_name}`,
+        404,
+      );
+    }
+    if (
+      (char_block.account_character_type || char_block.live_state?.ctype) !==
+      "merchant"
+    ) {
+      throw make_control_error(
+        "MARKET_TRADING_LIVE_TEST_MERCHANT_REQUIRED",
+        "Market trading live test requires a merchant: " + char_name,
+        400,
+      );
+    }
+    if (char_block.account_owned !== true) {
+      throw make_control_error(
+        "MARKET_TRADING_LIVE_TEST_ACCOUNT_MERCHANT_REQUIRED",
+        "Market trading live test requires an account-owned merchant: " +
+          char_name,
+        400,
+      );
+    }
+    if (
+      ["STARTING", "RUNNING"].includes(
+        char_block.market_trading_live_test?.status,
+      )
+    ) {
+      throw make_control_error(
+        "MARKET_TRADING_LIVE_TEST_ALREADY_RUNNING",
+        "Market trading live test already running for " + char_name,
+        409,
+      );
+    }
+
+    for (const active of [
+      ["NPC_TRADING", char_block.npc_trading_live_test],
+      ["BANK_TRAVEL", char_block.bank_travel_live_test],
+      ["BANK_GOLD", char_block.bank_gold_live_test],
+      ["MOVEMENT", char_block.movement_live_test],
+      ["COMBAT", char_block.combat_live_test],
+      ["CLASS_SKILL", char_block.class_skill_live_test],
+      ["GROUP", char_block.group_live_test],
+      ["FARM", char_block.farm_live_test],
+      ["INVENTORY", char_block.inventory_live_test],
+      ["LOGISTICS", char_block.logistics_live_test],
+      ["MERCHANT", char_block.merchant_live_test],
+      ["MERRIT", char_block.merrit_live_test],
+      ["FISHING", char_block.fishing_live_test],
+    ]) {
+      if (["STARTING", "RUNNING"].includes(active[1]?.status)) {
+        throw make_control_error(
+          active[0] + "_LIVE_TEST_ALREADY_RUNNING",
+          active[0] + " live test already running for " + char_name,
+          409,
+        );
+      }
+    }
+
+    const original_desired_state =
+      char_block.desired_runtime_state ||
+      (char_block.enabled
+        ? DESIRED_RUNTIME_STATES.RUNNING
+        : DESIRED_RUNTIME_STATES.STOPPED);
+    const started_at = Date.now();
+    market_trading_live_test_sequence += 1;
+    const request_id = `market-trading-live-${started_at}-${market_trading_live_test_sequence}`;
+
+    char_block.market_trading_live_test = {
+      request_id,
+      status: "STARTING",
+      outcome: null,
+      reason: null,
+      started_at,
+      completed_at: null,
+    };
+    market_trading_live_test_active = true;
+    emit_supervisor_event("MARKET_TRADING_LIVE_TEST_REQUESTED", char_name, {
+      request_id,
+      original_desired_state,
+    });
+    dashboard?.publishSnapshot();
+
+    let runtime_override_applied = false;
+    let runtime_state_restored = false;
+
+    try {
+      const runtime_ready =
+        !!char_block.instance &&
+        char_block.connected &&
+        Number.isFinite(char_block.bot_runtime_started_at);
+
+      if (!runtime_ready) {
+        const bundle_path = path.join(
+          process.cwd(),
+          "TYPECODE.out",
+          MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE,
+        );
+        if (!fs_regular.existsSync(bundle_path)) {
+          throw make_control_error(
+            "MARKET_TRADING_LIVE_TEST_RUNTIME_BUNDLE_MISSING",
+            `Market trading runtime bundle is missing: ${bundle_path}`,
+            503,
+          );
+        }
+
+        char_block.movement_live_test_typescript_override =
+          MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE;
+        runtime_override_applied = true;
+      }
+
+      if (original_desired_state !== DESIRED_RUNTIME_STATES.RUNNING) {
+        char_block.enabled = true;
+        char_block.desired_runtime_state = DESIRED_RUNTIME_STATES.RUNNING;
+      }
+
+      if (runtime_override_applied) {
+        await restart_character_for_movement_runtime(char_name, char_block);
+      } else if (!char_block.instance) {
+        await control_character(char_name, CONTROL_ACTIONS.START);
+      }
+
+      await wait_for_merchant_live_test_runtime(char_name);
+      const ready_block = character_manage[char_name];
+      const result_promise = wait_for_market_trading_live_test_result(
+        char_name,
+        request_id,
+      );
+
+      ready_block.market_trading_live_test = {
+        ...ready_block.market_trading_live_test,
+        status: "RUNNING",
+      };
+      dashboard?.publishSnapshot();
+
+      const sent = safe_send(ready_block.instance, {
+        type: "market_trading_live_test",
+        request_id,
+      });
+      if (!sent) {
+        const pending = market_trading_live_test_requests.get(request_id);
+        if (pending) {
+          clearTimeout(pending.timer);
+          market_trading_live_test_requests.delete(request_id);
+        }
+        throw make_control_error(
+          "MARKET_TRADING_LIVE_TEST_DISPATCH_FAILED",
+          `Could not dispatch market trading live test to ${char_name}`,
+          503,
+        );
+      }
+
+      const child_response = await result_promise;
+      if (child_response.error || !child_response.result) {
+        throw make_control_error(
+          "MARKET_TRADING_LIVE_TEST_RUNTIME_FAILED",
+          child_response.error || "Market trading live test returned no result",
+          500,
+        );
+      }
+
+      const runtime_result = child_response.result;
+      ready_block.market_trading_live_test = {
+        ...runtime_result,
+        request_id,
+        status: runtime_result.outcome === "PASS" ? "COMPLETED" : "FAILED",
+        started_at,
+        completed_at: Date.now(),
+        cleanup: {
+          ...(runtime_result.cleanup || {}),
+          runtimeStateRestored: false,
+          dispatcherRestored: false,
+        },
+      };
+      emit_supervisor_event("MARKET_TRADING_LIVE_TEST_COMPLETED", char_name, {
+        request_id,
+        outcome: runtime_result.outcome,
+        reason: runtime_result.reason,
+        evidence: runtime_result.evidence || null,
+      });
+    } catch (error) {
+      char_block.market_trading_live_test = {
+        request_id,
+        outcome:
+          error.code === "MARKET_TRADING_LIVE_TEST_TIMEOUT" ||
+          error.code === "MERCHANT_LIVE_TEST_RUNTIME_TIMEOUT"
+            ? "TIMEOUT"
+            : "FAIL",
+        reason:
+          error.code || error.message || "MARKET_TRADING_LIVE_TEST_FAILED",
+        error: error.message || String(error),
+        status: "FAILED",
+        started_at,
+        completed_at: Date.now(),
+        durationMs: Date.now() - started_at,
+        scope: {
+          standMutationAllowed: true,
+          marketListMutationAllowed: true,
+          marketUnlistMutationAllowed: true,
+          foreignMarketBuyMutationAllowed: false,
+          foreignMarketSellMutationAllowed: false,
+          npcTradingMutationAllowed: false,
+          bankMutationAllowed: false,
+          blindRetryAllowed: false,
+          mutationScope: "market-own-listing-round-trip-only",
+        },
+        cleanup: {
+          itemBaselineRestored: false,
+          standBaselineRestored: false,
+          tradeSlotCleared: false,
+          runtimeStateRestored: false,
+          dispatcherRestored: false,
+        },
+      };
+      emit_supervisor_event(
+        "MARKET_TRADING_LIVE_TEST_FAILED",
+        char_name,
+        char_block.market_trading_live_test,
+      );
+    } finally {
+      const pending = market_trading_live_test_requests.get(request_id);
+      if (pending) {
+        clearTimeout(pending.timer);
+        market_trading_live_test_requests.delete(request_id);
+      }
+
+      try {
+        if (runtime_override_applied) {
+          await restore_movement_live_test_execution_source(
+            char_name,
+            original_desired_state,
+          );
+        } else {
+          await restore_movement_live_test_state(
+            char_name,
+            original_desired_state,
+          );
+        }
+        runtime_state_restored = true;
+      } catch (restore_error) {
+        emit_supervisor_event(
+          "MARKET_TRADING_LIVE_TEST_STATE_RESTORE_FAILED",
+          char_name,
+          {
+            request_id,
+            desired_runtime_state: original_desired_state,
+            error:
+              restore_error instanceof Error
+                ? restore_error.message
+                : String(restore_error),
+          },
+        );
+      }
+
+      market_trading_live_test_active = false;
+      schedule_merchant_logistics_dispatch();
+      const final_block = character_manage[char_name];
+      if (final_block?.market_trading_live_test) {
+        final_block.market_trading_live_test.cleanup = {
+          ...(final_block.market_trading_live_test.cleanup || {}),
+          runtimeStateRestored: runtime_state_restored,
+          dispatcherRestored: true,
+        };
+        if (
+          !runtime_state_restored &&
+          final_block.market_trading_live_test.outcome === "PASS"
+        ) {
+          final_block.market_trading_live_test.outcome = "FAIL";
+          final_block.market_trading_live_test.reason =
+            "MARKET_TRADING_LIVE_E2E_STATE_RESTORE_FAILED";
+          final_block.market_trading_live_test.status = "FAILED";
+        }
+      }
+      dashboard?.publishSnapshot();
+    }
+
+    return character_manage[char_name]?.market_trading_live_test;
+  }
+
+  async function run_npc_trading_live_test(char_name) {
+    const char_block = character_manage[char_name];
+    if (!char_block) {
+      throw make_control_error(
+        "CHARACTER_NOT_FOUND",
+        `Unknown character: ${char_name}`,
+        404,
+      );
+    }
+    if (
+      (char_block.account_character_type || char_block.live_state?.ctype) !==
+      "merchant"
+    ) {
+      throw make_control_error(
+        "NPC_TRADING_LIVE_TEST_MERCHANT_REQUIRED",
+        "NPC trading live test requires a merchant: " + char_name,
+        400,
+      );
+    }
+    if (char_block.account_owned !== true) {
+      throw make_control_error(
+        "NPC_TRADING_LIVE_TEST_ACCOUNT_MERCHANT_REQUIRED",
+        "NPC trading live test requires an account-owned merchant: " +
+          char_name,
+        400,
+      );
+    }
+    if (
+      ["STARTING", "RUNNING"].includes(char_block.npc_trading_live_test?.status)
+    ) {
+      throw make_control_error(
+        "NPC_TRADING_LIVE_TEST_ALREADY_RUNNING",
+        "NPC trading live test already running for " + char_name,
+        409,
+      );
+    }
+
+    for (const active of [
+      ["BANK_TRAVEL", char_block.bank_travel_live_test],
+      ["BANK_GOLD", char_block.bank_gold_live_test],
+      ["MOVEMENT", char_block.movement_live_test],
+      ["COMBAT", char_block.combat_live_test],
+      ["CLASS_SKILL", char_block.class_skill_live_test],
+      ["GROUP", char_block.group_live_test],
+      ["FARM", char_block.farm_live_test],
+      ["INVENTORY", char_block.inventory_live_test],
+      ["LOGISTICS", char_block.logistics_live_test],
+      ["MERCHANT", char_block.merchant_live_test],
+      ["MERRIT", char_block.merrit_live_test],
+      ["FISHING", char_block.fishing_live_test],
+    ]) {
+      if (["STARTING", "RUNNING"].includes(active[1]?.status)) {
+        throw make_control_error(
+          active[0] + "_LIVE_TEST_ALREADY_RUNNING",
+          active[0] + " live test already running for " + char_name,
+          409,
+        );
+      }
+    }
+
+    const original_desired_state =
+      char_block.desired_runtime_state ||
+      (char_block.enabled
+        ? DESIRED_RUNTIME_STATES.RUNNING
+        : DESIRED_RUNTIME_STATES.STOPPED);
+    const started_at = Date.now();
+    npc_trading_live_test_sequence += 1;
+    const request_id = `npc-trading-live-${started_at}-${npc_trading_live_test_sequence}`;
+
+    char_block.npc_trading_live_test = {
+      request_id,
+      status: "STARTING",
+      outcome: null,
+      reason: null,
+      started_at,
+      completed_at: null,
+    };
+    npc_trading_live_test_active = true;
+    emit_supervisor_event("NPC_TRADING_LIVE_TEST_REQUESTED", char_name, {
+      request_id,
+      original_desired_state,
+    });
+    dashboard?.publishSnapshot();
+
+    let runtime_override_applied = false;
+    let runtime_state_restored = false;
+
+    try {
+      const runtime_ready =
+        !!char_block.instance &&
+        char_block.connected &&
+        Number.isFinite(char_block.bot_runtime_started_at);
+
+      if (!runtime_ready) {
+        const bundle_path = path.join(
+          process.cwd(),
+          "TYPECODE.out",
+          MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE,
+        );
+        if (!fs_regular.existsSync(bundle_path)) {
+          throw make_control_error(
+            "NPC_TRADING_LIVE_TEST_RUNTIME_BUNDLE_MISSING",
+            `NPC trading runtime bundle is missing: ${bundle_path}`,
+            503,
+          );
+        }
+
+        char_block.movement_live_test_typescript_override =
+          MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE;
+        runtime_override_applied = true;
+      }
+
+      if (original_desired_state !== DESIRED_RUNTIME_STATES.RUNNING) {
+        char_block.enabled = true;
+        char_block.desired_runtime_state = DESIRED_RUNTIME_STATES.RUNNING;
+      }
+
+      if (runtime_override_applied) {
+        await restart_character_for_movement_runtime(char_name, char_block);
+      } else if (!char_block.instance) {
+        await control_character(char_name, CONTROL_ACTIONS.START);
+      }
+
+      await wait_for_merchant_live_test_runtime(char_name);
+      const ready_block = character_manage[char_name];
+      const result_promise = wait_for_npc_trading_live_test_result(
+        char_name,
+        request_id,
+      );
+
+      ready_block.npc_trading_live_test = {
+        ...ready_block.npc_trading_live_test,
+        status: "RUNNING",
+      };
+      dashboard?.publishSnapshot();
+
+      const sent = safe_send(ready_block.instance, {
+        type: "npc_trading_live_test",
+        request_id,
+      });
+      if (!sent) {
+        const pending = npc_trading_live_test_requests.get(request_id);
+        if (pending) {
+          clearTimeout(pending.timer);
+          npc_trading_live_test_requests.delete(request_id);
+        }
+        throw make_control_error(
+          "NPC_TRADING_LIVE_TEST_DISPATCH_FAILED",
+          `Could not dispatch NPC trading live test to ${char_name}`,
+          503,
+        );
+      }
+
+      const child_response = await result_promise;
+      if (child_response.error || !child_response.result) {
+        throw make_control_error(
+          "NPC_TRADING_LIVE_TEST_RUNTIME_FAILED",
+          child_response.error || "NPC trading live test returned no result",
+          500,
+        );
+      }
+
+      const runtime_result = child_response.result;
+      ready_block.npc_trading_live_test = {
+        ...runtime_result,
+        request_id,
+        status: runtime_result.outcome === "PASS" ? "COMPLETED" : "FAILED",
+        started_at,
+        completed_at: Date.now(),
+        cleanup: {
+          runtimeStateRestored: false,
+          dispatcherRestored: false,
+        },
+      };
+      emit_supervisor_event("NPC_TRADING_LIVE_TEST_COMPLETED", char_name, {
+        request_id,
+        outcome: runtime_result.outcome,
+        reason: runtime_result.reason,
+        evidence: runtime_result.evidence || null,
+      });
+    } catch (error) {
+      char_block.npc_trading_live_test = {
+        request_id,
+        outcome:
+          error.code === "NPC_TRADING_LIVE_TEST_TIMEOUT" ||
+          error.code === "MERCHANT_LIVE_TEST_RUNTIME_TIMEOUT"
+            ? "TIMEOUT"
+            : "FAIL",
+        reason: error.code || error.message || "NPC_TRADING_LIVE_TEST_FAILED",
+        error: error.message || String(error),
+        status: "FAILED",
+        started_at,
+        completed_at: Date.now(),
+        durationMs: Date.now() - started_at,
+        scope: {
+          movementMutationAllowed: true,
+          npcBuyMutationAllowed: true,
+          npcSellMutationAllowed: true,
+          marketTradingMutationAllowed: false,
+          bankMutationAllowed: false,
+          blindRetryAllowed: false,
+          mutationScope: "npc-trading-round-trip-only",
+        },
+        cleanup: {
+          runtimeStateRestored: false,
+          dispatcherRestored: false,
+        },
+      };
+      emit_supervisor_event(
+        "NPC_TRADING_LIVE_TEST_FAILED",
+        char_name,
+        char_block.npc_trading_live_test,
+      );
+    } finally {
+      const pending = npc_trading_live_test_requests.get(request_id);
+      if (pending) {
+        clearTimeout(pending.timer);
+        npc_trading_live_test_requests.delete(request_id);
+      }
+
+      try {
+        if (runtime_override_applied) {
+          await restore_movement_live_test_execution_source(
+            char_name,
+            original_desired_state,
+          );
+        } else {
+          await restore_movement_live_test_state(
+            char_name,
+            original_desired_state,
+          );
+        }
+        runtime_state_restored = true;
+      } catch (restore_error) {
+        emit_supervisor_event(
+          "NPC_TRADING_LIVE_TEST_STATE_RESTORE_FAILED",
+          char_name,
+          {
+            request_id,
+            desired_runtime_state: original_desired_state,
+            error:
+              restore_error instanceof Error
+                ? restore_error.message
+                : String(restore_error),
+          },
+        );
+      }
+
+      npc_trading_live_test_active = false;
+      schedule_merchant_logistics_dispatch();
+      const final_block = character_manage[char_name];
+      if (final_block?.npc_trading_live_test) {
+        final_block.npc_trading_live_test.cleanup = {
+          ...(final_block.npc_trading_live_test.cleanup || {}),
+          runtimeStateRestored: runtime_state_restored,
+          dispatcherRestored: true,
+        };
+        if (
+          !runtime_state_restored &&
+          final_block.npc_trading_live_test.outcome === "PASS"
+        ) {
+          final_block.npc_trading_live_test.outcome = "FAIL";
+          final_block.npc_trading_live_test.reason =
+            "NPC_TRADING_LIVE_E2E_STATE_RESTORE_FAILED";
+          final_block.npc_trading_live_test.status = "FAILED";
+        }
+      }
+      dashboard?.publishSnapshot();
+    }
+
+    return character_manage[char_name]?.npc_trading_live_test;
+  }
+
+  async function run_upgrade_live_preflight(char_name) {
+    const char_block = character_manage[char_name];
+    if (!char_block) {
+      throw make_control_error(
+        "CHARACTER_NOT_FOUND",
+        `Unknown character: ${char_name}`,
+        404,
+      );
+    }
+    if (char_block.account_owned !== true) {
+      throw make_control_error(
+        "UPGRADE_PREFLIGHT_ACCOUNT_CHARACTER_REQUIRED",
+        "Upgrade preflight requires an account-owned character: " + char_name,
+        400,
+      );
+    }
+    if (
+      upgrade_live_preflight_active ||
+      upgrade_live_test_active ||
+      exchange_preflight_active ||
+      craft_preflight_active ||
+      exchange_live_test_active
+    ) {
+      throw make_control_error(
+        "UPGRADE_VERIFICATION_ALREADY_RUNNING",
+        "An Upgrade verification is already running",
+        409,
+      );
+    }
+
+    for (const active of [
+      ["MOVEMENT", char_block.movement_live_test],
+      ["COMBAT", char_block.combat_live_test],
+      ["CLASS_SKILL", char_block.class_skill_live_test],
+      ["GROUP", char_block.group_live_test],
+      ["FARM", char_block.farm_live_test],
+      ["INVENTORY", char_block.inventory_live_test],
+      ["GEAR_SCORING", char_block.gear_scoring_live_test],
+      [
+        "ACCOUNT_GEAR_RESERVATION",
+        char_block.account_gear_reservation_live_test,
+      ],
+      ["UPGRADE", char_block.upgrade_live_test],
+      ["LOGISTICS", char_block.logistics_live_test],
+      ["MERCHANT", char_block.merchant_live_test],
+      ["BANK_TRAVEL", char_block.bank_travel_live_test],
+      ["BANK_GOLD", char_block.bank_gold_live_test],
+      ["NPC_TRADING", char_block.npc_trading_live_test],
+      ["MARKET_TRADING", char_block.market_trading_live_test],
+      ["MERRIT", char_block.merrit_live_test],
+      ["FISHING", char_block.fishing_live_test],
+    ]) {
+      if (["STARTING", "RUNNING"].includes(active[1]?.status)) {
+        throw make_control_error(
+          active[0] + "_LIVE_TEST_ALREADY_RUNNING",
+          active[0] + " live test already running for " + char_name,
+          409,
+        );
+      }
+    }
+
+    const original_desired_state =
+      char_block.desired_runtime_state ||
+      (char_block.enabled
+        ? DESIRED_RUNTIME_STATES.RUNNING
+        : DESIRED_RUNTIME_STATES.STOPPED);
+    const started_at = Date.now();
+    upgrade_live_preflight_sequence += 1;
+    const request_id = `upgrade-preflight-${started_at}-${upgrade_live_preflight_sequence}`;
+
+    char_block.upgrade_live_preflight = {
+      request_id,
+      status: "STARTING",
+      outcome: null,
+      reason: null,
+      started_at,
+      completed_at: null,
+      readOnly: true,
+    };
+    upgrade_live_preflight_active = true;
+    emit_supervisor_event("UPGRADE_PREFLIGHT_REQUESTED", char_name, {
+      request_id,
+      readOnly: true,
+      original_desired_state,
+    });
+    dashboard?.publishSnapshot();
+
+    let runtime_state_restored = false;
+    let runtime_override_applied = false;
+
+    try {
+      const bundle_path = path.join(
+        process.cwd(),
+        "TYPECODE.out",
+        MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE,
+      );
+      if (!fs_regular.existsSync(bundle_path)) {
+        throw make_control_error(
+          "UPGRADE_PREFLIGHT_RUNTIME_BUNDLE_MISSING",
+          `Upgrade preflight runtime bundle is missing: ${bundle_path}`,
+          503,
+        );
+      }
+
+      char_block.movement_live_test_typescript_override =
+        MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE;
+      char_block.inventory_intelligence_runtime = null;
+      char_block.upgrade_runtime = null;
+      runtime_override_applied = true;
+
+      if (original_desired_state !== DESIRED_RUNTIME_STATES.RUNNING) {
+        char_block.enabled = true;
+        char_block.desired_runtime_state = DESIRED_RUNTIME_STATES.RUNNING;
+      }
+
+      await restart_character_for_movement_runtime(char_name, char_block);
+      const ready_block = await wait_for_upgrade_live_test_runtime(char_name);
+      const result_promise = wait_for_upgrade_live_preflight_result(
+        char_name,
+        request_id,
+      );
+
+      ready_block.upgrade_live_preflight = {
+        ...ready_block.upgrade_live_preflight,
+        status: "RUNNING",
+      };
+      dashboard?.publishSnapshot();
+
+      const sent = safe_send(ready_block.instance, {
+        type: "upgrade_live_preflight",
+        request_id,
+      });
+      if (!sent) {
+        const pending = upgrade_live_preflight_requests.get(request_id);
+        if (pending) {
+          clearTimeout(pending.timer);
+          upgrade_live_preflight_requests.delete(request_id);
+        }
+        throw make_control_error(
+          "UPGRADE_PREFLIGHT_DISPATCH_FAILED",
+          `Could not dispatch Upgrade preflight to ${char_name}`,
+          503,
+        );
+      }
+
+      const child_response = await result_promise;
+      if (child_response.error || !child_response.result) {
+        throw make_control_error(
+          "UPGRADE_PREFLIGHT_RUNTIME_FAILED",
+          child_response.error || "Upgrade preflight returned no result",
+          500,
+        );
+      }
+
+      const runtime_result = child_response.result;
+      ready_block.upgrade_live_preflight = {
+        ...runtime_result,
+        request_id,
+        status: runtime_result.outcome === "PASS" ? "COMPLETED" : "FAILED",
+        started_at,
+        completed_at: Date.now(),
+        cleanup: {
+          runtimeStateRestored: false,
+          dispatcherRestored: false,
+        },
+      };
+      emit_supervisor_event("UPGRADE_PREFLIGHT_COMPLETED", char_name, {
+        request_id,
+        outcome: runtime_result.outcome,
+        reason: runtime_result.reason,
+        summary: runtime_result.summary || null,
+      });
+    } catch (error) {
+      char_block.upgrade_live_preflight = {
+        request_id,
+        outcome:
+          error.code === "UPGRADE_PREFLIGHT_TIMEOUT" ||
+          error.code === "UPGRADE_LIVE_TEST_RUNTIME_TIMEOUT"
+            ? "TIMEOUT"
+            : "FAIL",
+        reason: error.code || error.message || "UPGRADE_PREFLIGHT_FAILED",
+        error: error.message || String(error),
+        status: "FAILED",
+        started_at,
+        completed_at: Date.now(),
+        durationMs: Date.now() - started_at,
+        scope: {
+          readOnly: true,
+          upgradeMutationForced: false,
+          offeringMutationForced: false,
+          compoundMutationForced: false,
+          exchangeMutationForced: false,
+          craftMutationForced: false,
+        },
+        cleanup: {
+          runtimeStateRestored: false,
+          dispatcherRestored: false,
+        },
+      };
+      emit_supervisor_event(
+        "UPGRADE_PREFLIGHT_FAILED",
+        char_name,
+        char_block.upgrade_live_preflight,
+      );
+    } finally {
+      const pending = upgrade_live_preflight_requests.get(request_id);
+      if (pending) {
+        clearTimeout(pending.timer);
+        upgrade_live_preflight_requests.delete(request_id);
+      }
+
+      try {
+        if (runtime_override_applied) {
+          await restore_movement_live_test_execution_source(
+            char_name,
+            original_desired_state,
+          );
+        } else {
+          await restore_movement_live_test_state(
+            char_name,
+            original_desired_state,
+          );
+        }
+        runtime_state_restored = true;
+      } catch (restore_error) {
+        emit_supervisor_event(
+          "UPGRADE_PREFLIGHT_STATE_RESTORE_FAILED",
+          char_name,
+          {
+            request_id,
+            desired_runtime_state: original_desired_state,
+            error:
+              restore_error instanceof Error
+                ? restore_error.message
+                : String(restore_error),
+          },
+        );
+      }
+
+      upgrade_live_preflight_active = false;
+      schedule_merchant_logistics_dispatch();
+      const final_block = character_manage[char_name];
+      if (final_block?.upgrade_live_preflight) {
+        final_block.upgrade_live_preflight.cleanup = {
+          ...(final_block.upgrade_live_preflight.cleanup || {}),
+          runtimeStateRestored: runtime_state_restored,
+          dispatcherRestored: true,
+        };
+        if (
+          !runtime_state_restored &&
+          final_block.upgrade_live_preflight.outcome === "PASS"
+        ) {
+          final_block.upgrade_live_preflight.outcome = "FAIL";
+          final_block.upgrade_live_preflight.reason =
+            "UPGRADE_PREFLIGHT_STATE_RESTORE_FAILED";
+          final_block.upgrade_live_preflight.status = "FAILED";
+        }
+      }
+      dashboard?.publishSnapshot();
+    }
+
+    return character_manage[char_name]?.upgrade_live_preflight;
+  }
+
+  async function run_craft_preflight(char_name) {
+    const char_block = character_manage[char_name];
+    if (!char_block) {
+      throw make_control_error(
+        "CHARACTER_NOT_FOUND",
+        `Unknown character: ${char_name}`,
+        404,
+      );
+    }
+    if (char_block.account_owned !== true) {
+      throw make_control_error(
+        "CRAFT_PREFLIGHT_ACCOUNT_CHARACTER_REQUIRED",
+        "Craft preflight requires an account-owned character: " + char_name,
+        400,
+      );
+    }
+    if (
+      craft_preflight_active ||
+      exchange_preflight_active ||
+      exchange_live_test_active ||
+      craft_live_test_active ||
+      upgrade_live_preflight_active ||
+      upgrade_live_test_active ||
+      compound_live_test_active ||
+      craft_material_preparation_active ||
+      compound_material_preparation_active
+    ) {
+      throw make_control_error(
+        "MUTATION_VERIFICATION_ALREADY_RUNNING",
+        "A mutation verification or Compound preparation is already running",
+        409,
+      );
+    }
+
+    for (const active of [
+      ["MOVEMENT", char_block.movement_live_test],
+      ["COMBAT", char_block.combat_live_test],
+      ["CLASS_SKILL", char_block.class_skill_live_test],
+      ["GROUP", char_block.group_live_test],
+      ["FARM", char_block.farm_live_test],
+      ["INVENTORY", char_block.inventory_live_test],
+      ["GEAR_SCORING", char_block.gear_scoring_live_test],
+      [
+        "ACCOUNT_GEAR_RESERVATION",
+        char_block.account_gear_reservation_live_test,
+      ],
+      ["UPGRADE", char_block.upgrade_live_test],
+      ["COMPOUND", char_block.compound_live_test],
+      ["LOGISTICS", char_block.logistics_live_test],
+      ["MERCHANT", char_block.merchant_live_test],
+      ["BANK_TRAVEL", char_block.bank_travel_live_test],
+      ["BANK_GOLD", char_block.bank_gold_live_test],
+      ["NPC_TRADING", char_block.npc_trading_live_test],
+      ["MARKET_TRADING", char_block.market_trading_live_test],
+      ["MERRIT", char_block.merrit_live_test],
+      ["FISHING", char_block.fishing_live_test],
+    ]) {
+      if (["STARTING", "RUNNING"].includes(active[1]?.status)) {
+        throw make_control_error(
+          active[0] + "_LIVE_TEST_ALREADY_RUNNING",
+          active[0] + " live test already running for " + char_name,
+          409,
+        );
+      }
+    }
+
+    const original_desired_state =
+      char_block.desired_runtime_state ||
+      (char_block.enabled
+        ? DESIRED_RUNTIME_STATES.RUNNING
+        : DESIRED_RUNTIME_STATES.STOPPED);
+    const started_at = Date.now();
+    craft_preflight_sequence += 1;
+    const request_id = `craft-preflight-${started_at}-${craft_preflight_sequence}`;
+
+    char_block.craft_preflight = {
+      request_id,
+      status: "STARTING",
+      outcome: null,
+      reason: null,
+      started_at,
+      completed_at: null,
+      readOnly: true,
+    };
+    craft_preflight_active = true;
+    emit_supervisor_event("CRAFT_PREFLIGHT_REQUESTED", char_name, {
+      request_id,
+      readOnly: true,
+      original_desired_state,
+    });
+    dashboard?.publishSnapshot();
+
+    let runtime_state_restored = false;
+    let runtime_override_applied = false;
+
+    try {
+      const bundle_path = path.join(
+        process.cwd(),
+        "TYPECODE.out",
+        MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE,
+      );
+      if (!fs_regular.existsSync(bundle_path)) {
+        throw make_control_error(
+          "CRAFT_PREFLIGHT_RUNTIME_BUNDLE_MISSING",
+          `Craft preflight runtime bundle is missing: ${bundle_path}`,
+          503,
+        );
+      }
+
+      char_block.movement_live_test_typescript_override =
+        MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE;
+      char_block.inventory_intelligence_runtime = null;
+      runtime_override_applied = true;
+
+      if (original_desired_state !== DESIRED_RUNTIME_STATES.RUNNING) {
+        char_block.enabled = true;
+        char_block.desired_runtime_state = DESIRED_RUNTIME_STATES.RUNNING;
+      }
+
+      await restart_character_for_movement_runtime(char_name, char_block);
+      const ready_block = await wait_for_inventory_live_test_runtime(char_name);
+      const result_promise = wait_for_craft_preflight_result(
+        char_name,
+        request_id,
+      );
+
+      ready_block.craft_preflight = {
+        ...ready_block.craft_preflight,
+        status: "RUNNING",
+      };
+      dashboard?.publishSnapshot();
+
+      const sent = safe_send(ready_block.instance, {
+        type: "craft_preflight",
+        request_id,
+      });
+      if (!sent) {
+        const pending = craft_preflight_requests.get(request_id);
+        if (pending) {
+          clearTimeout(pending.timer);
+          craft_preflight_requests.delete(request_id);
+        }
+        throw make_control_error(
+          "CRAFT_PREFLIGHT_DISPATCH_FAILED",
+          `Could not dispatch Craft preflight to ${char_name}`,
+          503,
+        );
+      }
+
+      const child_response = await result_promise;
+      if (child_response.error || !child_response.result) {
+        throw make_control_error(
+          "CRAFT_PREFLIGHT_RUNTIME_FAILED",
+          child_response.error || "Craft preflight returned no result",
+          500,
+        );
+      }
+
+      const runtime_result = child_response.result;
+      ready_block.craft_preflight = {
+        ...runtime_result,
+        request_id,
+        status: runtime_result.outcome === "PASS" ? "COMPLETED" : "FAILED",
+        started_at,
+        completed_at: Date.now(),
+        cleanup: {
+          ...(runtime_result.cleanup || {}),
+          runtimeStateRestored: false,
+          dispatcherRestored: false,
+        },
+      };
+      emit_supervisor_event("CRAFT_PREFLIGHT_COMPLETED", char_name, {
+        request_id,
+        outcome: runtime_result.outcome,
+        reason: runtime_result.reason,
+        readyForCraft: runtime_result.readyForCraft === true,
+        recipeCount: runtime_result.recipeCount || 0,
+        selected: runtime_result.selected || null,
+        station: runtime_result.station || null,
+      });
+    } catch (error) {
+      char_block.craft_preflight = {
+        request_id,
+        outcome:
+          error.code === "CRAFT_PREFLIGHT_TIMEOUT" ||
+          error.code === "INVENTORY_LIVE_TEST_RUNTIME_TIMEOUT"
+            ? "TIMEOUT"
+            : "FAIL",
+        reason: error.code || error.message || "CRAFT_PREFLIGHT_FAILED",
+        error: error.message || String(error),
+        status: "FAILED",
+        started_at,
+        completed_at: Date.now(),
+        durationMs: Date.now() - started_at,
+        readyForCraft: false,
+        scope: {
+          readOnly: true,
+          movementMutationForced: false,
+          upgradeMutationForced: false,
+          compoundMutationForced: false,
+          exchangeMutationForced: false,
+          craftMutationForced: false,
+        },
+        cleanup: {
+          runtimeStateRestored: false,
+          dispatcherRestored: false,
+        },
+      };
+      emit_supervisor_event(
+        "CRAFT_PREFLIGHT_FAILED",
+        char_name,
+        char_block.craft_preflight,
+      );
+    } finally {
+      const pending = craft_preflight_requests.get(request_id);
+      if (pending) {
+        clearTimeout(pending.timer);
+        craft_preflight_requests.delete(request_id);
+      }
+
+      try {
+        if (runtime_override_applied) {
+          await restore_movement_live_test_execution_source(
+            char_name,
+            original_desired_state,
+          );
+        } else {
+          await restore_movement_live_test_state(
+            char_name,
+            original_desired_state,
+          );
+        }
+        runtime_state_restored = true;
+      } catch (restore_error) {
+        emit_supervisor_event(
+          "CRAFT_PREFLIGHT_STATE_RESTORE_FAILED",
+          char_name,
+          {
+            request_id,
+            desired_runtime_state: original_desired_state,
+            error:
+              restore_error instanceof Error
+                ? restore_error.message
+                : String(restore_error),
+          },
+        );
+      }
+
+      craft_preflight_active = false;
+      schedule_merchant_logistics_dispatch();
+      const final_block = character_manage[char_name];
+      if (final_block?.craft_preflight) {
+        final_block.craft_preflight.cleanup = {
+          ...(final_block.craft_preflight.cleanup || {}),
+          runtimeStateRestored: runtime_state_restored,
+          dispatcherRestored: true,
+        };
+        if (
+          !runtime_state_restored &&
+          final_block.craft_preflight.outcome === "PASS"
+        ) {
+          final_block.craft_preflight.outcome = "FAIL";
+          final_block.craft_preflight.reason =
+            "CRAFT_PREFLIGHT_STATE_RESTORE_FAILED";
+          final_block.craft_preflight.status = "FAILED";
+        }
+      }
+      dashboard?.publishSnapshot();
+    }
+
+    return character_manage[char_name]?.craft_preflight;
+  }
+
+  async function run_craft_live_test(char_name, options = {}) {
+    const char_block = character_manage[char_name];
+    if (!char_block) {
+      throw make_control_error(
+        "CHARACTER_NOT_FOUND",
+        `Unknown character: ${char_name}`,
+        404,
+      );
+    }
+    if (
+      char_block.account_owned !== true ||
+      (char_block.account_character_type || char_block.live_state?.ctype) !==
+        "merchant"
+    ) {
+      throw make_control_error(
+        "CRAFT_LIVE_TEST_ACCOUNT_MERCHANT_REQUIRED",
+        "Craft live test requires an account-owned merchant: " + char_name,
+        400,
+      );
+    }
+
+    const recipe =
+      typeof options.recipe === "string" ? options.recipe.trim() : "";
+    const item_slots = Array.isArray(options.itemSlots)
+      ? options.itemSlots.map((slot) => Number(slot))
+      : [];
+    if (
+      !recipe ||
+      item_slots.length < 1 ||
+      item_slots.length > 9 ||
+      item_slots.some((slot) => !Number.isInteger(slot) || slot < 0) ||
+      new Set(item_slots).size !== item_slots.length
+    ) {
+      throw make_control_error(
+        "CRAFT_LIVE_TEST_EXPLICIT_TARGET_REQUIRED",
+        "Craft live test requires an explicit recipe and distinct ingredient slots",
+        400,
+      );
+    }
+
+    if (
+      craft_live_test_active ||
+      craft_preflight_active ||
+      exchange_preflight_active ||
+      exchange_live_test_active ||
+      upgrade_live_preflight_active ||
+      upgrade_live_test_active ||
+      compound_live_test_active ||
+      craft_material_preparation_active ||
+      compound_material_preparation_active
+    ) {
+      throw make_control_error(
+        "MUTATION_VERIFICATION_ALREADY_RUNNING",
+        "A mutation verification or material preparation is already running",
+        409,
+      );
+    }
+
+    for (const active of [
+      ["MOVEMENT", char_block.movement_live_test],
+      ["COMBAT", char_block.combat_live_test],
+      ["CLASS_SKILL", char_block.class_skill_live_test],
+      ["GROUP", char_block.group_live_test],
+      ["FARM", char_block.farm_live_test],
+      ["INVENTORY", char_block.inventory_live_test],
+      ["GEAR_SCORING", char_block.gear_scoring_live_test],
+      [
+        "ACCOUNT_GEAR_RESERVATION",
+        char_block.account_gear_reservation_live_test,
+      ],
+      ["UPGRADE", char_block.upgrade_live_test],
+      ["COMPOUND", char_block.compound_live_test],
+      ["EXCHANGE", char_block.exchange_live_test],
+      ["CRAFT", char_block.craft_live_test],
+      ["LOGISTICS", char_block.logistics_live_test],
+      ["MERCHANT", char_block.merchant_live_test],
+      ["BANK_TRAVEL", char_block.bank_travel_live_test],
+      ["BANK_GOLD", char_block.bank_gold_live_test],
+      ["NPC_TRADING", char_block.npc_trading_live_test],
+      ["MARKET_TRADING", char_block.market_trading_live_test],
+      ["MERRIT", char_block.merrit_live_test],
+      ["FISHING", char_block.fishing_live_test],
+    ]) {
+      if (["STARTING", "RUNNING"].includes(active[1]?.status)) {
+        throw make_control_error(
+          active[0] + "_LIVE_TEST_ALREADY_RUNNING",
+          active[0] + " live test already running for " + char_name,
+          409,
+        );
+      }
+    }
+
+    const original_desired_state =
+      char_block.desired_runtime_state ||
+      (char_block.enabled
+        ? DESIRED_RUNTIME_STATES.RUNNING
+        : DESIRED_RUNTIME_STATES.STOPPED);
+    const started_at = Date.now();
+    craft_live_test_sequence += 1;
+    const request_id = `craft-live-${started_at}-${craft_live_test_sequence}`;
+
+    char_block.craft_live_test = {
+      request_id,
+      status: "STARTING",
+      outcome: null,
+      reason: null,
+      started_at,
+      completed_at: null,
+      target: {
+        recipe,
+        itemSlots: [...item_slots],
+      },
+      scope: {
+        movementMutationAllowed: true,
+        upgradeMutationAllowed: false,
+        compoundMutationAllowed: false,
+        exchangeMutationAllowed: false,
+        craftMutationAllowed: true,
+        irreversibleMutation: true,
+        blindRetryAllowed: false,
+        mutationScope: "single-craft-attempt-only",
+      },
+    };
+    craft_live_test_active = true;
+    emit_supervisor_event("CRAFT_LIVE_TEST_REQUESTED", char_name, {
+      request_id,
+      recipe,
+      itemSlots: [...item_slots],
+      original_desired_state,
+      irreversibleMutation: true,
+      blindRetryAllowed: false,
+    });
+    dashboard?.publishSnapshot();
+
+    let runtime_state_restored = false;
+    let runtime_override_applied = false;
+
+    try {
+      const bundle_path = path.join(
+        process.cwd(),
+        "TYPECODE.out",
+        MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE,
+      );
+      if (!fs_regular.existsSync(bundle_path)) {
+        throw make_control_error(
+          "CRAFT_LIVE_TEST_RUNTIME_BUNDLE_MISSING",
+          `Craft live test runtime bundle is missing: ${bundle_path}`,
+          503,
+        );
+      }
+
+      char_block.movement_live_test_typescript_override =
+        MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE;
+      char_block.inventory_intelligence_runtime = null;
+      runtime_override_applied = true;
+
+      if (original_desired_state !== DESIRED_RUNTIME_STATES.RUNNING) {
+        char_block.enabled = true;
+        char_block.desired_runtime_state = DESIRED_RUNTIME_STATES.RUNNING;
+      }
+
+      await restart_character_for_movement_runtime(char_name, char_block);
+      const ready_block = await wait_for_inventory_live_test_runtime(char_name);
+      const result_promise = wait_for_craft_live_test_result(
+        char_name,
+        request_id,
+      );
+
+      ready_block.craft_live_test = {
+        ...ready_block.craft_live_test,
+        status: "RUNNING",
+      };
+      dashboard?.publishSnapshot();
+
+      const sent = safe_send(ready_block.instance, {
+        type: "craft_live_test",
+        request_id,
+        recipe,
+        itemSlots: [...item_slots],
+      });
+      if (!sent) {
+        const pending = craft_live_test_requests.get(request_id);
+        if (pending) {
+          clearTimeout(pending.timer);
+          craft_live_test_requests.delete(request_id);
+        }
+        throw make_control_error(
+          "CRAFT_LIVE_TEST_DISPATCH_FAILED",
+          `Could not dispatch Craft live test to ${char_name}`,
+          503,
+        );
+      }
+
+      const child_response = await result_promise;
+      if (child_response.error || !child_response.result) {
+        throw make_control_error(
+          "CRAFT_LIVE_TEST_RUNTIME_FAILED",
+          child_response.error || "Craft live test returned no result",
+          500,
+        );
+      }
+
+      const runtime_result = child_response.result;
+      ready_block.craft_live_test = {
+        ...runtime_result,
+        request_id,
+        status:
+          runtime_result.outcome === "PASS"
+            ? "COMPLETED"
+            : runtime_result.outcome === "UNKNOWN"
+            ? "UNKNOWN"
+            : runtime_result.outcome === "TIMEOUT"
+            ? "TIMEOUT"
+            : "FAILED",
+        started_at,
+        completed_at: Date.now(),
+        cleanup: {
+          ...(runtime_result.cleanup || {}),
+          runtimeStateRestored: false,
+          dispatcherRestored: false,
+        },
+      };
+      emit_supervisor_event("CRAFT_LIVE_TEST_COMPLETED", char_name, {
+        request_id,
+        outcome: runtime_result.outcome,
+        reason: runtime_result.reason,
+        recipe,
+        itemSlots: [...item_slots],
+        action_id: runtime_result.craft?.lastAction?.id || null,
+        evidence: runtime_result.evidence || null,
+      });
+    } catch (error) {
+      char_block.craft_live_test = {
+        request_id,
+        outcome:
+          error.code === "CRAFT_LIVE_TEST_TIMEOUT" ||
+          error.code === "INVENTORY_LIVE_TEST_RUNTIME_TIMEOUT"
+            ? "TIMEOUT"
+            : "FAIL",
+        reason: error.code || error.message || "CRAFT_LIVE_TEST_FAILED",
+        error: error.message || String(error),
+        status: "FAILED",
+        started_at,
+        completed_at: Date.now(),
+        durationMs: Date.now() - started_at,
+        target: {
+          recipe,
+          itemSlots: [...item_slots],
+        },
+        scope: {
+          movementMutationAllowed: true,
+          upgradeMutationAllowed: false,
+          compoundMutationAllowed: false,
+          exchangeMutationAllowed: false,
+          craftMutationAllowed: true,
+          irreversibleMutation: true,
+          blindRetryAllowed: false,
+          mutationScope: "single-craft-attempt-only",
+        },
+        cleanup: {
+          runtimeStateRestored: false,
+          dispatcherRestored: false,
+        },
+      };
+      emit_supervisor_event(
+        "CRAFT_LIVE_TEST_FAILED",
+        char_name,
+        char_block.craft_live_test,
+      );
+    } finally {
+      const pending = craft_live_test_requests.get(request_id);
+      if (pending) {
+        clearTimeout(pending.timer);
+        craft_live_test_requests.delete(request_id);
+      }
+
+      try {
+        if (runtime_override_applied) {
+          await restore_movement_live_test_execution_source(
+            char_name,
+            original_desired_state,
+          );
+        } else {
+          await restore_movement_live_test_state(
+            char_name,
+            original_desired_state,
+          );
+        }
+        runtime_state_restored = true;
+      } catch (restore_error) {
+        emit_supervisor_event(
+          "CRAFT_LIVE_TEST_STATE_RESTORE_FAILED",
+          char_name,
+          {
+            request_id,
+            desired_runtime_state: original_desired_state,
+            error:
+              restore_error instanceof Error
+                ? restore_error.message
+                : String(restore_error),
+          },
+        );
+      }
+
+      craft_live_test_active = false;
+      schedule_merchant_logistics_dispatch();
+      const final_block = character_manage[char_name];
+      if (final_block?.craft_live_test) {
+        final_block.craft_live_test.cleanup = {
+          ...(final_block.craft_live_test.cleanup || {}),
+          runtimeStateRestored: runtime_state_restored,
+          dispatcherRestored: true,
+        };
+        if (
+          !runtime_state_restored &&
+          final_block.craft_live_test.outcome === "PASS"
+        ) {
+          final_block.craft_live_test.outcome = "FAIL";
+          final_block.craft_live_test.reason =
+            "CRAFT_LIVE_TEST_STATE_RESTORE_FAILED";
+          final_block.craft_live_test.status = "FAILED";
+        }
+      }
+      dashboard?.publishSnapshot();
+    }
+
+    return character_manage[char_name]?.craft_live_test;
+  }
+
+  async function run_exchange_preflight(char_name) {
+    const char_block = character_manage[char_name];
+    if (!char_block) {
+      throw make_control_error(
+        "CHARACTER_NOT_FOUND",
+        `Unknown character: ${char_name}`,
+        404,
+      );
+    }
+    if (char_block.account_owned !== true) {
+      throw make_control_error(
+        "EXCHANGE_PREFLIGHT_ACCOUNT_CHARACTER_REQUIRED",
+        "Exchange preflight requires an account-owned character: " + char_name,
+        400,
+      );
+    }
+    if (
+      exchange_preflight_active ||
+      craft_preflight_active ||
+      exchange_live_test_active ||
+      craft_live_test_active ||
+      upgrade_live_preflight_active ||
+      upgrade_live_test_active ||
+      compound_live_test_active ||
+      craft_material_preparation_active ||
+      compound_material_preparation_active
+    ) {
+      throw make_control_error(
+        "MUTATION_VERIFICATION_ALREADY_RUNNING",
+        "A mutation verification or Compound preparation is already running",
+        409,
+      );
+    }
+
+    for (const active of [
+      ["MOVEMENT", char_block.movement_live_test],
+      ["COMBAT", char_block.combat_live_test],
+      ["CLASS_SKILL", char_block.class_skill_live_test],
+      ["GROUP", char_block.group_live_test],
+      ["FARM", char_block.farm_live_test],
+      ["INVENTORY", char_block.inventory_live_test],
+      ["GEAR_SCORING", char_block.gear_scoring_live_test],
+      [
+        "ACCOUNT_GEAR_RESERVATION",
+        char_block.account_gear_reservation_live_test,
+      ],
+      ["UPGRADE", char_block.upgrade_live_test],
+      ["COMPOUND", char_block.compound_live_test],
+      ["LOGISTICS", char_block.logistics_live_test],
+      ["MERCHANT", char_block.merchant_live_test],
+      ["BANK_TRAVEL", char_block.bank_travel_live_test],
+      ["BANK_GOLD", char_block.bank_gold_live_test],
+      ["NPC_TRADING", char_block.npc_trading_live_test],
+      ["MARKET_TRADING", char_block.market_trading_live_test],
+      ["MERRIT", char_block.merrit_live_test],
+      ["FISHING", char_block.fishing_live_test],
+    ]) {
+      if (["STARTING", "RUNNING"].includes(active[1]?.status)) {
+        throw make_control_error(
+          active[0] + "_LIVE_TEST_ALREADY_RUNNING",
+          active[0] + " live test already running for " + char_name,
+          409,
+        );
+      }
+    }
+
+    const original_desired_state =
+      char_block.desired_runtime_state ||
+      (char_block.enabled
+        ? DESIRED_RUNTIME_STATES.RUNNING
+        : DESIRED_RUNTIME_STATES.STOPPED);
+    const started_at = Date.now();
+    exchange_preflight_sequence += 1;
+    const request_id = `exchange-preflight-${started_at}-${exchange_preflight_sequence}`;
+
+    char_block.exchange_preflight = {
+      request_id,
+      status: "STARTING",
+      outcome: null,
+      reason: null,
+      started_at,
+      completed_at: null,
+      readOnly: true,
+    };
+    exchange_preflight_active = true;
+    emit_supervisor_event("EXCHANGE_PREFLIGHT_REQUESTED", char_name, {
+      request_id,
+      readOnly: true,
+      original_desired_state,
+    });
+    dashboard?.publishSnapshot();
+
+    let runtime_state_restored = false;
+    let runtime_override_applied = false;
+
+    try {
+      const bundle_path = path.join(
+        process.cwd(),
+        "TYPECODE.out",
+        MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE,
+      );
+      if (!fs_regular.existsSync(bundle_path)) {
+        throw make_control_error(
+          "EXCHANGE_PREFLIGHT_RUNTIME_BUNDLE_MISSING",
+          `Exchange preflight runtime bundle is missing: ${bundle_path}`,
+          503,
+        );
+      }
+
+      char_block.movement_live_test_typescript_override =
+        MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE;
+      char_block.inventory_intelligence_runtime = null;
+      runtime_override_applied = true;
+
+      if (original_desired_state !== DESIRED_RUNTIME_STATES.RUNNING) {
+        char_block.enabled = true;
+        char_block.desired_runtime_state = DESIRED_RUNTIME_STATES.RUNNING;
+      }
+
+      await restart_character_for_movement_runtime(char_name, char_block);
+      const ready_block = await wait_for_inventory_live_test_runtime(char_name);
+      const result_promise = wait_for_exchange_preflight_result(
+        char_name,
+        request_id,
+      );
+
+      ready_block.exchange_preflight = {
+        ...ready_block.exchange_preflight,
+        status: "RUNNING",
+      };
+      dashboard?.publishSnapshot();
+
+      const sent = safe_send(ready_block.instance, {
+        type: "exchange_preflight",
+        request_id,
+      });
+      if (!sent) {
+        const pending = exchange_preflight_requests.get(request_id);
+        if (pending) {
+          clearTimeout(pending.timer);
+          exchange_preflight_requests.delete(request_id);
+        }
+        throw make_control_error(
+          "EXCHANGE_PREFLIGHT_DISPATCH_FAILED",
+          `Could not dispatch Exchange preflight to ${char_name}`,
+          503,
+        );
+      }
+
+      const child_response = await result_promise;
+      if (child_response.error || !child_response.result) {
+        throw make_control_error(
+          "EXCHANGE_PREFLIGHT_RUNTIME_FAILED",
+          child_response.error || "Exchange preflight returned no result",
+          500,
+        );
+      }
+
+      const runtime_result = child_response.result;
+      ready_block.exchange_preflight = {
+        ...runtime_result,
+        request_id,
+        status: runtime_result.outcome === "PASS" ? "COMPLETED" : "FAILED",
+        started_at,
+        completed_at: Date.now(),
+        cleanup: {
+          runtimeStateRestored: false,
+          dispatcherRestored: false,
+        },
+      };
+      emit_supervisor_event("EXCHANGE_PREFLIGHT_COMPLETED", char_name, {
+        request_id,
+        outcome: runtime_result.outcome,
+        reason: runtime_result.reason,
+        readyForExchange: runtime_result.readyForExchange === true,
+        summary: runtime_result.summary || null,
+        station: runtime_result.station || null,
+      });
+    } catch (error) {
+      char_block.exchange_preflight = {
+        request_id,
+        outcome:
+          error.code === "EXCHANGE_PREFLIGHT_TIMEOUT" ||
+          error.code === "INVENTORY_LIVE_TEST_RUNTIME_TIMEOUT"
+            ? "TIMEOUT"
+            : "FAIL",
+        reason: error.code || error.message || "EXCHANGE_PREFLIGHT_FAILED",
+        error: error.message || String(error),
+        status: "FAILED",
+        started_at,
+        completed_at: Date.now(),
+        durationMs: Date.now() - started_at,
+        readyForExchange: false,
+        scope: {
+          readOnly: true,
+          movementMutationForced: false,
+          upgradeMutationForced: false,
+          compoundMutationForced: false,
+          exchangeMutationForced: false,
+          craftMutationForced: false,
+        },
+        cleanup: {
+          runtimeStateRestored: false,
+          dispatcherRestored: false,
+        },
+      };
+      emit_supervisor_event(
+        "EXCHANGE_PREFLIGHT_FAILED",
+        char_name,
+        char_block.exchange_preflight,
+      );
+    } finally {
+      const pending = exchange_preflight_requests.get(request_id);
+      if (pending) {
+        clearTimeout(pending.timer);
+        exchange_preflight_requests.delete(request_id);
+      }
+
+      try {
+        if (runtime_override_applied) {
+          await restore_movement_live_test_execution_source(
+            char_name,
+            original_desired_state,
+          );
+        } else {
+          await restore_movement_live_test_state(
+            char_name,
+            original_desired_state,
+          );
+        }
+        runtime_state_restored = true;
+      } catch (restore_error) {
+        emit_supervisor_event(
+          "EXCHANGE_PREFLIGHT_STATE_RESTORE_FAILED",
+          char_name,
+          {
+            request_id,
+            desired_runtime_state: original_desired_state,
+            error:
+              restore_error instanceof Error
+                ? restore_error.message
+                : String(restore_error),
+          },
+        );
+      }
+
+      exchange_preflight_active = false;
+      schedule_merchant_logistics_dispatch();
+      const final_block = character_manage[char_name];
+      if (final_block?.exchange_preflight) {
+        final_block.exchange_preflight.cleanup = {
+          ...(final_block.exchange_preflight.cleanup || {}),
+          runtimeStateRestored: runtime_state_restored,
+          dispatcherRestored: true,
+        };
+        if (
+          !runtime_state_restored &&
+          final_block.exchange_preflight.outcome === "PASS"
+        ) {
+          final_block.exchange_preflight.outcome = "FAIL";
+          final_block.exchange_preflight.reason =
+            "EXCHANGE_PREFLIGHT_STATE_RESTORE_FAILED";
+          final_block.exchange_preflight.status = "FAILED";
+        }
+      }
+      dashboard?.publishSnapshot();
+    }
+
+    return character_manage[char_name]?.exchange_preflight;
+  }
+
+  async function run_upgrade_live_test(char_name, options = {}) {
+    const char_block = character_manage[char_name];
+    if (!char_block) {
+      throw make_control_error(
+        "CHARACTER_NOT_FOUND",
+        `Unknown character: ${char_name}`,
+        404,
+      );
+    }
+    if (char_block.account_owned !== true) {
+      throw make_control_error(
+        "UPGRADE_LIVE_TEST_ACCOUNT_CHARACTER_REQUIRED",
+        "Upgrade live test requires an account-owned character: " + char_name,
+        400,
+      );
+    }
+
+    const item_name =
+      typeof options.itemName === "string" ? options.itemName.trim() : "";
+    const scroll_name =
+      typeof options.scrollName === "string" ? options.scrollName.trim() : "";
+    const item_slot = Number.isInteger(Number(options.itemSlot))
+      ? Number(options.itemSlot)
+      : null;
+    if (!item_name || !scroll_name) {
+      throw make_control_error(
+        "UPGRADE_LIVE_TEST_EXPLICIT_TARGET_REQUIRED",
+        "Upgrade live test requires explicit itemName and scrollName",
+        400,
+      );
+    }
+    if (
+      upgrade_live_test_active ||
+      upgrade_live_preflight_active ||
+      exchange_preflight_active ||
+      craft_preflight_active ||
+      exchange_live_test_active ||
+      craft_live_test_active ||
+      compound_live_test_active ||
+      craft_material_preparation_active ||
+      compound_material_preparation_active
+    ) {
+      throw make_control_error(
+        "MUTATION_VERIFICATION_ALREADY_RUNNING",
+        "A mutation verification or Compound preparation is already running",
+        409,
+      );
+    }
+
+    for (const active of [
+      ["MOVEMENT", char_block.movement_live_test],
+      ["COMBAT", char_block.combat_live_test],
+      ["CLASS_SKILL", char_block.class_skill_live_test],
+      ["GROUP", char_block.group_live_test],
+      ["FARM", char_block.farm_live_test],
+      ["INVENTORY", char_block.inventory_live_test],
+      ["GEAR_SCORING", char_block.gear_scoring_live_test],
+      [
+        "ACCOUNT_GEAR_RESERVATION",
+        char_block.account_gear_reservation_live_test,
+      ],
+      ["LOGISTICS", char_block.logistics_live_test],
+      ["MERCHANT", char_block.merchant_live_test],
+      ["BANK_TRAVEL", char_block.bank_travel_live_test],
+      ["BANK_GOLD", char_block.bank_gold_live_test],
+      ["NPC_TRADING", char_block.npc_trading_live_test],
+      ["MARKET_TRADING", char_block.market_trading_live_test],
+      ["MERRIT", char_block.merrit_live_test],
+      ["FISHING", char_block.fishing_live_test],
+    ]) {
+      if (["STARTING", "RUNNING"].includes(active[1]?.status)) {
+        throw make_control_error(
+          active[0] + "_LIVE_TEST_ALREADY_RUNNING",
+          active[0] + " live test already running for " + char_name,
+          409,
+        );
+      }
+    }
+
+    const original_desired_state =
+      char_block.desired_runtime_state ||
+      (char_block.enabled
+        ? DESIRED_RUNTIME_STATES.RUNNING
+        : DESIRED_RUNTIME_STATES.STOPPED);
+    const started_at = Date.now();
+    upgrade_live_test_sequence += 1;
+    const request_id = `upgrade-live-${started_at}-${upgrade_live_test_sequence}`;
+
+    char_block.upgrade_live_test = {
+      request_id,
+      status: "STARTING",
+      outcome: null,
+      reason: null,
+      started_at,
+      completed_at: null,
+      target: {
+        itemName: item_name,
+        itemSlot: item_slot,
+        scrollName: scroll_name,
+      },
+    };
+    upgrade_live_test_active = true;
+    emit_supervisor_event("UPGRADE_LIVE_TEST_REQUESTED", char_name, {
+      request_id,
+      itemName: item_name,
+      itemSlot: item_slot,
+      scrollName: scroll_name,
+      irreversibleMutation: true,
+      original_desired_state,
+    });
+    dashboard?.publishSnapshot();
+
+    let runtime_state_restored = false;
+    let runtime_override_applied = false;
+
+    try {
+      const bundle_path = path.join(
+        process.cwd(),
+        "TYPECODE.out",
+        MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE,
+      );
+      if (!fs_regular.existsSync(bundle_path)) {
+        throw make_control_error(
+          "UPGRADE_LIVE_TEST_RUNTIME_BUNDLE_MISSING",
+          `Upgrade runtime bundle is missing: ${bundle_path}`,
+          503,
+        );
+      }
+
+      char_block.movement_live_test_typescript_override =
+        MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE;
+      char_block.inventory_intelligence_runtime = null;
+      char_block.upgrade_runtime = null;
+      runtime_override_applied = true;
+
+      if (original_desired_state !== DESIRED_RUNTIME_STATES.RUNNING) {
+        char_block.enabled = true;
+        char_block.desired_runtime_state = DESIRED_RUNTIME_STATES.RUNNING;
+      }
+
+      await restart_character_for_movement_runtime(char_name, char_block);
+      const ready_block = await wait_for_upgrade_live_test_runtime(char_name);
+      const result_promise = wait_for_upgrade_live_test_result(
+        char_name,
+        request_id,
+      );
+
+      ready_block.upgrade_live_test = {
+        ...ready_block.upgrade_live_test,
+        status: "RUNNING",
+      };
+      dashboard?.publishSnapshot();
+
+      const sent = safe_send(ready_block.instance, {
+        type: "upgrade_live_test",
+        request_id,
+        itemName: item_name,
+        scrollName: scroll_name,
+        ...(item_slot !== null && { itemSlot: item_slot }),
+      });
+      if (!sent) {
+        const pending = upgrade_live_test_requests.get(request_id);
+        if (pending) {
+          clearTimeout(pending.timer);
+          upgrade_live_test_requests.delete(request_id);
+        }
+        throw make_control_error(
+          "UPGRADE_LIVE_TEST_DISPATCH_FAILED",
+          `Could not dispatch Upgrade live test to ${char_name}`,
+          503,
+        );
+      }
+
+      const child_response = await result_promise;
+      if (child_response.error || !child_response.result) {
+        throw make_control_error(
+          "UPGRADE_LIVE_TEST_RUNTIME_FAILED",
+          child_response.error || "Upgrade live test returned no result",
+          500,
+        );
+      }
+
+      const runtime_result = child_response.result;
+      ready_block.upgrade_live_test = {
+        ...runtime_result,
+        request_id,
+        status:
+          runtime_result.outcome === "PASS"
+            ? "COMPLETED"
+            : runtime_result.outcome === "UNKNOWN"
+            ? "UNKNOWN"
+            : "FAILED",
+        started_at,
+        completed_at: Date.now(),
+        cleanup: {
+          ...(runtime_result.cleanup || {}),
+          runtimeStateRestored: false,
+          dispatcherRestored: false,
+        },
+      };
+      emit_supervisor_event("UPGRADE_LIVE_TEST_COMPLETED", char_name, {
+        request_id,
+        outcome: runtime_result.outcome,
+        reason: runtime_result.reason,
+        action_id: runtime_result.upgrade?.lastAction?.id || null,
+        evidence: runtime_result.evidence || null,
+      });
+    } catch (error) {
+      char_block.upgrade_live_test = {
+        request_id,
+        outcome:
+          error.code === "UPGRADE_LIVE_TEST_TIMEOUT" ||
+          error.code === "UPGRADE_LIVE_TEST_RUNTIME_TIMEOUT"
+            ? "TIMEOUT"
+            : "FAIL",
+        reason: error.code || error.message || "UPGRADE_LIVE_TEST_FAILED",
+        error: error.message || String(error),
+        status: "FAILED",
+        started_at,
+        completed_at: Date.now(),
+        durationMs: Date.now() - started_at,
+        target: {
+          itemName: item_name,
+          itemSlot: item_slot,
+          scrollName: scroll_name,
+        },
+        scope: {
+          upgradeMutationAllowed: true,
+          irreversibleMutation: true,
+          offeringMutationAllowed: false,
+          compoundMutationAllowed: false,
+          exchangeMutationAllowed: false,
+          craftMutationAllowed: false,
+          blindRetryAllowed: false,
+          mutationScope: "single-upgrade-attempt-only",
+        },
+        cleanup: {
+          runtimeStateRestored: false,
+          dispatcherRestored: false,
+        },
+      };
+      emit_supervisor_event(
+        "UPGRADE_LIVE_TEST_FAILED",
+        char_name,
+        char_block.upgrade_live_test,
+      );
+    } finally {
+      const pending = upgrade_live_test_requests.get(request_id);
+      if (pending) {
+        clearTimeout(pending.timer);
+        upgrade_live_test_requests.delete(request_id);
+      }
+
+      try {
+        if (runtime_override_applied) {
+          await restore_movement_live_test_execution_source(
+            char_name,
+            original_desired_state,
+          );
+        } else {
+          await restore_movement_live_test_state(
+            char_name,
+            original_desired_state,
+          );
+        }
+        runtime_state_restored = true;
+      } catch (restore_error) {
+        emit_supervisor_event(
+          "UPGRADE_LIVE_TEST_STATE_RESTORE_FAILED",
+          char_name,
+          {
+            request_id,
+            desired_runtime_state: original_desired_state,
+            error:
+              restore_error instanceof Error
+                ? restore_error.message
+                : String(restore_error),
+          },
+        );
+      }
+
+      upgrade_live_test_active = false;
+      schedule_merchant_logistics_dispatch();
+      const final_block = character_manage[char_name];
+      if (final_block?.upgrade_live_test) {
+        final_block.upgrade_live_test.cleanup = {
+          ...(final_block.upgrade_live_test.cleanup || {}),
+          runtimeStateRestored: runtime_state_restored,
+          dispatcherRestored: true,
+        };
+        if (
+          !runtime_state_restored &&
+          final_block.upgrade_live_test.outcome === "PASS"
+        ) {
+          final_block.upgrade_live_test.outcome = "FAIL";
+          final_block.upgrade_live_test.reason =
+            "UPGRADE_LIVE_E2E_STATE_RESTORE_FAILED";
+          final_block.upgrade_live_test.status = "FAILED";
+        }
+      }
+      dashboard?.publishSnapshot();
+    }
+
+    return character_manage[char_name]?.upgrade_live_test;
+  }
+
+  async function run_exchange_live_test(char_name, options = {}) {
+    const char_block = character_manage[char_name];
+    if (!char_block) {
+      throw make_control_error(
+        "CHARACTER_NOT_FOUND",
+        `Unknown character: ${char_name}`,
+        404,
+      );
+    }
+    if (char_block.account_owned !== true) {
+      throw make_control_error(
+        "EXCHANGE_LIVE_TEST_ACCOUNT_CHARACTER_REQUIRED",
+        "Exchange live test requires an account-owned character: " + char_name,
+        400,
+      );
+    }
+    if (
+      (char_block.account_character_type || char_block.live_state?.ctype) !==
+      "merchant"
+    ) {
+      throw make_control_error(
+        "EXCHANGE_LIVE_TEST_MERCHANT_REQUIRED",
+        "Exchange live test requires a merchant: " + char_name,
+        400,
+      );
+    }
+
+    const item_name =
+      typeof options.itemName === "string" ? options.itemName.trim() : "";
+    const item_slot = Number(options.itemSlot);
+
+    if (!item_name || !Number.isInteger(item_slot) || item_slot < 0) {
+      throw make_control_error(
+        "EXCHANGE_LIVE_TEST_EXPLICIT_TARGET_REQUIRED",
+        "Exchange live test requires explicit itemName and non-negative itemSlot",
+        400,
+      );
+    }
+
+    if (
+      exchange_live_test_active ||
+      craft_live_test_active ||
+      exchange_preflight_active ||
+      craft_preflight_active ||
+      compound_live_test_active ||
+      craft_material_preparation_active ||
+      compound_material_preparation_active ||
+      upgrade_live_test_active ||
+      upgrade_live_preflight_active
+    ) {
+      throw make_control_error(
+        "MUTATION_VERIFICATION_ALREADY_RUNNING",
+        "A mutation verification or Compound preparation is already running",
+        409,
+      );
+    }
+
+    for (const active of [
+      ["MOVEMENT", char_block.movement_live_test],
+      ["COMBAT", char_block.combat_live_test],
+      ["CLASS_SKILL", char_block.class_skill_live_test],
+      ["GROUP", char_block.group_live_test],
+      ["FARM", char_block.farm_live_test],
+      ["INVENTORY", char_block.inventory_live_test],
+      ["GEAR_SCORING", char_block.gear_scoring_live_test],
+      [
+        "ACCOUNT_GEAR_RESERVATION",
+        char_block.account_gear_reservation_live_test,
+      ],
+      ["UPGRADE", char_block.upgrade_live_test],
+      ["COMPOUND", char_block.compound_live_test],
+      ["LOGISTICS", char_block.logistics_live_test],
+      ["MERCHANT", char_block.merchant_live_test],
+      ["BANK_TRAVEL", char_block.bank_travel_live_test],
+      ["BANK_GOLD", char_block.bank_gold_live_test],
+      ["NPC_TRADING", char_block.npc_trading_live_test],
+      ["MARKET_TRADING", char_block.market_trading_live_test],
+      ["MERRIT", char_block.merrit_live_test],
+      ["FISHING", char_block.fishing_live_test],
+    ]) {
+      if (["STARTING", "RUNNING"].includes(active[1]?.status)) {
+        throw make_control_error(
+          active[0] + "_LIVE_TEST_ALREADY_RUNNING",
+          active[0] + " live test already running for " + char_name,
+          409,
+        );
+      }
+    }
+
+    const original_desired_state =
+      char_block.desired_runtime_state ||
+      (char_block.enabled
+        ? DESIRED_RUNTIME_STATES.RUNNING
+        : DESIRED_RUNTIME_STATES.STOPPED);
+    const started_at = Date.now();
+    exchange_live_test_sequence += 1;
+    const request_id = `exchange-live-${started_at}-${exchange_live_test_sequence}`;
+
+    char_block.exchange_live_test = {
+      request_id,
+      status: "STARTING",
+      outcome: null,
+      reason: null,
+      started_at,
+      completed_at: null,
+      target: {
+        itemName: item_name,
+        itemSlot: item_slot,
+      },
+    };
+    exchange_live_test_active = true;
+    emit_supervisor_event("EXCHANGE_LIVE_TEST_REQUESTED", char_name, {
+      request_id,
+      itemName: item_name,
+      itemSlot: item_slot,
+      irreversibleMutation: true,
+      blindRetryAllowed: false,
+      original_desired_state,
+    });
+    dashboard?.publishSnapshot();
+
+    let runtime_state_restored = false;
+    let runtime_override_applied = false;
+
+    try {
+      const bundle_path = path.join(
+        process.cwd(),
+        "TYPECODE.out",
+        MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE,
+      );
+      if (!fs_regular.existsSync(bundle_path)) {
+        throw make_control_error(
+          "EXCHANGE_LIVE_TEST_RUNTIME_BUNDLE_MISSING",
+          `Exchange runtime bundle is missing: ${bundle_path}`,
+          503,
+        );
+      }
+
+      char_block.movement_live_test_typescript_override =
+        MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE;
+      char_block.inventory_intelligence_runtime = null;
+      runtime_override_applied = true;
+
+      if (original_desired_state !== DESIRED_RUNTIME_STATES.RUNNING) {
+        char_block.enabled = true;
+        char_block.desired_runtime_state = DESIRED_RUNTIME_STATES.RUNNING;
+      }
+
+      await restart_character_for_movement_runtime(char_name, char_block);
+      const ready_block = await wait_for_exchange_live_test_runtime(char_name);
+      const result_promise = wait_for_exchange_live_test_result(
+        char_name,
+        request_id,
+      );
+
+      ready_block.exchange_live_test = {
+        ...ready_block.exchange_live_test,
+        status: "RUNNING",
+      };
+      dashboard?.publishSnapshot();
+
+      const sent = safe_send(ready_block.instance, {
+        type: "exchange_live_test",
+        request_id,
+        itemName: item_name,
+        itemSlot: item_slot,
+      });
+      if (!sent) {
+        const pending = exchange_live_test_requests.get(request_id);
+        if (pending) {
+          clearTimeout(pending.timer);
+          exchange_live_test_requests.delete(request_id);
+        }
+        throw make_control_error(
+          "EXCHANGE_LIVE_TEST_DISPATCH_FAILED",
+          `Could not dispatch Exchange live test to ${char_name}`,
+          503,
+        );
+      }
+
+      const child_response = await result_promise;
+      if (child_response.error || !child_response.result) {
+        throw make_control_error(
+          "EXCHANGE_LIVE_TEST_RUNTIME_FAILED",
+          child_response.error || "Exchange live test returned no result",
+          500,
+        );
+      }
+
+      const runtime_result = child_response.result;
+      ready_block.exchange_live_test = {
+        ...runtime_result,
+        request_id,
+        status:
+          runtime_result.outcome === "PASS"
+            ? "COMPLETED"
+            : runtime_result.outcome === "UNKNOWN"
+            ? "UNKNOWN"
+            : "FAILED",
+        started_at,
+        completed_at: Date.now(),
+        cleanup: {
+          ...(runtime_result.cleanup || {}),
+          runtimeStateRestored: false,
+          dispatcherRestored: false,
+        },
+      };
+      emit_supervisor_event("EXCHANGE_LIVE_TEST_COMPLETED", char_name, {
+        request_id,
+        outcome: runtime_result.outcome,
+        reason: runtime_result.reason,
+        action_id: runtime_result.exchange?.lastAction?.id || null,
+        evidence: runtime_result.evidence || null,
+      });
+    } catch (error) {
+      char_block.exchange_live_test = {
+        request_id,
+        outcome:
+          error.code === "EXCHANGE_LIVE_TEST_TIMEOUT" ||
+          error.code === "EXCHANGE_LIVE_TEST_RUNTIME_TIMEOUT"
+            ? "TIMEOUT"
+            : "FAIL",
+        reason: error.code || error.message || "EXCHANGE_LIVE_TEST_FAILED",
+        error: error.message || String(error),
+        status: "FAILED",
+        started_at,
+        completed_at: Date.now(),
+        durationMs: Date.now() - started_at,
+        target: {
+          itemName: item_name,
+          itemSlot: item_slot,
+        },
+        scope: {
+          movementMutationAllowed: true,
+          upgradeMutationAllowed: false,
+          compoundMutationAllowed: false,
+          exchangeMutationAllowed: true,
+          craftMutationAllowed: false,
+          irreversibleMutation: true,
+          blindRetryAllowed: false,
+          mutationScope: "single-exchange-attempt-only",
+        },
+        cleanup: {
+          runtimeStateRestored: false,
+          dispatcherRestored: false,
+        },
+      };
+      emit_supervisor_event(
+        "EXCHANGE_LIVE_TEST_FAILED",
+        char_name,
+        char_block.exchange_live_test,
+      );
+    } finally {
+      const pending = exchange_live_test_requests.get(request_id);
+      if (pending) {
+        clearTimeout(pending.timer);
+        exchange_live_test_requests.delete(request_id);
+      }
+
+      try {
+        if (runtime_override_applied) {
+          await restore_movement_live_test_execution_source(
+            char_name,
+            original_desired_state,
+          );
+        } else {
+          await restore_movement_live_test_state(
+            char_name,
+            original_desired_state,
+          );
+        }
+        runtime_state_restored = true;
+      } catch (restore_error) {
+        emit_supervisor_event(
+          "EXCHANGE_LIVE_TEST_STATE_RESTORE_FAILED",
+          char_name,
+          {
+            request_id,
+            desired_runtime_state: original_desired_state,
+            error:
+              restore_error instanceof Error
+                ? restore_error.message
+                : String(restore_error),
+          },
+        );
+      }
+
+      exchange_live_test_active = false;
+      schedule_merchant_logistics_dispatch();
+      const final_block = character_manage[char_name];
+      if (final_block?.exchange_live_test) {
+        final_block.exchange_live_test.cleanup = {
+          ...(final_block.exchange_live_test.cleanup || {}),
+          runtimeStateRestored: runtime_state_restored,
+          dispatcherRestored: true,
+        };
+        if (
+          !runtime_state_restored &&
+          final_block.exchange_live_test.outcome === "PASS"
+        ) {
+          final_block.exchange_live_test.outcome = "FAIL";
+          final_block.exchange_live_test.reason =
+            "EXCHANGE_LIVE_E2E_STATE_RESTORE_FAILED";
+          final_block.exchange_live_test.status = "FAILED";
+        }
+      }
+      dashboard?.publishSnapshot();
+    }
+
+    return character_manage[char_name]?.exchange_live_test;
+  }
+
+  async function run_compound_live_test(char_name, options = {}) {
+    const char_block = character_manage[char_name];
+    if (!char_block) {
+      throw make_control_error(
+        "CHARACTER_NOT_FOUND",
+        `Unknown character: ${char_name}`,
+        404,
+      );
+    }
+    if (char_block.account_owned !== true) {
+      throw make_control_error(
+        "COMPOUND_LIVE_TEST_ACCOUNT_CHARACTER_REQUIRED",
+        "Compound live test requires an account-owned character: " + char_name,
+        400,
+      );
+    }
+    if (
+      (char_block.account_character_type || char_block.live_state?.ctype) !==
+      "merchant"
+    ) {
+      throw make_control_error(
+        "COMPOUND_LIVE_TEST_MERCHANT_REQUIRED",
+        "Compound live test requires a merchant: " + char_name,
+        400,
+      );
+    }
+
+    const item_name =
+      typeof options.itemName === "string" ? options.itemName.trim() : "";
+    const scroll_name =
+      typeof options.scrollName === "string" ? options.scrollName.trim() : "";
+    const raw_slots = Array.isArray(options.itemSlots) ? options.itemSlots : [];
+    const item_slots = raw_slots.map((slot) => Number(slot));
+    const slots_valid =
+      item_slots.length === 3 &&
+      item_slots.every((slot) => Number.isInteger(slot) && slot >= 0) &&
+      new Set(item_slots).size === 3;
+
+    if (!item_name || !scroll_name || !slots_valid) {
+      throw make_control_error(
+        "COMPOUND_LIVE_TEST_EXPLICIT_TARGET_REQUIRED",
+        "Compound live test requires explicit itemName, three distinct itemSlots, and scrollName",
+        400,
+      );
+    }
+
+    item_slots.sort((left, right) => left - right);
+
+    if (
+      compound_live_test_active ||
+      craft_material_preparation_active ||
+      compound_material_preparation_active ||
+      upgrade_live_test_active ||
+      upgrade_live_preflight_active ||
+      exchange_preflight_active ||
+      craft_preflight_active ||
+      exchange_live_test_active
+    ) {
+      throw make_control_error(
+        "MUTATION_VERIFICATION_ALREADY_RUNNING",
+        "A mutation verification or Compound preparation is already running",
+        409,
+      );
+    }
+
+    for (const active of [
+      ["MOVEMENT", char_block.movement_live_test],
+      ["COMBAT", char_block.combat_live_test],
+      ["CLASS_SKILL", char_block.class_skill_live_test],
+      ["GROUP", char_block.group_live_test],
+      ["FARM", char_block.farm_live_test],
+      ["INVENTORY", char_block.inventory_live_test],
+      ["GEAR_SCORING", char_block.gear_scoring_live_test],
+      [
+        "ACCOUNT_GEAR_RESERVATION",
+        char_block.account_gear_reservation_live_test,
+      ],
+      ["LOGISTICS", char_block.logistics_live_test],
+      ["MERCHANT", char_block.merchant_live_test],
+      ["BANK_TRAVEL", char_block.bank_travel_live_test],
+      ["BANK_GOLD", char_block.bank_gold_live_test],
+      ["NPC_TRADING", char_block.npc_trading_live_test],
+      ["MARKET_TRADING", char_block.market_trading_live_test],
+      ["MERRIT", char_block.merrit_live_test],
+      ["FISHING", char_block.fishing_live_test],
+    ]) {
+      if (["STARTING", "RUNNING"].includes(active[1]?.status)) {
+        throw make_control_error(
+          active[0] + "_LIVE_TEST_ALREADY_RUNNING",
+          active[0] + " live test already running for " + char_name,
+          409,
+        );
+      }
+    }
+
+    const original_desired_state =
+      char_block.desired_runtime_state ||
+      (char_block.enabled
+        ? DESIRED_RUNTIME_STATES.RUNNING
+        : DESIRED_RUNTIME_STATES.STOPPED);
+    const started_at = Date.now();
+    compound_live_test_sequence += 1;
+    const request_id = `compound-live-${started_at}-${compound_live_test_sequence}`;
+
+    char_block.compound_live_test = {
+      request_id,
+      status: "STARTING",
+      outcome: null,
+      reason: null,
+      started_at,
+      completed_at: null,
+      target: {
+        itemName: item_name,
+        itemSlots: item_slots,
+        scrollName: scroll_name,
+      },
+    };
+    compound_live_test_active = true;
+    emit_supervisor_event("COMPOUND_LIVE_TEST_REQUESTED", char_name, {
+      request_id,
+      itemName: item_name,
+      itemSlots: item_slots,
+      scrollName: scroll_name,
+      irreversibleMutation: true,
+      original_desired_state,
+    });
+    dashboard?.publishSnapshot();
+
+    let runtime_state_restored = false;
+    let runtime_override_applied = false;
+
+    try {
+      const bundle_path = path.join(
+        process.cwd(),
+        "TYPECODE.out",
+        MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE,
+      );
+      if (!fs_regular.existsSync(bundle_path)) {
+        throw make_control_error(
+          "COMPOUND_LIVE_TEST_RUNTIME_BUNDLE_MISSING",
+          `Compound runtime bundle is missing: ${bundle_path}`,
+          503,
+        );
+      }
+
+      char_block.movement_live_test_typescript_override =
+        MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE;
+      char_block.inventory_intelligence_runtime = null;
+      runtime_override_applied = true;
+
+      if (original_desired_state !== DESIRED_RUNTIME_STATES.RUNNING) {
+        char_block.enabled = true;
+        char_block.desired_runtime_state = DESIRED_RUNTIME_STATES.RUNNING;
+      }
+
+      await restart_character_for_movement_runtime(char_name, char_block);
+      const ready_block = await wait_for_compound_live_test_runtime(char_name);
+      const result_promise = wait_for_compound_live_test_result(
+        char_name,
+        request_id,
+      );
+
+      ready_block.compound_live_test = {
+        ...ready_block.compound_live_test,
+        status: "RUNNING",
+      };
+      dashboard?.publishSnapshot();
+
+      const sent = safe_send(ready_block.instance, {
+        type: "compound_live_test",
+        request_id,
+        itemName: item_name,
+        itemSlots: item_slots,
+        scrollName: scroll_name,
+      });
+      if (!sent) {
+        const pending = compound_live_test_requests.get(request_id);
+        if (pending) {
+          clearTimeout(pending.timer);
+          compound_live_test_requests.delete(request_id);
+        }
+        throw make_control_error(
+          "COMPOUND_LIVE_TEST_DISPATCH_FAILED",
+          `Could not dispatch Compound live test to ${char_name}`,
+          503,
+        );
+      }
+
+      const child_response = await result_promise;
+      if (child_response.error || !child_response.result) {
+        throw make_control_error(
+          "COMPOUND_LIVE_TEST_RUNTIME_FAILED",
+          child_response.error || "Compound live test returned no result",
+          500,
+        );
+      }
+
+      const runtime_result = child_response.result;
+      ready_block.compound_live_test = {
+        ...runtime_result,
+        request_id,
+        status:
+          runtime_result.outcome === "PASS"
+            ? "COMPLETED"
+            : runtime_result.outcome === "UNKNOWN"
+            ? "UNKNOWN"
+            : "FAILED",
+        started_at,
+        completed_at: Date.now(),
+        cleanup: {
+          ...(runtime_result.cleanup || {}),
+          runtimeStateRestored: false,
+          dispatcherRestored: false,
+        },
+      };
+      emit_supervisor_event("COMPOUND_LIVE_TEST_COMPLETED", char_name, {
+        request_id,
+        outcome: runtime_result.outcome,
+        reason: runtime_result.reason,
+        action_id: runtime_result.compound?.lastAction?.id || null,
+        evidence: runtime_result.evidence || null,
+      });
+    } catch (error) {
+      const error_code =
+        error && typeof error === "object" && "code" in error
+          ? String(error.code || "")
+          : "";
+      char_block.compound_live_test = {
+        request_id,
+        outcome:
+          error_code === "COMPOUND_LIVE_TEST_TIMEOUT" ||
+          error_code === "COMPOUND_LIVE_TEST_RUNTIME_TIMEOUT"
+            ? "TIMEOUT"
+            : "FAIL",
+        reason:
+          error_code ||
+          (error instanceof Error
+            ? error.message
+            : "COMPOUND_LIVE_TEST_FAILED"),
+        error: error instanceof Error ? error.message : String(error),
+        status: "FAILED",
+        started_at,
+        completed_at: Date.now(),
+        durationMs: Date.now() - started_at,
+        target: {
+          itemName: item_name,
+          itemSlots: item_slots,
+          scrollName: scroll_name,
+        },
+        scope: {
+          upgradeMutationAllowed: false,
+          compoundMutationAllowed: true,
+          irreversibleMutation: true,
+          offeringMutationAllowed: false,
+          exchangeMutationAllowed: false,
+          craftMutationAllowed: false,
+          blindRetryAllowed: false,
+          mutationScope: "single-compound-attempt-only",
+        },
+        cleanup: {
+          runtimeStateRestored: false,
+          dispatcherRestored: false,
+        },
+      };
+      emit_supervisor_event(
+        "COMPOUND_LIVE_TEST_FAILED",
+        char_name,
+        char_block.compound_live_test,
+      );
+    } finally {
+      const pending = compound_live_test_requests.get(request_id);
+      if (pending) {
+        clearTimeout(pending.timer);
+        compound_live_test_requests.delete(request_id);
+      }
+
+      try {
+        if (runtime_override_applied) {
+          await restore_movement_live_test_execution_source(
+            char_name,
+            original_desired_state,
+          );
+        } else {
+          await restore_movement_live_test_state(
+            char_name,
+            original_desired_state,
+          );
+        }
+        runtime_state_restored = true;
+      } catch (restore_error) {
+        emit_supervisor_event(
+          "COMPOUND_LIVE_TEST_STATE_RESTORE_FAILED",
+          char_name,
+          {
+            request_id,
+            desired_runtime_state: original_desired_state,
+            error:
+              restore_error instanceof Error
+                ? restore_error.message
+                : String(restore_error),
+          },
+        );
+      }
+
+      compound_live_test_active = false;
+      schedule_merchant_logistics_dispatch();
+      const final_block = character_manage[char_name];
+      if (final_block?.compound_live_test) {
+        final_block.compound_live_test.cleanup = {
+          ...(final_block.compound_live_test.cleanup || {}),
+          runtimeStateRestored: runtime_state_restored,
+          dispatcherRestored: true,
+        };
+        if (
+          !runtime_state_restored &&
+          final_block.compound_live_test.outcome === "PASS"
+        ) {
+          final_block.compound_live_test.outcome = "FAIL";
+          final_block.compound_live_test.reason =
+            "COMPOUND_LIVE_E2E_STATE_RESTORE_FAILED";
+          final_block.compound_live_test.status = "FAILED";
+        }
+      }
+      dashboard?.publishSnapshot();
+    }
+
+    return character_manage[char_name]?.compound_live_test;
+  }
+
+  async function run_bank_gold_live_test(char_name) {
+    const char_block = character_manage[char_name];
+    if (!char_block) {
+      throw make_control_error(
+        "CHARACTER_NOT_FOUND",
+        `Unknown character: ${char_name}`,
+        404,
+      );
+    }
+    if (
+      (char_block.account_character_type || char_block.live_state?.ctype) !==
+      "merchant"
+    ) {
+      throw make_control_error(
+        "BANK_GOLD_LIVE_TEST_MERCHANT_REQUIRED",
+        "Bank gold live test requires a merchant: " + char_name,
+        400,
+      );
+    }
+    if (char_block.account_owned !== true) {
+      throw make_control_error(
+        "BANK_GOLD_LIVE_TEST_ACCOUNT_MERCHANT_REQUIRED",
+        "Bank gold live test requires an account-owned merchant: " + char_name,
+        400,
+      );
+    }
+    if (
+      ["STARTING", "RUNNING"].includes(char_block.bank_gold_live_test?.status)
+    ) {
+      throw make_control_error(
+        "BANK_GOLD_LIVE_TEST_ALREADY_RUNNING",
+        "Bank gold live test already running for " + char_name,
+        409,
+      );
+    }
+
+    for (const active of [
+      ["BANK_TRAVEL", char_block.bank_travel_live_test],
+      ["MOVEMENT", char_block.movement_live_test],
+      ["COMBAT", char_block.combat_live_test],
+      ["CLASS_SKILL", char_block.class_skill_live_test],
+      ["GROUP", char_block.group_live_test],
+      ["FARM", char_block.farm_live_test],
+      ["INVENTORY", char_block.inventory_live_test],
+      ["LOGISTICS", char_block.logistics_live_test],
+      ["MERCHANT", char_block.merchant_live_test],
+      ["MERRIT", char_block.merrit_live_test],
+      ["FISHING", char_block.fishing_live_test],
+    ]) {
+      if (["STARTING", "RUNNING"].includes(active[1]?.status)) {
+        throw make_control_error(
+          active[0] + "_LIVE_TEST_ALREADY_RUNNING",
+          active[0] + " live test already running for " + char_name,
+          409,
+        );
+      }
+    }
+
+    const original_desired_state =
+      char_block.desired_runtime_state ||
+      (char_block.enabled
+        ? DESIRED_RUNTIME_STATES.RUNNING
+        : DESIRED_RUNTIME_STATES.STOPPED);
+    const started_at = Date.now();
+    bank_gold_live_test_sequence += 1;
+    const request_id = `bank-gold-live-${started_at}-${bank_gold_live_test_sequence}`;
+
+    char_block.bank_gold_live_test = {
+      request_id,
+      status: "STARTING",
+      outcome: null,
+      reason: null,
+      started_at,
+      completed_at: null,
+    };
+    bank_gold_live_test_active = true;
+    emit_supervisor_event("BANK_GOLD_LIVE_TEST_REQUESTED", char_name, {
+      request_id,
+      amount: 1,
+      original_desired_state,
+    });
+    dashboard?.publishSnapshot();
+
+    let runtime_override_applied = false;
+    let runtime_state_restored = false;
+
+    try {
+      const runtime_ready =
+        !!char_block.instance &&
+        char_block.connected &&
+        Number.isFinite(char_block.bot_runtime_started_at);
+
+      if (!runtime_ready) {
+        const bundle_path = path.join(
+          process.cwd(),
+          "TYPECODE.out",
+          MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE,
+        );
+        if (!fs_regular.existsSync(bundle_path)) {
+          throw make_control_error(
+            "BANK_GOLD_LIVE_TEST_RUNTIME_BUNDLE_MISSING",
+            `Bank gold runtime bundle is missing: ${bundle_path}`,
+            503,
+          );
+        }
+
+        char_block.movement_live_test_typescript_override =
+          MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE;
+        runtime_override_applied = true;
+      }
+
+      if (original_desired_state !== DESIRED_RUNTIME_STATES.RUNNING) {
+        char_block.enabled = true;
+        char_block.desired_runtime_state = DESIRED_RUNTIME_STATES.RUNNING;
+      }
+
+      if (runtime_override_applied) {
+        await restart_character_for_movement_runtime(char_name, char_block);
+      } else if (!char_block.instance) {
+        await control_character(char_name, CONTROL_ACTIONS.START);
+      }
+
+      await wait_for_merchant_live_test_runtime(char_name);
+      const ready_block = character_manage[char_name];
+      const result_promise = wait_for_bank_gold_live_test_result(
+        char_name,
+        request_id,
+      );
+
+      ready_block.bank_gold_live_test = {
+        ...ready_block.bank_gold_live_test,
+        status: "RUNNING",
+      };
+      dashboard?.publishSnapshot();
+
+      const sent = safe_send(ready_block.instance, {
+        type: "bank_gold_live_test",
+        request_id,
+        amount: 1,
+      });
+      if (!sent) {
+        const pending = bank_gold_live_test_requests.get(request_id);
+        if (pending) {
+          clearTimeout(pending.timer);
+          bank_gold_live_test_requests.delete(request_id);
+        }
+        throw make_control_error(
+          "BANK_GOLD_LIVE_TEST_DISPATCH_FAILED",
+          `Could not dispatch bank gold live test to ${char_name}`,
+          503,
+        );
+      }
+
+      const child_response = await result_promise;
+      if (child_response.error || !child_response.result) {
+        throw make_control_error(
+          "BANK_GOLD_LIVE_TEST_RUNTIME_FAILED",
+          child_response.error || "Bank gold live test returned no result",
+          500,
+        );
+      }
+
+      const runtime_result = child_response.result;
+      ready_block.bank_gold_live_test = {
+        ...runtime_result,
+        request_id,
+        status: runtime_result.outcome === "PASS" ? "COMPLETED" : "FAILED",
+        started_at,
+        completed_at: Date.now(),
+        cleanup: {
+          ...(runtime_result.cleanup || {}),
+          runtimeStateRestored: false,
+          dispatcherRestored: false,
+        },
+      };
+      emit_supervisor_event("BANK_GOLD_LIVE_TEST_COMPLETED", char_name, {
+        request_id,
+        outcome: runtime_result.outcome,
+        reason: runtime_result.reason,
+        evidence: runtime_result.evidence || null,
+      });
+    } catch (error) {
+      char_block.bank_gold_live_test = {
+        request_id,
+        outcome:
+          error.code === "BANK_GOLD_LIVE_TEST_TIMEOUT" ||
+          error.code === "MERCHANT_LIVE_TEST_RUNTIME_TIMEOUT"
+            ? "TIMEOUT"
+            : "FAIL",
+        reason: error.code || error.message || "BANK_GOLD_LIVE_TEST_FAILED",
+        error: error.message || String(error),
+        status: "FAILED",
+        started_at,
+        completed_at: Date.now(),
+        durationMs: Date.now() - started_at,
+        amount: 1,
+        scope: {
+          movementMutationAllowed: true,
+          bankGoldMutationAllowed: true,
+          bankItemMutationAllowed: false,
+          npcTradingMutationAllowed: false,
+          marketTradingMutationAllowed: false,
+          blindRetryAllowed: false,
+          mutationScope: "bank-gold-round-trip-only",
+        },
+        cleanup: {
+          runtimeStateRestored: false,
+          dispatcherRestored: false,
+          goldBaselineRestored: false,
+        },
+      };
+      emit_supervisor_event(
+        "BANK_GOLD_LIVE_TEST_FAILED",
+        char_name,
+        char_block.bank_gold_live_test,
+      );
+    } finally {
+      const pending = bank_gold_live_test_requests.get(request_id);
+      if (pending) {
+        clearTimeout(pending.timer);
+        bank_gold_live_test_requests.delete(request_id);
+      }
+
+      try {
+        if (runtime_override_applied) {
+          await restore_movement_live_test_execution_source(
+            char_name,
+            original_desired_state,
+          );
+        } else {
+          await restore_movement_live_test_state(
+            char_name,
+            original_desired_state,
+          );
+        }
+        runtime_state_restored = true;
+      } catch (restore_error) {
+        emit_supervisor_event(
+          "BANK_GOLD_LIVE_TEST_STATE_RESTORE_FAILED",
+          char_name,
+          {
+            request_id,
+            desired_runtime_state: original_desired_state,
+            error:
+              restore_error instanceof Error
+                ? restore_error.message
+                : String(restore_error),
+          },
+        );
+      }
+
+      bank_gold_live_test_active = false;
+      schedule_merchant_logistics_dispatch();
+      const final_block = character_manage[char_name];
+      if (final_block?.bank_gold_live_test) {
+        final_block.bank_gold_live_test.cleanup = {
+          ...(final_block.bank_gold_live_test.cleanup || {}),
+          runtimeStateRestored: runtime_state_restored,
+          dispatcherRestored: true,
+        };
+        if (
+          !runtime_state_restored &&
+          final_block.bank_gold_live_test.outcome === "PASS"
+        ) {
+          final_block.bank_gold_live_test.outcome = "FAIL";
+          final_block.bank_gold_live_test.reason =
+            "BANK_GOLD_LIVE_E2E_STATE_RESTORE_FAILED";
+          final_block.bank_gold_live_test.status = "FAILED";
+        }
+      }
+      dashboard?.publishSnapshot();
+    }
+
+    return character_manage[char_name]?.bank_gold_live_test;
+  }
+
+  async function run_bank_travel_live_test(char_name) {
+    const char_block = character_manage[char_name];
+    if (!char_block) {
+      throw make_control_error(
+        "CHARACTER_NOT_FOUND",
+        `Unknown character: ${char_name}`,
+        404,
+      );
+    }
+    if (
+      (char_block.account_character_type || char_block.live_state?.ctype) !==
+      "merchant"
+    ) {
+      throw make_control_error(
+        "BANK_TRAVEL_LIVE_TEST_MERCHANT_REQUIRED",
+        "Bank travel live test requires a merchant: " + char_name,
+        400,
+      );
+    }
+    if (char_block.account_owned !== true) {
+      throw make_control_error(
+        "BANK_TRAVEL_LIVE_TEST_ACCOUNT_MERCHANT_REQUIRED",
+        "Bank travel live test requires an account-owned merchant: " +
+          char_name,
+        400,
+      );
+    }
+    if (
+      ["STARTING", "RUNNING"].includes(char_block.bank_travel_live_test?.status)
+    ) {
+      throw make_control_error(
+        "BANK_TRAVEL_LIVE_TEST_ALREADY_RUNNING",
+        "Bank travel live test already running for " + char_name,
+        409,
+      );
+    }
+
+    for (const active of [
+      ["MOVEMENT", char_block.movement_live_test],
+      ["COMBAT", char_block.combat_live_test],
+      ["CLASS_SKILL", char_block.class_skill_live_test],
+      ["GROUP", char_block.group_live_test],
+      ["FARM", char_block.farm_live_test],
+      ["INVENTORY", char_block.inventory_live_test],
+      ["LOGISTICS", char_block.logistics_live_test],
+      ["MERCHANT", char_block.merchant_live_test],
+      ["MERRIT", char_block.merrit_live_test],
+      ["FISHING", char_block.fishing_live_test],
+    ]) {
+      if (["STARTING", "RUNNING"].includes(active[1]?.status)) {
+        throw make_control_error(
+          active[0] + "_LIVE_TEST_ALREADY_RUNNING",
+          active[0] + " live test already running for " + char_name,
+          409,
+        );
+      }
+    }
+
+    const original_desired_state =
+      char_block.desired_runtime_state ||
+      (char_block.enabled
+        ? DESIRED_RUNTIME_STATES.RUNNING
+        : DESIRED_RUNTIME_STATES.STOPPED);
+    const started_at = Date.now();
+    bank_travel_live_test_sequence += 1;
+    const request_id = `bank-travel-live-${started_at}-${bank_travel_live_test_sequence}`;
+
+    char_block.bank_travel_live_test = {
+      request_id,
+      status: "STARTING",
+      outcome: null,
+      reason: null,
+      started_at,
+      completed_at: null,
+    };
+    bank_travel_live_test_active = true;
+    emit_supervisor_event("BANK_TRAVEL_LIVE_TEST_REQUESTED", char_name, {
+      request_id,
+      original_desired_state,
+    });
+    dashboard?.publishSnapshot();
+
+    let runtime_override_applied = false;
+    let runtime_state_restored = false;
+
+    try {
+      const runtime_ready =
+        !!char_block.instance &&
+        char_block.connected &&
+        Number.isFinite(char_block.bot_runtime_started_at);
+
+      if (!runtime_ready) {
+        const bundle_path = path.join(
+          process.cwd(),
+          "TYPECODE.out",
+          MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE,
+        );
+        if (!fs_regular.existsSync(bundle_path)) {
+          throw make_control_error(
+            "BANK_TRAVEL_LIVE_TEST_RUNTIME_BUNDLE_MISSING",
+            `Bank travel runtime bundle is missing: ${bundle_path}`,
+            503,
+          );
+        }
+
+        char_block.movement_live_test_typescript_override =
+          MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE;
+        runtime_override_applied = true;
+      }
+
+      if (original_desired_state !== DESIRED_RUNTIME_STATES.RUNNING) {
+        char_block.enabled = true;
+        char_block.desired_runtime_state = DESIRED_RUNTIME_STATES.RUNNING;
+      }
+
+      if (runtime_override_applied) {
+        await restart_character_for_movement_runtime(char_name, char_block);
+      } else if (!char_block.instance) {
+        await control_character(char_name, CONTROL_ACTIONS.START);
+      }
+
+      await wait_for_merchant_live_test_runtime(char_name);
+      const ready_block = character_manage[char_name];
+      const result_promise = wait_for_bank_travel_live_test_result(
+        char_name,
+        request_id,
+      );
+
+      ready_block.bank_travel_live_test = {
+        ...ready_block.bank_travel_live_test,
+        status: "RUNNING",
+      };
+      dashboard?.publishSnapshot();
+
+      const sent = safe_send(ready_block.instance, {
+        type: "bank_travel_live_test",
+        request_id,
+      });
+      if (!sent) {
+        const pending = bank_travel_live_test_requests.get(request_id);
+        if (pending) {
+          clearTimeout(pending.timer);
+          bank_travel_live_test_requests.delete(request_id);
+        }
+        throw make_control_error(
+          "BANK_TRAVEL_LIVE_TEST_DISPATCH_FAILED",
+          `Could not dispatch bank travel live test to ${char_name}`,
+          503,
+        );
+      }
+
+      const child_response = await result_promise;
+      if (child_response.error || !child_response.result) {
+        throw make_control_error(
+          "BANK_TRAVEL_LIVE_TEST_RUNTIME_FAILED",
+          child_response.error || "Bank travel live test returned no result",
+          500,
+        );
+      }
+
+      const runtime_result = child_response.result;
+      ready_block.bank_travel_live_test = {
+        ...runtime_result,
+        request_id,
+        status: runtime_result.outcome === "PASS" ? "COMPLETED" : "FAILED",
+        started_at,
+        completed_at: Date.now(),
+        cleanup: {
+          ...(runtime_result.cleanup || {}),
+          runtimeStateRestored: false,
+          dispatcherRestored: false,
+        },
+      };
+      emit_supervisor_event("BANK_TRAVEL_LIVE_TEST_COMPLETED", char_name, {
+        request_id,
+        outcome: runtime_result.outcome,
+        reason: runtime_result.reason,
+      });
+    } catch (error) {
+      char_block.bank_travel_live_test = {
+        request_id,
+        outcome:
+          error.code === "BANK_TRAVEL_LIVE_TEST_TIMEOUT" ||
+          error.code === "MERCHANT_LIVE_TEST_RUNTIME_TIMEOUT"
+            ? "TIMEOUT"
+            : "FAIL",
+        reason: error.code || error.message || "BANK_TRAVEL_LIVE_TEST_FAILED",
+        error: error.message || String(error),
+        status: "FAILED",
+        started_at,
+        completed_at: Date.now(),
+        durationMs: Date.now() - started_at,
+        scope: {
+          movementMutationAllowed: true,
+          bankItemMutationAllowed: false,
+          bankGoldMutationAllowed: false,
+          npcTradingMutationAllowed: false,
+          marketTradingMutationAllowed: false,
+          blindRetryAllowed: false,
+          mutationScope: "bank-travel-only",
+        },
+        cleanup: {
+          runtimeStateRestored: false,
+          dispatcherRestored: false,
+        },
+      };
+      emit_supervisor_event(
+        "BANK_TRAVEL_LIVE_TEST_FAILED",
+        char_name,
+        char_block.bank_travel_live_test,
+      );
+    } finally {
+      const pending = bank_travel_live_test_requests.get(request_id);
+      if (pending) {
+        clearTimeout(pending.timer);
+        bank_travel_live_test_requests.delete(request_id);
+      }
+
+      try {
+        if (runtime_override_applied) {
+          await restore_movement_live_test_execution_source(
+            char_name,
+            original_desired_state,
+          );
+        } else {
+          await restore_movement_live_test_state(
+            char_name,
+            original_desired_state,
+          );
+        }
+        runtime_state_restored = true;
+      } catch (restore_error) {
+        emit_supervisor_event(
+          "BANK_TRAVEL_LIVE_TEST_STATE_RESTORE_FAILED",
+          char_name,
+          {
+            request_id,
+            desired_runtime_state: original_desired_state,
+            error:
+              restore_error instanceof Error
+                ? restore_error.message
+                : String(restore_error),
+          },
+        );
+      }
+
+      bank_travel_live_test_active = false;
+      schedule_merchant_logistics_dispatch();
+      const final_block = character_manage[char_name];
+      if (final_block?.bank_travel_live_test) {
+        final_block.bank_travel_live_test.cleanup = {
+          ...(final_block.bank_travel_live_test.cleanup || {}),
+          runtimeStateRestored: runtime_state_restored,
+          dispatcherRestored: true,
+        };
+        if (
+          !runtime_state_restored &&
+          final_block.bank_travel_live_test.outcome === "PASS"
+        ) {
+          final_block.bank_travel_live_test.outcome = "FAIL";
+          final_block.bank_travel_live_test.reason =
+            "BANK_TRAVEL_LIVE_E2E_STATE_RESTORE_FAILED";
+          final_block.bank_travel_live_test.status = "FAILED";
+        }
+      }
+      dashboard?.publishSnapshot();
+    }
+
+    return character_manage[char_name]?.bank_travel_live_test;
+  }
+
+  async function run_merrit_live_test(char_name) {
+    const char_block = character_manage[char_name];
+    if (!char_block) {
+      throw make_control_error(
+        "CHARACTER_NOT_FOUND",
+        `Unknown character: ${char_name}`,
+        404,
+      );
+    }
+    if (
+      (char_block.account_character_type || char_block.live_state?.ctype) !==
+      "merchant"
+    ) {
+      throw make_control_error(
+        "MERRIT_LIVE_TEST_MERCHANT_REQUIRED",
+        "Merrit live test requires a merchant: " + char_name,
+        400,
+      );
+    }
+    if (char_block.account_owned !== true) {
+      throw make_control_error(
+        "MERRIT_LIVE_TEST_ACCOUNT_MERCHANT_REQUIRED",
+        "Merrit live test requires an account-owned merchant: " + char_name,
+        400,
+      );
+    }
+    if (["STARTING", "RUNNING"].includes(char_block.merrit_live_test?.status)) {
+      throw make_control_error(
+        "MERRIT_LIVE_TEST_ALREADY_RUNNING",
+        "Merrit live test already running for " + char_name,
+        409,
+      );
+    }
+
+    for (const active of [
+      ["MOVEMENT", char_block.movement_live_test],
+      ["COMBAT", char_block.combat_live_test],
+      ["CLASS_SKILL", char_block.class_skill_live_test],
+      ["GROUP", char_block.group_live_test],
+      ["FARM", char_block.farm_live_test],
+      ["INVENTORY", char_block.inventory_live_test],
+      ["LOGISTICS", char_block.logistics_live_test],
+      ["MERCHANT", char_block.merchant_live_test],
+    ]) {
+      if (["STARTING", "RUNNING"].includes(active[1]?.status)) {
+        throw make_control_error(
+          active[0] + "_LIVE_TEST_ALREADY_RUNNING",
+          active[0] + " live test already running for " + char_name,
+          409,
+        );
+      }
+    }
+
+    const original_desired_state =
+      char_block.desired_runtime_state ||
+      (char_block.enabled
+        ? DESIRED_RUNTIME_STATES.RUNNING
+        : DESIRED_RUNTIME_STATES.STOPPED);
+    const start_state = {
+      lifecycle_state: char_block.lifecycle_state || null,
+      desired_runtime_state: original_desired_state,
+      enabled: !!char_block.enabled,
+      connected: !!char_block.connected,
+      map: char_block.live_state?.map || null,
+      gold: Number.isFinite(char_block.live_state?.gold)
+        ? char_block.live_state.gold
+        : null,
+      inventory_slots: Array.isArray(char_block.live_state?.items)
+        ? char_block.live_state.items.filter(Boolean).length
+        : null,
+      persisted_cooldown: persistence.getCooldown("account", "merrit"),
+    };
+    const started_at = Date.now();
+    merrit_live_test_sequence += 1;
+    const request_id = `merrit-live-${started_at}-${merrit_live_test_sequence}`;
+
+    char_block.merrit_live_test = {
+      request_id,
+      status: "STARTING",
+      outcome: null,
+      reason: null,
+      started_at,
+      completed_at: null,
+    };
+    emit_supervisor_event("MERRIT_LIVE_TEST_REQUESTED", char_name, {
+      request_id,
+      original_desired_state,
+    });
+    dashboard?.publishSnapshot();
+
+    let runtime_override_applied = false;
+    let runtime_state_restored = false;
+
+    try {
+      const runtime_ready =
+        !!char_block.instance &&
+        char_block.connected &&
+        Number.isFinite(char_block.bot_runtime_started_at);
+
+      if (!runtime_ready) {
+        const bundle_path = path.join(
+          process.cwd(),
+          "TYPECODE.out",
+          MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE,
+        );
+        if (!fs_regular.existsSync(bundle_path)) {
+          throw make_control_error(
+            "MERRIT_LIVE_TEST_RUNTIME_BUNDLE_MISSING",
+            `Merrit runtime bundle is missing: ${bundle_path}`,
+            503,
+          );
+        }
+
+        char_block.movement_live_test_typescript_override =
+          MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE;
+        runtime_override_applied = true;
+        emit_supervisor_event(
+          "MERRIT_LIVE_TEST_RUNTIME_OVERRIDE_APPLIED",
+          char_name,
+          {
+            typescript_file: MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE,
+          },
+        );
+      }
+
+      if (original_desired_state !== DESIRED_RUNTIME_STATES.RUNNING) {
+        char_block.enabled = true;
+        char_block.desired_runtime_state = DESIRED_RUNTIME_STATES.RUNNING;
+      }
+
+      if (runtime_override_applied) {
+        await restart_character_for_movement_runtime(char_name, char_block);
+      } else if (!char_block.instance) {
+        await control_character(char_name, CONTROL_ACTIONS.START);
+      }
+
+      await wait_for_merchant_live_test_runtime(char_name);
+      const ready_block = character_manage[char_name];
+      const result_promise = wait_for_merrit_live_test_result(
+        char_name,
+        request_id,
+      );
+
+      ready_block.merrit_live_test = {
+        ...ready_block.merrit_live_test,
+        status: "RUNNING",
+      };
+      dashboard?.publishSnapshot();
+
+      const sent = safe_send(ready_block.instance, {
+        type: "merrit_live_test",
+        request_id,
+      });
+      if (!sent) {
+        const pending = merrit_live_test_requests.get(request_id);
+        if (pending) {
+          clearTimeout(pending.timer);
+          merrit_live_test_requests.delete(request_id);
+        }
+        throw make_control_error(
+          "MERRIT_LIVE_TEST_DISPATCH_FAILED",
+          `Could not dispatch Merrit live test to ${char_name}`,
+          503,
+        );
+      }
+
+      const child_response = await result_promise;
+      if (child_response.error || !child_response.result) {
+        throw make_control_error(
+          "MERRIT_LIVE_TEST_RUNTIME_FAILED",
+          child_response.error || "Merrit live test returned no result",
+          500,
+        );
+      }
+
+      const runtime_result = child_response.result;
+      const parcel_ready_at = Number(
+        runtime_result.finalStatus?.parcel?.readyAt,
+      );
+      if (
+        runtime_result.outcome === "PASS" &&
+        Number.isFinite(parcel_ready_at) &&
+        parcel_ready_at > 0
+      ) {
+        await persistence.saveCooldown("account", "merrit", {
+          readyAt: parcel_ready_at,
+          state: {
+            character: char_name,
+            receiptAt:
+              Number(runtime_result.finalStatus?.parcel?.confirmedAt) || null,
+            source: "merrit_live_test",
+          },
+        });
+      }
+      const persisted_cooldown = persistence.getCooldown("account", "merrit");
+
+      const events = diagnostic_store.getEvents({
+        character: char_name,
+        since: started_at,
+      });
+      const evidence = merritLiveTestEvidence(
+        events,
+        ready_block,
+        persisted_cooldown,
+      );
+      const combined = combineMerritLiveTestResult(runtime_result, evidence);
+      const incident_id =
+        combined.outcome === "PASS"
+          ? null
+          : capture_merrit_live_test_incident(char_name, {
+              ...combined,
+              request_id,
+            });
+      const diagnostics = merritLiveTestDiagnostics(combined, {
+        character: char_name,
+        originalDesiredState: original_desired_state,
+        startState: start_state,
+        evidence,
+        persistedCooldown: persisted_cooldown,
+        incidentId: incident_id,
+      });
+
+      ready_block.merrit_live_test = {
+        ...combined,
+        request_id,
+        status: combined.outcome === "PASS" ? "COMPLETED" : "FAILED",
+        started_at,
+        completed_at: Date.now(),
+        incident_id,
+        persisted_cooldown,
+        diagnostics,
+        cleanup: {
+          ...(combined.cleanup || {}),
+          runtimeStateRestored: false,
+        },
+      };
+      emit_supervisor_event("MERRIT_LIVE_TEST_COMPLETED", char_name, {
+        request_id,
+        outcome: combined.outcome,
+        reason: combined.reason,
+        incident_id,
+        supervisor: evidence,
+        persisted_cooldown,
+      });
+    } catch (error) {
+      const failed_result = {
+        request_id,
+        outcome:
+          error.code === "MERRIT_LIVE_TEST_TIMEOUT" ||
+          error.code === "MERCHANT_LIVE_TEST_RUNTIME_TIMEOUT"
+            ? "TIMEOUT"
+            : "FAIL",
+        reason: error.code || error.message || "MERRIT_LIVE_TEST_FAILED",
+        error: error.message || String(error),
+        started_at,
+        completed_at: Date.now(),
+        durationMs: Date.now() - started_at,
+        scope: {
+          movementMutationAllowed: true,
+          standMutationAllowed: true,
+          listingMutationAllowed: true,
+          prerequisitePurchaseAllowed: true,
+          blindRetryAllowed: false,
+          wishlistMutationAllowed: false,
+          pontyPurchaseAllowed: false,
+          giveawayMutationAllowed: false,
+          gatheringMutationAllowed: false,
+          equipmentMutationAllowed: false,
+          mutationScope: "merrit-only",
+        },
+      };
+      const failure_events = diagnostic_store.getEvents({
+        character: char_name,
+        since: started_at,
+      });
+      const persisted_cooldown = persistence.getCooldown("account", "merrit");
+      const failure_evidence = merritLiveTestEvidence(
+        failure_events,
+        char_block,
+        persisted_cooldown,
+      );
+      const incident_id = capture_merrit_live_test_incident(
+        char_name,
+        failed_result,
+      );
+      char_block.merrit_live_test = {
+        ...failed_result,
+        status: "FAILED",
+        incident_id,
+        persisted_cooldown,
+        diagnostics: merritLiveTestDiagnostics(failed_result, {
+          character: char_name,
+          originalDesiredState: original_desired_state,
+          startState: start_state,
+          evidence: failure_evidence,
+          persistedCooldown: persisted_cooldown,
+          incidentId: incident_id,
+        }),
+        cleanup: {
+          runtimeStateRestored: false,
+        },
+      };
+      emit_supervisor_event(
+        "MERRIT_LIVE_TEST_FAILED",
+        char_name,
+        char_block.merrit_live_test,
+      );
+    } finally {
+      const pending = merrit_live_test_requests.get(request_id);
+      if (pending) {
+        clearTimeout(pending.timer);
+        merrit_live_test_requests.delete(request_id);
+      }
+
+      try {
+        if (runtime_override_applied) {
+          await restore_movement_live_test_execution_source(
+            char_name,
+            original_desired_state,
+          );
+        } else {
+          await restore_movement_live_test_state(
+            char_name,
+            original_desired_state,
+          );
+        }
+        runtime_state_restored = true;
+      } catch (restore_error) {
+        emit_supervisor_event(
+          "MERRIT_LIVE_TEST_STATE_RESTORE_FAILED",
+          char_name,
+          {
+            request_id,
+            desired_runtime_state: original_desired_state,
+            error:
+              restore_error instanceof Error
+                ? restore_error.message
+                : String(restore_error),
+          },
+        );
+      }
+
+      const final_block = character_manage[char_name];
+      if (final_block?.merrit_live_test) {
+        final_block.merrit_live_test.cleanup = {
+          ...(final_block.merrit_live_test.cleanup || {}),
+          runtimeStateRestored: runtime_state_restored,
+        };
+        if (
+          !runtime_state_restored &&
+          final_block.merrit_live_test.outcome === "PASS"
+        ) {
+          final_block.merrit_live_test.outcome = "FAIL";
+          final_block.merrit_live_test.reason =
+            "MERRIT_LIVE_E2E_STATE_RESTORE_FAILED";
+          final_block.merrit_live_test.status = "FAILED";
+          const incident_id = capture_merrit_live_test_incident(
+            char_name,
+            final_block.merrit_live_test,
+          );
+          final_block.merrit_live_test.incident_id = incident_id;
+          if (final_block.merrit_live_test.diagnostics) {
+            final_block.merrit_live_test.diagnostics.incident_id = incident_id;
+            final_block.merrit_live_test.diagnostics.result = {
+              outcome: "FAIL",
+              reason: "MERRIT_LIVE_E2E_STATE_RESTORE_FAILED",
+            };
+            final_block.merrit_live_test.diagnostics.cleanup =
+              final_block.merrit_live_test.cleanup;
+          }
+        } else if (final_block.merrit_live_test.diagnostics) {
+          final_block.merrit_live_test.diagnostics.cleanup =
+            final_block.merrit_live_test.cleanup;
+        }
+      }
+      dashboard?.publishSnapshot();
+    }
+
+    return character_manage[char_name]?.merrit_live_test;
+  }
+
+  async function run_merchant_live_test(char_name) {
+    const char_block = character_manage[char_name];
+    if (!char_block) {
+      throw make_control_error(
+        "CHARACTER_NOT_FOUND",
+        `Unknown character: ${char_name}`,
+        404,
+      );
+    }
+    if (
+      (char_block.account_character_type || char_block.live_state?.ctype) !==
+      "merchant"
+    ) {
+      throw make_control_error(
+        "MERCHANT_LIVE_TEST_MERCHANT_REQUIRED",
+        "Merchant Autonomy live test requires a merchant: " + char_name,
+        400,
+      );
+    }
+    if (char_block.account_owned !== true) {
+      throw make_control_error(
+        "MERCHANT_LIVE_TEST_ACCOUNT_MERCHANT_REQUIRED",
+        "Merchant Autonomy live test requires an account-owned merchant: " +
+          char_name,
+        400,
+      );
+    }
+    if (
+      ["STARTING", "RUNNING"].includes(char_block.merchant_live_test?.status)
+    ) {
+      throw make_control_error(
+        "MERCHANT_LIVE_TEST_ALREADY_RUNNING",
+        "Merchant Autonomy live test already running for " + char_name,
+        409,
+      );
+    }
+    if (["STARTING", "RUNNING"].includes(char_block.merrit_live_test?.status)) {
+      throw make_control_error(
+        "MERRIT_LIVE_TEST_ALREADY_RUNNING",
+        "Merrit live test already running for " + char_name,
+        409,
+      );
+    }
+    for (const active of [
+      ["MOVEMENT", char_block.movement_live_test],
+      ["COMBAT", char_block.combat_live_test],
+      ["CLASS_SKILL", char_block.class_skill_live_test],
+      ["GROUP", char_block.group_live_test],
+      ["FARM", char_block.farm_live_test],
+      ["INVENTORY", char_block.inventory_live_test],
+      ["LOGISTICS", char_block.logistics_live_test],
+    ]) {
+      if (["STARTING", "RUNNING"].includes(active[1]?.status)) {
+        throw make_control_error(
+          active[0] + "_LIVE_TEST_ALREADY_RUNNING",
+          active[0] + " live test already running for " + char_name,
+          409,
+        );
+      }
+    }
+
+    const original_desired_state =
+      char_block.desired_runtime_state ||
+      (char_block.enabled
+        ? DESIRED_RUNTIME_STATES.RUNNING
+        : DESIRED_RUNTIME_STATES.STOPPED);
+    const start_state = {
+      lifecycle_state: char_block.lifecycle_state || null,
+      desired_runtime_state: original_desired_state,
+      enabled: !!char_block.enabled,
+      connected: !!char_block.connected,
+      map: char_block.live_state?.map || null,
+      gold: Number.isFinite(char_block.live_state?.gold)
+        ? char_block.live_state.gold
+        : null,
+      inventory_slots: Array.isArray(char_block.live_state?.items)
+        ? char_block.live_state.items.filter(Boolean).length
+        : null,
+    };
+    const started_at = Date.now();
+    merchant_live_test_sequence += 1;
+    const request_id = `merchant-live-${started_at}-${merchant_live_test_sequence}`;
+
+    char_block.merchant_live_test = {
+      request_id,
+      status: "STARTING",
+      outcome: null,
+      reason: null,
+      started_at,
+      completed_at: null,
+    };
+    emit_supervisor_event("MERCHANT_LIVE_TEST_REQUESTED", char_name, {
+      request_id,
+      original_desired_state,
+    });
+    dashboard?.publishSnapshot();
+
+    let runtime_override_applied = false;
+    let runtime_state_restored = false;
+
+    try {
+      const runtime_ready =
+        !!char_block.instance &&
+        char_block.connected &&
+        Number.isFinite(char_block.bot_runtime_started_at);
+
+      if (!runtime_ready) {
+        const bundle_path = path.join(
+          process.cwd(),
+          "TYPECODE.out",
+          MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE,
+        );
+        if (!fs_regular.existsSync(bundle_path)) {
+          throw make_control_error(
+            "MERCHANT_LIVE_TEST_RUNTIME_BUNDLE_MISSING",
+            `Merchant runtime bundle is missing: ${bundle_path}`,
+            503,
+          );
+        }
+
+        char_block.movement_live_test_typescript_override =
+          MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE;
+        runtime_override_applied = true;
+        emit_supervisor_event(
+          "MERCHANT_LIVE_TEST_RUNTIME_OVERRIDE_APPLIED",
+          char_name,
+          {
+            typescript_file: MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE,
+          },
+        );
+      }
+
+      if (original_desired_state !== DESIRED_RUNTIME_STATES.RUNNING) {
+        char_block.enabled = true;
+        char_block.desired_runtime_state = DESIRED_RUNTIME_STATES.RUNNING;
+      }
+
+      if (runtime_override_applied) {
+        await restart_character_for_movement_runtime(char_name, char_block);
+      } else if (!char_block.instance) {
+        await control_character(char_name, CONTROL_ACTIONS.START);
+      }
+
+      await wait_for_merchant_live_test_runtime(char_name);
+      const ready_block = character_manage[char_name];
+      const result_promise = wait_for_merchant_live_test_result(
+        char_name,
+        request_id,
+      );
+
+      ready_block.merchant_live_test = {
+        ...ready_block.merchant_live_test,
+        status: "RUNNING",
+      };
+      dashboard?.publishSnapshot();
+
+      const sent = safe_send(ready_block.instance, {
+        type: "merchant_live_test",
+        request_id,
+      });
+      if (!sent) {
+        const pending = merchant_live_test_requests.get(request_id);
+        if (pending) {
+          clearTimeout(pending.timer);
+          merchant_live_test_requests.delete(request_id);
+        }
+        throw make_control_error(
+          "MERCHANT_LIVE_TEST_DISPATCH_FAILED",
+          `Could not dispatch Merchant Autonomy live test to ${char_name}`,
+          503,
+        );
+      }
+
+      const child_response = await result_promise;
+      if (child_response.error || !child_response.result) {
+        throw make_control_error(
+          "MERCHANT_LIVE_TEST_RUNTIME_FAILED",
+          child_response.error || "Merchant live test returned no result",
+          500,
+        );
+      }
+
+      const events = diagnostic_store.getEvents({
+        character: char_name,
+        since: started_at,
+      });
+      const evidence = merchantLiveTestEvidence(events, ready_block);
+      const combined = combineMerchantLiveTestResult(
+        child_response.result,
+        evidence,
+      );
+      const incident_id =
+        combined.outcome === "PASS"
+          ? null
+          : capture_merchant_live_test_incident(char_name, {
+              ...combined,
+              request_id,
+            });
+      const diagnostics = merchantLiveTestDiagnostics(combined, {
+        character: char_name,
+        originalDesiredState: original_desired_state,
+        startState: start_state,
+        evidence,
+        incidentId: incident_id,
+      });
+
+      ready_block.merchant_live_test = {
+        ...combined,
+        request_id,
+        status: combined.outcome === "PASS" ? "COMPLETED" : "FAILED",
+        started_at,
+        completed_at: Date.now(),
+        incident_id,
+        diagnostics,
+        cleanup: {
+          ...(combined.cleanup || {}),
+          runtimeStateRestored: false,
+        },
+      };
+      emit_supervisor_event("MERCHANT_LIVE_TEST_COMPLETED", char_name, {
+        request_id,
+        outcome: combined.outcome,
+        reason: combined.reason,
+        incident_id,
+        supervisor: evidence,
+      });
+    } catch (error) {
+      const failed_result = {
+        request_id,
+        outcome:
+          error.code === "MERCHANT_LIVE_TEST_TIMEOUT" ||
+          error.code === "MERCHANT_LIVE_TEST_RUNTIME_TIMEOUT"
+            ? "TIMEOUT"
+            : "FAIL",
+        reason: error.code || error.message || "MERCHANT_LIVE_TEST_FAILED",
+        error: error.message || String(error),
+        started_at,
+        completed_at: Date.now(),
+        durationMs: Date.now() - started_at,
+        scope: {
+          readOnly: true,
+          movementMutationForced: false,
+          valueMutationForced: false,
+          standMutationForced: false,
+          wishlistMutationForced: false,
+          pontyPurchaseForced: false,
+          giveawayJoinForced: false,
+          gatheringSkillForced: false,
+          equipmentMutationForced: false,
+          mutationScope: "not forced",
+        },
+      };
+      const failure_events = diagnostic_store.getEvents({
+        character: char_name,
+        since: started_at,
+      });
+      const failure_evidence = merchantLiveTestEvidence(
+        failure_events,
+        char_block,
+      );
+      const incident_id = capture_merchant_live_test_incident(
+        char_name,
+        failed_result,
+      );
+      char_block.merchant_live_test = {
+        ...failed_result,
+        status: "FAILED",
+        incident_id,
+        diagnostics: merchantLiveTestDiagnostics(failed_result, {
+          character: char_name,
+          originalDesiredState: original_desired_state,
+          startState: start_state,
+          evidence: failure_evidence,
+          incidentId: incident_id,
+        }),
+        cleanup: {
+          runtimeStateRestored: false,
+        },
+      };
+      emit_supervisor_event(
+        "MERCHANT_LIVE_TEST_FAILED",
+        char_name,
+        char_block.merchant_live_test,
+      );
+    } finally {
+      const pending = merchant_live_test_requests.get(request_id);
+      if (pending) {
+        clearTimeout(pending.timer);
+        merchant_live_test_requests.delete(request_id);
+      }
+
+      try {
+        if (runtime_override_applied) {
+          await restore_movement_live_test_execution_source(
+            char_name,
+            original_desired_state,
+          );
+        } else {
+          await restore_movement_live_test_state(
+            char_name,
+            original_desired_state,
+          );
+        }
+        runtime_state_restored = true;
+      } catch (restore_error) {
+        emit_supervisor_event(
+          "MERCHANT_LIVE_TEST_STATE_RESTORE_FAILED",
+          char_name,
+          {
+            request_id,
+            desired_runtime_state: original_desired_state,
+            error:
+              restore_error instanceof Error
+                ? restore_error.message
+                : String(restore_error),
+          },
+        );
+      }
+
+      const final_block = character_manage[char_name];
+      if (final_block?.merchant_live_test) {
+        final_block.merchant_live_test.cleanup = {
+          ...(final_block.merchant_live_test.cleanup || {}),
+          runtimeStateRestored: runtime_state_restored,
+        };
+        if (
+          !runtime_state_restored &&
+          final_block.merchant_live_test.outcome === "PASS"
+        ) {
+          final_block.merchant_live_test.outcome = "FAIL";
+          final_block.merchant_live_test.reason =
+            "MERCHANT_LIVE_E2E_STATE_RESTORE_FAILED";
+          final_block.merchant_live_test.status = "FAILED";
+          const incident_id = capture_merchant_live_test_incident(
+            char_name,
+            final_block.merchant_live_test,
+          );
+          final_block.merchant_live_test.incident_id = incident_id;
+          if (final_block.merchant_live_test.diagnostics) {
+            final_block.merchant_live_test.diagnostics.incident_id =
+              incident_id;
+            final_block.merchant_live_test.diagnostics.result = {
+              outcome: "FAIL",
+              reason: "MERCHANT_LIVE_E2E_STATE_RESTORE_FAILED",
+            };
+            final_block.merchant_live_test.diagnostics.cleanup =
+              final_block.merchant_live_test.cleanup;
+          }
+        } else if (final_block.merchant_live_test.diagnostics) {
+          final_block.merchant_live_test.diagnostics.cleanup =
+            final_block.merchant_live_test.cleanup;
+        }
+      }
+      dashboard?.publishSnapshot();
+    }
+
+    return character_manage[char_name]?.merchant_live_test;
+  }
+
+  async function control_character(char_name, action) {
+    const char_block = character_manage[char_name];
+    if (!char_block) {
+      throw make_control_error(
+        "CHARACTER_NOT_FOUND",
+        `Unknown character: ${char_name}`,
+        404,
+      );
+    }
+
+    switch (action) {
+      case CONTROL_ACTIONS.START: {
+        if (
+          !char_block.instance &&
+          countActiveCharacters(character_manage) >=
+            lifecycle_policy.maxOnlineCharacters
+        ) {
+          throw make_control_error(
+            "CHARACTER_SLOT_LIMIT",
+            "Maximum online character count reached",
+            409,
+          );
+        }
+
+        char_block.enabled = true;
+        char_block.desired_runtime_state = DESIRED_RUNTIME_STATES.RUNNING;
+        clear_restart_timer(char_block);
+        persist_character_runtime_state(char_name, "manual_start");
+
+        emit_supervisor_event("CHARACTER_CONTROL_REQUESTED", char_name, {
+          action,
+          desired_runtime_state: char_block.desired_runtime_state,
+        });
+
+        if (char_block.instance) {
+          safe_send(char_block.instance, {
+            type: "runtime_control",
+            state: DESIRED_RUNTIME_STATES.RUNNING,
+          });
+        } else {
+          start_char(char_name);
+        }
+        break;
+      }
+
+      case CONTROL_ACTIONS.PAUSE:
+        if (!char_block.instance) {
+          throw make_control_error(
+            "CHARACTER_NOT_ONLINE",
+            "A stopped character cannot be paused",
+            409,
+          );
+        }
+
+        char_block.enabled = true;
+        char_block.desired_runtime_state = DESIRED_RUNTIME_STATES.PAUSED;
+        persist_character_runtime_state(char_name, "manual_pause");
+        emit_supervisor_event("CHARACTER_CONTROL_REQUESTED", char_name, {
+          action,
+          desired_runtime_state: char_block.desired_runtime_state,
+        });
+        safe_send(char_block.instance, {
+          type: "runtime_control",
+          state: DESIRED_RUNTIME_STATES.PAUSED,
+        });
+        break;
+
+      case CONTROL_ACTIONS.STOP:
+        char_block.enabled = false;
+        char_block.desired_runtime_state = DESIRED_RUNTIME_STATES.STOPPED;
+        if (char_block.rotation_source) {
+          const rotation_source = char_block.rotation_source;
+          const source = character_manage[rotation_source];
+          if (source?.rotation_replacement === char_name) {
+            source.rotation_replacement = null;
+          }
+          char_block.rotation_source = null;
+          emit_supervisor_event("CHARACTER_ROTATION_CANCELLED", char_name, {
+            why: "ROTATION_TARGET_STOPPED",
+            stop_character: rotation_source,
+            start_character: char_name,
+            reason: "TARGET_STOPPED",
+          });
+        }
+        clear_restart_timer(char_block);
+        clear_stable_timer(char_block);
+        persist_character_runtime_state(char_name, "manual_stop");
+        emit_supervisor_event("CHARACTER_CONTROL_REQUESTED", char_name, {
+          action,
+          desired_runtime_state: char_block.desired_runtime_state,
+        });
+
+        if (char_block.instance) {
+          await softkill_block(char_block);
+        } else {
+          set_lifecycle_state(
+            char_name,
+            LIFECYCLE_STATES.STOPPED,
+            "manual_stop",
+          );
+        }
+        break;
+
+      case CONTROL_ACTIONS.RESTART:
+        if (!canRestartCharacter(char_block)) {
+          throw make_control_error(
+            "CHARACTER_NOT_RESTARTABLE",
+            "Only an active RUNNING or PAUSED character can be restarted",
+            409,
+          );
+        }
+
+        clear_restart_timer(char_block);
+        clear_stable_timer(char_block);
+        char_block.restart_attempts = 0;
+        char_block.controlled_restart = true;
+        emit_supervisor_event("CHARACTER_CONTROL_REQUESTED", char_name, {
+          action,
+          desired_runtime_state: char_block.desired_runtime_state,
+        });
+        persist_character_runtime_state(char_name, "manual_restart");
+        await softkill_block(char_block);
+        break;
+
+      default:
+        throw make_control_error(
+          "INVALID_CONTROL_ACTION",
+          `Unsupported control action: ${action}`,
+          400,
+        );
+    }
+
+    return {
+      character: char_name,
+      action,
+      desired_runtime_state: char_block.desired_runtime_state,
+      lifecycle_state: char_block.lifecycle_state,
+    };
+  }
+
+  function start_char(char_name) {
+    const char_block = character_manage[char_name];
+    if (!char_block || !char_block.enabled || coordinator_shutting_down) {
+      return null;
+    }
+    if (char_block.instance) {
+      return char_block.instance;
+    }
+    if (
+      countActiveCharacters(character_manage) >=
+      lifecycle_policy.maxOnlineCharacters
+    ) {
+      set_lifecycle_state(
+        char_name,
+        LIFECYCLE_STATES.BACKOFF,
+        "max_online_characters",
+      );
+      log.warn(
+        {
+          type: "character_start_blocked",
+          character: char_name,
+          max_online_characters: lifecycle_policy.maxOnlineCharacters,
+        },
+        `not starting ${char_name}: online character limit reached`,
+      );
+      return null;
+    }
+
+    clear_restart_timer(char_block);
+    set_lifecycle_state(
+      char_name,
+      LIFECYCLE_STATES.STARTING,
+      "start_requested",
+    );
+
+    let realm = my_acc.resolve_realm(char_block.realm);
+    if (!realm) {
+      console.warn(
+        `could not find realm ${char_block.realm},`,
+        `falling back to realm ${default_realm.key}`,
+      );
+      char_block.realm = default_realm.key;
+      realm = default_realm;
+    }
+    const char = my_acc.resolve_char(char_name);
+    //class is char.type
+    if (!char) {
+      console.error(
+        `could not resolve character ${char_name}`,
+        `this character will not be started`,
+      );
+      console.error(
+        "are you sure you own this character and have not deleted it?",
+      );
+      char_block.enabled = false;
+      set_lifecycle_state(
+        char_name,
+        LIFECYCLE_STATES.ERROR,
+        "character_not_owned",
+      );
+      return null;
+    }
+    void observe_persistence(
+      persistence.saveCharacterProfile(
+        char_name,
+        buildCharacterProfile(char_name, char_block, char),
+      ),
+      "character_profile_resolved",
+      char_name,
+    );
+    const g_version = char_block.version || version;
+    console.log(
+      `starting ${char_name} running version ${g_version} in ${char_block.realm}`,
+    );
+    const realm_connection = normalizeRealmConnection(realm);
+    if (!realm_connection.address) {
+      console.error(
+        `could not resolve connection address for realm ${char_block.realm}`,
+      );
+      set_lifecycle_state(
+        char_name,
+        LIFECYCLE_STATES.ERROR,
+        "realm_connection_missing",
+      );
+      return null;
+    }
+
+    const execution_source = resolveCharacterExecutionSource(
+      char_block,
+      !!cfg.enable_TYPECODE,
+    );
+    const args = {
+      version: g_version,
+      realm_address: realm_connection.address,
+      realm_path: realm_connection.path,
+      realm_addr: realm_connection.legacyAddr,
+      realm_port: realm_connection.legacyPort,
+      sess: sess,
+      cid: char.id,
+      script_file: execution_source.scriptFile,
+      enable_map: !!(cfg.web_app && cfg.web_app.enable_minimap),
+      cname: char_name,
+      clid: ctype_to_clid[char.type] || -1,
+      heartbeat_interval_ms: lifecycle_policy.heartbeatIntervalMs,
+      runtime_state: char_block.desired_runtime_state,
+      emergency_stop: emergency_stop.snapshot(),
+    };
+    if (execution_source.typescriptFile) {
+      args.typescript_file = execution_source.typescriptFile;
+    }
+
+    const result = child_process.fork("./src/CharacterThread.js", [], {
+      stdio: ["ignore", "pipe", "pipe", "ipc"],
+    });
+
+    capture_character_stream(result.stdout, char_name, "stdout");
+    capture_character_stream(result.stderr, char_name, "stderr");
+    result.stdout.pipe(process.stdout);
+    result.stderr.pipe(process.stderr);
+    char_block.instance = result;
+    char_block.bot_runtime_started_at = null;
+    char_block.last_heartbeat_at = Date.now();
+    char_block.last_heartbeat_pid = result.pid || null;
+    char_block.watchdog_recovery_in_progress = false;
+    emit_supervisor_event("CHARACTER_PROCESS_STARTED", char_name, {
+      pid: result.pid || null,
+    });
+
+    result.on("exit", (code, signal) => {
+      if (char_block.monitor) {
+        //close monitor
+        char_block.monitor.destroy();
+        char_block.monitor = null;
+      }
+      clear_stable_timer(char_block);
+      clear_config_push_timer(char_block);
+      char_block.config_push_status = "STORED";
+      char_block.applied_runtime_config_revision = null;
+      char_block.connected = false;
+      char_block.bot_runtime_started_at = null;
+      char_block.watchdog_recovery_in_progress = false;
+      refresh_account_gear_reservations("CHARACTER_DISCONNECTED");
+      reject_movement_live_tests_for_character(
+        char_name,
+        "CHARACTER_PROCESS_EXITED_DURING_MOVEMENT_LIVE_TEST",
+      );
+      reject_combat_live_tests_for_character(
+        char_name,
+        "CHARACTER_PROCESS_EXITED_DURING_COMBAT_LIVE_TEST",
+      );
+      reject_class_skill_live_tests_for_character(
+        char_name,
+        "CHARACTER_PROCESS_EXITED_DURING_CLASS_SKILL_LIVE_TEST",
+      );
+      reject_group_live_tests_for_character(
+        char_name,
+        "CHARACTER_PROCESS_EXITED_DURING_GROUP_LIVE_TEST",
+      );
+      reject_farm_live_tests_for_character(
+        char_name,
+        "CHARACTER_PROCESS_EXITED_DURING_FARM_LIVE_TEST",
+      );
+      reject_inventory_live_tests_for_character(
+        char_name,
+        "CHARACTER_PROCESS_EXITED_DURING_INVENTORY_LIVE_TEST",
+      );
+      reject_logistics_live_tests_for_character(
+        char_name,
+        "CHARACTER_PROCESS_EXITED_DURING_LOGISTICS_LIVE_TEST",
+      );
+      reject_merchant_live_tests_for_character(
+        char_name,
+        "CHARACTER_PROCESS_EXITED_DURING_MERCHANT_LIVE_TEST",
+      );
+      reject_merrit_live_tests_for_character(
+        char_name,
+        "CHARACTER_PROCESS_EXITED_DURING_MERRIT_LIVE_TEST",
+      );
+      reject_fishing_live_tests_for_character(
+        char_name,
+        "CHARACTER_PROCESS_EXITED_DURING_FISHING_LIVE_TEST",
+      );
+      reject_material_gather_tasks_for_character(
+        char_name,
+        "CHARACTER_PROCESS_EXITED_DURING_MATERIAL_GATHER_TASK",
+      );
+      reject_compound_gather_plans_for_character(
+        char_name,
+        "CHARACTER_PROCESS_EXITED_DURING_COMPOUND_GATHER_PLAN",
+      );
+      emit_supervisor_event("CHARACTER_PROCESS_EXITED", char_name, {
+        code,
+        signal,
+        pid: result.pid || null,
+      });
+      if (char_block.instance === result) {
+        char_block.instance = null;
+      }
+
+      const rotation_replacement = char_block.rotation_replacement;
+      char_block.rotation_replacement = null;
+      const controlled_restart = char_block.controlled_restart;
+      char_block.controlled_restart = false;
+
+      if (rotation_replacement && !coordinator_shutting_down) {
+        char_block.restart_attempts = 0;
+        set_lifecycle_state(
+          char_name,
+          LIFECYCLE_STATES.STOPPED,
+          "rotation_slot_released",
+        );
+        emit_supervisor_event("CHARACTER_ROTATION_SLOT_RELEASED", char_name, {
+          why: "ROTATION_SOURCE_EXITED",
+          start_character: rotation_replacement,
+        });
+        dashboard?.publishSnapshot();
+
+        setTimeout(() => {
+          const target = character_manage[rotation_replacement];
+          if (
+            !target ||
+            !target.enabled ||
+            target.desired_runtime_state !== DESIRED_RUNTIME_STATES.RUNNING
+          ) {
+            return;
+          }
+
+          const started = start_char(rotation_replacement);
+          if (started) {
+            emit_supervisor_event(
+              "CHARACTER_ROTATION_TARGET_STARTING",
+              rotation_replacement,
+              {
+                why: "ROTATION_SLOT_AVAILABLE",
+                stop_character: char_name,
+              },
+            );
+          } else if (target.enabled) {
+            schedule_restart(rotation_replacement, "rotation_slot_unavailable");
+          }
+        }, lifecycle_policy.startupStaggerMs);
+        return;
+      }
+
+      if (
+        controlled_restart &&
+        char_block.enabled &&
+        !coordinator_shutting_down
+      ) {
+        char_block.restart_attempts = 0;
+        set_lifecycle_state(
+          char_name,
+          LIFECYCLE_STATES.STOPPED,
+          "controlled_restart",
+        );
+        setTimeout(
+          () => start_char(char_name),
+          lifecycle_policy.startupStaggerMs,
+        );
+        return;
+      }
+
+      if (char_block.enabled && !coordinator_shutting_down) {
+        emit_supervisor_event("UNEXPECTED_CHARACTER_EXIT", char_name, {
+          code,
+          signal,
+          pid: result.pid || null,
+        });
+        schedule_restart(
+          char_name,
+          `unexpected_exit(code=${code},signal=${signal})`,
+        );
+      } else {
+        set_lifecycle_state(
+          char_name,
+          LIFECYCLE_STATES.STOPPED,
+          coordinator_shutting_down ? "coordinator_shutdown" : "disabled",
+        );
+      }
+    });
+    result.on("message", (raw_message) => {
+      const ipc = normalizeIpcMessage(raw_message);
+      if (!ipc.ok) {
+        emit_supervisor_event("IPC_MESSAGE_REJECTED", char_name, {
+          reason: ipc.code,
+          protocol_version: ipc.protocol_version,
+          message_type: raw_message?.type || null,
+          supported_protocol_version: IPC_PROTOCOL_VERSION,
+        });
+        return;
+      }
+
+      const m = ipc.message;
+      switch (m.type) {
+        case "process_ready":
+          set_lifecycle_state(
+            char_name,
+            LIFECYCLE_STATES.CONNECTING,
+            "process_ready",
+          );
+          refresh_character_revision(char_block);
+          char_block.running_code_revision = char_block.installed_code_revision;
+          char_block.running_config_revision =
+            char_block.installed_config_revision;
+          char_block.revision_status = revisionStatus({
+            runningCodeRevision: char_block.running_code_revision,
+            installedCodeRevision: char_block.installed_code_revision,
+            runningConfigRevision: char_block.running_config_revision,
+            installedConfigRevision: char_block.installed_config_revision,
+          });
+          args.code_revision = char_block.running_code_revision;
+          args.config_revision = char_block.running_config_revision;
+          args.source_revision = source_revision;
+          args.character_config = char_block.runtime_config;
+          args.character_config_revision = char_block.runtime_config_revision;
+          char_block.applied_runtime_config_revision = null;
+          char_block.config_push_status = "PENDING";
+          char_block.config_push_error = null;
+          arm_config_push_timeout(
+            char_name,
+            char_block.runtime_config_revision,
+          );
+          persist_character_runtime_state(char_name, "process_ready");
+          safe_send(result, {
+            type: "process_args",
+            arguments: args,
+          });
+          break;
+        case "initialized":
+          emit_supervisor_event("CHARACTER_INITIALIZED", char_name, {
+            pid: result.pid || null,
+          });
+          break;
+        case "runtime_event":
+          emit_runtime_event(char_name, m.event);
+          break;
+        case "logistics_claim_result": {
+          const pending = logistics_claim_requests.get(m.request_id);
+          if (
+            !pending ||
+            pending.source !== char_name ||
+            pending.claim?.id !== m.claim_id
+          ) {
+            emit_supervisor_event("LOGISTICS_CLAIM_RESULT_IGNORED", char_name, {
+              why: "UNKNOWN_OR_STALE_REQUEST",
+              request_id: m.request_id || null,
+              claim_id: m.claim_id || null,
+            });
+            break;
+          }
+
+          clearTimeout(pending.timer);
+          logistics_claim_requests.delete(m.request_id);
+          const fallback_result = {
+            claimId: pending.claim.id,
+            type: pending.claim.type,
+            source: pending.source,
+            target: pending.target,
+            outcome: "UNKNOWN",
+            reason: m.error || "LOGISTICS_CLAIM_RUNTIME_ERROR",
+            actionId: null,
+            itemName: pending.claim.itemName || null,
+            requestedQuantity: pending.claim.quantity || null,
+            executedQuantity: null,
+            amount: pending.claim.amount || null,
+            fulfilled: false,
+          };
+          const execution_result =
+            m.result && typeof m.result === "object"
+              ? m.result
+              : fallback_result;
+
+          merchant_logistics_planner.recordClaimOutcome(
+            pending.claim,
+            execution_result,
+          );
+          emit_supervisor_event("LOGISTICS_CLAIM_RESULT_RECEIVED", char_name, {
+            request_id: m.request_id,
+            claim_id: pending.claim.id,
+            claim_type: pending.claim.type,
+            outcome: execution_result.outcome || "UNKNOWN",
+            reason: execution_result.reason || null,
+            fulfilled: execution_result.fulfilled === true,
+            error: m.error || null,
+          });
+          refresh_merchant_logistics("LOGISTICS_CLAIM_RESULT");
+          break;
+        }
+        case "movement_live_test_result": {
+          const pending = movement_live_test_requests.get(m.request_id);
+          if (!pending || pending.character !== char_name) {
+            emit_supervisor_event(
+              "MOVEMENT_LIVE_TEST_RESULT_IGNORED",
+              char_name,
+              {
+                why: "UNKNOWN_OR_STALE_REQUEST",
+                request_id: m.request_id || null,
+              },
+            );
+            break;
+          }
+
+          clearTimeout(pending.timer);
+          movement_live_test_requests.delete(m.request_id);
+          pending.resolve({
+            result: m.result || null,
+            error: m.error || null,
+          });
+          emit_supervisor_event(
+            "MOVEMENT_LIVE_TEST_RESULT_RECEIVED",
+            char_name,
+            {
+              request_id: m.request_id,
+              outcome: m.result?.outcome || null,
+              error: m.error || null,
+            },
+          );
+          break;
+        }
+        case "combat_live_test_result": {
+          const pending = combat_live_test_requests.get(m.request_id);
+          if (!pending || pending.character !== char_name) {
+            emit_supervisor_event(
+              "COMBAT_LIVE_TEST_RESULT_IGNORED",
+              char_name,
+              {
+                why: "UNKNOWN_OR_STALE_REQUEST",
+                request_id: m.request_id || null,
+              },
+            );
+            break;
+          }
+
+          clearTimeout(pending.timer);
+          combat_live_test_requests.delete(m.request_id);
+          pending.resolve({
+            result: m.result || null,
+            error: m.error || null,
+          });
+          emit_supervisor_event("COMBAT_LIVE_TEST_RESULT_RECEIVED", char_name, {
+            request_id: m.request_id,
+            outcome: m.result?.outcome || null,
+            error: m.error || null,
+          });
+          break;
+        }
+        case "class_skill_live_test_result": {
+          const pending = class_skill_live_test_requests.get(m.request_id);
+          if (!pending || pending.character !== char_name) {
+            emit_supervisor_event(
+              "CLASS_SKILL_LIVE_TEST_RESULT_IGNORED",
+              char_name,
+              {
+                why: "UNKNOWN_OR_STALE_REQUEST",
+                request_id: m.request_id || null,
+              },
+            );
+            break;
+          }
+
+          clearTimeout(pending.timer);
+          class_skill_live_test_requests.delete(m.request_id);
+          pending.resolve({
+            result: m.result || null,
+            error: m.error || null,
+          });
+          emit_supervisor_event(
+            "CLASS_SKILL_LIVE_TEST_RESULT_RECEIVED",
+            char_name,
+            {
+              request_id: m.request_id,
+              outcome: m.result?.outcome || null,
+              error: m.error || null,
+            },
+          );
+          break;
+        }
+        case "logistics_live_test_result": {
+          const pending = logistics_live_test_requests.get(m.request_id);
+          if (!pending || pending.character !== char_name) {
+            emit_supervisor_event(
+              "LOGISTICS_LIVE_TEST_RESULT_IGNORED",
+              char_name,
+              {
+                why: "UNKNOWN_OR_STALE_REQUEST",
+                request_id: m.request_id || null,
+              },
+            );
+            break;
+          }
+
+          clearTimeout(pending.timer);
+          logistics_live_test_requests.delete(m.request_id);
+          pending.resolve({
+            result: m.result || null,
+            error: m.error || null,
+          });
+          emit_supervisor_event(
+            "LOGISTICS_LIVE_TEST_RESULT_RECEIVED",
+            char_name,
+            {
+              request_id: m.request_id,
+              outcome: m.result?.outcome || null,
+              error: m.error || null,
+            },
+          );
+          break;
+        }
+        case "craft_material_plan_result": {
+          const pending = craft_material_plan_requests.get(m.request_id);
+          if (!pending || pending.character !== char_name) {
+            emit_supervisor_event(
+              "CRAFT_MATERIAL_PLAN_RESULT_IGNORED",
+              char_name,
+              {
+                why: "UNKNOWN_OR_STALE_REQUEST",
+                request_id: m.request_id || null,
+              },
+            );
+            break;
+          }
+
+          clearTimeout(pending.timer);
+          craft_material_plan_requests.delete(m.request_id);
+          pending.resolve({
+            result: m.result || null,
+            error: m.error || null,
+          });
+          emit_supervisor_event(
+            "CRAFT_MATERIAL_PLAN_RESULT_RECEIVED",
+            char_name,
+            {
+              request_id: m.request_id,
+              outcome: m.result?.outcome || null,
+              error: m.error || null,
+            },
+          );
+          break;
+        }
+        case "compound_gather_plan_result": {
+          const pending = compound_gather_plan_requests.get(m.request_id);
+          if (!pending || pending.character !== char_name) {
+            emit_supervisor_event(
+              "COMPOUND_GATHER_PLAN_RESULT_IGNORED",
+              char_name,
+              {
+                why: "UNKNOWN_OR_STALE_REQUEST",
+                request_id: m.request_id || null,
+              },
+            );
+            break;
+          }
+
+          clearTimeout(pending.timer);
+          compound_gather_plan_requests.delete(m.request_id);
+          pending.resolve({
+            result: m.result || null,
+            error: m.error || null,
+          });
+          emit_supervisor_event(
+            "COMPOUND_GATHER_PLAN_RESULT_RECEIVED",
+            char_name,
+            {
+              request_id: m.request_id,
+              outcome: m.result?.outcome || null,
+              error: m.error || null,
+            },
+          );
+          break;
+        }
+        case "material_gather_task_result": {
+          const pending = material_gather_task_requests.get(m.request_id);
+          if (!pending || pending.character !== char_name) {
+            emit_supervisor_event(
+              "MATERIAL_GATHER_TASK_RESULT_IGNORED",
+              char_name,
+              {
+                why: "UNKNOWN_OR_STALE_REQUEST",
+                request_id: m.request_id || null,
+              },
+            );
+            break;
+          }
+
+          clearTimeout(pending.timer);
+          material_gather_task_requests.delete(m.request_id);
+          pending.resolve({
+            result: m.result || null,
+            error: m.error || null,
+          });
+          emit_supervisor_event(
+            "MATERIAL_GATHER_TASK_RESULT_RECEIVED",
+            char_name,
+            {
+              request_id: m.request_id,
+              outcome: m.result?.outcome || null,
+              error: m.error || null,
+            },
+          );
+          break;
+        }
+        case "fishing_live_test_result": {
+          const pending = fishing_live_test_requests.get(m.request_id);
+          if (!pending || pending.character !== char_name) {
+            emit_supervisor_event(
+              "FISHING_LIVE_TEST_RESULT_IGNORED",
+              char_name,
+              {
+                why: "UNKNOWN_OR_STALE_REQUEST",
+                request_id: m.request_id || null,
+              },
+            );
+            break;
+          }
+
+          clearTimeout(pending.timer);
+          fishing_live_test_requests.delete(m.request_id);
+          pending.resolve({
+            result: m.result || null,
+            error: m.error || null,
+          });
+          emit_supervisor_event(
+            "FISHING_LIVE_TEST_RESULT_RECEIVED",
+            char_name,
+            {
+              request_id: m.request_id,
+              outcome: m.result?.outcome || null,
+              error: m.error || null,
+            },
+          );
+          break;
+        }
+        case "market_trading_live_test_result": {
+          const pending = market_trading_live_test_requests.get(m.request_id);
+          if (!pending || pending.character !== char_name) {
+            emit_supervisor_event(
+              "MARKET_TRADING_LIVE_TEST_RESULT_IGNORED",
+              char_name,
+              {
+                why: "UNKNOWN_OR_STALE_REQUEST",
+                request_id: m.request_id || null,
+              },
+            );
+            break;
+          }
+
+          clearTimeout(pending.timer);
+          market_trading_live_test_requests.delete(m.request_id);
+          pending.resolve({
+            result: m.result || null,
+            error: m.error || null,
+          });
+          emit_supervisor_event(
+            "MARKET_TRADING_LIVE_TEST_RESULT_RECEIVED",
+            char_name,
+            {
+              request_id: m.request_id,
+              outcome: m.result?.outcome || null,
+              error: m.error || null,
+            },
+          );
+          break;
+        }
+        case "npc_trading_live_test_result": {
+          const pending = npc_trading_live_test_requests.get(m.request_id);
+          if (!pending || pending.character !== char_name) {
+            emit_supervisor_event(
+              "NPC_TRADING_LIVE_TEST_RESULT_IGNORED",
+              char_name,
+              {
+                why: "UNKNOWN_OR_STALE_REQUEST",
+                request_id: m.request_id || null,
+              },
+            );
+            break;
+          }
+
+          clearTimeout(pending.timer);
+          npc_trading_live_test_requests.delete(m.request_id);
+          pending.resolve({
+            result: m.result || null,
+            error: m.error || null,
+          });
+          emit_supervisor_event(
+            "NPC_TRADING_LIVE_TEST_RESULT_RECEIVED",
+            char_name,
+            {
+              request_id: m.request_id,
+              outcome: m.result?.outcome || null,
+              error: m.error || null,
+            },
+          );
+          break;
+        }
+        case "exchange_live_test_result": {
+          const pending = exchange_live_test_requests.get(m.request_id);
+          if (!pending || pending.character !== char_name) {
+            emit_supervisor_event(
+              "EXCHANGE_LIVE_TEST_RESULT_IGNORED",
+              char_name,
+              {
+                why: "UNKNOWN_OR_STALE_REQUEST",
+                request_id: m.request_id || null,
+              },
+            );
+            break;
+          }
+
+          clearTimeout(pending.timer);
+          exchange_live_test_requests.delete(m.request_id);
+          pending.resolve({
+            result: m.result || null,
+            error: m.error || null,
+          });
+          emit_supervisor_event(
+            "EXCHANGE_LIVE_TEST_RESULT_RECEIVED",
+            char_name,
+            {
+              request_id: m.request_id,
+              outcome: m.result?.outcome || null,
+              error: m.error || null,
+            },
+          );
+          break;
+        }
+        case "craft_live_test_result": {
+          const pending = craft_live_test_requests.get(m.request_id);
+          if (!pending || pending.character !== char_name) {
+            emit_supervisor_event("CRAFT_LIVE_TEST_RESULT_IGNORED", char_name, {
+              why: "UNKNOWN_OR_STALE_REQUEST",
+              request_id: m.request_id || null,
+            });
+            break;
+          }
+
+          clearTimeout(pending.timer);
+          craft_live_test_requests.delete(m.request_id);
+          pending.resolve({
+            result: m.result || null,
+            error: m.error || null,
+          });
+          emit_supervisor_event("CRAFT_LIVE_TEST_RESULT_RECEIVED", char_name, {
+            request_id: m.request_id,
+            outcome: m.result?.outcome || null,
+            error: m.error || null,
+          });
+          break;
+        }
+        case "craft_preflight_result": {
+          const pending = craft_preflight_requests.get(m.request_id);
+          if (!pending || pending.character !== char_name) {
+            emit_supervisor_event("CRAFT_PREFLIGHT_RESULT_IGNORED", char_name, {
+              why: "UNKNOWN_OR_STALE_REQUEST",
+              request_id: m.request_id || null,
+            });
+            break;
+          }
+
+          clearTimeout(pending.timer);
+          craft_preflight_requests.delete(m.request_id);
+          pending.resolve({
+            result: m.result || null,
+            error: m.error || null,
+          });
+          emit_supervisor_event("CRAFT_PREFLIGHT_RESULT_RECEIVED", char_name, {
+            request_id: m.request_id,
+            outcome: m.result?.outcome || null,
+            error: m.error || null,
+          });
+          break;
+        }
+        case "exchange_preflight_result": {
+          const pending = exchange_preflight_requests.get(m.request_id);
+          if (!pending || pending.character !== char_name) {
+            emit_supervisor_event(
+              "EXCHANGE_PREFLIGHT_RESULT_IGNORED",
+              char_name,
+              {
+                why: "UNKNOWN_OR_STALE_REQUEST",
+                request_id: m.request_id || null,
+              },
+            );
+            break;
+          }
+
+          clearTimeout(pending.timer);
+          exchange_preflight_requests.delete(m.request_id);
+          pending.resolve({
+            result: m.result || null,
+            error: m.error || null,
+          });
+          emit_supervisor_event(
+            "EXCHANGE_PREFLIGHT_RESULT_RECEIVED",
+            char_name,
+            {
+              request_id: m.request_id,
+              outcome: m.result?.outcome || null,
+              error: m.error || null,
+            },
+          );
+          break;
+        }
+        case "upgrade_live_preflight_result": {
+          const pending = upgrade_live_preflight_requests.get(m.request_id);
+          if (!pending || pending.character !== char_name) {
+            emit_supervisor_event(
+              "UPGRADE_PREFLIGHT_RESULT_IGNORED",
+              char_name,
+              {
+                why: "UNKNOWN_OR_STALE_REQUEST",
+                request_id: m.request_id || null,
+              },
+            );
+            break;
+          }
+
+          clearTimeout(pending.timer);
+          upgrade_live_preflight_requests.delete(m.request_id);
+          pending.resolve({
+            result: m.result || null,
+            error: m.error || null,
+          });
+          emit_supervisor_event(
+            "UPGRADE_PREFLIGHT_RESULT_RECEIVED",
+            char_name,
+            {
+              request_id: m.request_id,
+              outcome: m.result?.outcome || null,
+              error: m.error || null,
+            },
+          );
+          break;
+        }
+        case "compound_live_test_result": {
+          const pending = compound_live_test_requests.get(m.request_id);
+          if (!pending || pending.character !== char_name) {
+            emit_supervisor_event(
+              "COMPOUND_LIVE_TEST_RESULT_IGNORED",
+              char_name,
+              {
+                why: "UNKNOWN_OR_STALE_REQUEST",
+                request_id: m.request_id || null,
+              },
+            );
+            break;
+          }
+
+          clearTimeout(pending.timer);
+          compound_live_test_requests.delete(m.request_id);
+          pending.resolve({
+            result: m.result || null,
+            error: m.error || null,
+          });
+          emit_supervisor_event(
+            "COMPOUND_LIVE_TEST_RESULT_RECEIVED",
+            char_name,
+            {
+              request_id: m.request_id,
+              outcome: m.result?.outcome || null,
+              error: m.error || null,
+            },
+          );
+          break;
+        }
+        case "upgrade_live_test_result": {
+          const pending = upgrade_live_test_requests.get(m.request_id);
+          if (!pending || pending.character !== char_name) {
+            emit_supervisor_event(
+              "UPGRADE_LIVE_TEST_RESULT_IGNORED",
+              char_name,
+              {
+                why: "UNKNOWN_OR_STALE_REQUEST",
+                request_id: m.request_id || null,
+              },
+            );
+            break;
+          }
+
+          clearTimeout(pending.timer);
+          upgrade_live_test_requests.delete(m.request_id);
+          pending.resolve({
+            result: m.result || null,
+            error: m.error || null,
+          });
+          emit_supervisor_event(
+            "UPGRADE_LIVE_TEST_RESULT_RECEIVED",
+            char_name,
+            {
+              request_id: m.request_id,
+              outcome: m.result?.outcome || null,
+              error: m.error || null,
+            },
+          );
+          break;
+        }
+        case "bank_gold_live_test_result": {
+          const pending = bank_gold_live_test_requests.get(m.request_id);
+          if (!pending || pending.character !== char_name) {
+            emit_supervisor_event(
+              "BANK_GOLD_LIVE_TEST_RESULT_IGNORED",
+              char_name,
+              {
+                why: "UNKNOWN_OR_STALE_REQUEST",
+                request_id: m.request_id || null,
+              },
+            );
+            break;
+          }
+
+          clearTimeout(pending.timer);
+          bank_gold_live_test_requests.delete(m.request_id);
+          pending.resolve({
+            result: m.result || null,
+            error: m.error || null,
+          });
+          emit_supervisor_event(
+            "BANK_GOLD_LIVE_TEST_RESULT_RECEIVED",
+            char_name,
+            {
+              request_id: m.request_id,
+              outcome: m.result?.outcome || null,
+              error: m.error || null,
+            },
+          );
+          break;
+        }
+        case "bank_travel_live_test_result": {
+          const pending = bank_travel_live_test_requests.get(m.request_id);
+          if (!pending || pending.character !== char_name) {
+            emit_supervisor_event(
+              "BANK_TRAVEL_LIVE_TEST_RESULT_IGNORED",
+              char_name,
+              {
+                why: "UNKNOWN_OR_STALE_REQUEST",
+                request_id: m.request_id || null,
+              },
+            );
+            break;
+          }
+
+          clearTimeout(pending.timer);
+          bank_travel_live_test_requests.delete(m.request_id);
+          pending.resolve({
+            result: m.result || null,
+            error: m.error || null,
+          });
+          emit_supervisor_event(
+            "BANK_TRAVEL_LIVE_TEST_RESULT_RECEIVED",
+            char_name,
+            {
+              request_id: m.request_id,
+              outcome: m.result?.outcome || null,
+              error: m.error || null,
+            },
+          );
+          break;
+        }
+        case "economy_prebuff_execution_live_test_result": {
+          const pending = economy_prebuff_execution_live_test_requests.get(
+            m.request_id,
+          );
+          if (!pending || pending.character !== char_name) {
+            emit_supervisor_event(
+              "ECONOMY_PREBUFF_EXECUTION_LIVE_TEST_RESULT_IGNORED",
+              char_name,
+              {
+                why: "UNKNOWN_OR_STALE_REQUEST",
+                request_id: m.request_id || null,
+              },
+            );
+            break;
+          }
+
+          clearTimeout(pending.timer);
+          economy_prebuff_execution_live_test_requests.delete(m.request_id);
+          pending.resolve({
+            result: m.result || null,
+            error: m.error || null,
+          });
+          emit_supervisor_event(
+            "ECONOMY_PREBUFF_EXECUTION_LIVE_TEST_RESULT_RECEIVED",
+            char_name,
+            {
+              request_id: m.request_id,
+              outcome: m.result?.outcome || null,
+              reason: m.result?.reason || null,
+              error: m.error || null,
+            },
+          );
+          break;
+        }
+        case "economy_arbiter_enforcement_probe_result": {
+          const pending = economy_arbiter_enforcement_probe_requests.get(
+            m.request_id,
+          );
+          if (!pending || pending.character !== char_name) {
+            emit_supervisor_event(
+              "ECONOMY_ARBITER_ENFORCEMENT_PROBE_RESULT_IGNORED",
+              char_name,
+              {
+                why: "UNKNOWN_OR_STALE_REQUEST",
+                request_id: m.request_id || null,
+              },
+            );
+            break;
+          }
+
+          clearTimeout(pending.timer);
+          economy_arbiter_enforcement_probe_requests.delete(m.request_id);
+          pending.resolve({
+            result: m.result || null,
+            error: m.error || null,
+          });
+          emit_supervisor_event(
+            "ECONOMY_ARBITER_ENFORCEMENT_PROBE_RESULT_RECEIVED",
+            char_name,
+            {
+              request_id: m.request_id,
+              outcome: m.result?.outcome || null,
+              error: m.error || null,
+            },
+          );
+          break;
+        }
+        case "merrit_live_test_result": {
+          const pending = merrit_live_test_requests.get(m.request_id);
+          if (!pending || pending.character !== char_name) {
+            emit_supervisor_event(
+              "MERRIT_LIVE_TEST_RESULT_IGNORED",
+              char_name,
+              {
+                why: "UNKNOWN_OR_STALE_REQUEST",
+                request_id: m.request_id || null,
+              },
+            );
+            break;
+          }
+
+          clearTimeout(pending.timer);
+          merrit_live_test_requests.delete(m.request_id);
+          pending.resolve({
+            result: m.result || null,
+            error: m.error || null,
+          });
+          emit_supervisor_event("MERRIT_LIVE_TEST_RESULT_RECEIVED", char_name, {
+            request_id: m.request_id,
+            outcome: m.result?.outcome || null,
+            error: m.error || null,
+          });
+          break;
+        }
+        case "merchant_live_test_result": {
+          const pending = merchant_live_test_requests.get(m.request_id);
+          if (!pending || pending.character !== char_name) {
+            emit_supervisor_event(
+              "MERCHANT_LIVE_TEST_RESULT_IGNORED",
+              char_name,
+              {
+                why: "UNKNOWN_OR_STALE_REQUEST",
+                request_id: m.request_id || null,
+              },
+            );
+            break;
+          }
+
+          clearTimeout(pending.timer);
+          merchant_live_test_requests.delete(m.request_id);
+          pending.resolve({
+            result: m.result || null,
+            error: m.error || null,
+          });
+          emit_supervisor_event(
+            "MERCHANT_LIVE_TEST_RESULT_RECEIVED",
+            char_name,
+            {
+              request_id: m.request_id,
+              outcome: m.result?.outcome || null,
+              error: m.error || null,
+            },
+          );
+          break;
+        }
+        case "inventory_live_test_result": {
+          const pending = inventory_live_test_requests.get(m.request_id);
+          if (!pending || pending.character !== char_name) {
+            emit_supervisor_event(
+              "INVENTORY_LIVE_TEST_RESULT_IGNORED",
+              char_name,
+              {
+                why: "UNKNOWN_OR_STALE_REQUEST",
+                request_id: m.request_id || null,
+              },
+            );
+            break;
+          }
+
+          clearTimeout(pending.timer);
+          inventory_live_test_requests.delete(m.request_id);
+          pending.resolve({
+            result: m.result || null,
+            error: m.error || null,
+          });
+          emit_supervisor_event(
+            "INVENTORY_LIVE_TEST_RESULT_RECEIVED",
+            char_name,
+            {
+              request_id: m.request_id,
+              outcome: m.result?.outcome || null,
+              error: m.error || null,
+            },
+          );
+          break;
+        }
+        case "farm_live_test_result": {
+          const pending = farm_live_test_requests.get(m.request_id);
+          if (!pending || pending.character !== char_name) {
+            emit_supervisor_event("FARM_LIVE_TEST_RESULT_IGNORED", char_name, {
+              why: "UNKNOWN_OR_STALE_REQUEST",
+              request_id: m.request_id || null,
+            });
+            break;
+          }
+
+          clearTimeout(pending.timer);
+          farm_live_test_requests.delete(m.request_id);
+          pending.resolve({
+            result: m.result || null,
+            error: m.error || null,
+          });
+          emit_supervisor_event("FARM_LIVE_TEST_RESULT_RECEIVED", char_name, {
+            request_id: m.request_id,
+            outcome: m.result?.outcome || null,
+            error: m.error || null,
+          });
+          break;
+        }
+        case "group_live_test_result": {
+          const pending = group_live_test_requests.get(m.request_id);
+          if (!pending || pending.character !== char_name) {
+            emit_supervisor_event("GROUP_LIVE_TEST_RESULT_IGNORED", char_name, {
+              why: "UNKNOWN_OR_STALE_REQUEST",
+              request_id: m.request_id || null,
+            });
+            break;
+          }
+
+          clearTimeout(pending.timer);
+          group_live_test_requests.delete(m.request_id);
+          pending.resolve({
+            result: m.result || null,
+            error: m.error || null,
+          });
+          emit_supervisor_event("GROUP_LIVE_TEST_RESULT_RECEIVED", char_name, {
+            request_id: m.request_id,
+            outcome: m.result?.outcome || null,
+            error: m.error || null,
+          });
+          break;
+        }
+        case "config_applied": {
+          const applied_revision = Number(m.revision);
+          if (
+            Number.isInteger(applied_revision) &&
+            applied_revision === char_block.runtime_config_revision
+          ) {
+            clear_config_push_timer(char_block);
+            char_block.applied_runtime_config_revision = applied_revision;
+            char_block.config_push_status = "APPLIED";
+            char_block.config_push_error = null;
+            emit_supervisor_event("CHARACTER_CONFIG_APPLIED", char_name, {
+              why:
+                m.source === "process_args"
+                  ? "PROCESS_START_CONFIG"
+                  : "LIVE_CONFIG_PUSH",
+              revision: applied_revision,
+              changed: m.changed !== false,
+            });
+            dashboard?.publishSnapshot();
+          } else {
+            emit_supervisor_event("CHARACTER_CONFIG_ACK_IGNORED", char_name, {
+              why: "STALE_OR_INVALID_CONFIG_ACK",
+              revision: Number.isFinite(applied_revision)
+                ? applied_revision
+                : null,
+              expected_revision: char_block.runtime_config_revision,
+            });
+          }
+          break;
+        }
+        case "config_rejected":
+          if (Number(m.revision) === char_block.runtime_config_revision) {
+            clear_config_push_timer(char_block);
+            char_block.config_push_status = "REJECTED";
+            char_block.config_push_error = m.reason || "CONFIG_REJECTED";
+          }
+          emit_supervisor_event("CHARACTER_CONFIG_REJECTED", char_name, {
+            why: m.reason || "CONFIG_REJECTED",
+            revision: Number.isFinite(Number(m.revision))
+              ? Number(m.revision)
+              : null,
+          });
+          dashboard?.publishSnapshot();
+          break;
+        case "emergency_stop_applied":
+          emit_supervisor_event("EMERGENCY_STOP_APPLIED", char_name, {
+            active: !!m.state?.active,
+            reason: m.state?.reason || null,
+            revision: m.state?.revision || 0,
+          });
+          break;
+        case "runtime_state_applied":
+          if (m.state === DESIRED_RUNTIME_STATES.PAUSED) {
+            set_lifecycle_state(
+              char_name,
+              LIFECYCLE_STATES.PAUSED,
+              "runtime_control_applied",
+            );
+          } else if (
+            m.state === DESIRED_RUNTIME_STATES.RUNNING &&
+            char_block.connected
+          ) {
+            set_lifecycle_state(
+              char_name,
+              LIFECYCLE_STATES.ONLINE,
+              "runtime_control_applied",
+            );
+          }
+          emit_supervisor_event("CHARACTER_CONTROL_APPLIED", char_name, {
+            state: m.state,
+          });
+          break;
+        case "heartbeat":
+          char_block.last_heartbeat_at =
+            Number.isFinite(m.timestamp) && m.timestamp > 0
+              ? m.timestamp
+              : Date.now();
+          char_block.last_heartbeat_pid = m.pid || result.pid || null;
+          break;
+        case "stat_beat":
+          if (m.map_scene?.map) {
+            dashboard_map_scenes.set(m.map_scene.map, m.map_scene);
+            delete m.map_scene;
+          }
+          updateCharacterLiveState(char_block, m);
+          maybe_persist_character_snapshot(char_name, char_block, m);
+          refresh_merchant_logistics("STAT_BEAT");
+          dashboard?.publishSnapshot();
+          break;
+
+        case "connected":
+          char_block.connected = true;
+          char_block.last_heartbeat_at = Date.now();
+          char_block.watchdog_recovery_in_progress = false;
+          set_lifecycle_state(char_name, LIFECYCLE_STATES.ONLINE, "connected");
+          if (
+            char_block.applied_runtime_config_revision !==
+            char_block.runtime_config_revision
+          ) {
+            char_block.config_push_status = "PENDING";
+            char_block.config_push_error = null;
+            safe_send(result, {
+              type: "config_push",
+              revision: char_block.runtime_config_revision,
+              config: char_block.runtime_config,
+            });
+            arm_config_push_timeout(
+              char_name,
+              char_block.runtime_config_revision,
+            );
+            emit_supervisor_event(
+              "CHARACTER_CONFIG_PUSH_REQUESTED",
+              char_name,
+              {
+                why: "SYNC_CONFIG_AFTER_CONNECT",
+                revision: char_block.runtime_config_revision,
+              },
+            );
+          }
+          safe_send(result, {
+            type: "runtime_control",
+            state: char_block.desired_runtime_state,
+          });
+          safe_send(result, {
+            type: "emergency_stop",
+            state: emergency_stop.snapshot(),
+          });
+          emit_supervisor_event("CHARACTER_CONNECTED", char_name, {
+            pid: result.pid || null,
+          });
+          if (char_block.rotation_source) {
+            const rotation_source = char_block.rotation_source;
+            char_block.rotation_source = null;
+            emit_supervisor_event("CHARACTER_ROTATION_COMPLETED", char_name, {
+              why: "ROTATION_TARGET_CONNECTED",
+              stop_character: rotation_source,
+              start_character: char_name,
+            });
+            dashboard?.publishSnapshot();
+          }
+          clear_stable_timer(char_block);
+          char_block.stable_timer = setTimeout(() => {
+            char_block.restart_attempts = 0;
+            char_block.stable_timer = null;
+            log.info(
+              {
+                type: "character_restart_backoff_reset",
+                character: char_name,
+              },
+              `restart backoff reset for ${char_name}`,
+            );
+          }, lifecycle_policy.restartResetMs);
+          update_siblings_and_acc(my_acc.response);
+          break;
+        case "deploy":
+          //check for existing charblock, adjust parameters and kill it
+          //or not find any, make a new one and start it
+          const new_char_name = m.character || char_name;
+          const existing_candidate = character_manage[new_char_name] || {};
+          const active_typescript_override =
+            existing_candidate.movement_live_test_typescript_override || null;
+          const candidate = initialize_char_block(
+            new_char_name,
+            existing_candidate,
+          );
+          candidate.movement_live_test_typescript_override =
+            active_typescript_override;
+          character_manage[new_char_name] = candidate;
+          candidate.enabled = true;
+          candidate.desired_runtime_state = DESIRED_RUNTIME_STATES.RUNNING;
+          candidate.realm = m.realm || char_block.realm;
+          if (char_block.typescript && char_block.typescript.length > 0) {
+            candidate.typescript = m.script || char_block.typescript;
+          } else {
+            candidate.script = m.script || char_block.script;
+            candidate.typescript = null;
+          }
+          candidate.script = m.script || char_block.script;
+          candidate.version = m.version || char_block.version;
+          if (candidate.instance) {
+            candidate.controlled_restart = true;
+            softkill_block(candidate);
+          } else {
+            candidate.connected = false;
+            start_char(new_char_name);
+          }
+          break;
+        case "shutdown":
+          if (m.character) {
+            const candidate = character_manage[m.character] || {};
+
+            console.log(
+              `shutdown requested for ${m.character} from ${char_name}`,
+            );
+            candidate.enabled = false;
+            candidate.desired_runtime_state = DESIRED_RUNTIME_STATES.STOPPED;
+            softkill_block(candidate);
+          } else {
+            console.log("shutdown requested from " + char_name);
+            char_block.enabled = false;
+            char_block.desired_runtime_state = DESIRED_RUNTIME_STATES.STOPPED;
+            softkill_block(char_block);
+          }
+          break;
+        case "cm":
+          let recipients = m.to;
+          if (!Array.isArray(recipients)) {
+            recipients = [recipients];
+          }
+          const [locs, globs] = partition(
+            recipients,
+            (x) => character_manage[x] && character_manage[x].connected,
+          );
+          if (globs.length > 0) {
+            safe_send(char_block.instance, {
+              type: "send_cm",
+              to: globs,
+              data: m.data,
+            });
+          }
+          locs.forEach((blk) => {
+            safe_send(character_manage[blk].instance, {
+              type: "receive_cm",
+              name: char_name,
+              data: m.data,
+            });
+          });
+          break;
+        //localStorage and sessionStorage related
+        case "stor":
+          const trg_store = m.ident == "ls" ? localStorage : sessionStorage;
+          switch (m.op) {
+            case "set":
+              for (let key in m.data) {
+                trg_store.set(key, m.data[key]);
+              }
+              break;
+            case "del":
+              for (let key of m.data) {
+                trg_store.delete(key);
+              }
+              break;
+            case "clear":
+              for (let [key, value] of trg_store.entries()) {
+                trg_store.delete(key);
+              }
+              break;
+            case "init":
+              const catchup_data = {};
+              for (let [key, value] of trg_store.entries()) {
+                catchup_data[key] = value;
+              }
+              safe_send(char_block.instance, {
+                type: "stor",
+                op: "set",
+                ident: m.ident,
+                data: catchup_data,
+              });
+              break;
+            default:
+              break;
+          }
+          if (m.op != "init") {
+            //forward to other running processes
+            Object.values(character_manage)
+              .filter((x) => x.instance)
+              .forEach((block) => {
+                safe_send(block.instance, m);
+              });
+          }
+          break;
+        default:
+          break;
+      }
+    });
+    if (bwi_instance.publisher) {
+      char_block.monitor = monitoring_util.create_monitor_ui(
+        bwi_instance,
+        char_name,
+        char_block,
+        cfg.web_app.enable_minimap,
+      );
+    }
+
+    return result;
+  }
+  //TODO beta new logic for #5
+  //i need to implement decent lifecycle-handling
+  let last_watchdog_tick_at = Date.now();
+  const watchdog_task = setInterval(() => {
+    if (coordinator_shutting_down) return;
+    const now = Date.now();
+    const watchdog_gap_ms = now - last_watchdog_tick_at;
+    last_watchdog_tick_at = now;
+    Object.values(character_manage).forEach(refresh_character_revision);
+    dashboard?.publishSnapshot();
+
+    if (watchdog_gap_ms > lifecycle_policy.heartbeatTimeoutMs) {
+      Object.values(character_manage).forEach((char_block) => {
+        if (char_block.instance) {
+          char_block.last_heartbeat_at = now;
+        }
+      });
+      emit_supervisor_event("WATCHDOG_CLOCK_GAP", null, {
+        gap_ms: watchdog_gap_ms,
+        heartbeat_timeout_ms: lifecycle_policy.heartbeatTimeoutMs,
+      });
+      return;
+    }
+
+    Object.entries(character_manage).forEach(([char_name, char_block]) => {
+      if (
+        !char_block.instance ||
+        char_block.watchdog_recovery_in_progress ||
+        !isHeartbeatStale(
+          char_block.last_heartbeat_at,
+          now,
+          lifecycle_policy.heartbeatTimeoutMs,
+        )
+      ) {
+        return;
+      }
+
+      char_block.watchdog_recovery_in_progress = true;
+      const age_ms = now - char_block.last_heartbeat_at;
+      set_lifecycle_state(
+        char_name,
+        LIFECYCLE_STATES.ERROR,
+        "heartbeat_timeout",
+      );
+      emit_supervisor_event("CHARACTER_HEARTBEAT_TIMEOUT", char_name, {
+        age_ms,
+        timeout_ms: lifecycle_policy.heartbeatTimeoutMs,
+        pid: char_block.last_heartbeat_pid,
+      });
+      softkill_block(char_block);
+    });
+  }, lifecycle_policy.watchdogIntervalMs);
+  watchdog_task.unref();
+
+  ["SIGINT", "SIGTERM", "SIGQUIT"].forEach((signal) =>
+    process.on(signal, async () => {
+      if (coordinator_shutting_down) return;
+      coordinator_shutting_down = true;
+      clearInterval(watchdog_task);
+      emit_supervisor_event("COORDINATOR_SHUTDOWN", null, { signal });
+      dashboard?.close();
+      if (owned_web_server) {
+        owned_web_server.close();
+      }
+      console.log(`Received ${signal} on master. Rounding up clients`);
+      //softkill all chars, giving them chance to shutdown
+      await Promise.all(
+        Object.values(character_manage).map((char_block) => {
+          clear_restart_timer(char_block);
+          clear_stable_timer(char_block);
+          return softkill_block(char_block);
+        }),
+      );
+      await Promise.allSettled([
+        structured_logger.flush(),
+        incident_recorder.flush(),
+      ]);
+      await persistence.close();
+      console.log("now truly exiting");
+      process.exit();
+    }),
+  );
+
+  Object.entries(character_manage).forEach(([char_name, char_block]) => {
+    initialize_char_block(char_name, char_block);
+  });
+
+  const requested_startup = Object.values(character_manage).filter(
+    (char_block) => char_block.enabled,
+  ).length;
+  const startup_chars = getInitialStartupCharacters(
+    character_manage,
+    lifecycle_policy.maxOnlineCharacters,
+  );
+  if (requested_startup > startup_chars.length) {
+    log.warn(
+      {
+        type: "character_startup_limit",
+        requested: requested_startup,
+        scheduled: startup_chars.length,
+        max_online_characters: lifecycle_policy.maxOnlineCharacters,
+      },
+      "configured characters exceed the online character limit",
+    );
+  }
+
+  emit_supervisor_event("COORDINATOR_READY", null, {
+    registered_character_count: Object.keys(character_manage).length,
+    account_character_count: account_characters.length,
+    registered_characters: Object.keys(character_manage).sort(),
+    max_online_characters: lifecycle_policy.maxOnlineCharacters,
+    heartbeat_interval_ms: lifecycle_policy.heartbeatIntervalMs,
+    heartbeat_timeout_ms: lifecycle_policy.heartbeatTimeoutMs,
+    watchdog_interval_ms: lifecycle_policy.watchdogIntervalMs,
+    scheduled_characters: startup_chars,
+  });
+
+  startup_chars.forEach((char_name, index) => {
+    const delay = index * lifecycle_policy.startupStaggerMs;
+    setTimeout(() => start_char(char_name), delay);
+  });
+
+  my_acc.add_listener(update_siblings_and_acc);
+})().catch((e) => {
+  console.error("failed to start caracAL", e);
+});
