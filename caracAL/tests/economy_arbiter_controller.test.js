@@ -184,7 +184,6 @@ test("Economy Arbiter supports disabling and event de-duplication", () => {
   assert.equal(events.length, 1);
 });
 
-
 test("Economy Arbiter classifies only governed Phase 15 intents", () => {
   const { economyArbiterLaneForIntent } = loadEconomyModule();
 
@@ -264,75 +263,81 @@ test("Economy Arbiter classifies only governed Phase 15 intents", () => {
   );
 });
 
-test("Economy Arbiter enforcement is opt-in and allows the selected READY lane", () => {
-  const disabled = makeController({
-    signals: {
-      MERRIT: active("MERRIT_READY"),
-      ECONOMY: active("ECONOMY_READY"),
-    },
-  });
-  const compatibility = disabled.controller.authorize("ECONOMY");
-  assert.equal(compatibility.enforced, false);
-  assert.equal(compatibility.allowed, true);
-
-  const enabled = makeController({
-    config: {
-      economyArbiter: {
-        enforcementEnabled: true,
+test(
+  "Economy Arbiter enforcement is opt-in and allows the selected READY lane",
+  () => {
+    const disabled = makeController({
+      signals: {
+        MERRIT: active("MERRIT_READY"),
+        ECONOMY: active("ECONOMY_READY"),
       },
-    },
-    signals: {
-      MERRIT: active("MERRIT_READY"),
-      ECONOMY: active("ECONOMY_READY"),
-    },
-  });
+    });
+    const compatibility = disabled.controller.authorize("ECONOMY");
+    assert.equal(compatibility.enforced, false);
+    assert.equal(compatibility.allowed, true);
 
-  const lower = enabled.controller.authorize("ECONOMY");
-  assert.equal(lower.enforced, true);
-  assert.equal(lower.allowed, false);
-  assert.equal(lower.selectedLane, "MERRIT");
-  assert.equal(
-    lower.reason,
-    "ECONOMY_ARBITER_HIGHER_PRIORITY_LANE_SELECTED",
-  );
-
-  const selected = enabled.controller.authorize("MERRIT");
-  assert.equal(selected.enforced, true);
-  assert.equal(selected.allowed, true);
-  assert.equal(selected.reason, "ECONOMY_ARBITER_LANE_AUTHORIZED");
-});
-
-test("Economy Arbiter enforcement fails closed for UNKNOWN and inactive Prebuff", () => {
-  const unknown = makeController({
-    config: {
-      economyArbiter: {
-        enforcementEnabled: true,
+    const enabled = makeController({
+      config: {
+        economyArbiter: {
+          enforcementEnabled: true,
+        },
       },
-    },
-    signals: {
-      CRITICAL_FARMER_LOGISTICS: active("LOGISTICS_OUTCOME_UNCERTAIN", {
-        unknown: true,
-      }),
-      BACKGROUND: active("BACKGROUND_READY"),
-    },
-  });
-
-  const background = unknown.controller.authorize("BACKGROUND");
-  assert.equal(background.allowed, false);
-  assert.equal(background.state, "UNKNOWN");
-  assert.equal(background.reason, "ECONOMY_ARBITER_UNKNOWN_BLOCK");
-
-  const prebuff = makeController({
-    config: {
-      economyArbiter: {
-        enforcementEnabled: true,
+      signals: {
+        MERRIT: active("MERRIT_READY"),
+        ECONOMY: active("ECONOMY_READY"),
       },
-    },
-    signals: {
-      ECONOMY: active("ECONOMY_READY"),
-    },
-  }).controller.authorize("ECONOMY_PREBUFF");
+    });
 
-  assert.equal(prebuff.allowed, false);
-  assert.equal(prebuff.selectedLane, "ECONOMY");
-});
+    const lower = enabled.controller.authorize("ECONOMY");
+    assert.equal(lower.enforced, true);
+    assert.equal(lower.allowed, false);
+    assert.equal(lower.selectedLane, "MERRIT");
+    assert.equal(
+      lower.reason,
+      "ECONOMY_ARBITER_HIGHER_PRIORITY_LANE_SELECTED",
+    );
+
+    const selected = enabled.controller.authorize("MERRIT");
+    assert.equal(selected.enforced, true);
+    assert.equal(selected.allowed, true);
+    assert.equal(selected.reason, "ECONOMY_ARBITER_LANE_AUTHORIZED");
+  },
+);
+
+test(
+  "Economy Arbiter enforcement fails closed for UNKNOWN and inactive Prebuff",
+  () => {
+    const unknown = makeController({
+      config: {
+        economyArbiter: {
+          enforcementEnabled: true,
+        },
+      },
+      signals: {
+        CRITICAL_FARMER_LOGISTICS: active("LOGISTICS_OUTCOME_UNCERTAIN", {
+          unknown: true,
+        }),
+        BACKGROUND: active("BACKGROUND_READY"),
+      },
+    });
+
+    const background = unknown.controller.authorize("BACKGROUND");
+    assert.equal(background.allowed, false);
+    assert.equal(background.state, "UNKNOWN");
+    assert.equal(background.reason, "ECONOMY_ARBITER_UNKNOWN_BLOCK");
+
+    const prebuff = makeController({
+      config: {
+        economyArbiter: {
+          enforcementEnabled: true,
+        },
+      },
+      signals: {
+        ECONOMY: active("ECONOMY_READY"),
+      },
+    }).controller.authorize("ECONOMY_PREBUFF");
+
+    assert.equal(prebuff.allowed, false);
+    assert.equal(prebuff.selectedLane, "ECONOMY");
+  },
+);
