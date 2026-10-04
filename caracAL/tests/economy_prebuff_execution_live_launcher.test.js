@@ -75,6 +75,8 @@ function child(overrides = {}) {
       arbiterEnforcementRestored: true,
       verificationPolicyConfigOverrideCleared: true,
       verificationPolicyPlanningRestored: true,
+      prebuffVerificationConfigOverrideCleared: true,
+      prebuffVerificationPlanningRestored: true,
     },
     ...overrides,
   };
@@ -132,6 +134,8 @@ test("coupled execution verifier accepts one confirmed expected mutation", () =>
   assert.equal(evidence.blindRetryAvoided, true);
   assert.equal(evidence.verificationPolicyOverrideCleared, true);
   assert.equal(evidence.verificationPolicyPlanningRestored, true);
+  assert.equal(evidence.prebuffVerificationOverrideCleared, true);
+  assert.equal(evidence.prebuffVerificationPlanningRestored, true);
   assert.equal(result.outcome, "PASS");
   assert.equal(result.reason, "ECONOMY_PREBUFF_EXECUTION_LIVE_E2E_CONFIRMED");
 });
