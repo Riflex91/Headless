@@ -22,6 +22,7 @@ test("public character state exposes only dashboard-safe fields", () => {
     connected: true,
     lifecycle_state: "ONLINE",
     desired_runtime_state: "PAUSED",
+    desired_runtime_state_source: "MANUAL_PAUSE",
     rotation_source: "My_Warrior",
     rotation_replacement: null,
     account_owned: true,
@@ -53,6 +54,7 @@ test("public character state exposes only dashboard-safe fields", () => {
     connected: true,
     lifecycle_state: "ONLINE",
     desired_runtime_state: "PAUSED",
+    desired_runtime_state_source: "MANUAL_PAUSE",
     rotation_source: "My_Warrior",
     rotation_replacement: null,
     account_owned: true,
@@ -258,6 +260,57 @@ test("supervisor snapshot exposes supplied read-only account strategy projection
   assert.deepEqual(snapshot.account_strategy, accountStrategy);
 });
 
+test("supervisor snapshot exposes supplied Full Autonomy reconciliation projection", () => {
+  const fullAutonomy = {
+    timestamp: 1234,
+    state: "READY",
+    reason: "FULL_AUTONOMY_RECONCILIATION_READY",
+    readOnly: true,
+    executionEnabled: false,
+    desiredStateMutationDispatched: false,
+    merchantIndependent: true,
+    maxOnlineCharacters: 4,
+    combatSlots: 3,
+    recommendations: [
+      {
+        name: "My_Merchant",
+        selected: true,
+        role: "MERCHANT",
+        recommendedDesiredState: "RUNNING",
+      },
+    ],
+    summary: {
+      accountOwnedCharacters: 8,
+      selectedCharacters: 4,
+      selectedMerchant: 1,
+      selectedCombat: 3,
+      manualStopProtected: 0,
+      farmSignals: 3,
+      economySignals: 1,
+      encounterSignals: 0,
+      merchantClaims: 0,
+    },
+    policy: {
+      manualStoppedNeverOverridden: true,
+    },
+  };
+
+  const snapshot = buildSupervisorSnapshot(
+    {},
+    { maxOnlineCharacters: 4 },
+    null,
+    null,
+    null,
+    null,
+    null,
+    fullAutonomy,
+  );
+
+  assert.deepEqual(snapshot.full_autonomy, fullAutonomy);
+  assert.equal(snapshot.full_autonomy.executionEnabled, false);
+  assert.equal(snapshot.full_autonomy.desiredStateMutationDispatched, false);
+});
+
 test("diagnostic time range query is bounded", () => {
   const before = Date.now();
   const since = diagnosticSinceFromQuery({ minutes: "5" });
@@ -305,6 +358,9 @@ test("dashboard static assets are present", () => {
   const index = fs.readFileSync(path.join(dashboardDir, "index.html"), "utf8");
   assert.match(index, /Letzter Incident/);
   assert.match(index, /Persistence: UNKNOWN/);
+  assert.match(index, /id="full-autonomy-summary"/);
+  assert.match(index, /Full Autonomy: EMPTY/);
+  assert.match(index, /Execution: READ-ONLY/);
   assert.match(index, /data-control="restart"/);
   assert.match(index, /data-config/);
   assert.match(index, /id="config-dialog"/);
@@ -354,6 +410,9 @@ test("dashboard panels and character cards support persistent collapsing", () =>
 
   assert.match(dashboardApp, /initializeDashboardCollapsibles/);
   assert.match(dashboardApp, /initializeCollapsible/);
+  assert.match(dashboardApp, /renderFullAutonomySummary/);
+  assert.match(dashboardApp, /snapshot\.full_autonomy/);
+  assert.match(dashboardApp, /desired_runtime_state_source/);
   assert.match(dashboardApp, /localStorage/);
   assert.match(dashboardApp, /movement-panel/);
   assert.match(styles, /\.collapse-toggle/);
@@ -467,6 +526,9 @@ test("dashboard module and coordinator remain syntactically valid", () => {
   assert.match(coordinator, /CharacterConfigService/);
   assert.match(coordinator, /getPersistenceHealth/);
   assert.match(coordinator, /restoreDesiredRuntimeState/);
+  assert.match(coordinator, /buildFullAutonomyPlan/);
+  assert.match(coordinator, /getFullAutonomyState/);
+  assert.match(coordinator, /desired_runtime_state_source/);
   assert.match(coordinator, /saveCharacterRuntimeState/);
   assert.match(coordinator, /saveCharacterSnapshot/);
   assert.match(coordinator, /UNEXPECTED_CHARACTER_EXIT/);

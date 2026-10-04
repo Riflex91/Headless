@@ -89,6 +89,8 @@ function publicCharacterState(name, charBlock = {}) {
     desired_runtime_state:
       charBlock.desired_runtime_state ||
       (charBlock.enabled ? "RUNNING" : "STOPPED"),
+    desired_runtime_state_source:
+      charBlock.desired_runtime_state_source || "UNKNOWN",
     rotation_source: charBlock.rotation_source || null,
     rotation_replacement: charBlock.rotation_replacement || null,
     account_owned: charBlock.account_owned === true,
@@ -258,6 +260,7 @@ function buildSupervisorSnapshot(
   persistenceHealth = null,
   merchantLogisticsState = null,
   accountStrategyState = null,
+  fullAutonomyState = null,
 ) {
   const characters = Object.entries(characterManage)
     .map(([name, charBlock]) => publicCharacterState(name, charBlock))
@@ -320,6 +323,38 @@ function buildSupervisorSnapshot(
         liveLevelProfiles: 0,
         historyProfiles: 0,
         capabilities: {},
+      },
+    },
+    full_autonomy: fullAutonomyState || {
+      timestamp: null,
+      state: "EMPTY",
+      reason: "FULL_AUTONOMY_NO_ACCOUNT_CHARACTERS",
+      readOnly: true,
+      executionEnabled: false,
+      desiredStateMutationDispatched: false,
+      merchantIndependent: true,
+      maxOnlineCharacters: lifecyclePolicy.maxOnlineCharacters || 4,
+      combatSlots: 3,
+      recommendations: [],
+      summary: {
+        accountOwnedCharacters: 0,
+        selectedCharacters: 0,
+        selectedMerchant: 0,
+        selectedCombat: 0,
+        manualStopProtected: 0,
+        farmSignals: 0,
+        economySignals: 0,
+        encounterSignals: 0,
+        merchantClaims: 0,
+      },
+      policy: {
+        manualStoppedNeverOverridden: true,
+        maxFourCharacters: true,
+        merchantIndependent: true,
+        combatPartyTarget: 3,
+        stableSelectionPreferred: true,
+        activeEncounterPreferred: true,
+        unknownSignalsAreNeutral: true,
       },
     },
     characters,
@@ -389,6 +424,7 @@ function attachHeadlessDashboard({
   getPersistenceHealth,
   getMerchantLogisticsState,
   getAccountStrategyState,
+  getFullAutonomyState,
   getMapScene,
   diagnosticStore,
   incidentRecorder,
@@ -409,6 +445,7 @@ function attachHeadlessDashboard({
       getPersistenceHealth?.(),
       getMerchantLogisticsState?.(),
       getAccountStrategyState?.(),
+      getFullAutonomyState?.(),
     );
 
   router.use("/headless", (req, res, next) => {

@@ -103,6 +103,7 @@ const {
   reservedSlotsForCharacter,
 } = require("../src/AccountGearReservation");
 const { buildAccountStrategy } = require("../src/AccountStrategy");
+const { buildFullAutonomyPlan } = require("../src/FullAutonomy");
 const {
   beginSnapshotPersist,
   buildCharacterProfile,
@@ -440,6 +441,7 @@ function migrate_old_storage(path, localStorage) {
         getPersistenceHealth: () => persistence.health(),
         getMerchantLogisticsState: () => merchant_logistics_board,
         getAccountStrategyState: account_strategy_state,
+        getFullAutonomyState: full_autonomy_state,
         getMapScene: (mapName) => dashboard_map_scenes.get(mapName) || null,
         diagnosticStore: diagnostic_store,
         incidentRecorder: incident_recorder,
@@ -481,6 +483,14 @@ function migrate_old_storage(path, localStorage) {
 
   function account_strategy_state() {
     return buildAccountStrategy(character_manage);
+  }
+
+  function full_autonomy_state() {
+    return buildFullAutonomyPlan(character_manage, {
+      accountStrategy: account_strategy_state(),
+      merchantLogistics: merchant_logistics_board,
+      maxOnlineCharacters: lifecycle_policy.maxOnlineCharacters,
+    });
   }
 
   function logistics_record(value) {
@@ -1548,6 +1558,11 @@ function migrate_old_storage(path, localStorage) {
     char_block.last_persisted_snapshot_at = 0;
     char_block.last_persisted_snapshot_signature = null;
     restoreDesiredRuntimeState(char_block, persisted_lifecycle);
+    char_block.desired_runtime_state_source = persisted_lifecycle
+      ? char_block.desired_runtime_state === DESIRED_RUNTIME_STATES.STOPPED
+        ? "PERSISTED_STOP"
+        : "PERSISTED"
+      : "CONFIG";
     refresh_character_revision(char_block);
     char_block.movement_trail = Array.isArray(char_block.movement_trail)
       ? char_block.movement_trail
@@ -1783,10 +1798,12 @@ function migrate_old_storage(path, localStorage) {
 
     source.enabled = false;
     source.desired_runtime_state = DESIRED_RUNTIME_STATES.STOPPED;
+    source.desired_runtime_state_source = "ROTATION";
     source.rotation_replacement = plan.start_character;
 
     target.enabled = true;
     target.desired_runtime_state = DESIRED_RUNTIME_STATES.RUNNING;
+    target.desired_runtime_state_source = "ROTATION";
     target.rotation_source = plan.stop_character;
 
     persist_character_runtime_state(plan.stop_character, "rotation_source");
@@ -13764,6 +13781,7 @@ function migrate_old_storage(path, localStorage) {
 
         char_block.enabled = true;
         char_block.desired_runtime_state = DESIRED_RUNTIME_STATES.RUNNING;
+        char_block.desired_runtime_state_source = "MANUAL_START";
         clear_restart_timer(char_block);
         persist_character_runtime_state(char_name, "manual_start");
 
@@ -13794,6 +13812,7 @@ function migrate_old_storage(path, localStorage) {
 
         char_block.enabled = true;
         char_block.desired_runtime_state = DESIRED_RUNTIME_STATES.PAUSED;
+        char_block.desired_runtime_state_source = "MANUAL_PAUSE";
         persist_character_runtime_state(char_name, "manual_pause");
         emit_supervisor_event("CHARACTER_CONTROL_REQUESTED", char_name, {
           action,
@@ -13808,6 +13827,7 @@ function migrate_old_storage(path, localStorage) {
       case CONTROL_ACTIONS.STOP:
         char_block.enabled = false;
         char_block.desired_runtime_state = DESIRED_RUNTIME_STATES.STOPPED;
+        char_block.desired_runtime_state_source = "MANUAL_STOP";
         if (char_block.rotation_source) {
           const rotation_source = char_block.rotation_source;
           const source = character_manage[rotation_source];
