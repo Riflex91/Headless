@@ -237,6 +237,13 @@ test("supervisor snapshot counts active lifecycle states", () => {
   assert.equal(snapshot.goal_adapter.dispatchImplemented, false);
   assert.equal(snapshot.goal_adapter.requestDispatched, false);
   assert.equal(snapshot.goal_adapter.mutationDispatched, false);
+  assert.equal(snapshot.goal_dispatch.implemented, false);
+  assert.equal(snapshot.goal_dispatch.explicitOneShotOnly, true);
+  assert.equal(snapshot.goal_dispatch.automaticReconcileEnabled, false);
+  assert.equal(snapshot.goal_dispatch.retryEnabled, false);
+  assert.equal(snapshot.goal_dispatch.preflightRequired, true);
+  assert.equal(snapshot.goal_dispatch.pending, 0);
+  assert.equal(snapshot.goal_dispatch.unknownHold, null);
 });
 
 test("supervisor snapshot exposes supplied read-only account strategy projection", () => {
@@ -564,6 +571,48 @@ test("supervisor snapshot exposes supplied Goal adapter projection", () => {
   assert.equal(snapshot.goal_adapter.dispatchImplemented, false);
   assert.equal(snapshot.goal_adapter.requestDispatched, false);
   assert.equal(snapshot.goal_adapter.mutationDispatched, false);
+});
+
+test("supervisor snapshot exposes supplied Goal dispatch supervisor state", () => {
+  const goalDispatch = {
+    implemented: true,
+    explicitOneShotOnly: true,
+    automaticReconcileEnabled: false,
+    retryEnabled: false,
+    preflightRequired: true,
+    currentServerPlanOnly: true,
+    staleIdentityGuardRequired: true,
+    pending: 1,
+    timeoutMs: 420000,
+    unknownHold: null,
+    lastResult: {
+      requestId: "goal-adapter-dispatch-1",
+      result: {
+        outcome: "PASS",
+      },
+    },
+  };
+
+  const snapshot = buildSupervisorSnapshot(
+    {},
+    {},
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    goalDispatch,
+  );
+
+  assert.deepEqual(snapshot.goal_dispatch, goalDispatch);
+  assert.equal(snapshot.goal_dispatch.explicitOneShotOnly, true);
+  assert.equal(snapshot.goal_dispatch.automaticReconcileEnabled, false);
+  assert.equal(snapshot.goal_dispatch.retryEnabled, false);
 });
 
 test("diagnostic time range query is bounded", () => {
