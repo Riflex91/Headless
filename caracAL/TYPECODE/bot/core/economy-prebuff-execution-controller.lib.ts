@@ -77,6 +77,7 @@ interface EconomyPrebuffExecutionRiskPolicy {
 }
 
 interface EconomyPrebuffExecutionArbiter {
+  tick(): unknown;
   authorize(lane: EconomyArbiterLane): EconomyArbiterAuthorization;
 }
 
@@ -244,6 +245,7 @@ export class EconomyPrebuffExecutionController {
         selectedSkill: initialPrebuff.selectedSkill,
       });
 
+      this.arbiter.tick();
       const prebuffAuthorization = this.arbiter.authorize("ECONOMY_PREBUFF");
       if (!prebuffAuthorization.enforced) {
         return this.finish(
@@ -327,6 +329,7 @@ export class EconomyPrebuffExecutionController {
         );
       }
 
+      this.arbiter.tick();
       const economyAuthorization = this.arbiter.authorize("ECONOMY");
       if (!economyAuthorization.enforced) {
         return this.finish(

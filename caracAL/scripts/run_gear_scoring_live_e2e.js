@@ -257,6 +257,9 @@ async function runGearScoringSupervisorLiveTest(
           ...(options.economyArbiterEnforcementProbe === true && {
             economyArbiterEnforcementProbe: true,
           }),
+          ...(options.economyPrebuffExecutionLiveTest === true && {
+            economyPrebuffExecutionLiveTest: true,
+          }),
         }),
       },
     ),

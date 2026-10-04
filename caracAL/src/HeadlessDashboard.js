@@ -578,6 +578,8 @@ function attachHeadlessDashboard({
           {
             economyArbiterEnforcementProbe:
               req.body?.economyArbiterEnforcementProbe === true,
+            economyPrebuffExecutionLiveTest:
+              req.body?.economyPrebuffExecutionLiveTest === true,
           },
         );
         res.json({
