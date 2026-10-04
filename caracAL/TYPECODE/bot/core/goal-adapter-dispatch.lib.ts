@@ -303,6 +303,10 @@ export class GoalAdapterDispatchRunner {
         return finish("BLOCKED", "GOAL_ADAPTER_DISPATCH_CRAFT_CONTRACT_INVALID");
       }
 
+      let craftOutcome: GoalAdapterDispatchOutcome = "FAIL";
+      let craftReason = "GOAL_ADAPTER_DISPATCH_CRAFT_RUNTIME_ERROR";
+      let craftExecution: Record<string, unknown> | null = null;
+
       craftOverrideCleared = false;
       try {
         this.deps.craft.setConfigOverride({
@@ -317,40 +321,44 @@ export class GoalAdapterDispatchRunner {
           planned.state !== "READY" ||
           text(selected.recipe) !== recipe
         ) {
-          return finish("BLOCKED", "GOAL_ADAPTER_DISPATCH_CRAFT_SELECTION_DRIFT", {
+          craftOutcome = "BLOCKED";
+          craftReason = "GOAL_ADAPTER_DISPATCH_CRAFT_SELECTION_DRIFT";
+          craftExecution = {
             state: text(planned.state),
             selectedRecipe: text(selected.recipe),
-          });
-        }
+          };
+        } else {
+          mutationPathInvoked = true;
+          const executed = record(await this.deps.craft.executeNext());
+          const lastAction = record(executed.lastAction);
+          const actionStatus = text(lastAction.status);
+          craftExecution = { craft: executed };
 
-        mutationPathInvoked = true;
-        const executed = record(await this.deps.craft.executeNext());
-        const lastAction = record(executed.lastAction);
-        const actionStatus = text(lastAction.status);
-        if (actionStatus === "UNKNOWN") {
-          return finish("UNKNOWN", "GOAL_ADAPTER_DISPATCH_CRAFT_UNKNOWN", {
-            craft: executed,
-          });
+          if (actionStatus === "UNKNOWN") {
+            craftOutcome = "UNKNOWN";
+            craftReason = "GOAL_ADAPTER_DISPATCH_CRAFT_UNKNOWN";
+          } else if (actionStatus !== "CONFIRMED") {
+            craftOutcome = "FAIL";
+            craftReason = "GOAL_ADAPTER_DISPATCH_CRAFT_NOT_CONFIRMED";
+          } else {
+            craftOutcome = "PASS";
+            craftReason = "GOAL_ADAPTER_DISPATCH_CRAFT_CONFIRMED";
+          }
         }
-        if (actionStatus !== "CONFIRMED") {
-          return finish("FAIL", "GOAL_ADAPTER_DISPATCH_CRAFT_NOT_CONFIRMED", {
-            craft: executed,
-          });
-        }
-
-        return finish("PASS", "GOAL_ADAPTER_DISPATCH_CRAFT_CONFIRMED", {
-          craft: executed,
-        });
       } catch (error) {
-        return finish("FAIL", "GOAL_ADAPTER_DISPATCH_CRAFT_RUNTIME_ERROR", {
+        craftOutcome = "FAIL";
+        craftReason = "GOAL_ADAPTER_DISPATCH_CRAFT_RUNTIME_ERROR";
+        craftExecution = {
           error: error instanceof Error ? error.message : String(error),
-        });
+        };
       } finally {
         this.deps.craft.clearConfigOverride();
         craftOverrideCleared = true;
         this.deps.craft.tick();
         craftPlanningRefreshed = true;
       }
+
+      return finish(craftOutcome, craftReason, craftExecution);
     }
 
     return finish("BLOCKED", "GOAL_ADAPTER_DISPATCH_KIND_UNSUPPORTED");
