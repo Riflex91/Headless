@@ -533,6 +533,7 @@ function attachHeadlessDashboard({
   getGoalHandoffState,
   getGoalExecutionState,
   getGoalAdapterState,
+  runGoalAdapterPreflight,
   createGoal,
   updateGoal,
   getMapScene,
@@ -619,6 +620,37 @@ function attachHeadlessDashboard({
       } catch (error) {
         res.status(Number(error.statusCode) || 500).json({
           error: error.code || "GOAL_UPDATE_FAILED",
+          message: error.message,
+          details: error.details || null,
+        });
+      }
+    },
+  );
+
+  router.post(
+    "/headless/api/goals/adapter-preflight",
+    express.json({ limit: "32kb" }),
+    async (req, res) => {
+      if (!runGoalAdapterPreflight) {
+        res.status(503).json({
+          error: "GOAL_ADAPTER_PREFLIGHT_UNAVAILABLE",
+        });
+        return;
+      }
+
+      try {
+        const result = await runGoalAdapterPreflight({
+          characterName: req.body?.characterName,
+          request: req.body?.request,
+        });
+        res.json({
+          ok: true,
+          result,
+          snapshot: getSnapshot(),
+        });
+      } catch (error) {
+        res.status(Number(error.statusCode) || 500).json({
+          error: error.code || "GOAL_ADAPTER_PREFLIGHT_FAILED",
           message: error.message,
           details: error.details || null,
         });
