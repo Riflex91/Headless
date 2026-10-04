@@ -296,6 +296,9 @@ function migrate_old_storage(path, localStorage) {
   let inventory_live_test_sequence = 0;
   let gear_scoring_live_test_sequence = 0;
   const economy_arbiter_enforcement_probe_requests = new Map();
+  const economy_prebuff_execution_live_test_requests = new Map();
+  let economy_prebuff_execution_live_test_sequence = 0;
+  let economy_prebuff_execution_live_test_active = false;
   let account_gear_reservation_live_test_sequence = 0;
   let account_gear_reservation_live_test_active = false;
   const logistics_live_test_requests = new Map();
@@ -396,6 +399,8 @@ function migrate_old_storage(path, localStorage) {
         runFarmLiveTest: run_farm_live_test,
         runInventoryLiveTest: run_inventory_live_test,
         runGearScoringLiveTest: run_gear_scoring_live_test,
+        runEconomyPrebuffExecutionLiveTest:
+          run_economy_prebuff_execution_live_test,
         runAccountGearReservationLiveTest:
           run_account_gear_reservation_live_test,
         runLogisticsLiveTest: run_logistics_live_test,
@@ -550,6 +555,7 @@ function migrate_old_storage(path, localStorage) {
       bank_travel_live_test_active ||
       bank_gold_live_test_active ||
       upgrade_live_test_active ||
+      economy_prebuff_execution_live_test_active ||
       upgrade_live_preflight_active ||
       exchange_preflight_active ||
       craft_preflight_active ||
@@ -978,6 +984,15 @@ function migrate_old_storage(path, localStorage) {
 
     if (
       char_block &&
+      normalized.data?.economyPrebuffExecution &&
+      typeof normalized.data.economyPrebuffExecution === "object"
+    ) {
+      char_block.economy_prebuff_execution_runtime =
+        normalized.data.economyPrebuffExecution;
+    }
+
+    if (
+      char_block &&
       normalized.data?.economyArbiter &&
       typeof normalized.data.economyArbiter === "object"
     ) {
@@ -1095,6 +1110,7 @@ function migrate_old_storage(path, localStorage) {
         normalized.data?.farmIntelligence ||
         normalized.data?.inventoryIntelligence ||
         normalized.data?.economyPrebuff ||
+        normalized.data?.economyPrebuffExecution ||
         normalized.data?.merchantMerrit ||
         normalized.data?.merchantFishing)
     ) {
@@ -1271,6 +1287,10 @@ function migrate_old_storage(path, localStorage) {
     char_block.risk_policy_runtime = char_block.risk_policy_runtime || null;
     char_block.economy_prebuff_runtime =
       char_block.economy_prebuff_runtime || null;
+    char_block.economy_prebuff_execution_runtime =
+      char_block.economy_prebuff_execution_runtime || null;
+    char_block.economy_prebuff_execution_live_test =
+      char_block.economy_prebuff_execution_live_test || null;
     char_block.economy_arbiter_runtime =
       char_block.economy_arbiter_runtime || null;
     char_block.upgrade_runtime = char_block.upgrade_runtime || null;
@@ -1769,6 +1789,9 @@ function migrate_old_storage(path, localStorage) {
       ),
       economyPrebuff: JSON.parse(
         JSON.stringify(char_block?.economy_prebuff_runtime || null),
+      ),
+      economyPrebuffExecution: JSON.parse(
+        JSON.stringify(char_block?.economy_prebuff_execution_runtime || null),
       ),
       economyArbiter: JSON.parse(
         JSON.stringify(char_block?.economy_arbiter_runtime || null),
@@ -2555,6 +2578,31 @@ function migrate_old_storage(path, localStorage) {
       }, UPGRADE_LIVE_TEST_RESULT_TIMEOUT_MS);
 
       economy_arbiter_enforcement_probe_requests.set(request_id, {
+        character: char_name,
+        resolve,
+        reject,
+        timer,
+      });
+    });
+  }
+
+  function wait_for_economy_prebuff_execution_live_test_result(
+    char_name,
+    request_id,
+  ) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        economy_prebuff_execution_live_test_requests.delete(request_id);
+        reject(
+          make_control_error(
+            "ECONOMY_PREBUFF_EXECUTION_LIVE_TEST_TIMEOUT",
+            `Economy Prebuff execution live test timed out for ${char_name}`,
+            504,
+          ),
+        );
+      }, UPGRADE_LIVE_TEST_RESULT_TIMEOUT_MS);
+
+      economy_prebuff_execution_live_test_requests.set(request_id, {
         character: char_name,
         resolve,
         reject,
@@ -6807,6 +6855,383 @@ function migrate_old_storage(path, localStorage) {
       }
       dashboard?.publishSnapshot();
     }
+  }
+
+  async function run_economy_prebuff_execution_live_test(
+    char_name,
+    options = {},
+  ) {
+    if (economy_prebuff_execution_live_test_active) {
+      throw make_control_error(
+        "ECONOMY_PREBUFF_EXECUTION_LIVE_TEST_ALREADY_RUNNING",
+        "Economy Prebuff execution live test already running",
+        409,
+      );
+    }
+
+    const char_block = character_manage[char_name];
+    if (!char_block) {
+      throw make_control_error(
+        "CHARACTER_NOT_FOUND",
+        `Unknown character: ${char_name}`,
+        404,
+      );
+    }
+
+    const expected_kind =
+      options.expectedKind === "COMPOUND"
+        ? "COMPOUND"
+        : options.expectedKind === "UPGRADE"
+          ? "UPGRADE"
+          : null;
+    const expected_name =
+      typeof options.expectedName === "string"
+        ? options.expectedName.trim()
+        : "";
+    const expected_slots = Array.isArray(options.expectedSlots)
+      ? options.expectedSlots
+          .map((slot) => Number(slot))
+          .filter((slot) => Number.isInteger(slot) && slot >= 0)
+      : [];
+    const expected_count = expected_kind === "COMPOUND" ? 3 : 1;
+    if (
+      !expected_kind ||
+      !expected_name ||
+      expected_slots.length !== expected_count ||
+      new Set(expected_slots).size !== expected_count
+    ) {
+      throw make_control_error(
+        "ECONOMY_PREBUFF_EXECUTION_LIVE_TEST_EXPECTATION_INVALID",
+        "Explicit kind, item name, and exact expected slots are required",
+        400,
+      );
+    }
+
+    for (const active of [
+      ["MOVEMENT", char_block.movement_live_test],
+      ["COMBAT", char_block.combat_live_test],
+      ["CLASS_SKILL", char_block.class_skill_live_test],
+      ["GROUP", char_block.group_live_test],
+      ["FARM", char_block.farm_live_test],
+      ["INVENTORY", char_block.inventory_live_test],
+      ["GEAR_SCORING", char_block.gear_scoring_live_test],
+      ["UPGRADE", char_block.upgrade_live_test],
+      ["COMPOUND", char_block.compound_live_test],
+      ["EXCHANGE", char_block.exchange_live_test],
+    ]) {
+      if (["STARTING", "RUNNING"].includes(active[1]?.status)) {
+        throw make_control_error(
+          active[0] + "_LIVE_TEST_ALREADY_RUNNING",
+          active[0] + " live test already running for " + char_name,
+          409,
+        );
+      }
+    }
+
+    if (
+      upgrade_live_test_active ||
+      compound_live_test_active ||
+      exchange_live_test_active ||
+      craft_live_test_active ||
+      logistics_live_test_active ||
+      bank_travel_live_test_active ||
+      bank_gold_live_test_active ||
+      account_gear_reservation_live_test_active
+    ) {
+      throw make_control_error(
+        "MUTATION_LIVE_TEST_ALREADY_RUNNING",
+        "Another mutation-capable live test is already running",
+        409,
+      );
+    }
+
+    const original_desired_state =
+      char_block.desired_runtime_state ||
+      (char_block.enabled
+        ? DESIRED_RUNTIME_STATES.RUNNING
+        : DESIRED_RUNTIME_STATES.STOPPED);
+    const started_at = Date.now();
+    economy_prebuff_execution_live_test_sequence += 1;
+    const request_id =
+      `economy-prebuff-execution-live-${started_at}-${economy_prebuff_execution_live_test_sequence}`;
+
+    economy_prebuff_execution_live_test_active = true;
+    char_block.economy_prebuff_execution_live_test = {
+      request_id,
+      status: "STARTING",
+      outcome: null,
+      reason: null,
+      expectedKind: expected_kind,
+      expectedName: expected_name,
+      expectedSlots: [...expected_slots],
+      started_at,
+      completed_at: null,
+    };
+    emit_supervisor_event(
+      "ECONOMY_PREBUFF_EXECUTION_LIVE_TEST_REQUESTED",
+      char_name,
+      {
+        request_id,
+        expected_kind,
+        expected_name,
+        expected_slots: [...expected_slots],
+        original_desired_state,
+        irreversible_mutation: true,
+        max_value_mutations: 1,
+        blind_retry_allowed: false,
+      },
+    );
+    dashboard?.publishSnapshot();
+
+    let runtime_override_applied = false;
+    let runtime_state_restored = false;
+    let child_request_id = null;
+    let child_result = null;
+    let result = null;
+
+    try {
+      const bundle_path = path.join(
+        process.cwd(),
+        "TYPECODE.out",
+        MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE,
+      );
+      if (!fs_regular.existsSync(bundle_path)) {
+        throw make_control_error(
+          "ECONOMY_PREBUFF_EXECUTION_LIVE_TEST_RUNTIME_BUNDLE_MISSING",
+          `Economy Prebuff execution runtime bundle is missing: ${bundle_path}`,
+          503,
+        );
+      }
+
+      char_block.movement_live_test_typescript_override =
+        MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE;
+      runtime_override_applied = true;
+      char_block.economy_prebuff_execution_runtime = null;
+
+      if (original_desired_state !== DESIRED_RUNTIME_STATES.RUNNING) {
+        char_block.enabled = true;
+        char_block.desired_runtime_state = DESIRED_RUNTIME_STATES.RUNNING;
+      }
+
+      await restart_character_for_movement_runtime(char_name, char_block);
+      const ready_block = await wait_for_gear_scoring_live_runtime(char_name);
+      const baseline_equipment = gear_scoring_equipment_signature(ready_block);
+      const before = gear_scoring_live_snapshot(ready_block);
+
+      child_request_id = request_id + "-runtime";
+      const child_promise =
+        wait_for_economy_prebuff_execution_live_test_result(
+          char_name,
+          child_request_id,
+        );
+      const sent = safe_send(ready_block.instance, {
+        type: "economy_prebuff_execution_live_test",
+        request_id: child_request_id,
+        expected_kind,
+        expected_name,
+        expected_slots: [...expected_slots],
+      });
+      if (!sent) {
+        const pending =
+          economy_prebuff_execution_live_test_requests.get(child_request_id);
+        if (pending) {
+          clearTimeout(pending.timer);
+          economy_prebuff_execution_live_test_requests.delete(child_request_id);
+        }
+        throw make_control_error(
+          "ECONOMY_PREBUFF_EXECUTION_LIVE_TEST_DISPATCH_FAILED",
+          `Could not dispatch Economy Prebuff execution live test to ${char_name}`,
+          503,
+        );
+      }
+
+      char_block.economy_prebuff_execution_live_test = {
+        ...char_block.economy_prebuff_execution_live_test,
+        status: "RUNNING",
+      };
+      dashboard?.publishSnapshot();
+
+      const child_response = await child_promise;
+      if (child_response.error || !child_response.result) {
+        throw make_control_error(
+          "ECONOMY_PREBUFF_EXECUTION_LIVE_TEST_RUNTIME_FAILED",
+          child_response.error ||
+            "Economy Prebuff execution live test returned no result",
+          500,
+        );
+      }
+      child_result = child_response.result;
+      await sleep(250);
+
+      const final_block = character_manage[char_name];
+      const after = gear_scoring_live_snapshot(final_block);
+      const equipment_baseline_restored =
+        gear_scoring_equipment_signature(final_block) === baseline_equipment;
+      const execution = child_result.execution || null;
+      const prebuff_attempted = !!execution?.prebuffAction;
+      const value_mutation_attempted = !!execution?.economyAction;
+
+      result = {
+        request_id,
+        outcome: equipment_baseline_restored
+          ? child_result.outcome
+          : "FAIL",
+        reason: equipment_baseline_restored
+          ? child_result.reason
+          : "ECONOMY_PREBUFF_EXECUTION_LIVE_EQUIPMENT_CHANGED",
+        character: char_name,
+        started_at,
+        completed_at: Date.now(),
+        durationMs: Date.now() - started_at,
+        expected: {
+          kind: expected_kind,
+          name: expected_name,
+          slots: [...expected_slots],
+        },
+        before,
+        after,
+        coupledExecution: child_result,
+        scope: {
+          readOnly: false,
+          irreversibleMutationAllowed: true,
+          prebuffMutationForced: prebuff_attempted,
+          valueMutationForced: value_mutation_attempted,
+          movementMutationForced: false,
+          combatMutationForced: false,
+          equipmentMutationForced: false,
+          upgradeMutationForced:
+            value_mutation_attempted && expected_kind === "UPGRADE",
+          compoundMutationForced:
+            value_mutation_attempted && expected_kind === "COMPOUND",
+          exchangeMutationForced: false,
+          craftMutationForced: false,
+          logisticsMutationForced: false,
+          maxValueMutations: 1,
+          blindRetryAllowed: false,
+          runtimeOverrideApplied: true,
+        },
+        cleanup: {
+          equipmentBaselineRestored: equipment_baseline_restored,
+          runtimeStateRestored: false,
+        },
+      };
+    } catch (error) {
+      result = {
+        request_id,
+        outcome:
+          error.code === "ECONOMY_PREBUFF_EXECUTION_LIVE_TEST_TIMEOUT"
+            ? "TIMEOUT"
+            : "FAIL",
+        reason:
+          error.code ||
+          error.message ||
+          "ECONOMY_PREBUFF_EXECUTION_LIVE_TEST_FAILED",
+        error: error.message || String(error),
+        character: char_name,
+        started_at,
+        completed_at: Date.now(),
+        durationMs: Date.now() - started_at,
+        expected: {
+          kind: expected_kind,
+          name: expected_name,
+          slots: [...expected_slots],
+        },
+        before: null,
+        after: null,
+        coupledExecution: child_result,
+        scope: {
+          readOnly: false,
+          irreversibleMutationAllowed: true,
+          prebuffMutationForced: !!child_result?.execution?.prebuffAction,
+          valueMutationForced: !!child_result?.execution?.economyAction,
+          movementMutationForced: false,
+          combatMutationForced: false,
+          equipmentMutationForced: false,
+          upgradeMutationForced:
+            !!child_result?.execution?.economyAction &&
+            expected_kind === "UPGRADE",
+          compoundMutationForced:
+            !!child_result?.execution?.economyAction &&
+            expected_kind === "COMPOUND",
+          exchangeMutationForced: false,
+          craftMutationForced: false,
+          logisticsMutationForced: false,
+          maxValueMutations: 1,
+          blindRetryAllowed: false,
+          runtimeOverrideApplied: runtime_override_applied,
+        },
+        cleanup: {
+          equipmentBaselineRestored: false,
+          runtimeStateRestored: false,
+        },
+      };
+    } finally {
+      if (child_request_id) {
+        const pending =
+          economy_prebuff_execution_live_test_requests.get(child_request_id);
+        if (pending) {
+          clearTimeout(pending.timer);
+          economy_prebuff_execution_live_test_requests.delete(child_request_id);
+        }
+      }
+
+      try {
+        if (runtime_override_applied) {
+          await restore_movement_live_test_execution_source(
+            char_name,
+            original_desired_state,
+          );
+        } else {
+          await restore_movement_live_test_state(
+            char_name,
+            original_desired_state,
+          );
+        }
+        runtime_state_restored = true;
+      } catch (restore_error) {
+        result = {
+          ...result,
+          outcome: "FAIL",
+          reason: "ECONOMY_PREBUFF_EXECUTION_LIVE_TEST_STATE_RESTORE_FAILED",
+          restore_error:
+            restore_error instanceof Error
+              ? restore_error.message
+              : String(restore_error),
+        };
+      }
+
+      economy_prebuff_execution_live_test_active = false;
+      const completed_at = Date.now();
+      result = {
+        ...result,
+        completed_at,
+        durationMs: Math.max(0, completed_at - started_at),
+        cleanup: {
+          ...(result?.cleanup || {}),
+          runtimeStateRestored: runtime_state_restored,
+        },
+      };
+      char_block.economy_prebuff_execution_runtime = null;
+      char_block.economy_prebuff_execution_live_test = {
+        ...result,
+        status: result.outcome === "PASS" ? "COMPLETED" : "FAILED",
+      };
+      emit_supervisor_event(
+        result.outcome === "PASS"
+          ? "ECONOMY_PREBUFF_EXECUTION_LIVE_TEST_COMPLETED"
+          : "ECONOMY_PREBUFF_EXECUTION_LIVE_TEST_FAILED",
+        char_name,
+        {
+          request_id,
+          outcome: result.outcome,
+          reason: result.reason,
+          runtime_state_restored,
+        },
+      );
+      dashboard?.publishSnapshot();
+    }
+
+    return char_block.economy_prebuff_execution_live_test;
   }
 
   async function run_gear_scoring_live_test(
@@ -13275,6 +13700,39 @@ function migrate_old_storage(path, localStorage) {
           });
           emit_supervisor_event(
             "BANK_TRAVEL_LIVE_TEST_RESULT_RECEIVED",
+            char_name,
+            {
+              request_id: m.request_id,
+              outcome: m.result?.outcome || null,
+              error: m.error || null,
+            },
+          );
+          break;
+        }
+        case "economy_prebuff_execution_live_test_result": {
+          const pending = economy_prebuff_execution_live_test_requests.get(
+            m.request_id,
+          );
+          if (!pending || pending.character !== char_name) {
+            emit_supervisor_event(
+              "ECONOMY_PREBUFF_EXECUTION_LIVE_TEST_RESULT_IGNORED",
+              char_name,
+              {
+                why: "UNKNOWN_OR_STALE_REQUEST",
+                request_id: m.request_id || null,
+              },
+            );
+            break;
+          }
+
+          clearTimeout(pending.timer);
+          economy_prebuff_execution_live_test_requests.delete(m.request_id);
+          pending.resolve({
+            result: m.result || null,
+            error: m.error || null,
+          });
+          emit_supervisor_event(
+            "ECONOMY_PREBUFF_EXECUTION_LIVE_TEST_RESULT_RECEIVED",
             char_name,
             {
               request_id: m.request_id,
