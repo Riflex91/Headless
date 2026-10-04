@@ -219,6 +219,9 @@ test("supervisor snapshot counts active lifecycle states", () => {
   );
   assert.equal(snapshot.account_strategy.readOnly, true);
   assert.equal(snapshot.account_strategy.state, "EMPTY");
+  assert.equal(snapshot.goals.readOnly, true);
+  assert.equal(snapshot.goals.executionEnabled, false);
+  assert.equal(snapshot.goals.state, "EMPTY");
 });
 
 test("supervisor snapshot exposes supplied read-only account strategy projection", () => {
@@ -309,6 +312,63 @@ test("supervisor snapshot exposes supplied Full Autonomy reconciliation projecti
   assert.deepEqual(snapshot.full_autonomy, fullAutonomy);
   assert.equal(snapshot.full_autonomy.executionEnabled, false);
   assert.equal(snapshot.full_autonomy.desiredStateMutationDispatched, false);
+});
+
+test("supervisor snapshot exposes supplied read-only goal planning projection", () => {
+  const goalPlan = {
+    timestamp: 1234,
+    state: "READY",
+    reason: "GOAL_PLANS_READY",
+    readOnly: true,
+    executionEnabled: false,
+    gameplayMutationDispatched: false,
+    valueMutationDispatched: false,
+    lifecycleMutationDispatched: false,
+    goals: [
+      {
+        goalId: "farm-gem0",
+        type: "FARM_ITEM",
+        priority: 90,
+        state: "PLANNED",
+        reason: "GOAL_PLAN_READY",
+      },
+    ],
+    summary: {
+      total: 1,
+      active: 1,
+      planned: 1,
+      blocked: 0,
+      complete: 0,
+      paused: 0,
+      cancelled: 0,
+      invalid: 0,
+      byType: { FARM_ITEM: 1 },
+    },
+    policy: {
+      intentExecutionSeparated: true,
+      manualStopRespected: true,
+      fullAutonomyHandoffOnly: true,
+      directGameplayMutationAllowed: false,
+      directValueMutationAllowed: false,
+      directLifecycleMutationAllowed: false,
+    },
+  };
+
+  const snapshot = buildSupervisorSnapshot(
+    {},
+    {},
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    goalPlan,
+  );
+
+  assert.deepEqual(snapshot.goals, goalPlan);
+  assert.equal(snapshot.goals.executionEnabled, false);
+  assert.equal(snapshot.goals.lifecycleMutationDispatched, false);
 });
 
 test("diagnostic time range query is bounded", () => {
