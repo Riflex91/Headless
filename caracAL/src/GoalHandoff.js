@@ -106,6 +106,50 @@ function executionTaskForGoal(goal) {
   );
 }
 
+function goalPlanGuard(goalPlan) {
+  const plan = record(goalPlan);
+  const policy = record(plan.policy);
+  const tasksSafe = array(plan.goals).every((goal) =>
+    array(goal?.tasks).every(
+      (task) =>
+        task?.executionAllowed === false &&
+        task?.mutationDispatched === false,
+    ),
+  );
+
+  const valid =
+    plan.readOnly === true &&
+    plan.executionEnabled === false &&
+    plan.gameplayMutationDispatched === false &&
+    plan.valueMutationDispatched === false &&
+    plan.lifecycleMutationDispatched === false &&
+    policy.intentExecutionSeparated === true &&
+    policy.manualStopRespected === true &&
+    policy.fullAutonomyHandoffOnly === true &&
+    policy.directGameplayMutationAllowed === false &&
+    policy.directValueMutationAllowed === false &&
+    policy.directLifecycleMutationAllowed === false &&
+    tasksSafe;
+
+  return {
+    valid,
+    readOnly: plan.readOnly === true,
+    executionDisabled: plan.executionEnabled === false,
+    noMutationDispatched:
+      plan.gameplayMutationDispatched === false &&
+      plan.valueMutationDispatched === false &&
+      plan.lifecycleMutationDispatched === false,
+    policyValid:
+      policy.intentExecutionSeparated === true &&
+      policy.manualStopRespected === true &&
+      policy.fullAutonomyHandoffOnly === true &&
+      policy.directGameplayMutationAllowed === false &&
+      policy.directValueMutationAllowed === false &&
+      policy.directLifecycleMutationAllowed === false,
+    tasksSafe,
+  };
+}
+
 function selectedGoalProjection(goal) {
   if (!goal) return null;
   return {
@@ -142,6 +186,7 @@ function buildGoalHandoff(
   { fullAutonomy = null, now = Date.now } = {},
 ) {
   const plan = record(goalPlan);
+  const safety = goalPlanGuard(plan);
   const planned = activePlannedGoals(plan);
   const blocked = activeBlockedGoals(plan);
   const totalActive = array(plan.goals).filter(
@@ -173,6 +218,7 @@ function buildGoalHandoff(
       readyGoals: planned.length,
       blockedGoals: blocked.length,
     },
+    safety,
     policy: {
       singleGoalSelection: true,
       highestPriorityReadyFirst: true,
@@ -180,12 +226,21 @@ function buildGoalHandoff(
       manualStopRespected: true,
       existingSubsystemsOnly: true,
       goalExecutorRequiredForDispatch: true,
+      goalPlanSafetyRequired: true,
       directGameplayMutationAllowed: false,
       directValueMutationAllowed: false,
       directLifecycleMutationAllowed: false,
       phase20EncounterDeferred: true,
     },
   };
+
+  if (!safety.valid) {
+    return {
+      ...base,
+      state: GOAL_HANDOFF_STATES.BLOCKED,
+      reason: "GOAL_HANDOFF_GOAL_PLAN_SAFETY_INVALID",
+    };
+  }
 
   if (planned.length === 0) {
     if (blocked.length > 0) {
@@ -253,6 +308,7 @@ module.exports = {
   compareGoals,
   executionTaskForGoal,
   fullAutonomyGuard,
+  goalPlanGuard,
   normalizedPriority,
   selectedGoalProjection,
 };
