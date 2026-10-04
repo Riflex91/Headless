@@ -327,6 +327,7 @@ function attachHeadlessDashboard({
   runFarmLiveTest,
   runInventoryLiveTest,
   runGearScoringLiveTest,
+  runMarketIntelligenceLiveTest,
   runEconomyPrebuffExecutionLiveTest,
   runAccountGearReservationLiveTest,
   runUpgradeLiveTest,
@@ -594,6 +595,36 @@ function attachHeadlessDashboard({
       } catch (error) {
         res.status(Number(error.statusCode) || 500).json({
           error: error.code || "GEAR_SCORING_LIVE_TEST_FAILED",
+          message: error.message,
+        });
+      }
+    },
+  );
+
+  router.post(
+    "/headless/api/characters/:name/tests/market-intelligence",
+    express.json({ limit: "8kb" }),
+    async (req, res) => {
+      if (!runMarketIntelligenceLiveTest) {
+        res
+          .status(503)
+          .json({ error: "MARKET_INTELLIGENCE_LIVE_TEST_UNAVAILABLE" });
+        return;
+      }
+
+      try {
+        const result = await runMarketIntelligenceLiveTest(
+          req.params.name,
+          Number(req.body?.sampleMs) || 5500,
+        );
+        res.json({
+          ok: result?.outcome === "PASS",
+          result,
+          snapshot: getSnapshot(),
+        });
+      } catch (error) {
+        res.status(Number(error.statusCode) || 500).json({
+          error: error.code || "MARKET_INTELLIGENCE_LIVE_TEST_FAILED",
           message: error.message,
         });
       }
