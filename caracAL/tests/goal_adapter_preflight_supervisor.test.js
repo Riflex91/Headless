@@ -1,9 +1,12 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const childProcess = require("node:child_process");
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
+const prettier = require("prettier");
 
 const {
   GoalAdapterPreflightSupervisor,
@@ -318,4 +321,33 @@ test("supervisor client contains no lifecycle or gameplay execution dependency",
   assert.doesNotMatch(source, /runMaterialGatherTask/);
   assert.doesNotMatch(source, /executeCraftNext/);
   assert.doesNotMatch(source, /setInterval/);
+});
+
+test("temporary Phase 19.8 formatter probe", async () => {
+  const targets = [
+    path.join(__dirname, "..", "standalones", "CharacterCoordinator.js"),
+    path.join(__dirname, "goal_adapter_preflight_supervisor.test.js"),
+  ];
+
+  for (const target of targets) {
+    const source = fs.readFileSync(target, "utf8");
+    const formatted = await prettier.format(source, { filepath: target });
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "phase19-8-prettier-"));
+    const temp = path.join(tempDir, path.basename(target));
+    try {
+      fs.writeFileSync(temp, formatted);
+      let diff = "";
+      try {
+        childProcess.execFileSync("diff", ["-u", target, temp], {
+          encoding: "utf8",
+        });
+      } catch (error) {
+        diff = String(error.stdout || "");
+      }
+      console.log("PHASE19_8_PRETTIER_DIFF", path.basename(target));
+      console.log(diff || "NO_DIFF");
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  }
 });
