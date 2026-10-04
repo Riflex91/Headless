@@ -633,6 +633,43 @@ async function make_runner(upper, CODE_file, version, is_typescript) {
           });
         break;
       }
+      case "market_intelligence_source_probe": {
+        const requestId =
+          typeof m.request_id === "string" && m.request_id
+            ? m.request_id
+            : `market-intelligence-source-probe-${Date.now()}`;
+        const runtime = runner_context.__caracalBotRuntime;
+        if (!runtime?.runMarketIntelligenceSourceProbe) {
+          sendIpcMessage(process, {
+            type: "market_intelligence_source_probe_result",
+            request_id: requestId,
+            error: "MARKET_INTELLIGENCE_SOURCE_PROBE_RUNTIME_NOT_READY",
+          });
+          break;
+        }
+
+        const timeoutMs = Number(m.timeout_ms);
+        void runtime
+          .runMarketIntelligenceSourceProbe({
+            requestId,
+            ...(Number.isFinite(timeoutMs) ? { timeoutMs } : {}),
+          })
+          .then((result) => {
+            sendIpcMessage(process, {
+              type: "market_intelligence_source_probe_result",
+              request_id: requestId,
+              result,
+            });
+          })
+          .catch((error) => {
+            sendIpcMessage(process, {
+              type: "market_intelligence_source_probe_result",
+              request_id: requestId,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          });
+        break;
+      }
       case "market_trading_live_test": {
         const requestId =
           typeof m.request_id === "string" && m.request_id
