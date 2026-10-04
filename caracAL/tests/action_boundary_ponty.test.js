@@ -100,6 +100,7 @@ function makeDriver(overrides = {}) {
     async exchange() {},
     async craft() {},
     wishlist() {},
+    requestPontySnapshot() {},
     pontyBuy() {},
     ...overrides,
   };
@@ -116,6 +117,54 @@ function makeBoundary(state, driver = {}, ledger = makeLedger()) {
     ledger,
   };
 }
+
+test("Ponty snapshot request is read-only and confirms dispatch without purchase", () => {
+  const state = makeState();
+  let snapshotCalls = 0;
+  let purchaseCalls = 0;
+  const { boundary } = makeBoundary(state, {
+    requestPontySnapshot() {
+      snapshotCalls += 1;
+    },
+    pontyBuy() {
+      purchaseCalls += 1;
+    },
+  });
+
+  const beforeGold = state.character.gold;
+  const beforeItems = structuredClone(state.character.items);
+  const result = boundary.requestPontySnapshot({
+    module: "MarketIntelligenceLiveProbe",
+    why: "PHASE16_PONTY_READ_REQUEST",
+  });
+
+  assert.equal(result.status, "CONFIRMED");
+  assert.equal(result.action, "PONTY_SNAPSHOT_REQUEST");
+  assert.equal(result.expectedEffect.valueMutation, false);
+  assert.equal(result.evidence.readOnly, true);
+  assert.equal(result.evidence.requestDispatched, true);
+  assert.equal(snapshotCalls, 1);
+  assert.equal(purchaseCalls, 0);
+  assert.equal(state.character.gold, beforeGold);
+  assert.deepEqual(state.character.items, beforeItems);
+});
+
+test("Ponty snapshot request failure becomes UNKNOWN and is not retryable", () => {
+  const setup = makeBoundary(makeState(), {
+    requestPontySnapshot() {
+      throw new Error("socket unavailable");
+    },
+  });
+
+  const result = setup.boundary.requestPontySnapshot({
+    module: "MarketIntelligenceLiveProbe",
+    why: "PHASE16_PONTY_READ_REQUEST",
+  });
+
+  assert.equal(result.status, "UNKNOWN");
+  assert.equal(result.action, "PONTY_SNAPSHOT_REQUEST");
+  assert.equal(setup.ledger.canRetry(result.id), false);
+});
 
 test("Ponty purchase blocks invalid listing metadata before dispatch", () => {
   let calls = 0;
@@ -251,7 +300,8 @@ test("Ponty explicit failure rejects and thrown socket failure becomes UNKNOWN",
   assert.equal(unknownSetup.ledger.canRetry(unknownResult.id), false);
 });
 
-test("Ponty capability is advertised by the ActionBoundary", () => {
+test("Ponty capabilities are advertised by the ActionBoundary", () => {
   const capabilities = makeBoundary(makeState()).boundary.capabilities();
+  assert.equal(capabilities.includes("PONTY_SNAPSHOT_REQUEST"), true);
   assert.equal(capabilities.includes("PONTY_BUY"), true);
 });
