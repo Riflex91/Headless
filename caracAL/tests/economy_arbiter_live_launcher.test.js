@@ -65,7 +65,9 @@ function lane(name, rank, overrides = {}) {
   };
 }
 
-function arbiter({ activeLane = null, activeOverrides = {}, lanes = null } = {}) {
+function arbiter(
+  { activeLane = null, activeOverrides = {}, lanes = null } = {},
+) {
   const values =
     lanes ||
     LANE_ORDER.map((name, rank) =>
