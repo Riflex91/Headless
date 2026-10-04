@@ -146,6 +146,11 @@ import {
   FishingLiveTestRunner,
 } from "./fishing-live-test.lib";
 import {
+  CharacterGoldTaskOptions,
+  CharacterGoldTaskResult,
+  CharacterGoldTaskRunner,
+} from "./character-gold-task.lib";
+import {
   CharacterTrainingTaskOptions,
   CharacterTrainingTaskResult,
   CharacterTrainingTaskRunner,
@@ -394,6 +399,7 @@ export class BotRuntimeKernel {
   private fishingLiveTestRunning = false;
   private materialGatherTaskRunning = false;
   private characterTrainingTaskRunning = false;
+  private characterGoldTaskRunning = false;
   private goalAdapterPreflightRunning = false;
   private goalAdapterDispatchRunning = false;
   private economyPrebuffExecutionRunning = false;
@@ -3146,6 +3152,7 @@ export class BotRuntimeKernel {
     if (
       this.materialGatherTaskRunning ||
       this.characterTrainingTaskRunning ||
+      this.characterGoldTaskRunning ||
       this.economyPrebuffExecutionRunning ||
       this.movementLiveTestRunning ||
       this.combatLiveTestRunning ||
@@ -3202,6 +3209,7 @@ export class BotRuntimeKernel {
             ctype: snapshot.ctype,
             level: snapshot.level,
             xp: snapshot.xp,
+            gold: snapshot.gold,
           };
         },
         craftMaterialPlan: (recipe) => this.runCraftMaterialPlan(recipe),
@@ -3247,6 +3255,7 @@ export class BotRuntimeKernel {
       this.goalAdapterPreflightRunning ||
       this.materialGatherTaskRunning ||
       this.characterTrainingTaskRunning ||
+      this.characterGoldTaskRunning ||
       this.economyPrebuffExecutionRunning ||
       this.movementLiveTestRunning ||
       this.combatLiveTestRunning ||
@@ -3308,6 +3317,7 @@ export class BotRuntimeKernel {
                 ctype: snapshot.ctype,
                 level: snapshot.level,
                 xp: snapshot.xp,
+                gold: snapshot.gold,
               };
             },
             craftMaterialPlan: (recipe) => this.runCraftMaterialPlan(recipe),
@@ -3318,6 +3328,8 @@ export class BotRuntimeKernel {
           this.runMaterialGatherTask(materialOptions),
         runCharacterTrainingTask: (trainingOptions) =>
           this.runCharacterTrainingTask(trainingOptions),
+        runCharacterGoldTask: (goldOptions) =>
+          this.runCharacterGoldTask(goldOptions),
         craft: {
           setConfigOverride: (config) => this.craft.setConfigOverride(config),
           clearConfigOverride: () => this.craft.clearConfigOverride(),
@@ -3361,6 +3373,115 @@ export class BotRuntimeKernel {
     }
   }
 
+  async runCharacterGoldTask(
+    options: CharacterGoldTaskOptions,
+  ): Promise<CharacterGoldTaskResult> {
+    if (this.characterGoldTaskRunning) {
+      throw new Error("character gold task already running");
+    }
+    if (
+      this.materialGatherTaskRunning ||
+      this.characterTrainingTaskRunning ||
+      this.economyPrebuffExecutionRunning ||
+      this.movementLiveTestRunning ||
+      this.combatLiveTestRunning ||
+      this.classSkillLiveTestRunning ||
+      this.groupLiveTestRunning ||
+      this.farmLiveTestRunning ||
+      this.inventoryLiveTestRunning ||
+      this.upgradeLiveTestRunning ||
+      this.upgradePreflightRunning ||
+      this.compoundLiveTestRunning ||
+      this.exchangePreflightRunning ||
+      this.exchangeLiveTestRunning ||
+      this.craftPreflightRunning ||
+      this.craftLiveTestRunning ||
+      this.logisticsLiveTestRunning ||
+      this.merchantLiveTestRunning ||
+      this.bankTravelLiveTestRunning ||
+      this.bankGoldLiveTestRunning ||
+      this.npcTradingLiveTestRunning ||
+      this.marketTradingLiveTestRunning ||
+      this.marketIntelligenceSourceProbeRunning ||
+      this.merritLiveTestRunning ||
+      this.fishingLiveTestRunning ||
+      this.logisticsClaimRunning
+    ) {
+      throw new Error("runtime is busy with another controlled activity");
+    }
+    if (!this.started || this.stopping || runtimeState() !== "RUNNING") {
+      throw new Error("runtime is not ready for character gold task");
+    }
+    if (!this.scheduler.has(COMBAT_JOB_ID)) {
+      throw new Error("character gold task requires active Combat scheduler");
+    }
+
+    this.characterGoldTaskRunning = true;
+    const requestId = options.requestId || `character-gold-${Date.now()}`;
+    const suspended = {
+      groupCombat: this.scheduler.unregister(GROUP_COMBAT_JOB_ID),
+      classSkill: this.scheduler.unregister(CLASS_SKILL_JOB_ID),
+      combat: false,
+    };
+
+    this.eventBus.emit({
+      module: "CharacterGoldTask",
+      type: "CHARACTER_GOLD_TASK_STARTED",
+      why: "PHASE19_BOUNDED_SCHEDULER_DRIVEN_GOLD",
+      correlationId: requestId,
+      data: {
+        requestId,
+        goalAmount: options.goalAmount,
+        scope: options.scope,
+        monsterType: options.monsterType,
+        combatSchedulerRetained: true,
+        suspended,
+        ...runtimeIdentity(),
+      },
+    });
+
+    try {
+      const runner = new CharacterGoldTaskRunner({
+        game: this.game,
+        combat: this.combat,
+        movement: this.movement,
+      });
+      const result = await runner.run({
+        ...options,
+        requestId,
+      });
+      this.eventBus.emit({
+        module: "CharacterGoldTask",
+        type: "CHARACTER_GOLD_TASK_COMPLETED",
+        why: result.reason,
+        correlationId: requestId,
+        data: {
+          result,
+          combatSchedulerRetained: true,
+          suspended,
+        },
+      });
+      return result;
+    } catch (error) {
+      this.eventBus.emit({
+        module: "CharacterGoldTask",
+        type: "CHARACTER_GOLD_TASK_FAILED",
+        why: "CHARACTER_GOLD_TASK_RUNTIME_ERROR",
+        correlationId: requestId,
+        data: {
+          error: error instanceof Error ? error.message : String(error),
+          combatSchedulerRetained: true,
+          suspended,
+        },
+      });
+      throw error;
+    } finally {
+      if (suspended.groupCombat) this.registerGroupCombatJob();
+      if (suspended.classSkill) this.registerClassSkillJob();
+      this.characterGoldTaskRunning = false;
+    }
+  }
+
   async runCharacterTrainingTask(
     options: CharacterTrainingTaskOptions,
   ): Promise<CharacterTrainingTaskResult> {
@@ -3369,6 +3490,7 @@ export class BotRuntimeKernel {
     }
     if (
       this.materialGatherTaskRunning ||
+      this.characterGoldTaskRunning ||
       this.economyPrebuffExecutionRunning ||
       this.movementLiveTestRunning ||
       this.combatLiveTestRunning ||
@@ -3477,6 +3599,7 @@ export class BotRuntimeKernel {
     }
     if (
       this.characterTrainingTaskRunning ||
+      this.characterGoldTaskRunning ||
       this.movementLiveTestRunning ||
       this.combatLiveTestRunning ||
       this.classSkillLiveTestRunning ||
