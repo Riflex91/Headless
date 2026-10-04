@@ -53,6 +53,62 @@ test("persistence creates a real versioned SQLite database", async () => {
   }
 });
 
+test("market history can be bounded to one server", async () => {
+  const fixture = await tempDatabase();
+  let service;
+
+  try {
+    service = await PersistenceService.open({
+      databasePath: fixture.databasePath,
+      now: () => 1000,
+    });
+
+    await service.appendMarketObservation({
+      itemName: "gem0",
+      level: 0,
+      price: 100,
+      quantity: 1,
+      server: "EU I",
+      source: "LIVE_VISIBLE",
+      observedAt: 1100,
+    });
+    await service.appendMarketObservation({
+      itemName: "gem0",
+      level: 0,
+      price: 200,
+      quantity: 1,
+      server: "US I",
+      source: "LIVE_VISIBLE",
+      observedAt: 1200,
+    });
+
+    assert.deepEqual(
+      service.listMarketHistory({ server: "EU I", limit: 100 }),
+      [
+        {
+          item_name: "gem0",
+          level: 0,
+          price: 100,
+          quantity: 1,
+          server: "EU I",
+          seller: null,
+          source: "LIVE_VISIBLE",
+          observed_at: 1100,
+          metadata: {},
+        },
+      ],
+    );
+    assert.equal(
+      service.listMarketHistory({ itemName: "gem0", server: "US I" })[0]
+        .price,
+      200,
+    );
+  } finally {
+    await service?.close();
+    await fs.rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
 test("persistence survives close and reopen with migrations intact", async () => {
   const fixture = await tempDatabase();
   let first;
