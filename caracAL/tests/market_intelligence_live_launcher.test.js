@@ -326,6 +326,7 @@ test("Market Intelligence compact bootstrap output exposes correlated Ponty resp
       pontySnapshotResponseReceived: true,
       pontySnapshotItems: 208,
       pontyNormalizedListings: 208,
+      pontySamples: 208,
     },
   };
 
@@ -334,7 +335,31 @@ test("Market Intelligence compact bootstrap output exposes correlated Ponty resp
   assert.match(output, /Ponty snapshot response: yes/);
   assert.match(output, /Ponty snapshot items: 208/);
   assert.match(output, /Ponty normalized listings: 208/);
+  assert.match(output, /Ponty probe samples: 208/);
   assert.match(output, /Value mutation dispatched: no/);
+});
+
+test("Market Intelligence compact output names source-probe projection", () => {
+  const result = evaluateMarketIntelligence(character());
+  result.projectionSource = "SOURCE_PROBE";
+  result.scope = {
+    ...result.scope,
+    dashboardGetOnly: false,
+    bootstrapUsed: true,
+    runtimeStateDuringTest: "PAUSED",
+  };
+  result.sourceProbe = {
+    evidence: {
+      pontySnapshotResponseReceived: true,
+      pontySnapshotItems: 208,
+      pontyNormalizedListings: 208,
+      pontySamples: 208,
+    },
+  };
+
+  const output = formatCompactResult(result);
+  assert.match(output, /Ponty probe samples: 208/);
+  assert.match(output, /Projection source: SOURCE_PROBE/);
 });
 
 test("Market Intelligence CLI defaults to compact output", () => {
@@ -524,6 +549,10 @@ test("Market Intelligence live launcher bootstraps only through paused read-only
   );
   assert.match(coordinator, /market_intelligence_source_probe/);
   assert.match(thread, /case "market_intelligence_source_probe"/);
+  assert.match(coordinator, /probe_timestamp\s*>=\s*dashboard_timestamp/);
+  assert.match(coordinator, /projection_source\s*=\s*use_probe_projection/);
+  assert.match(coordinator, /"SOURCE_PROBE"/);
+  assert.match(coordinator, /"DASHBOARD_RUNTIME"/);
 
   const probeStart = kernel.indexOf("async runMarketIntelligenceSourceProbe(");
   const probeEnd = kernel.indexOf(
