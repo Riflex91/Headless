@@ -1361,6 +1361,15 @@ async function make_game(proc_args) {
     //and this allegedly fixes it.
     vm.runInContext("pause()", game_context);
 
+    if (proc_args.lifecycle_only_probe === true) {
+      extensions.lifecycle_only_probe = true;
+      if (extensions.lifecycle_only_probe_connected !== true) {
+        extensions.lifecycle_only_probe_connected = true;
+        sendIpcMessage(process, { type: "connected" });
+      }
+      return;
+    }
+
     const is_typescript =
       proc_args.typescript_file && proc_args.typescript_file.length > 0;
     const target_script = is_typescript
@@ -1440,6 +1449,11 @@ async function make_game(proc_args) {
         break;
       case "send_cm":
         game_context.send_code_message(m.to, m.data);
+        break;
+      case "closing_client":
+        if (proc_args.lifecycle_only_probe === true) {
+          process.exit();
+        }
         break;
       case "runtime_control":
         if (Object.values(DESIRED_RUNTIME_STATES).includes(m.state)) {
@@ -1544,6 +1558,7 @@ process.on("message", async (rawMessage) => {
       script_file: msg.arguments.script_file,
       typescript_file: msg.arguments.typescript_file,
       runtime_state: msg.arguments.runtime_state,
+      lifecycle_only_probe: msg.arguments.lifecycle_only_probe === true,
     });
     const new_log = LogUtils.log.child({ cname, clid });
     LogUtils.log = new_log;
