@@ -1044,11 +1044,10 @@ function migrate_old_storage(path, localStorage) {
         );
       });
 
-      const selected_ponty_observations =
-        selectNewPontyMarketObservations(
-          char_block.market_ponty_observation_signatures,
-          market_intelligence.observations,
-        );
+      const selected_ponty_observations = selectNewPontyMarketObservations(
+        char_block.market_ponty_observation_signatures,
+        market_intelligence.observations,
+      );
       char_block.market_ponty_observation_signatures =
         selected_ponty_observations.signatures;
 
