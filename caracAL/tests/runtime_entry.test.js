@@ -557,7 +557,9 @@ test("Economy Prebuff coupled live runner is explicit and single-mutation scoped
 
   assert.match(kernel, /runEconomyPrebuffExecutionLiveTest/);
   assert.match(kernel, /EconomyPrebuffExecutionLiveTestRunner/);
-  assert.match(kernel, /maxValueMutations: 1/);
+  assert.match(kernel, /maxValueMutations: preflightOnly \? 0 : 1/);
+  assert.match(kernel, /allowedSlots: expectedSlots/);
+  assert.match(kernel, /maxLevel: level \+ 1/);
   assert.match(kernel, /blindRetryAllowed: false/);
   assert.match(kernel, /scheduler\.unregister\(MERCHANT_AUTONOMY_JOB_ID\)/);
   assert.match(kernel, /scheduler\.unregister\(CLASS_SKILL_JOB_ID\)/);
