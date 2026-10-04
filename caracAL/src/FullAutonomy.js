@@ -62,8 +62,9 @@ function manualStopProtected(block) {
 
 function profileForName(accountStrategy, name) {
   return (
-    array(accountStrategy?.profiles).find((profile) => profile?.name === name) ||
-    null
+    array(accountStrategy?.profiles).find(
+      (profile) => profile?.name === name,
+    ) || null
   );
 }
 
@@ -144,7 +145,10 @@ function encounterSignal(block) {
     text(group.target) ||
     text(group.targetId);
   const state =
-    text(explicit.state) || text(combat.state) || text(group.state) || "UNKNOWN";
+    text(explicit.state) ||
+    text(combat.state) ||
+    text(group.state) ||
+    "UNKNOWN";
   return {
     state,
     target,
