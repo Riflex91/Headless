@@ -61,10 +61,7 @@ test("preflight emits exact guarded upgrade command for READY candidate", () => 
   const preflight = normalizeCandidate(result(), "My_Merchant");
 
   assert.equal(preflight.outcome, "READY");
-  assert.equal(
-    preflight.reason,
-    "ECONOMY_PREBUFF_EXECUTION_PREFLIGHT_READY",
-  );
+  assert.equal(preflight.reason, "ECONOMY_PREBUFF_EXECUTION_PREFLIGHT_READY");
   assert.deepEqual(preflight.candidate.slots, [2]);
   assert.equal(preflight.candidate.kind, "UPGRADE");
   assert.equal(preflight.candidate.name, "helmet");
@@ -119,10 +116,7 @@ test("preflight refuses UNKNOWN and emits no mutation command", () => {
   );
 
   assert.equal(preflight.outcome, "NO_CANDIDATE");
-  assert.equal(
-    preflight.reason,
-    "ECONOMY_PREBUFF_EXECUTION_PREFLIGHT_UNKNOWN",
-  );
+  assert.equal(preflight.reason, "ECONOMY_PREBUFF_EXECUTION_PREFLIGHT_UNKNOWN");
   assert.equal(preflight.command, null);
   assert.equal(preflight.scope.mutationDispatched, false);
 });
