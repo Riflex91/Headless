@@ -226,6 +226,11 @@ test("supervisor snapshot counts active lifecycle states", () => {
   assert.equal(snapshot.goal_handoff.executionEnabled, false);
   assert.equal(snapshot.goal_handoff.handoffDispatched, false);
   assert.equal(snapshot.goal_handoff.state, "EMPTY");
+  assert.equal(snapshot.goal_execution.enabled, false);
+  assert.equal(snapshot.goal_execution.state, "DISABLED");
+  assert.equal(snapshot.goal_execution.dispatchAllowed, false);
+  assert.equal(snapshot.goal_execution.dispatchImplemented, false);
+  assert.equal(snapshot.goal_execution.mutationDispatched, false);
 });
 
 test("supervisor snapshot exposes supplied read-only account strategy projection", () => {
@@ -444,6 +449,50 @@ test("supervisor snapshot exposes supplied read-only Goal handoff projection", (
   assert.equal(snapshot.goal_handoff.executionEnabled, false);
   assert.equal(snapshot.goal_handoff.handoffDispatched, false);
   assert.equal(snapshot.goal_handoff.gameplayMutationDispatched, false);
+});
+
+test("supervisor snapshot exposes supplied Goal execution decision projection", () => {
+  const goalExecution = {
+    enabled: true,
+    state: "READY",
+    reason: "GOAL_EXECUTION_ADAPTER_DISPATCH_READY",
+    action: {
+      type: "GOAL_HANDOFF",
+      goalId: "farm-gem0",
+      taskId: "farm-gem0:3",
+      kind: "FARM_ITEM",
+      adapter: "FarmIntelligence",
+      subsystem: "FullAutonomy/FarmIntelligence",
+      mutationDomain: "GAMEPLAY",
+      characterName: "My_Ranger1",
+      target: { itemName: "gem0", quantity: 10 },
+      requiresAdapterDispatcher: true,
+    },
+    dispatchAllowed: true,
+    dispatchImplemented: false,
+    mutationDispatched: false,
+    maxActionsPerCycle: 1,
+    reconcileIntervalMs: 5000,
+  };
+
+  const snapshot = buildSupervisorSnapshot(
+    {},
+    {},
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    goalExecution,
+  );
+
+  assert.deepEqual(snapshot.goal_execution, goalExecution);
+  assert.equal(snapshot.goal_execution.dispatchAllowed, true);
+  assert.equal(snapshot.goal_execution.dispatchImplemented, false);
+  assert.equal(snapshot.goal_execution.mutationDispatched, false);
 });
 
 test("diagnostic time range query is bounded", () => {
