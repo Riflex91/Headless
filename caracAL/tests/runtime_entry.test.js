@@ -558,12 +558,12 @@ test("Economy Prebuff coupled execution is explicit, guarded, and one-shot", () 
   assert.match(kernel, /EconomyPrebuffExecutionController/);
   assert.match(kernel, /executeEconomyPrebuffNext/);
   assert.match(kernel, /economyPrebuffExecutionRunning/);
+  assert.match(kernel, /prebuffExecution\.activeLane === "ECONOMY_PREBUFF"/);
+  assert.match(kernel, /prebuffExecution\.activeLane === "ECONOMY"/);
   assert.match(
     kernel,
-    /prebuffExecution\.activeLane === "ECONOMY_PREBUFF"/,
+    /economyPrebuffExecution: this\.economyPrebuffExecution\.status\(\)/,
   );
-  assert.match(kernel, /prebuffExecution\.activeLane === "ECONOMY"/);
-  assert.match(kernel, /economyPrebuffExecution: this\.economyPrebuffExecution\.status\(\)/);
   assert.match(kernel, /this\.economyPrebuffExecution\.executeNext\(\)/);
 
   assert.match(executor, /arbiterEnforcementRequired: true/);
