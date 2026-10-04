@@ -80,8 +80,7 @@ function prebuffStatus(kind = "UPGRADE") {
       riskPolicyState: "READY",
       unknown: 0,
     },
-    selectedSkill:
-      kind === "UPGRADE" ? "massproductionpp" : "massproduction",
+    selectedSkill: kind === "UPGRADE" ? "massproductionpp" : "massproduction",
     candidates: [],
     policy: {
       preferEnhanced: true,
@@ -394,10 +393,7 @@ test("Arbiter enforcement is required before any prebuff dispatch", async () => 
   const status = await s.controller.executeNext();
 
   assert.equal(status.state, "BLOCKED");
-  assert.equal(
-    status.reason,
-    "ECONOMY_PREBUFF_ARBITER_ENFORCEMENT_REQUIRED",
-  );
+  assert.equal(status.reason, "ECONOMY_PREBUFF_ARBITER_ENFORCEMENT_REQUIRED");
   assert.deepEqual(s.counts(), {
     refreshes: 1,
     skillCalls: 0,
@@ -423,10 +419,7 @@ test("higher-priority Arbiter lane blocks before the prebuff action", async () =
   const status = await s.controller.executeNext();
 
   assert.equal(status.state, "BLOCKED");
-  assert.equal(
-    status.reason,
-    "ECONOMY_ARBITER_HIGHER_PRIORITY_LANE_SELECTED",
-  );
+  assert.equal(status.reason, "ECONOMY_ARBITER_HIGHER_PRIORITY_LANE_SELECTED");
   assert.equal(s.counts().skillCalls, 0);
 });
 
