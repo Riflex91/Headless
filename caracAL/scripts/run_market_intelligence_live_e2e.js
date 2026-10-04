@@ -325,6 +325,8 @@ function formatCompactResult(result) {
   const sources = record(evidence.observedSources);
   const missingSources = array(evidence.missingSources);
   const scope = record(result?.scope);
+  const sourceProbe = record(result?.sourceProbe);
+  const sourceProbeEvidence = record(sourceProbe.evidence);
 
   const lines = [
     "Market Intelligence Live E2E",
@@ -360,6 +362,18 @@ function formatCompactResult(result) {
     lines.push(
       "Bootstrap runtime: " + (scope.runtimeStateDuringTest || "UNKNOWN"),
     );
+    if (Object.keys(sourceProbe).length > 0) {
+      lines.push(
+        "Ponty snapshot response: " +
+          (sourceProbeEvidence.pontySnapshotResponseReceived === true
+            ? "yes"
+            : "no"),
+      );
+      lines.push(
+        "Ponty snapshot items: " +
+          String(sourceProbeEvidence.pontySnapshotItems ?? 0),
+      );
+    }
   }
 
   if (missingSources.length > 0) {
