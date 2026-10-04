@@ -551,9 +551,8 @@ function formatCompactResult(result) {
     const cleanupConfirmed =
       policy.cleanupConfirmed === true &&
       policy.prebuffCleanupConfirmed === true;
-    lines.push(
-      `Temporary policy cleanup: ${cleanupConfirmed ? "confirmed" : "incomplete"}`,
-    );
+    const cleanupLabel = cleanupConfirmed ? "confirmed" : "incomplete";
+    lines.push(`Temporary policy cleanup: ${cleanupLabel}`);
   }
 
   lines.push(
