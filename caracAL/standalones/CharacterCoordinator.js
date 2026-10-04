@@ -546,7 +546,7 @@ function migrate_old_storage(path, localStorage) {
         getGoalHandoffState: goal_handoff_state,
         getGoalExecutionState: goal_execution_state,
         getGoalAdapterState: goal_adapter_state,
-        getGoalDispatchState: () => goal_adapter_dispatch_supervisor.snapshot(),
+        getGoalDispatchState: goal_dispatch_state,
         runGoalAdapterPreflight: ({ characterName, request }) =>
           goal_adapter_preflight_supervisor.run(characterName, request),
         runGoalAdapterDispatch: ({ expectedGoalId, expectedTaskId }) =>
@@ -613,20 +613,35 @@ function migrate_old_storage(path, localStorage) {
     });
   }
 
-  function goal_execution_state() {
+  function goal_execution_state({
+    allowGoalDispatchInFlight = false,
+  } = {}) {
+    const dispatch = goal_adapter_dispatch_supervisor.snapshot();
     return buildGoalExecutionDecision(goal_handoff_state(), {
       policy: goal_execution_policy,
       observerOnly: observer_only,
       emergencyStopActive: emergency_stop.snapshot().active,
       coordinatorShuttingDown: coordinator_shutting_down,
       executionInFlight:
-        goal_adapter_dispatch_supervisor.snapshot().pending > 0,
-      safetyBlockReason: full_autonomy_safety_block_reason(),
+        !allowGoalDispatchInFlight &&
+        (dispatch.active === true || dispatch.pending > 0),
+      safetyBlockReason: full_autonomy_safety_block_reason({
+        allowGoalDispatchInFlight,
+      }),
     });
   }
 
-  function goal_adapter_state() {
-    return buildGoalAdapterPlan(goal_execution_state());
+  function goal_adapter_state(options = {}) {
+    return buildGoalAdapterPlan(goal_execution_state(options));
+  }
+
+  function goal_dispatch_state() {
+    const reconcile = goal_reconciler.snapshot();
+    return {
+      ...goal_adapter_dispatch_supervisor.snapshot(),
+      automaticReconcileEnabled: reconcile.enabled,
+      reconcile,
+    };
   }
 
   function build_full_autonomy_plan() {
@@ -637,7 +652,10 @@ function migrate_old_storage(path, localStorage) {
     });
   }
 
-  function full_autonomy_safety_block_reason() {
+  function full_autonomy_safety_block_reason({
+    allowGoalDispatchInFlight = false,
+  } = {}) {
+    const goalDispatch = goal_adapter_dispatch_supervisor.snapshot();
     const controlled_operation_active =
       movement_live_test_requests.size > 0 ||
       combat_live_test_requests.size > 0 ||
@@ -661,7 +679,8 @@ function migrate_old_storage(path, localStorage) {
       compound_gather_plan_requests.size > 0 ||
       craft_material_plan_requests.size > 0 ||
       goal_adapter_preflight_supervisor.snapshot().pending > 0 ||
-      goal_adapter_dispatch_supervisor.snapshot().pending > 0 ||
+      (!allowGoalDispatchInFlight &&
+        (goalDispatch.active === true || goalDispatch.pending > 0)) ||
       logistics_claim_requests.size > 0 ||
       full_autonomy_live_test_active ||
       account_strategy_live_test_active ||
