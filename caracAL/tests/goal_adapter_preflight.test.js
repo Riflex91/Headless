@@ -437,7 +437,7 @@ test("unsupported adapter kinds remain blocked", async () => {
   assert.deepEqual(setupResult.calls, []);
 });
 
-test("runtime and CharacterThread wire preflight IPC without a supervisor dispatcher", () => {
+test("runtime and CharacterThread keep Goal adapter preflight read-only with supervisor orchestration", () => {
   const kernel = fs.readFileSync(
     path.join(
       __dirname,
@@ -483,7 +483,10 @@ test("runtime and CharacterThread wire preflight IPC without a supervisor dispat
     /runGoalAdapterPreflight\(m\.request, \{ requestId \}\)/,
   );
   assert.match(thread, /type: "goal_adapter_preflight_result"/);
-  assert.doesNotMatch(coordinator, /goal_adapter_preflight/);
+  assert.match(coordinator, /GoalAdapterPreflightSupervisor/);
+  assert.match(coordinator, /goal_adapter_preflight_supervisor\.run/);
+  assert.doesNotMatch(coordinator, /dispatch_goal_adapter/);
+  assert.doesNotMatch(coordinator, /reconcile_goal_adapter/);
 });
 
 test("Goal adapter runtime preflight contains no gameplay or value mutation path", () => {

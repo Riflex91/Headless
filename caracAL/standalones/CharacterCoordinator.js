@@ -110,6 +110,9 @@ const {
   readGoalExecutionPolicy,
 } = require("../src/GoalExecutor");
 const { buildGoalAdapterPlan } = require("../src/GoalAdapter");
+const {
+  GoalAdapterPreflightSupervisor,
+} = require("../src/GoalAdapterPreflightSupervisor");
 const { GoalManagementService } = require("../src/GoalManagement");
 const {
   buildFullAutonomyPlan,
@@ -413,6 +416,11 @@ function migrate_old_storage(path, localStorage) {
     diagnosticStore: diagnostic_store,
     getSnapshot: () => dashboard?.getSnapshot?.() || null,
   });
+  const goal_adapter_preflight_supervisor = new GoalAdapterPreflightSupervisor({
+    getCharacter: (name) => character_manage[name] || null,
+    send: safe_send,
+    emit: emit_supervisor_event,
+  });
   try {
     const web_port = (cfg.web_app && cfg.web_app.port) || 924;
     const dashboard_enabled =
@@ -487,6 +495,8 @@ function migrate_old_storage(path, localStorage) {
         getGoalHandoffState: goal_handoff_state,
         getGoalExecutionState: goal_execution_state,
         getGoalAdapterState: goal_adapter_state,
+        runGoalAdapterPreflight: ({ characterName, request }) =>
+          goal_adapter_preflight_supervisor.run(characterName, request),
         createGoal: (input) => goal_management.create(input),
         updateGoal: (goalId, input) => goal_management.update(goalId, input),
         getMapScene: (mapName) => dashboard_map_scenes.get(mapName) || null,
@@ -592,6 +602,7 @@ function migrate_old_storage(path, localStorage) {
       material_gather_task_requests.size > 0 ||
       compound_gather_plan_requests.size > 0 ||
       craft_material_plan_requests.size > 0 ||
+      goal_adapter_preflight_supervisor.snapshot().pending > 0 ||
       logistics_claim_requests.size > 0 ||
       full_autonomy_live_test_active ||
       account_strategy_live_test_active ||
@@ -15112,6 +15123,23 @@ function migrate_old_storage(path, localStorage) {
           );
           break;
         }
+        case "goal_adapter_preflight_result": {
+          const handled = goal_adapter_preflight_supervisor.handleResult(
+            char_name,
+            m,
+          );
+          if (!handled) {
+            emit_supervisor_event(
+              "GOAL_ADAPTER_PREFLIGHT_RESULT_IGNORED",
+              char_name,
+              {
+                why: "UNKNOWN_OR_STALE_REQUEST",
+                request_id: m.request_id || null,
+              },
+            );
+          }
+          break;
+        }
         case "craft_material_plan_result": {
           const pending = craft_material_plan_requests.get(m.request_id);
           if (!pending || pending.character !== char_name) {
@@ -16141,6 +16169,9 @@ function migrate_old_storage(path, localStorage) {
       if (coordinator_shutting_down) return;
       coordinator_ready = false;
       coordinator_shutting_down = true;
+      goal_adapter_preflight_supervisor.cancelAll(
+        "GOAL_ADAPTER_PREFLIGHT_COORDINATOR_SHUTDOWN",
+      );
       clearInterval(watchdog_task);
       if (full_autonomy_task) {
         clearInterval(full_autonomy_task);
