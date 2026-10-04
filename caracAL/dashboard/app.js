@@ -25,6 +25,20 @@ const state = {
     closed: true,
     last_error: null,
   },
+  fullAutonomy: {
+    state: "EMPTY",
+    readOnly: true,
+    executionEnabled: false,
+    desiredStateMutationDispatched: false,
+    maxOnlineCharacters: 4,
+    recommendations: [],
+    summary: {
+      selectedCharacters: 0,
+      selectedMerchant: 0,
+      selectedCombat: 0,
+      manualStopProtected: 0,
+    },
+  },
   mapScenes: new Map(),
   mapSceneRequests: new Map(),
 };
@@ -100,6 +114,14 @@ const persistenceSummarySchema = document.querySelector(
 );
 const persistenceSummaryFlushes = document.querySelector(
   "#persistence-summary-flushes",
+);
+const fullAutonomySummary = document.querySelector("#full-autonomy-summary");
+const fullAutonomyStatus = document.querySelector("#full-autonomy-status");
+const fullAutonomySelection = document.querySelector(
+  "#full-autonomy-selection",
+);
+const fullAutonomyExecution = document.querySelector(
+  "#full-autonomy-execution",
 );
 const rotationStopCharacter = document.querySelector(
   "#rotation-stop-character",
@@ -456,6 +478,25 @@ function renderPersistenceSummary() {
   persistenceSummaryFlushes.textContent = persistence.last_error
     ? `Fehler: ${persistence.last_error}`
     : `Flushes: ${persistence.flush_count ?? 0}`;
+}
+
+function renderFullAutonomySummary() {
+  const autonomy = state.fullAutonomy || {};
+  const status = autonomy.state || "EMPTY";
+  const summary = autonomy.summary || {};
+  const selected = Number(summary.selectedCharacters) || 0;
+  const maxOnline =
+    Number(autonomy.maxOnlineCharacters) || state.maxOnlineCharacters || 4;
+  const protectedStops = Number(summary.manualStopProtected) || 0;
+
+  fullAutonomySummary.className =
+    `revision-summary revision-${status.toLowerCase()}`;
+  fullAutonomyStatus.textContent = `Full Autonomy: ${status}`;
+  fullAutonomySelection.textContent =
+    `Plan: ${selected} / ${maxOnline} · Merchant ${summary.selectedMerchant ?? 0} · Combat ${summary.selectedCombat ?? 0}`;
+  fullAutonomyExecution.textContent = autonomy.executionEnabled
+    ? `Execution: ENABLED · STOP-Schutz ${protectedStops}`
+    : `Execution: READ-ONLY · STOP-Schutz ${protectedStops}`;
 }
 
 function renderEmergencyStop() {
@@ -1125,9 +1166,12 @@ function updateCharacterCard(card, character) {
   card.querySelector(".character-connected").textContent = character.connected
     ? "ONLINE"
     : "OFFLINE";
-  card.querySelector(".character-desired-state").textContent =
+  const desiredState =
     character.desired_runtime_state ||
     (character.enabled ? "RUNNING" : "STOPPED");
+  const desiredSource = character.desired_runtime_state_source || "UNKNOWN";
+  card.querySelector(".character-desired-state").textContent =
+    `${desiredState} · ${desiredSource}`;
   card.querySelector(".character-class").textContent = game?.ctype || "—";
   card.querySelector(".character-map").textContent = game?.map || "—";
   card.querySelector(".character-position").textContent = game
@@ -1448,6 +1492,20 @@ function applySnapshot(snapshot) {
     closed: true,
     last_error: null,
   };
+  state.fullAutonomy = snapshot.full_autonomy || {
+    state: "EMPTY",
+    readOnly: true,
+    executionEnabled: false,
+    desiredStateMutationDispatched: false,
+    maxOnlineCharacters: state.maxOnlineCharacters,
+    recommendations: [],
+    summary: {
+      selectedCharacters: 0,
+      selectedMerchant: 0,
+      selectedCombat: 0,
+      manualStopProtected: 0,
+    },
+  };
   state.characters.clear();
 
   for (const character of snapshot.characters || []) {
@@ -1461,6 +1519,7 @@ function applySnapshot(snapshot) {
   renderEmergencyStop();
   renderRevisionSummary();
   renderPersistenceSummary();
+  renderFullAutonomySummary();
   if (configEditor.characterName) {
     renderConfigDialogMeta(configEditor.characterName);
   }
