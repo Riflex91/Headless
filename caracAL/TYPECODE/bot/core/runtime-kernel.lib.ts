@@ -155,6 +155,10 @@ import {
   GoalAdapterPreflightRunner,
 } from "./goal-adapter-preflight.lib";
 import {
+  GoalAdapterDispatchResult,
+  GoalAdapterDispatchRunner,
+} from "./goal-adapter-dispatch.lib";
+import {
   LogisticsClaim,
   LogisticsClaimExecutor,
   LogisticsExecutionResult,
@@ -385,6 +389,7 @@ export class BotRuntimeKernel {
   private fishingLiveTestRunning = false;
   private materialGatherTaskRunning = false;
   private goalAdapterPreflightRunning = false;
+  private goalAdapterDispatchRunning = false;
   private economyPrebuffExecutionRunning = false;
   private logisticsClaimRunning = false;
   private lastLogisticsExecution: LogisticsExecutionResult | null = null;
@@ -3219,6 +3224,126 @@ export class BotRuntimeKernel {
       throw error;
     } finally {
       this.goalAdapterPreflightRunning = false;
+    }
+  }
+
+  async runGoalAdapterDispatch(
+    request: unknown,
+    options: { requestId?: string; authorized?: boolean } = {},
+  ): Promise<GoalAdapterDispatchResult> {
+    if (this.goalAdapterDispatchRunning) {
+      throw new Error("Goal adapter dispatch already running");
+    }
+    if (
+      this.goalAdapterPreflightRunning ||
+      this.materialGatherTaskRunning ||
+      this.economyPrebuffExecutionRunning ||
+      this.movementLiveTestRunning ||
+      this.combatLiveTestRunning ||
+      this.classSkillLiveTestRunning ||
+      this.groupLiveTestRunning ||
+      this.farmLiveTestRunning ||
+      this.inventoryLiveTestRunning ||
+      this.upgradeLiveTestRunning ||
+      this.upgradePreflightRunning ||
+      this.compoundLiveTestRunning ||
+      this.exchangePreflightRunning ||
+      this.exchangeLiveTestRunning ||
+      this.craftPreflightRunning ||
+      this.craftLiveTestRunning ||
+      this.logisticsLiveTestRunning ||
+      this.merchantLiveTestRunning ||
+      this.bankTravelLiveTestRunning ||
+      this.bankGoldLiveTestRunning ||
+      this.npcTradingLiveTestRunning ||
+      this.marketTradingLiveTestRunning ||
+      this.marketIntelligenceSourceProbeRunning ||
+      this.merritLiveTestRunning ||
+      this.fishingLiveTestRunning ||
+      this.logisticsClaimRunning
+    ) {
+      throw new Error("runtime is busy with another controlled activity");
+    }
+    if (!this.started || this.stopping || runtimeState() !== "RUNNING") {
+      throw new Error("runtime is not ready for Goal adapter dispatch");
+    }
+
+    this.goalAdapterDispatchRunning = true;
+    const requestId =
+      options.requestId || `goal-adapter-dispatch-${Date.now()}`;
+    this.eventBus.emit({
+      module: "GoalAdapterDispatch",
+      type: "GOAL_ADAPTER_DISPATCH_STARTED",
+      why: "PHASE19_EXPLICIT_ONE_SHOT_RUNTIME_DISPATCH",
+      correlationId: requestId,
+      data: {
+        requestId,
+        authorized: options.authorized === true,
+        preflightRequired: true,
+        maxExecutionInvocations: 1,
+        blindRetryAllowed: false,
+        ...runtimeIdentity(),
+      },
+    });
+
+    try {
+      const runner = new GoalAdapterDispatchRunner({
+        preflight: async (rawRequest, preflightOptions) => {
+          const preflightRunner = new GoalAdapterPreflightRunner({
+            farmIntelligence: this.farmIntelligence,
+            character: () => {
+              const snapshot = this.game.character();
+              return {
+                name: snapshot.name,
+                ctype: snapshot.ctype,
+              };
+            },
+            craftMaterialPlan: (recipe) => this.runCraftMaterialPlan(recipe),
+          });
+          return preflightRunner.run(rawRequest, preflightOptions);
+        },
+        runMaterialGatherTask: (materialOptions) =>
+          this.runMaterialGatherTask(materialOptions),
+        craft: {
+          setConfigOverride: (config) => this.craft.setConfigOverride(config),
+          clearConfigOverride: () => this.craft.clearConfigOverride(),
+          tick: () => this.craft.tick(),
+          executeNext: () => this.craft.executeNext(),
+        },
+      });
+
+      const result = await runner.run(request, {
+        requestId,
+        authorized: options.authorized === true,
+      });
+      this.eventBus.emit({
+        module: "GoalAdapterDispatch",
+        type: "GOAL_ADAPTER_DISPATCH_COMPLETED",
+        why: result.reason,
+        correlationId: requestId,
+        data: {
+          result,
+          authorized: options.authorized === true,
+          maxExecutionInvocations: 1,
+          blindRetryAllowed: false,
+        },
+      });
+      return result;
+    } catch (error) {
+      this.eventBus.emit({
+        module: "GoalAdapterDispatch",
+        type: "GOAL_ADAPTER_DISPATCH_FAILED",
+        why: "GOAL_ADAPTER_DISPATCH_RUNTIME_ERROR",
+        correlationId: requestId,
+        data: {
+          error: error instanceof Error ? error.message : String(error),
+          authorized: options.authorized === true,
+          blindRetryAllowed: false,
+        },
+      });
+      throw error;
+    } finally {
+      this.goalAdapterDispatchRunning = false;
     }
   }
 
