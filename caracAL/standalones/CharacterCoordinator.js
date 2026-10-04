@@ -108,6 +108,7 @@ const {
   completeSnapshotPersist,
   failSnapshotPersist,
   restoreDesiredRuntimeState,
+  selectNewLiveMarketObservations,
   shouldPersistSnapshot,
   snapshotSignature,
 } = require("../src/SupervisorPersistencePolicy");
@@ -932,6 +933,76 @@ function migrate_old_storage(path, localStorage) {
 
     if (
       char_block &&
+      normalized.data?.marketIntelligence &&
+      typeof normalized.data.marketIntelligence === "object"
+    ) {
+      const market_intelligence = normalized.data.marketIntelligence;
+      char_block.market_intelligence_runtime = market_intelligence;
+
+      const selected_market_observations = selectNewLiveMarketObservations(
+        char_block.market_live_observation_signatures,
+        market_intelligence.observations,
+      );
+      char_block.market_live_observation_signatures =
+        selected_market_observations.signatures;
+
+      selected_market_observations.observations.forEach((observation) => {
+        const item_name =
+          typeof observation.itemName === "string"
+            ? observation.itemName.trim()
+            : "";
+        const price = Number(observation.price);
+        const quantity = Number(observation.quantity);
+        if (
+          !item_name ||
+          !Number.isFinite(price) ||
+          price <= 0 ||
+          !Number.isFinite(quantity) ||
+          quantity <= 0
+        ) {
+          return;
+        }
+
+        void observe_persistence(
+          persistence.appendMarketObservation({
+            itemName: item_name,
+            level:
+              Number.isInteger(Number(observation.level)) &&
+              Number(observation.level) >= 0
+                ? Number(observation.level)
+                : null,
+            price,
+            quantity,
+            server:
+              typeof observation.server === "string"
+                ? observation.server
+                : null,
+            seller:
+              typeof observation.seller === "string"
+                ? observation.seller
+                : null,
+            source: "LIVE_VISIBLE",
+            observedAt:
+              Number.isFinite(Number(observation.timestamp)) &&
+              Number(observation.timestamp) >= 0
+                ? Number(observation.timestamp)
+                : normalized.timestamp,
+            metadata: {
+              ...(observation.metadata &&
+              typeof observation.metadata === "object"
+                ? observation.metadata
+                : {}),
+              observer: char_name,
+            },
+          }),
+          "market_intelligence_live_visible",
+          char_name,
+        );
+      });
+    }
+
+    if (
+      char_block &&
       normalized.data?.inventoryIntelligence &&
       typeof normalized.data.inventoryIntelligence === "object"
     ) {
@@ -1284,6 +1355,13 @@ function migrate_old_storage(path, localStorage) {
     char_block.group_combat_runtime = char_block.group_combat_runtime || null;
     char_block.farm_intelligence_runtime =
       char_block.farm_intelligence_runtime || null;
+    char_block.market_intelligence_runtime =
+      char_block.market_intelligence_runtime || null;
+    char_block.market_live_observation_signatures = Array.isArray(
+      char_block.market_live_observation_signatures,
+    )
+      ? char_block.market_live_observation_signatures
+      : [];
     char_block.fishing_material_request =
       char_block.fishing_material_request || null;
     char_block.inventory_intelligence_runtime =
@@ -12868,6 +12946,7 @@ function migrate_old_storage(path, localStorage) {
     );
     const args = {
       version: g_version,
+      realm: char_block.realm,
       realm_address: realm_connection.address,
       realm_path: realm_connection.path,
       realm_addr: realm_connection.legacyAddr,

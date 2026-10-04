@@ -1243,6 +1243,7 @@ async function make_game(proc_args) {
   extensions.log = LogUtils.log;
   extensions.runtime_state =
     proc_args.runtime_state || DESIRED_RUNTIME_STATES.RUNNING;
+  extensions.realm = proc_args.realm || null;
   extensions.code_revision = proc_args.code_revision || null;
   extensions.config_revision = proc_args.config_revision || null;
   extensions.source_revision = proc_args.source_revision || null;

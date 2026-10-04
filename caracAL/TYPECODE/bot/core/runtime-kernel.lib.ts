@@ -221,6 +221,10 @@ import {
 } from "./npc-trading-live-test.lib";
 import { MarketTradingController } from "./market-trading-controller.lib";
 import {
+  MarketIntelligenceController,
+  MarketIntelligenceEvent,
+} from "./market-intelligence-controller.lib";
+import {
   MarketTradingLiveTestOptions,
   MarketTradingLiveTestResult,
   MarketTradingLiveTestRunner,
@@ -250,6 +254,8 @@ const ECONOMY_ARBITER_JOB_ID = "economy-arbiter-loop";
 const ECONOMY_ARBITER_INTERVAL_MS = 1000;
 const FARM_INTELLIGENCE_JOB_ID = "farm-intelligence-loop";
 const FARM_INTELLIGENCE_INTERVAL_MS = 1000;
+const MARKET_INTELLIGENCE_JOB_ID = "market-intelligence-loop";
+const MARKET_INTELLIGENCE_INTERVAL_MS = 5000;
 const MERCHANT_AUTONOMY_JOB_ID = "merchant-autonomy-loop";
 const MERCHANT_AUTONOMY_INTERVAL_MS = 1000;
 const BANK_TRAVEL_JOB_ID = "bank-travel-loop";
@@ -275,6 +281,16 @@ interface RuntimeGlobal {
 
 function runtimeState(): RuntimeState {
   return parent.caracAL?.runtime_state || "RUNNING";
+}
+
+function runtimeRealm(): string | null {
+  const runtimeConfig = parent.caracAL as
+    | (typeof parent.caracAL & { realm?: unknown })
+    | undefined;
+  return typeof runtimeConfig?.realm === "string" &&
+    runtimeConfig.realm.trim().length > 0
+    ? runtimeConfig.realm.trim()
+    : null;
 }
 
 function runtimeIdentity(): Record<string, unknown> {
@@ -315,6 +331,7 @@ export class BotRuntimeKernel {
   readonly classSkills: ClassSkillController | null;
   readonly groupCombat: GroupCombatController;
   readonly farmIntelligence: FarmIntelligenceController;
+  readonly marketIntelligence: MarketIntelligenceController;
   readonly inventoryIntelligence: InventoryIntelligenceController;
   readonly gearScoring: GearScoringController;
   readonly futureGear: FutureGearController;
@@ -437,6 +454,10 @@ export class BotRuntimeKernel {
     this.farmIntelligence = new FarmIntelligenceController(this.game, {
       config: () => runtimeConfig?.config || {},
       onEvent: (event) => this.handleFarmIntelligenceEvent(event),
+    });
+    this.marketIntelligence = new MarketIntelligenceController(this.game, {
+      server: runtimeRealm,
+      onEvent: (event) => this.handleMarketIntelligenceEvent(event),
     });
     this.gearScoring = new GearScoringController(this.game, {
       config: () => runtimeConfig?.config || {},
@@ -694,6 +715,16 @@ export class BotRuntimeKernel {
       },
     });
 
+    this.scheduler.register({
+      id: MARKET_INTELLIGENCE_JOB_ID,
+      intervalMs: MARKET_INTELLIGENCE_INTERVAL_MS,
+      priority: 10,
+      runWhenPaused: true,
+      tick: () => {
+        this.marketIntelligence.tick();
+      },
+    });
+
     this.registerMerchantAutonomyJob();
     this.registerBankTravelJob();
     this.registerMerritJob();
@@ -736,6 +767,7 @@ export class BotRuntimeKernel {
             classSkills: this.classSkills?.status() || null,
             groupCombat: this.groupCombat.status(),
             farmIntelligence: this.farmIntelligence.status(),
+            marketIntelligence: this.marketIntelligence.status(),
             inventoryIntelligence: this.inventoryIntelligence.status(),
             gearScoring: this.gearScoring.status(),
             futureGear: this.futureGear.status(),
@@ -836,6 +868,7 @@ export class BotRuntimeKernel {
       classSkills: this.classSkills?.status() || null,
       groupCombat: this.groupCombat.status(),
       farmIntelligence: this.farmIntelligence.status(),
+      marketIntelligence: this.marketIntelligence.status(),
       inventoryIntelligence: this.inventoryIntelligence.status(),
       gearScoring: this.gearScoring.status(),
       futureGear: this.futureGear.status(),
@@ -4134,6 +4167,19 @@ export class BotRuntimeKernel {
       data: {
         farmIntelligence: event.status,
         ...(event.sample && { sample: event.sample }),
+      },
+    });
+  }
+
+  private handleMarketIntelligenceEvent(
+    event: MarketIntelligenceEvent,
+  ): void {
+    this.eventBus.emit({
+      module: "MarketIntelligenceController",
+      type: event.type,
+      why: event.reason,
+      data: {
+        marketIntelligence: event.status,
       },
     });
   }

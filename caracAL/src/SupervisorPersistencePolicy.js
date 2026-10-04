@@ -67,6 +67,55 @@ function failSnapshotPersist(charBlock) {
   charBlock.snapshot_persist_inflight = false;
 }
 
+function marketObservationSignature(observation) {
+  const source =
+    observation && typeof observation === "object" ? observation : {};
+  const metadata =
+    source.metadata && typeof source.metadata === "object"
+      ? source.metadata
+      : {};
+
+  return JSON.stringify([
+    source.itemName || source.item_name || source.item || null,
+    Number.isInteger(Number(source.level)) ? Number(source.level) : null,
+    Number(source.price) || 0,
+    Number(source.quantity) || 0,
+    source.server || null,
+    source.seller || null,
+    metadata.merchantId || null,
+    metadata.slot || null,
+    metadata.rid || null,
+  ]);
+}
+
+function selectNewLiveMarketObservations(previousSignatures, observations) {
+  const previous = new Set(
+    Array.isArray(previousSignatures) ? previousSignatures : [],
+  );
+  const current = new Set();
+  const selected = [];
+
+  for (const observation of Array.isArray(observations) ? observations : []) {
+    if (
+      !observation ||
+      typeof observation !== "object" ||
+      observation.source !== "LIVE_VISIBLE"
+    ) {
+      continue;
+    }
+
+    const signature = marketObservationSignature(observation);
+    if (current.has(signature)) continue;
+    current.add(signature);
+    if (!previous.has(signature)) selected.push(observation);
+  }
+
+  return {
+    observations: selected,
+    signatures: [...current].sort(),
+  };
+}
+
 function buildCharacterProfile(
   characterName,
   charBlock,
@@ -88,7 +137,9 @@ module.exports = {
   buildCharacterProfile,
   completeSnapshotPersist,
   failSnapshotPersist,
+  marketObservationSignature,
   restoreDesiredRuntimeState,
+  selectNewLiveMarketObservations,
   shouldPersistSnapshot,
   snapshotSignature,
 };
