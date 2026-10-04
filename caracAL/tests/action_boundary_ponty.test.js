@@ -100,7 +100,9 @@ function makeDriver(overrides = {}) {
     async exchange() {},
     async craft() {},
     wishlist() {},
-    requestPontySnapshot() {},
+    requestPontySnapshot() {
+      return { items: [] };
+    },
     pontyBuy() {},
     ...overrides,
   };
@@ -118,13 +120,14 @@ function makeBoundary(state, driver = {}, ledger = makeLedger()) {
   };
 }
 
-test("Ponty snapshot request is read-only and confirms dispatch without purchase", () => {
+test("Ponty snapshot request is read-only and confirms correlated response without purchase", async () => {
   const state = makeState();
   let snapshotCalls = 0;
   let purchaseCalls = 0;
   const { boundary } = makeBoundary(state, {
-    requestPontySnapshot() {
+    async requestPontySnapshot() {
       snapshotCalls += 1;
+      return { items: [{ name: "gem0", rid: "RID-READ" }] };
     },
     pontyBuy() {
       purchaseCalls += 1;
@@ -133,7 +136,7 @@ test("Ponty snapshot request is read-only and confirms dispatch without purchase
 
   const beforeGold = state.character.gold;
   const beforeItems = structuredClone(state.character.items);
-  const result = boundary.requestPontySnapshot({
+  const result = await boundary.requestPontySnapshot({
     module: "MarketIntelligenceLiveProbe",
     why: "PHASE16_PONTY_READ_REQUEST",
   });
@@ -143,26 +146,46 @@ test("Ponty snapshot request is read-only and confirms dispatch without purchase
   assert.equal(result.expectedEffect.valueMutation, false);
   assert.equal(result.evidence.readOnly, true);
   assert.equal(result.evidence.requestDispatched, true);
+  assert.equal(result.evidence.responseReceived, true);
+  assert.equal(result.evidence.itemCount, 1);
   assert.equal(snapshotCalls, 1);
   assert.equal(purchaseCalls, 0);
   assert.equal(state.character.gold, beforeGold);
   assert.deepEqual(state.character.items, beforeItems);
 });
 
-test("Ponty snapshot request failure becomes UNKNOWN and is not retryable", () => {
+test("Ponty snapshot request failure becomes UNKNOWN and is not retryable", async () => {
   const setup = makeBoundary(makeState(), {
     requestPontySnapshot() {
       throw new Error("socket unavailable");
     },
   });
 
-  const result = setup.boundary.requestPontySnapshot({
+  const result = await setup.boundary.requestPontySnapshot({
     module: "MarketIntelligenceLiveProbe",
     why: "PHASE16_PONTY_READ_REQUEST",
   });
 
   assert.equal(result.status, "UNKNOWN");
   assert.equal(result.action, "PONTY_SNAPSHOT_REQUEST");
+  assert.equal(setup.ledger.canRetry(result.id), false);
+});
+
+test("Ponty snapshot invalid correlated response becomes UNKNOWN", async () => {
+  const setup = makeBoundary(makeState(), {
+    requestPontySnapshot() {
+      return { success: true };
+    },
+  });
+
+  const result = await setup.boundary.requestPontySnapshot({
+    module: "MarketIntelligenceLiveProbe",
+    why: "PHASE16_PONTY_READ_REQUEST",
+  });
+
+  assert.equal(result.status, "UNKNOWN");
+  assert.equal(result.why, "PONTY_SNAPSHOT_RESPONSE_INVALID");
+  assert.equal(result.evidence.responseReceived, true);
   assert.equal(setup.ledger.canRetry(result.id), false);
 });
 
