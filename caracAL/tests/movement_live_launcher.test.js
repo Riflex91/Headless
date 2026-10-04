@@ -7,6 +7,7 @@ const {
   ensureDashboardAvailable,
   isConnectionFailure,
   selectMovementLiveTestCharacter,
+  startManagedRuntime,
   stopManagedRuntime,
 } = require("../src/MovementLiveTestLauncher");
 
@@ -92,6 +93,30 @@ test("movement live character selection honors an explicit requested character",
   );
 
   assert.equal(selected.name, "My_Mage");
+});
+
+test("managed runtime supports quiet stdio without changing the default", () => {
+  const calls = [];
+  const child = { pid: 321 };
+
+  const result = startManagedRuntime({
+    cwd: "D:\\caracAL",
+    env: { TEST: "1" },
+    stdio: ["ignore", "ignore", "ignore"],
+    windowsHide: true,
+    spawnImpl(command, args, options) {
+      calls.push({ command, args, options });
+      return child;
+    },
+  });
+
+  assert.equal(result, child);
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0].args, ["main.js"]);
+  assert.equal(calls[0].options.cwd, "D:\\caracAL");
+  assert.deepEqual(calls[0].options.env, { TEST: "1" });
+  assert.deepEqual(calls[0].options.stdio, ["ignore", "ignore", "ignore"]);
+  assert.equal(calls[0].options.windowsHide, true);
 });
 
 test("movement live launcher reuses an existing dashboard", async () => {
