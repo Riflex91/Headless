@@ -2096,6 +2096,12 @@ function migrate_old_storage(path, localStorage) {
       const live = char_block?.live_state;
       const has_stats =
         live && stat_keys.some((key) => Number.isFinite(Number(live[key])));
+      const live_slots = live?.slots;
+      const has_gear =
+        live_slots &&
+        typeof live_slots === "object" &&
+        !Array.isArray(live_slots) &&
+        Object.keys(live_slots).length > 0;
 
       if (
         char_block?.instance &&
@@ -2104,6 +2110,7 @@ function migrate_old_storage(path, localStorage) {
         typeof live?.map === "string" &&
         live.map.length > 0 &&
         Number.isFinite(live?.gold) &&
+        has_gear &&
         has_stats
       ) {
         return char_block;
@@ -8139,12 +8146,20 @@ function migrate_old_storage(path, localStorage) {
         ? strategy.profiles.find((entry) => entry?.name === char_name) || null
         : null;
       const stats = profile?.stats;
+      const equipment = profile?.gear?.equipment;
+      const live_gear_complete =
+        equipment &&
+        typeof equipment === "object" &&
+        !Array.isArray(equipment) &&
+        Object.keys(equipment).length > 0 &&
+        profile?.profileCompleteness?.gear === true;
       const live_profile_complete =
         profile?.online === true &&
         Number.isFinite(profile?.level) &&
         typeof profile?.map === "string" &&
         profile.map.length > 0 &&
         Number.isFinite(profile?.gold) &&
+        live_gear_complete &&
         stats &&
         typeof stats === "object" &&
         Object.keys(stats).length > 0;
