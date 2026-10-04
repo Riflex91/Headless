@@ -16,6 +16,7 @@ const {
   restoreDesiredRuntimeState,
   selectMarketLocalHistoryForRuntime,
   selectNewLiveMarketObservations,
+  selectNewPontyMarketObservations,
   shouldPersistSnapshot,
   snapshotSignature,
 } = require("../src/SupervisorPersistencePolicy");
@@ -206,6 +207,79 @@ test("live market persistence treats changed price or quantity as new evidence",
   assert.equal(changed.signatures.length, 2);
   assert.notEqual(changed.signatures[0], initial.signatures[0]);
   assert.notEqual(changed.signatures[1], initial.signatures[0]);
+});
+
+test("Ponty market persistence dedupes unchanged snapshots by RID and value", () => {
+  const firstObservation = {
+    itemName: "sword",
+    level: 2,
+    price: 1000,
+    quantity: 3,
+    server: "EU I",
+    seller: "Ponty",
+    timestamp: 1000,
+    source: "PONTY",
+    metadata: {
+      rid: "RID-SWORD",
+      totalPrice: 3000,
+      priceBasis: "PONTY_UNIT_PRICE",
+    },
+  };
+
+  const first = selectNewPontyMarketObservations([], [firstObservation]);
+  assert.deepEqual(first.observations, [firstObservation]);
+  assert.equal(first.signatures.length, 1);
+
+  const unchanged = selectNewPontyMarketObservations(first.signatures, [
+    {
+      ...firstObservation,
+      timestamp: 5000,
+    },
+  ]);
+  assert.deepEqual(unchanged.observations, []);
+  assert.deepEqual(unchanged.signatures, first.signatures);
+
+  const changed = selectNewPontyMarketObservations(first.signatures, [
+    {
+      ...firstObservation,
+      price: 1100,
+      timestamp: 6000,
+    },
+  ]);
+  assert.equal(changed.observations.length, 1);
+  assert.notDeepEqual(changed.signatures, first.signatures);
+});
+
+test("Ponty market persistence ignores non-PONTY market sources", () => {
+  const result = selectNewPontyMarketObservations([], [
+    {
+      itemName: "sword",
+      level: 2,
+      price: 1000,
+      quantity: 1,
+      server: "EU I",
+      seller: "Trader",
+      timestamp: 1000,
+      source: "LIVE_VISIBLE",
+      metadata: {
+        rid: "RID-LIVE",
+      },
+    },
+    {
+      itemName: "sword",
+      level: 2,
+      price: 900,
+      quantity: 1,
+      server: "EU I",
+      seller: "History",
+      timestamp: 900,
+      source: "LOCAL_HISTORY",
+      metadata: {},
+    },
+  ]);
+
+  assert.deepEqual(result.observations, []);
+  assert.deepEqual(result.signatures, []);
 });
 
 test("LOCAL_HISTORY selection stays server-bound and excludes active live listings", () => {
