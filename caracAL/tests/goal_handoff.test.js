@@ -20,6 +20,7 @@ function plannedGoal({
   kind = "FARM_ITEM",
   subsystem = "FullAutonomy/FarmIntelligence",
   target = { itemName: "gem0", quantity: 10 },
+  metadata = {},
 } = {}) {
   return {
     goalId,
@@ -30,6 +31,7 @@ function plannedGoal({
     state: "PLANNED",
     reason: "GOAL_PLAN_READY",
     target,
+    metadata,
     tasks: [
       {
         taskId: `${goalId}:1`,
@@ -137,6 +139,7 @@ test("Goal handoff selects the highest-priority ready Goal", () => {
   assert.equal(result.state, GOAL_HANDOFF_STATES.READY);
   assert.equal(result.reason, "GOAL_HANDOFF_READY");
   assert.equal(result.selectedGoal.goalId, "farm");
+  assert.deepEqual(result.selectedGoal.metadata, {});
   assert.equal(result.handoff.kind, "FARM_ITEM");
   assert.equal(result.handoff.adapter, "FarmIntelligence");
   assert.equal(result.handoff.dispatchAllowed, false);
