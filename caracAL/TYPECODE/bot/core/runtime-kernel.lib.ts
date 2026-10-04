@@ -74,6 +74,11 @@ import {
   EconomyPrebuffExecutionEvent,
 } from "./economy-prebuff-execution-controller.lib";
 import {
+  EconomyPrebuffExecutionLiveTestOptions,
+  EconomyPrebuffExecutionLiveTestResult,
+  EconomyPrebuffExecutionLiveTestRunner,
+} from "./economy-prebuff-execution-live-test.lib";
+import {
   EconomyArbiterController,
   EconomyArbiterEvent,
   EconomyArbiterLane,
@@ -1040,6 +1045,117 @@ export class BotRuntimeKernel {
       this.craft.clearConfigOverride();
       this.craft.tick();
       this.craftPreflightRunning = false;
+    }
+  }
+
+  async runEconomyPrebuffExecutionLiveTest(
+    options: EconomyPrebuffExecutionLiveTestOptions,
+  ): Promise<EconomyPrebuffExecutionLiveTestResult> {
+    if (
+      this.economyPrebuffExecutionRunning ||
+      this.upgradeLiveTestRunning ||
+      this.upgradePreflightRunning ||
+      this.compoundLiveTestRunning ||
+      this.exchangePreflightRunning ||
+      this.exchangeLiveTestRunning ||
+      this.craftPreflightRunning ||
+      this.craftLiveTestRunning
+    ) {
+      throw new Error("mutation verification already running");
+    }
+    if (!this.started || this.stopping) {
+      throw new Error(
+        "runtime is not ready for Economy Prebuff execution live test",
+      );
+    }
+    if (runtimeState() !== "RUNNING") {
+      throw new Error(
+        "runtime must be RUNNING for Economy Prebuff execution live test",
+      );
+    }
+
+    this.economyPrebuffExecutionRunning = true;
+    const requestId =
+      options.requestId ||
+      `economy-prebuff-execution-live-${Date.now()}`;
+    const suspended = {
+      merchantAutonomy: this.scheduler.unregister(MERCHANT_AUTONOMY_JOB_ID),
+      bankTravel: this.scheduler.unregister(BANK_TRAVEL_JOB_ID),
+      merrit: this.scheduler.unregister(MERRIT_AUTONOMY_JOB_ID),
+      fishing: this.scheduler.unregister(FISHING_AUTONOMY_JOB_ID),
+      groupCombat: this.scheduler.unregister(GROUP_COMBAT_JOB_ID),
+      classSkill: this.scheduler.unregister(CLASS_SKILL_JOB_ID),
+      combat: this.scheduler.unregister(COMBAT_JOB_ID),
+    };
+
+    this.eventBus.emit({
+      module: "EconomyPrebuffExecutionLiveTest",
+      type: "ECONOMY_PREBUFF_EXECUTION_LIVE_TEST_STARTED",
+      why: "EXPLICIT_SINGLE_COUPLED_PREBUFF_ECONOMY_E2E",
+      correlationId: requestId,
+      data: {
+        requestId,
+        expectedKind: options.expectedKind,
+        expectedName: options.expectedName,
+        expectedSlots: [...options.expectedSlots],
+        irreversibleMutation: true,
+        maxValueMutations: 1,
+        blindRetryAllowed: false,
+        suspended,
+        ...runtimeIdentity(),
+      },
+    });
+
+    try {
+      const runner = new EconomyPrebuffExecutionLiveTestRunner({
+        game: this.game,
+        refreshPlanning: () => {
+          this.inventoryIntelligence.tick();
+          this.upgrade.tick();
+          this.compound.tick();
+          this.expectedValue.tick();
+          this.riskPolicy.tick();
+          this.economyPrebuff.tick();
+        },
+        riskPolicy: this.riskPolicy,
+        prebuff: this.economyPrebuff,
+        arbiter: this.economyArbiter,
+        execution: this.economyPrebuffExecution,
+        characterName: () => character.name,
+      });
+      const result = await runner.run({
+        ...options,
+        requestId,
+      });
+
+      this.eventBus.emit({
+        module: "EconomyPrebuffExecutionLiveTest",
+        type:
+          result.outcome === "PASS"
+            ? "ECONOMY_PREBUFF_EXECUTION_LIVE_TEST_COMPLETED"
+            : result.outcome === "UNKNOWN"
+              ? "ECONOMY_PREBUFF_EXECUTION_LIVE_TEST_UNKNOWN"
+              : "ECONOMY_PREBUFF_EXECUTION_LIVE_TEST_FAILED",
+        why: result.reason,
+        correlationId: requestId,
+        ...(result.execution?.economyAction?.id && {
+          actionId: result.execution.economyAction.id,
+        }),
+        data: {
+          result,
+          economyPrebuffExecution: this.economyPrebuffExecution.status(),
+        },
+      });
+      return result;
+    } finally {
+      if (suspended.merchantAutonomy) this.registerMerchantAutonomyJob();
+      if (suspended.bankTravel) this.registerBankTravelJob();
+      if (suspended.merrit) this.registerMerritJob();
+      if (suspended.fishing) this.registerFishingJob();
+      if (suspended.groupCombat) this.registerGroupCombatJob();
+      if (suspended.classSkill) this.registerClassSkillJob();
+      if (suspended.combat) this.registerCombatJob();
+      this.economyPrebuffExecutionRunning = false;
     }
   }
 
