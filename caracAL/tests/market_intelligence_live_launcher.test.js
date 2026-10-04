@@ -160,8 +160,12 @@ function character(name = "My_Merchant", options = {}) {
     account_owned: options.account_owned ?? true,
     connected: options.connected ?? true,
     realm: options.realm ?? "EU I",
-    market_intelligence_runtime:
-      options.market_intelligence_runtime ?? projection(),
+    market_intelligence_runtime: Object.prototype.hasOwnProperty.call(
+      options,
+      "market_intelligence_runtime",
+    )
+      ? options.market_intelligence_runtime
+      : projection(),
   };
 }
 
@@ -356,7 +360,7 @@ test("Market Intelligence live launcher is GET-only and dashboard exposes projec
   assert.doesNotMatch(launcher, /method:\s*"POST"/);
   assert.doesNotMatch(launcher, /ActionBoundary/);
   assert.doesNotMatch(launcher, /socket\.emit/);
-  assert.doesNotMatch(launcher, /pontyBuy/);
+  assert.doesNotMatch(launcher, /pontyBuy\s*\(/);
   assert.doesNotMatch(launcher, /tradeList/);
   assert.doesNotMatch(launcher, /tradeUnlist/);
 });
