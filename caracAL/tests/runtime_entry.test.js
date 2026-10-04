@@ -531,6 +531,62 @@ test("Risk Policy runtime remains read-only and blocks unknown EV", () => {
   assert.match(controller, /unknownAlwaysBlocked: true/);
 });
 
+test("Economy Arbiter runtime is read-only and projects fixed lane priority", () => {
+  const kernel = fs.readFileSync(
+    path.join(
+      __dirname,
+      "..",
+      "TYPECODE",
+      "bot",
+      "core",
+      "runtime-kernel.lib.ts",
+    ),
+    "utf8",
+  );
+  const controller = fs.readFileSync(
+    path.join(
+      __dirname,
+      "..",
+      "TYPECODE",
+      "bot",
+      "core",
+      "economy-arbiter-controller.lib.ts",
+    ),
+    "utf8",
+  );
+
+  assert.match(kernel, /ECONOMY_ARBITER_JOB_ID/);
+  assert.match(kernel, /economyArbiter: this\.economyArbiter\.status\(\)/);
+  assert.match(kernel, /this\.economyArbiter\.tick\(\)/);
+  assert.match(kernel, /priority: 72/);
+  assert.match(kernel, /ECONOMY_PREBUFF_NOT_IMPLEMENTED/);
+  assert.match(kernel, /LOGISTICS_OUTCOME_UNCERTAIN/);
+
+  const schedulerStart = kernel.indexOf("id: ECONOMY_ARBITER_JOB_ID");
+  const schedulerEnd = kernel.indexOf(
+    "id: FARM_INTELLIGENCE_JOB_ID",
+    schedulerStart,
+  );
+  assert.ok(schedulerStart >= 0);
+  assert.ok(schedulerEnd > schedulerStart);
+  const schedulerBlock = kernel.slice(schedulerStart, schedulerEnd);
+  assert.match(schedulerBlock, /this\.economyArbiter\.tick\(\)/);
+  assert.doesNotMatch(schedulerBlock, /execute/);
+
+  assert.doesNotMatch(controller, /ActionBoundary/);
+  assert.doesNotMatch(controller, /executeNext/);
+  assert.match(controller, /"SAFETY"/);
+  assert.match(controller, /"MERRIT"/);
+  assert.match(controller, /"CRITICAL_FARMER_LOGISTICS"/);
+  assert.match(controller, /"ECONOMY_PREBUFF"/);
+  assert.match(controller, /"ECONOMY"/);
+  assert.match(controller, /"MERCHANT_STAND"/);
+  assert.match(controller, /"BACKGROUND"/);
+  assert.match(controller, /unknownBlocksLowerPriority: true/);
+  assert.match(controller, /executionEnabled: false/);
+  assert.match(controller, /valueMutationForced: false/);
+});
+
 test("Upgrade live IPC stays in runner context and exposes one attempt only", () => {
   const thread = fs.readFileSync(
     path.join(__dirname, "..", "src", "CharacterThread.js"),
