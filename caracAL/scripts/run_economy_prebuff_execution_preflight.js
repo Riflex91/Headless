@@ -20,15 +20,27 @@ function array(value) {
   return Array.isArray(value) ? value : [];
 }
 
+function finiteNumber(value) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function nonNegativeInteger(value) {
+  return typeof value === "number" &&
+    Number.isInteger(value) &&
+    value >= 0
+    ? value
+    : null;
+}
+
 function diagnosticInventoryEntry(value) {
   const entry = record(value);
   return {
-    slot: Number.isInteger(Number(entry.slot)) ? Number(entry.slot) : null,
+    slot: nonNegativeInteger(entry.slot),
     name:
       typeof entry.name === "string" && entry.name.trim()
         ? entry.name.trim()
         : null,
-    level: Number.isFinite(Number(entry.level)) ? Number(entry.level) : null,
+    level: finiteNumber(entry.level),
     disposition:
       typeof entry.disposition === "string" ? entry.disposition : null,
     protected: entry.protected === true,
@@ -45,35 +57,24 @@ function diagnosticDecision(value) {
     .map((slot) => Number(slot))
     .filter((slot) => Number.isInteger(slot) && slot >= 0)
     .sort((left, right) => left - right);
-  const itemSlot = Number(decision.itemSlot);
-
   return {
-    itemSlot:
-      Number.isInteger(itemSlot) && itemSlot >= 0 ? itemSlot : null,
+    itemSlot: nonNegativeInteger(decision.itemSlot),
     itemSlots: slots,
     name:
       typeof decision.name === "string" && decision.name.trim()
         ? decision.name.trim()
         : null,
-    currentLevel: Number.isFinite(Number(decision.currentLevel))
-      ? Number(decision.currentLevel)
-      : null,
+    currentLevel: finiteNumber(decision.currentLevel),
     eligible: decision.eligible === true,
     reason: typeof decision.reason === "string" ? decision.reason : null,
     protections: array(decision.protections).filter(
       (protection) => typeof protection === "string",
     ),
-    maxLevel: Number.isFinite(Number(decision.maxLevel))
-      ? Number(decision.maxLevel)
-      : null,
-    itemGrade: Number.isFinite(Number(decision.itemGrade))
-      ? Number(decision.itemGrade)
-      : null,
+    maxLevel: finiteNumber(decision.maxLevel),
+    itemGrade: finiteNumber(decision.itemGrade),
     scrollName:
       typeof decision.scrollName === "string" ? decision.scrollName : null,
-    scrollSlot: Number.isFinite(Number(decision.scrollSlot))
-      ? Number(decision.scrollSlot)
-      : null,
+    scrollSlot: nonNegativeInteger(decision.scrollSlot),
   };
 }
 
