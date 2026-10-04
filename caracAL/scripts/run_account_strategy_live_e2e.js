@@ -23,8 +23,9 @@ const CAPABILITIES = Object.freeze([
 function parseCliArgs(argv = process.argv.slice(2)) {
   return {
     requestedCharacter:
-      argv.find((value) => typeof value === "string" && !value.startsWith("--")) ||
-      null,
+      argv.find(
+        (value) => typeof value === "string" && !value.startsWith("--"),
+      ) || null,
     verbose: argv.includes("--verbose"),
   };
 }
@@ -440,7 +441,9 @@ async function main() {
         requestedCharacter,
       );
       if (!selected) {
-        throw new Error("No account-owned character available for profile probe");
+        throw new Error(
+          "No account-owned character available for profile probe",
+        );
       }
 
       const payload = await runAccountStrategySupervisorLiveTest(selected.name);
