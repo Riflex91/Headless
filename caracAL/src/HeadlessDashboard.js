@@ -564,6 +564,7 @@ function attachHeadlessDashboard({
 
   router.post(
     "/headless/api/characters/:name/tests/gear-scoring",
+    express.json({ limit: "8kb" }),
     async (req, res) => {
       if (!runGearScoringLiveTest) {
         res.status(503).json({ error: "GEAR_SCORING_LIVE_TEST_UNAVAILABLE" });
