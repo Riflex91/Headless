@@ -91,6 +91,8 @@ export interface EconomyPrebuffExecutionLiveTestResult {
     arbiterEnforcementRestored: boolean;
     verificationPolicyConfigOverrideCleared: boolean;
     verificationPolicyPlanningRestored: boolean;
+    prebuffVerificationConfigOverrideCleared: boolean;
+    prebuffVerificationPlanningRestored: boolean;
   };
 }
 
@@ -288,6 +290,8 @@ export class EconomyPrebuffExecutionLiveTestRunner {
           arbiterEnforcementRestored,
           verificationPolicyConfigOverrideCleared: false,
           verificationPolicyPlanningRestored: false,
+          prebuffVerificationConfigOverrideCleared: false,
+          prebuffVerificationPlanningRestored: false,
         },
       };
     };
