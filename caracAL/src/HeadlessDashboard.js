@@ -106,6 +106,8 @@ function publicCharacterState(name, charBlock = {}) {
     farm_live_test: charBlock.farm_live_test || null,
     inventory_live_test: charBlock.inventory_live_test || null,
     gear_scoring_live_test: charBlock.gear_scoring_live_test || null,
+    economy_prebuff_execution_live_test:
+      charBlock.economy_prebuff_execution_live_test || null,
     account_gear_reservation_live_test:
       charBlock.account_gear_reservation_live_test || null,
     upgrade_live_test: charBlock.upgrade_live_test || null,
@@ -131,6 +133,8 @@ function publicCharacterState(name, charBlock = {}) {
       charBlock.inventory_intelligence_runtime || null,
     gear_scoring_runtime: charBlock.gear_scoring_runtime || null,
     future_gear_runtime: charBlock.future_gear_runtime || null,
+    economy_prebuff_execution_runtime:
+      charBlock.economy_prebuff_execution_runtime || null,
     upgrade_runtime: charBlock.upgrade_runtime || null,
     account_gear_reservation_runtime:
       charBlock.account_gear_reservation_runtime || null,
@@ -322,6 +326,7 @@ function attachHeadlessDashboard({
   runFarmLiveTest,
   runInventoryLiveTest,
   runGearScoringLiveTest,
+  runEconomyPrebuffExecutionLiveTest,
   runAccountGearReservationLiveTest,
   runUpgradeLiveTest,
   runUpgradeLivePreflight,
@@ -588,6 +593,40 @@ function attachHeadlessDashboard({
       } catch (error) {
         res.status(Number(error.statusCode) || 500).json({
           error: error.code || "GEAR_SCORING_LIVE_TEST_FAILED",
+          message: error.message,
+        });
+      }
+    },
+  );
+
+  router.post(
+    "/headless/api/characters/:name/tests/economy-prebuff-execution",
+    express.json({ limit: "8kb" }),
+    async (req, res) => {
+      if (!runEconomyPrebuffExecutionLiveTest) {
+        res
+          .status(503)
+          .json({ error: "ECONOMY_PREBUFF_EXECUTION_LIVE_TEST_UNAVAILABLE" });
+        return;
+      }
+
+      try {
+        const result = await runEconomyPrebuffExecutionLiveTest(
+          req.params.name,
+          {
+            expectedKind: req.body?.expectedKind,
+            expectedName: req.body?.expectedName,
+            expectedSlots: req.body?.expectedSlots,
+          },
+        );
+        res.json({
+          ok: result?.outcome === "PASS",
+          result,
+          snapshot: getSnapshot(),
+        });
+      } catch (error) {
+        res.status(Number(error.statusCode) || 500).json({
+          error: error.code || "ECONOMY_PREBUFF_EXECUTION_LIVE_TEST_FAILED",
           message: error.message,
         });
       }

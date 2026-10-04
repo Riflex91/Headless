@@ -176,6 +176,7 @@ function setup(options = {}) {
   let upgradeCalls = 0;
   let compoundCalls = 0;
   const authorizedLanes = [];
+  let arbiterTicks = 0;
   const events = [];
 
   const controller = new EconomyPrebuffExecutionController(
@@ -186,6 +187,9 @@ function setup(options = {}) {
     { status: () => state.prebuff },
     { status: () => state.risk },
     {
+      tick() {
+        arbiterTicks += 1;
+      },
       authorize(lane) {
         authorizedLanes.push(lane);
         return options.authorize
@@ -267,6 +271,7 @@ function setup(options = {}) {
     state,
     events,
     authorizedLanes,
+    arbiterTicks: () => arbiterTicks,
     counts: () => ({
       refreshes,
       skillCalls,
@@ -289,6 +294,7 @@ test("coupled executor confirms exactly one prebuff then one upgrade", async () 
   assert.equal(status.economyAction.status, "CONFIRMED");
   assert.equal(status.activeLane, null);
   assert.deepEqual(s.authorizedLanes, ["ECONOMY_PREBUFF", "ECONOMY"]);
+  assert.equal(s.arbiterTicks(), 2);
   assert.deepEqual(s.counts(), {
     refreshes: 2,
     skillCalls: 1,
