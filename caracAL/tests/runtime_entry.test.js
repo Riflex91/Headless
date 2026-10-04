@@ -614,7 +614,7 @@ test("Economy Prebuff runtime plans read-only before the Arbiter", () => {
   assert.match(kernel, /economyPrebuff: this\.economyPrebuff\.status\(\)/);
   assert.match(kernel, /this\.economyPrebuff\.tick\(\)/);
   assert.match(kernel, /priority: 77/);
-  assert.match(kernel, /active: false/);
+  assert.match(kernel, /active: prebuffExecutionActive/);
   assert.match(kernel, /ECONOMY_PREBUFF_READY_EXECUTION_DEFERRED/);
 
   const schedulerStart = kernel.indexOf("id: ECONOMY_PREBUFF_JOB_ID");
