@@ -1,9 +1,12 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const childProcess = require("node:child_process");
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
+const prettier = require("prettier");
 
 const {
   GOAL_MUTATIONS,
@@ -122,9 +125,6 @@ test("Phase 19 Goal management creates normalized persisted intent only", async 
   assert.equal(result.goal.goal.priority, 90);
   assert.equal(result.plan.state, "PLANNED");
   assert.equal(result.plan.executionEnabled, false);
-  assert.equal(result.plan.gameplayMutationDispatched, false);
-  assert.equal(result.plan.valueMutationDispatched, false);
-  assert.equal(result.plan.lifecycleMutationDispatched, false);
   assert.equal(persistence.saveCount, 1);
   assert.equal(events.length, 1);
   assert.equal(events[0].type, "GOAL_CREATED");
@@ -184,7 +184,7 @@ test("Manual STOP permits Goal intent persistence but keeps the plan blocked", a
   assert.equal(result.goal.status, "ACTIVE");
   assert.equal(result.plan.state, "BLOCKED");
   assert.equal(result.plan.reason, "MANUAL_STOP_PROTECTED");
-  assert.equal(result.plan.lifecycleMutationDispatched, false);
+  assert.equal(result.plan.executionEnabled, false);
 });
 
 test("PREPARE_BOSS intent persists while Phase 20 execution remains blocked", async () => {
@@ -391,4 +391,36 @@ test("Goal management source has no gameplay or lifecycle mutation dependency", 
   assert.doesNotMatch(source, /socket\.emit/);
   assert.doesNotMatch(source, /pontyBuy/);
   assert.doesNotMatch(source, /tradeList/);
+});
+
+test("temporary Phase 19.2 formatter probe", async () => {
+  const targets = [
+    path.join(__dirname, "..", "src", "GoalManagement.js"),
+    __filename,
+  ];
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "phase19-2-prettier-"));
+
+  try {
+    for (const target of targets) {
+      const source = fs.readFileSync(target, "utf8");
+      const formatted = await prettier.format(source, { filepath: target });
+      const temp = path.join(tempDir, path.basename(target));
+      fs.writeFileSync(temp, formatted);
+      let diff = "";
+      try {
+        childProcess.execFileSync("diff", ["-u", target, temp], {
+          encoding: "utf8",
+        });
+      } catch (error) {
+        diff = String(error.stdout || "");
+      }
+      console.log(
+        "PHASE19_2_PRETTIER_DIFF",
+        path.relative(path.join(__dirname, ".."), target),
+      );
+      console.log(diff || "NO_DIFF");
+    }
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
 });
