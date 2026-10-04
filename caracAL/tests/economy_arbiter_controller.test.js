@@ -240,6 +240,22 @@ test("Economy Arbiter classifies only governed Phase 15 intents", () => {
   );
   assert.equal(
     economyArbiterLaneForIntent({
+      module: "MerchantMerritController",
+      action: "MERRIT_STATUS_REQUEST",
+      why: "MERRIT_STATUS_REFRESH",
+    }),
+    null,
+  );
+  assert.equal(
+    economyArbiterLaneForIntent({
+      module: "MerchantFishingController",
+      action: "EQUIP",
+      why: "FISHING_RESTORE_ORIGINAL_MAINHAND",
+    }),
+    null,
+  );
+  assert.equal(
+    economyArbiterLaneForIntent({
       module: "CombatController",
       action: "ATTACK",
       why: "TARGET_READY",
