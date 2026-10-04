@@ -147,8 +147,7 @@ function economyArbiterEvidence(snapshot) {
     policyOrderMatches,
     unknownBlocksLowerPriority: policy.unknownBlocksLowerPriority === true,
     safetyBlocksLowerPriority: policy.safetyBlocksLowerPriority === true,
-    backgroundDynamicScoringDeferred:
-      policy.backgroundDynamicScoring === false,
+    backgroundDynamicScoringDeferred: policy.backgroundDynamicScoring === false,
     executionDisabled: policy.executionEnabled === false,
     valueMutationForced: policy.valueMutationForced === true,
     summaryMatches,
