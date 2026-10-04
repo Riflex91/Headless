@@ -16,6 +16,113 @@ function record(value) {
     : {};
 }
 
+function array(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function diagnosticInventoryEntry(value) {
+  const entry = record(value);
+  return {
+    slot: Number.isInteger(Number(entry.slot)) ? Number(entry.slot) : null,
+    name:
+      typeof entry.name === "string" && entry.name.trim()
+        ? entry.name.trim()
+        : null,
+    level: Number.isFinite(Number(entry.level)) ? Number(entry.level) : null,
+    disposition:
+      typeof entry.disposition === "string" ? entry.disposition : null,
+    protected: entry.protected === true,
+    protections: array(entry.protections).filter(
+      (protection) => typeof protection === "string",
+    ),
+    why: typeof entry.why === "string" ? entry.why : null,
+  };
+}
+
+function diagnosticDecision(value) {
+  const decision = record(value);
+  const slots = array(decision.itemSlots)
+    .map((slot) => Number(slot))
+    .filter((slot) => Number.isInteger(slot) && slot >= 0)
+    .sort((left, right) => left - right);
+  const itemSlot = Number(decision.itemSlot);
+
+  return {
+    itemSlot:
+      Number.isInteger(itemSlot) && itemSlot >= 0 ? itemSlot : null,
+    itemSlots: slots,
+    name:
+      typeof decision.name === "string" && decision.name.trim()
+        ? decision.name.trim()
+        : null,
+    currentLevel: Number.isFinite(Number(decision.currentLevel))
+      ? Number(decision.currentLevel)
+      : null,
+    eligible: decision.eligible === true,
+    reason: typeof decision.reason === "string" ? decision.reason : null,
+    protections: array(decision.protections).filter(
+      (protection) => typeof protection === "string",
+    ),
+    maxLevel: Number.isFinite(Number(decision.maxLevel))
+      ? Number(decision.maxLevel)
+      : null,
+    itemGrade: Number.isFinite(Number(decision.itemGrade))
+      ? Number(decision.itemGrade)
+      : null,
+    scrollName:
+      typeof decision.scrollName === "string" ? decision.scrollName : null,
+    scrollSlot: Number.isFinite(Number(decision.scrollSlot))
+      ? Number(decision.scrollSlot)
+      : null,
+  };
+}
+
+function diagnosticsFor(after) {
+  const inventory = record(after.inventoryIntelligence);
+  const upgrade = record(after.upgrade);
+  const compound = record(after.compound);
+  const expectedValue = record(after.expectedValue);
+  const riskPolicy = record(after.riskPolicy);
+  const economyPrebuff = record(after.economyPrebuff);
+
+  return {
+    inventoryIntelligence: {
+      state: inventory.state || null,
+      reason: inventory.reason || null,
+      summary: record(inventory.summary),
+      entries: array(inventory.entries).map(diagnosticInventoryEntry),
+    },
+    upgrade: {
+      state: upgrade.state || null,
+      reason: upgrade.reason || null,
+      summary: record(upgrade.summary),
+      decisions: array(upgrade.decisions).map(diagnosticDecision),
+    },
+    compound: {
+      state: compound.state || null,
+      reason: compound.reason || null,
+      summary: record(compound.summary),
+      decisions: array(compound.decisions).map(diagnosticDecision),
+    },
+    expectedValue: {
+      state: expectedValue.state || null,
+      reason: expectedValue.reason || null,
+      summary: record(expectedValue.summary),
+    },
+    riskPolicy: {
+      state: riskPolicy.state || null,
+      reason: riskPolicy.reason || null,
+      summary: record(riskPolicy.summary),
+    },
+    economyPrebuff: {
+      state: economyPrebuff.state || null,
+      reason: economyPrebuff.reason || null,
+      selectedSkill: economyPrebuff.selectedSkill || null,
+      demand: record(economyPrebuff.demand),
+    },
+  };
+}
+
 function normalizeCandidate(result, characterName) {
   const source = record(result);
   const after = record(source.after);
@@ -24,6 +131,7 @@ function normalizeCandidate(result, characterName) {
   const selected = record(risk.selected);
   const prebuff = record(after.economyPrebuff);
   const demand = record(prebuff.demand);
+  const diagnostics = diagnosticsFor(after);
 
   const kind =
     selected.kind === "UPGRADE" || selected.kind === "COMPOUND"
@@ -67,6 +175,7 @@ function normalizeCandidate(result, characterName) {
       prebuffState: prebuff.state || null,
       prebuffReason: prebuff.reason || null,
       selectedSkill: prebuff.selectedSkill || null,
+      diagnostics,
       candidate: null,
       command: null,
       scope: {
@@ -96,6 +205,7 @@ function normalizeCandidate(result, characterName) {
     prebuffState: prebuff.state,
     prebuffReason: prebuff.reason || null,
     selectedSkill: prebuff.selectedSkill,
+    diagnostics,
     candidate: {
       kind,
       name,
