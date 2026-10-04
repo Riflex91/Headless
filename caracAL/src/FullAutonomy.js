@@ -31,11 +31,12 @@ function finite(value) {
 
 function desiredState(block) {
   const explicit = text(block?.desired_runtime_state);
-  return Object.values(DESIRED_RUNTIME_STATES).includes(explicit)
-    ? explicit
-    : block?.enabled
-      ? DESIRED_RUNTIME_STATES.RUNNING
-      : DESIRED_RUNTIME_STATES.STOPPED;
+  if (Object.values(DESIRED_RUNTIME_STATES).includes(explicit)) {
+    return explicit;
+  }
+  return block?.enabled
+    ? DESIRED_RUNTIME_STATES.RUNNING
+    : DESIRED_RUNTIME_STATES.STOPPED;
 }
 
 function desiredStateSource(block) {
@@ -239,7 +240,10 @@ function buildFullAutonomyPlan(
     Math.min(4, Math.trunc(Number(maxOnlineCharacters) || 4)),
   );
   const merchantSlots = boundedMaxOnline > 0 ? 1 : 0;
-  const combatSlots = Math.min(3, Math.max(0, boundedMaxOnline - merchantSlots));
+  const combatSlots = Math.min(
+    3,
+    Math.max(0, boundedMaxOnline - merchantSlots),
+  );
 
   const merchants = entries
     .filter((entry) => isMerchantProfile(entry.block, entry.profile))
@@ -276,12 +280,12 @@ function buildFullAutonomyPlan(
       reason = "MANUAL_STOP_PRECEDENCE";
     } else if (selected && merchant) {
       reason = "MERCHANT_INDEPENDENT_SLOT";
+    } else if (selected && priority.encounter) {
+      reason = "ACTIVE_ENCOUNTER_CONTINUITY";
+    } else if (selected && priority.continuity) {
+      reason = "ACTIVE_COMBAT_CONTINUITY";
     } else if (selected) {
-      reason = priority.encounter
-        ? "ACTIVE_ENCOUNTER_CONTINUITY"
-        : priority.continuity
-          ? "ACTIVE_COMBAT_CONTINUITY"
-          : "FARM_CANDIDATE_SELECTED";
+      reason = "FARM_CANDIDATE_SELECTED";
     } else if (merchant) {
       reason = "MERCHANT_SLOT_NOT_SELECTED";
     } else if (isCombatProfile(entry.block, entry.profile)) {
@@ -299,12 +303,12 @@ function buildFullAutonomyPlan(
   });
 
   const strategyState = text(strategy.state);
-  const state =
-    entries.length === 0
-      ? FULL_AUTONOMY_STATES.EMPTY
-      : strategyState === "READY"
-        ? FULL_AUTONOMY_STATES.READY
-        : FULL_AUTONOMY_STATES.PARTIAL;
+  let state = FULL_AUTONOMY_STATES.PARTIAL;
+  if (entries.length === 0) {
+    state = FULL_AUTONOMY_STATES.EMPTY;
+  } else if (strategyState === "READY") {
+    state = FULL_AUTONOMY_STATES.READY;
+  }
   const selected = recommendations.filter((entry) => entry.selected);
   const protectedStops = recommendations.filter(
     (entry) => entry.manualStopProtected,
@@ -320,15 +324,17 @@ function buildFullAutonomyPlan(
   );
   const logistics = record(merchantLogistics);
 
+  let reason = "FULL_AUTONOMY_ACCOUNT_STRATEGY_PARTIAL";
+  if (state === FULL_AUTONOMY_STATES.READY) {
+    reason = "FULL_AUTONOMY_RECONCILIATION_READY";
+  } else if (state === FULL_AUTONOMY_STATES.EMPTY) {
+    reason = "FULL_AUTONOMY_NO_ACCOUNT_CHARACTERS";
+  }
+
   return {
     timestamp: finite(now()) ?? Date.now(),
     state,
-    reason:
-      state === FULL_AUTONOMY_STATES.READY
-        ? "FULL_AUTONOMY_RECONCILIATION_READY"
-        : state === FULL_AUTONOMY_STATES.PARTIAL
-          ? "FULL_AUTONOMY_ACCOUNT_STRATEGY_PARTIAL"
-          : "FULL_AUTONOMY_NO_ACCOUNT_CHARACTERS",
+    reason,
     readOnly: true,
     executionEnabled: false,
     desiredStateMutationDispatched: false,
@@ -341,7 +347,8 @@ function buildFullAutonomyPlan(
       selectedCharacters: selected.length,
       selectedMerchant: selected.filter((entry) => entry.role === "MERCHANT")
         .length,
-      selectedCombat: selected.filter((entry) => entry.role === "COMBAT").length,
+      selectedCombat: selected.filter((entry) => entry.role === "COMBAT")
+        .length,
       manualStopProtected: protectedStops.length,
       farmSignals: farmSignals.length,
       economySignals: economySignals.length,
