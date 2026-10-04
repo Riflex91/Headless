@@ -558,7 +558,10 @@ test("Economy Arbiter runtime is read-only and projects fixed lane priority", ()
   assert.match(kernel, /ECONOMY_ARBITER_JOB_ID/);
   assert.match(kernel, /economyArbiter: this\.economyArbiter\.status\(\)/);
   assert.match(kernel, /this\.economyArbiter\.tick\(\)/);
-  assert.match(kernel, /authorizeIntent: \(intent\) => this\.authorizeEconomyIntent\(intent\)/);
+  assert.match(
+    kernel,
+    /authorizeIntent: \(intent\) => this\.authorizeEconomyIntent\(intent\)/,
+  );
   assert.match(kernel, /this\.economyArbiter\.authorize\(lane\)/);
   assert.match(kernel, /economyArbiterLaneForIntent/);
   assert.match(kernel, /priority: 72/);
