@@ -95,12 +95,16 @@ function capabilitySummary(profiles) {
   return Object.fromEntries(
     CAPABILITIES.map((capability) => [
       capability,
-      profiles.filter((entry) => entry.capabilities.includes(capability)).length,
+      profiles.filter((entry) => entry.capabilities.includes(capability))
+        .length,
     ]),
   );
 }
 
-function snapshot({ onlineNames = ["My_Merchant"], profilesOverride = null } = {}) {
+function snapshot({
+  onlineNames = ["My_Merchant"],
+  profilesOverride = null,
+} = {}) {
   const profiles =
     profilesOverride ||
     ROSTER.map(([name, characterClass, capabilities]) =>
@@ -158,10 +162,7 @@ test("Account Strategy live E2E returns WATCH when 8/8 profiles exist but none a
   const result = evaluateAccountStrategy(snapshot({ onlineNames: [] }));
 
   assert.equal(result.outcome, "WATCH");
-  assert.equal(
-    result.reason,
-    "ACCOUNT_STRATEGY_LIVE_PROFILE_COVERAGE_PENDING",
-  );
+  assert.equal(result.reason, "ACCOUNT_STRATEGY_LIVE_PROFILE_COVERAGE_PENDING");
   assert.equal(result.evidence.structuralComplete, true);
   assert.equal(result.evidence.onlineProfiles, 0);
 });
@@ -196,12 +197,9 @@ test("Account Strategy live E2E fails on inconsistent capability summary", () =>
 });
 
 test("Account Strategy profile evidence rejects malformed mandatory fields", () => {
-  const source = profile(
-    "My_Ranger1",
-    "ranger",
-    ["DPS", "AOE", "RANGED"],
-    { online: true },
-  );
+  const source = profile("My_Ranger1", "ranger", ["DPS", "AOE", "RANGED"], {
+    online: true,
+  });
   source.training.active = "yes";
   source.capabilities.push("INVALID");
 
@@ -231,12 +229,7 @@ test("Account Strategy compact output exposes read-only GET-only safety scope", 
 
 test("Account Strategy live launcher is strictly GET-only and has no runtime control path", () => {
   const source = fs.readFileSync(
-    path.join(
-      __dirname,
-      "..",
-      "scripts",
-      "run_account_strategy_live_e2e.js",
-    ),
+    path.join(__dirname, "..", "scripts", "run_account_strategy_live_e2e.js"),
     "utf8",
   );
 
