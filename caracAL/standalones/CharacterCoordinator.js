@@ -116,6 +116,7 @@ const {
 const {
   GoalAdapterDispatchSupervisor,
 } = require("../src/GoalAdapterDispatchSupervisor");
+const { GoalReconciler } = require("../src/GoalReconciler");
 const { GoalManagementService } = require("../src/GoalManagement");
 const {
   buildFullAutonomyPlan,
@@ -260,6 +261,7 @@ function migrate_old_storage(path, localStorage) {
   let full_autonomy_execution_inflight = false;
   let full_autonomy_last_execution = null;
   let full_autonomy_task = null;
+  let goal_execution_task = null;
   let full_autonomy_live_test_active = false;
   let full_autonomy_live_test_sequence = 0;
   if (cfg.cull_versions) {
