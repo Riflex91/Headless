@@ -5,6 +5,7 @@ const path = require("node:path");
 const { sanitizeDiagnosticValue } = require("./DiagnosticStore");
 
 const CURRENT_SCHEMA_VERSION = 3;
+const DESIRED_STATE_AUTHORITY_NAMESPACE = "desired_state_authority";
 
 const MIGRATIONS = [
   {
@@ -517,6 +518,21 @@ class PersistenceService {
     };
   }
 
+  getDesiredStateAuthority(characterName) {
+    const row = this.getStructuredState(
+      DESIRED_STATE_AUTHORITY_NAMESPACE,
+      characterName,
+    );
+    if (!row) return null;
+    return {
+      desired_state_source:
+        typeof row.value?.desired_state_source === "string"
+          ? row.value.desired_state_source
+          : "UNKNOWN",
+      updated_at: row.updated_at,
+    };
+  }
+
   async saveRevisionState(characterName, codeRevision, configRevision) {
     return this.enqueueMutation(() => {
       this.db.run(
@@ -562,7 +578,13 @@ class PersistenceService {
 
   async saveCharacterRuntimeState(
     characterName,
-    { desiredState, actualState, codeRevision, configRevision } = {},
+    {
+      desiredState,
+      desiredStateSource,
+      actualState,
+      codeRevision,
+      configRevision,
+    } = {},
   ) {
     return this.enqueueMutation(() => {
       const updatedAt = this.now();
@@ -605,6 +627,31 @@ class PersistenceService {
           String(characterName),
           codeRevision || null,
           configRevision || null,
+          updatedAt,
+        ],
+      );
+      this.db.run(
+        `
+          INSERT INTO structured_state(
+            namespace,
+            state_key,
+            value_json,
+            updated_at
+          )
+          VALUES (?, ?, ?, ?)
+          ON CONFLICT(namespace, state_key) DO UPDATE SET
+            value_json = excluded.value_json,
+            updated_at = excluded.updated_at
+        `,
+        [
+          DESIRED_STATE_AUTHORITY_NAMESPACE,
+          String(characterName),
+          encodeJson({
+            desired_state_source:
+              typeof desiredStateSource === "string" && desiredStateSource
+                ? desiredStateSource
+                : "UNKNOWN",
+          }),
           updatedAt,
         ],
       );
@@ -1295,6 +1342,7 @@ class PersistenceService {
 
 module.exports = {
   CURRENT_SCHEMA_VERSION,
+  DESIRED_STATE_AUTHORITY_NAMESPACE,
   MIGRATIONS,
   PersistenceService,
   decodeJson,

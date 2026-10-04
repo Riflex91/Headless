@@ -139,6 +139,7 @@ test("combined runtime state writes lifecycle and revisions in one flush", async
 
     await service.saveCharacterRuntimeState("My_Ranger1", {
       desiredState: "PAUSED",
+      desiredStateSource: "MANUAL_PAUSE",
       actualState: "PAUSED",
       codeRevision: "sha256-code",
       configRevision: "cfg-code",
@@ -155,8 +156,54 @@ test("combined runtime state writes lifecycle and revisions in one flush", async
       config_revision: "cfg-code",
       updated_at: 4000,
     });
+    assert.deepEqual(service.getDesiredStateAuthority("My_Ranger1"), {
+      desired_state_source: "MANUAL_PAUSE",
+      updated_at: 4000,
+    });
   } finally {
     await service?.close();
+    await fs.rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("manual stop control authority survives close and reopen", async () => {
+  const fixture = await tempDatabase();
+  let first;
+  let reopened;
+
+  try {
+    first = await PersistenceService.open({
+      databasePath: fixture.databasePath,
+      now: () => 4500,
+    });
+
+    await first.saveCharacterRuntimeState("My_Warrior", {
+      desiredState: "STOPPED",
+      desiredStateSource: "MANUAL_STOP",
+      actualState: "STOPPED",
+      codeRevision: "sha256-code",
+      configRevision: "cfg-code",
+    });
+    await first.close();
+    first = null;
+
+    reopened = await PersistenceService.open({
+      databasePath: fixture.databasePath,
+      now: () => 5000,
+    });
+
+    assert.deepEqual(reopened.getLifecycleState("My_Warrior"), {
+      desired_state: "STOPPED",
+      actual_state: "STOPPED",
+      updated_at: 4500,
+    });
+    assert.deepEqual(reopened.getDesiredStateAuthority("My_Warrior"), {
+      desired_state_source: "MANUAL_STOP",
+      updated_at: 4500,
+    });
+  } finally {
+    await first?.close();
+    await reopened?.close();
     await fs.rm(fixture.root, { recursive: true, force: true });
   }
 });

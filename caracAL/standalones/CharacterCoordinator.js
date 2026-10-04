@@ -837,6 +837,8 @@ function migrate_old_storage(path, localStorage) {
       persistence.saveCharacterRuntimeState(char_name, {
         desiredState:
           char_block.desired_runtime_state || DESIRED_RUNTIME_STATES.STOPPED,
+        desiredStateSource:
+          char_block.desired_runtime_state_source || "UNKNOWN",
         actualState: char_block.lifecycle_state || LIFECYCLE_STATES.STOPPED,
         codeRevision: char_block.running_code_revision || null,
         configRevision: char_block.running_config_revision || null,
@@ -1465,6 +1467,7 @@ function migrate_old_storage(path, localStorage) {
 
   function initialize_char_block(char_name, char_block) {
     const persisted_lifecycle = persistence.getLifecycleState(char_name);
+    const persisted_authority = persistence.getDesiredStateAuthority(char_name);
     const runtime_config = character_config_service.load(
       char_name,
       char_block.runtime_config || {},
@@ -1558,11 +1561,21 @@ function migrate_old_storage(path, localStorage) {
     char_block.last_persisted_snapshot_at = 0;
     char_block.last_persisted_snapshot_signature = null;
     restoreDesiredRuntimeState(char_block, persisted_lifecycle);
-    char_block.desired_runtime_state_source = persisted_lifecycle
-      ? char_block.desired_runtime_state === DESIRED_RUNTIME_STATES.STOPPED
-        ? "PERSISTED_STOP"
-        : "PERSISTED"
-      : "CONFIG";
+    const persisted_source =
+      typeof persisted_authority?.desired_state_source === "string" &&
+      persisted_authority.desired_state_source
+        ? persisted_authority.desired_state_source
+        : null;
+    if (persisted_source) {
+      char_block.desired_runtime_state_source = persisted_source;
+    } else if (persisted_lifecycle) {
+      char_block.desired_runtime_state_source =
+        char_block.desired_runtime_state === DESIRED_RUNTIME_STATES.STOPPED
+          ? "PERSISTED_STOP"
+          : "PERSISTED";
+    } else {
+      char_block.desired_runtime_state_source = "CONFIG";
+    }
     refresh_character_revision(char_block);
     char_block.movement_trail = Array.isArray(char_block.movement_trail)
       ? char_block.movement_trail
@@ -1575,6 +1588,7 @@ function migrate_old_storage(path, localStorage) {
     if (persisted_lifecycle) {
       emit_supervisor_event("PERSISTED_DESIRED_STATE_RESTORED", char_name, {
         desired_runtime_state: char_block.desired_runtime_state,
+        desired_runtime_state_source: char_block.desired_runtime_state_source,
         persisted_actual_state: persisted_lifecycle.actual_state,
       });
     }
