@@ -151,6 +151,20 @@ export class GoalAdapterPreflightRunner {
       });
     }
 
+    if (
+      request.dispatchAllowed !== false ||
+      request.dispatchImplemented !== false
+    ) {
+      return finish(
+        "BLOCKED",
+        "GOAL_ADAPTER_PREFLIGHT_DISPATCH_BOUNDARY_INVALID",
+        {
+          dispatchAllowed: request.dispatchAllowed,
+          dispatchImplemented: request.dispatchImplemented,
+        },
+      );
+    }
+
     if (identity.kind === "FARM_ITEM") {
       const args = record(request.arguments);
       const itemName = text(args.itemName);
@@ -260,13 +274,25 @@ export class GoalAdapterPreflightRunner {
       const preflight = record(request.preflight);
       const preflightArguments = record(preflight.arguments);
       const recipe = text(preflightArguments.recipe);
+      const scopedConfigOverride = record(request.scopedConfigOverride);
+      const craftOverride = record(scopedConfigOverride.craft);
+      const allowedRecipes = stringList(craftOverride.allowedRecipes);
+      const execution = record(request.execution);
+      const cleanup = record(request.cleanup);
 
       if (
         request.type !== "GOAL_RUNTIME_SEQUENCE" ||
         text(request.bridge) !== "CraftController" ||
         text(preflight.runtimeMethod) !== "runCraftMaterialPlan" ||
         preflight.readOnly !== true ||
-        !recipe
+        !recipe ||
+        craftOverride.enabled !== true ||
+        allowedRecipes.length !== 1 ||
+        allowedRecipes[0] !== recipe ||
+        text(execution.runtimeMethod) !== "executeCraftNext" ||
+        Number(execution.maxInvocations) !== 1 ||
+        cleanup.clearConfigOverride !== true ||
+        cleanup.refreshPlanning !== true
       ) {
         return finish("BLOCKED", "GOAL_ADAPTER_PREFLIGHT_CRAFT_CONTRACT_INVALID");
       }
