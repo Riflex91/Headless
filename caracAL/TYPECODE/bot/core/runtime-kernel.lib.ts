@@ -223,6 +223,7 @@ import { MarketTradingController } from "./market-trading-controller.lib";
 import {
   MarketIntelligenceController,
   MarketIntelligenceEvent,
+  MarketIntelligenceObservationInput,
 } from "./market-intelligence-controller.lib";
 import {
   MarketTradingLiveTestOptions,
@@ -2769,6 +2770,23 @@ export class BotRuntimeKernel {
     } finally {
       this.logisticsLiveTestRunning = false;
     }
+  }
+
+  setMarketLocalHistory(observations: unknown): void {
+    const normalized = Array.isArray(observations)
+      ? (observations as MarketIntelligenceObservationInput[])
+      : [];
+    this.marketIntelligence.setLocalHistory(normalized);
+    const status = this.marketIntelligence.tick();
+    this.eventBus.emit({
+      module: "MarketIntelligenceController",
+      type: "MARKET_LOCAL_HISTORY_APPLIED",
+      why: "SUPERVISOR_LOCAL_HISTORY_SYNC",
+      data: {
+        samples: status.summary.localHistory,
+        marketIntelligence: status,
+      },
+    });
   }
 
   setAccountGearReservedSlots(slots: unknown): void {
