@@ -108,6 +108,10 @@ function makeSource() {
     },
     party: {},
     G: {
+      items: {
+        sword: { name: "Sword" },
+        cashitem: { name: "Cash Item", cash: 100 },
+      },
       maps: {
         main: {
           npcs: [
@@ -177,6 +181,12 @@ function makeSource() {
       items0: ["bank", 0, 0],
       items1: ["bank_b", 500000, 10],
     },
+    secondhands: [
+      { name: "sword", level: 2, q: 3, rid: "RID-SWORD" },
+      { name: "cashitem", level: 0, q: 1, rid: "RID-CASH" },
+      { name: "sword", level: 1, q: 1, rid: null },
+      { name: "sword", level: 1, q: 1, rid: "RID-ZERO", invalid: true },
+    ],
     now: 10000,
   };
 
@@ -189,6 +199,13 @@ function makeSource() {
       gameData: () => state.G,
       nextSkill: () => state.nextSkill,
       bankPacks: () => state.bankPacks,
+      secondhands: () => state.secondhands,
+      calculateItemValue: (item) => {
+        if (item.invalid) return 0;
+        if (item.name === "sword") return 500;
+        if (item.name === "cashitem") return 1000;
+        return null;
+      },
       now: () => state.now,
     },
   };
@@ -308,6 +325,51 @@ test("market read exposes only visible merchant trade slots", () => {
       },
     },
   ]);
+});
+
+test("Ponty read uses official item-value helper and normalizes unit prices", () => {
+  const GameAdapter = loadGameAdapter();
+  const { source } = makeSource();
+  const adapter = new GameAdapter(source);
+
+  assert.deepEqual(adapter.ponty(), [
+    {
+      item: {
+        name: "cashitem",
+        level: 0,
+        quantity: 1,
+        rid: "RID-CASH",
+      },
+      unitPrice: 3000,
+      totalPrice: 3000,
+      cashMultiplier: true,
+    },
+    {
+      item: {
+        name: "sword",
+        level: 2,
+        quantity: 3,
+        rid: "RID-SWORD",
+      },
+      unitPrice: 1000,
+      totalPrice: 3000,
+      cashMultiplier: false,
+    },
+  ]);
+  assert.equal(adapter.capabilities().includes("PONTY"), true);
+});
+
+test("Ponty read fails closed when runtime valuation is unavailable", () => {
+  const GameAdapter = loadGameAdapter();
+  const { source } = makeSource();
+
+  source.calculateItemValue = () => {
+    throw new Error("runtime helper unavailable");
+  };
+  assert.deepEqual(new GameAdapter(source).ponty(), []);
+
+  delete source.calculateItemValue;
+  assert.deepEqual(new GameAdapter(source).ponty(), []);
 });
 
 test("skill read defaults to current character class and can expose all skills", () => {
