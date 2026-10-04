@@ -412,7 +412,7 @@ async function main() {
     process.stdout.write(formatCompactResult(result));
   }
 
-  if (result.outcome === "FAIL") {
+  if (result.outcome !== "PASS") {
     process.exitCode = 1;
   }
 }
