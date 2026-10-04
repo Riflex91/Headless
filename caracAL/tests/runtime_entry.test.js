@@ -531,6 +531,61 @@ test("Risk Policy runtime remains read-only and blocks unknown EV", () => {
   assert.match(controller, /unknownAlwaysBlocked: true/);
 });
 
+test("Economy Prebuff coupled execution is explicit, guarded, and one-shot", () => {
+  const kernel = fs.readFileSync(
+    path.join(
+      __dirname,
+      "..",
+      "TYPECODE",
+      "bot",
+      "core",
+      "runtime-kernel.lib.ts",
+    ),
+    "utf8",
+  );
+  const executor = fs.readFileSync(
+    path.join(
+      __dirname,
+      "..",
+      "TYPECODE",
+      "bot",
+      "core",
+      "economy-prebuff-execution-controller.lib.ts",
+    ),
+    "utf8",
+  );
+
+  assert.match(kernel, /EconomyPrebuffExecutionController/);
+  assert.match(kernel, /executeEconomyPrebuffNext/);
+  assert.match(kernel, /economyPrebuffExecutionRunning/);
+  assert.match(kernel, /prebuffExecution\.activeLane === "ECONOMY_PREBUFF"/);
+  assert.match(kernel, /prebuffExecution\.activeLane === "ECONOMY"/);
+  assert.match(
+    kernel,
+    /economyPrebuffExecution: this\.economyPrebuffExecution\.status\(\)/,
+  );
+  assert.match(kernel, /this\.economyPrebuffExecution\.executeNext\(\)/);
+
+  assert.match(executor, /arbiterEnforcementRequired: true/);
+  assert.match(executor, /prebuffMustConfirmBeforeEconomy: true/);
+  assert.match(executor, /revalidateAfterPrebuff: true/);
+  assert.match(executor, /maxValueMutations: 1/);
+  assert.match(executor, /blindRetryAllowed: false/);
+  assert.match(executor, /supportedKinds: \["UPGRADE", "COMPOUND"\]/);
+  assert.match(executor, /exchangeSupported: false/);
+
+  const skillIndex = executor.indexOf("await this.actions.useSkill");
+  const revalidateIndex = executor.indexOf(
+    "ECONOMY_PREBUFF_REVALIDATION_FAILED",
+  );
+  const upgradeIndex = executor.indexOf("await this.upgrade.executeNext()");
+  const compoundIndex = executor.indexOf("await this.compound.executeNext()");
+  assert.ok(skillIndex >= 0);
+  assert.ok(revalidateIndex > skillIndex);
+  assert.ok(upgradeIndex > revalidateIndex);
+  assert.ok(compoundIndex > revalidateIndex);
+});
+
 test("Economy Prebuff runtime plans read-only before the Arbiter", () => {
   const kernel = fs.readFileSync(
     path.join(
@@ -559,7 +614,7 @@ test("Economy Prebuff runtime plans read-only before the Arbiter", () => {
   assert.match(kernel, /economyPrebuff: this\.economyPrebuff\.status\(\)/);
   assert.match(kernel, /this\.economyPrebuff\.tick\(\)/);
   assert.match(kernel, /priority: 77/);
-  assert.match(kernel, /active: false/);
+  assert.match(kernel, /active: prebuffExecutionActive/);
   assert.match(kernel, /ECONOMY_PREBUFF_READY_EXECUTION_DEFERRED/);
 
   const schedulerStart = kernel.indexOf("id: ECONOMY_PREBUFF_JOB_ID");

@@ -70,6 +70,10 @@ import {
   EconomyPrebuffEvent,
 } from "./economy-prebuff-controller.lib";
 import {
+  EconomyPrebuffExecutionController,
+  EconomyPrebuffExecutionEvent,
+} from "./economy-prebuff-execution-controller.lib";
+import {
   EconomyArbiterController,
   EconomyArbiterEvent,
   EconomyArbiterLane,
@@ -316,6 +320,7 @@ export class BotRuntimeKernel {
   readonly expectedValue: ExpectedValueController;
   readonly riskPolicy: RiskPolicyController;
   readonly economyPrebuff: EconomyPrebuffController;
+  readonly economyPrebuffExecution: EconomyPrebuffExecutionController;
   readonly economyArbiter: EconomyArbiterController;
   readonly merchantAutonomy: MerchantAutonomyController;
   readonly bankTravel: BankTravelController;
@@ -349,6 +354,7 @@ export class BotRuntimeKernel {
   private merritLiveTestRunning = false;
   private fishingLiveTestRunning = false;
   private materialGatherTaskRunning = false;
+  private economyPrebuffExecutionRunning = false;
   private logisticsClaimRunning = false;
   private lastLogisticsExecution: LogisticsExecutionResult | null = null;
 
@@ -504,6 +510,25 @@ export class BotRuntimeKernel {
       signals: () => this.economyArbiterSignals(),
       onEvent: (event) => this.handleEconomyArbiterEvent(event),
     });
+    this.economyPrebuffExecution = new EconomyPrebuffExecutionController(
+      () => {
+        this.inventoryIntelligence.tick();
+        this.upgrade.tick();
+        this.compound.tick();
+        this.expectedValue.tick();
+        this.riskPolicy.tick();
+        this.economyPrebuff.tick();
+      },
+      this.economyPrebuff,
+      this.riskPolicy,
+      this.economyArbiter,
+      this.actions,
+      this.upgrade,
+      this.compound,
+      {
+        onEvent: (event) => this.handleEconomyPrebuffExecutionEvent(event),
+      },
+    );
     this.merchantAutonomy = new MerchantAutonomyController(
       this.game,
       this.actions,
@@ -712,6 +737,7 @@ export class BotRuntimeKernel {
             expectedValue: this.expectedValue.status(),
             riskPolicy: this.riskPolicy.status(),
             economyPrebuff: this.economyPrebuff.status(),
+            economyPrebuffExecution: this.economyPrebuffExecution.status(),
             economyArbiter: this.economyArbiter.status(),
             merchantAutonomy: this.merchantAutonomy.status(),
             bankTravel: this.bankTravel.status(),
@@ -815,6 +841,7 @@ export class BotRuntimeKernel {
       expectedValue: this.expectedValue.status(),
       riskPolicy: this.riskPolicy.status(),
       economyPrebuff: this.economyPrebuff.status(),
+      economyPrebuffExecution: this.economyPrebuffExecution.status(),
       economyArbiter: this.economyArbiter.status(),
       merchantAutonomy: this.merchantAutonomy.status(),
       bankTravel: this.bankTravel.status(),
@@ -829,8 +856,42 @@ export class BotRuntimeKernel {
     };
   }
 
+  async executeEconomyPrebuffNext(): Promise<Record<string, unknown>> {
+    if (
+      this.economyPrebuffExecutionRunning ||
+      this.upgradeLiveTestRunning ||
+      this.upgradePreflightRunning ||
+      this.compoundLiveTestRunning ||
+      this.exchangePreflightRunning ||
+      this.exchangeLiveTestRunning ||
+      this.craftPreflightRunning ||
+      this.craftLiveTestRunning
+    ) {
+      throw new Error("mutation verification or coupled economy execution is running");
+    }
+    if (!this.started || this.stopping) {
+      throw new Error("runtime is not ready for coupled Economy Prebuff execution");
+    }
+    if (runtimeState() !== "RUNNING") {
+      throw new Error(
+        "runtime must be RUNNING for coupled Economy Prebuff execution",
+      );
+    }
+
+    this.economyPrebuffExecutionRunning = true;
+    try {
+      return (await this.economyPrebuffExecution.executeNext()) as unknown as Record<
+        string,
+        unknown
+      >;
+    } finally {
+      this.economyPrebuffExecutionRunning = false;
+    }
+  }
+
   async executeUpgradeNext(): Promise<Record<string, unknown>> {
     if (
+      this.economyPrebuffExecutionRunning ||
       this.upgradeLiveTestRunning ||
       this.upgradePreflightRunning ||
       this.compoundLiveTestRunning ||
@@ -851,6 +912,7 @@ export class BotRuntimeKernel {
 
   async executeCompoundNext(): Promise<Record<string, unknown>> {
     if (
+      this.economyPrebuffExecutionRunning ||
       this.upgradeLiveTestRunning ||
       this.upgradePreflightRunning ||
       this.compoundLiveTestRunning ||
@@ -871,6 +933,7 @@ export class BotRuntimeKernel {
 
   async executeExchangeNext(): Promise<Record<string, unknown>> {
     if (
+      this.economyPrebuffExecutionRunning ||
       this.upgradeLiveTestRunning ||
       this.upgradePreflightRunning ||
       this.compoundLiveTestRunning ||
@@ -891,6 +954,7 @@ export class BotRuntimeKernel {
 
   async executeCraftNext(): Promise<Record<string, unknown>> {
     if (
+      this.economyPrebuffExecutionRunning ||
       this.upgradeLiveTestRunning ||
       this.upgradePreflightRunning ||
       this.compoundLiveTestRunning ||
@@ -3566,6 +3630,7 @@ export class BotRuntimeKernel {
     const merrit = this.merchantMerrit.status();
     const riskPolicy = this.riskPolicy.status();
     const prebuff = this.economyPrebuff.status();
+    const prebuffExecution = this.economyPrebuffExecution.status();
     const merchant = this.merchantAutonomy.status();
     const fishing = this.merchantFishing.status();
     const logisticsUnknown =
@@ -3576,7 +3641,20 @@ export class BotRuntimeKernel {
       !["UNSUPPORTED_CLASS", "COOLDOWN"].includes(merrit.state);
     const economyUnknown =
       riskPolicy.state === "PARTIAL" || riskPolicy.summary.unknown > 0;
-    const economyActive = economyUnknown || riskPolicy.selected !== null;
+    const prebuffExecutionActive =
+      prebuffExecution.activeLane === "ECONOMY_PREBUFF";
+    const prebuffExecutionUnknown =
+      prebuffExecution.state === "UNKNOWN_HOLD" &&
+      prebuffExecution.unknownStage === "PREBUFF";
+    const economyExecutionActive =
+      prebuffExecution.activeLane === "ECONOMY";
+    const economyExecutionUnknown =
+      prebuffExecution.state === "UNKNOWN_HOLD" &&
+      prebuffExecution.unknownStage === "ECONOMY";
+    const economyActive =
+      economyUnknown ||
+      economyExecutionActive ||
+      riskPolicy.selected !== null;
     const standActive =
       merchant.state === "READY" && merchant.merrit.activeListings > 0;
     const backgroundVisible =
@@ -3626,9 +3704,11 @@ export class BotRuntimeKernel {
         },
       },
       ECONOMY_PREBUFF: {
-        active: false,
-        reason:
-          prebuff.state === "READY"
+        active: prebuffExecutionActive,
+        unknown: prebuffExecutionUnknown,
+        reason: prebuffExecutionActive
+          ? prebuffExecution.reason
+          : prebuff.state === "READY"
             ? "ECONOMY_PREBUFF_READY_EXECUTION_DEFERRED"
             : prebuff.reason,
         data: {
@@ -3641,18 +3721,28 @@ export class BotRuntimeKernel {
           executionEnabled: prebuff.policy.executionEnabled,
           arbiterLaneActivationEnabled:
             prebuff.policy.arbiterLaneActivationEnabled,
+          coupledExecutionState: prebuffExecution.state,
+          coupledExecutionReason: prebuffExecution.reason,
+          coupledExecutionCorrelationId: prebuffExecution.correlationId,
+          coupledExecutionUnknownStage: prebuffExecution.unknownStage,
         },
       },
       ECONOMY: {
         active: economyActive,
         blocked: riskPolicy.state === "BLOCKED",
-        unknown: economyUnknown,
-        reason: riskPolicy.reason,
+        unknown: economyUnknown || economyExecutionUnknown,
+        reason: economyExecutionActive
+          ? prebuffExecution.reason
+          : riskPolicy.reason,
         data: {
           state: riskPolicy.state,
           selectedKind: riskPolicy.selected?.kind ?? null,
           selectedName: riskPolicy.selected?.name ?? null,
           unknown: riskPolicy.summary.unknown,
+          coupledExecutionState: prebuffExecution.state,
+          coupledExecutionReason: prebuffExecution.reason,
+          coupledExecutionCorrelationId: prebuffExecution.correlationId,
+          coupledExecutionUnknownStage: prebuffExecution.unknownStage,
         },
       },
       MERCHANT_STAND: {
@@ -3680,6 +3770,19 @@ export class BotRuntimeKernel {
         },
       },
     };
+  }
+
+  private handleEconomyPrebuffExecutionEvent(
+    event: EconomyPrebuffExecutionEvent,
+  ): void {
+    this.eventBus.emit({
+      module: "EconomyPrebuffExecutionController",
+      type: event.type,
+      why: event.reason,
+      data: {
+        economyPrebuffExecution: event.status,
+      },
+    });
   }
 
   private handleEconomyPrebuffEvent(event: EconomyPrebuffEvent): void {
