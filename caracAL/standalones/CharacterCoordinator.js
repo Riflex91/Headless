@@ -615,11 +615,13 @@ function migrate_old_storage(path, localStorage) {
           );
           break;
         case "ROTATE":
-          await control_rotation({
-            startCharacter: decision.action.startCharacter,
-            stopCharacter: decision.action.stopCharacter,
-            authority: "FULL_AUTONOMY",
-          });
+          await control_rotation(
+            {
+              startCharacter: decision.action.startCharacter,
+              stopCharacter: decision.action.stopCharacter,
+            },
+            { authority: "FULL_AUTONOMY" },
+          );
           break;
         default:
           throw make_control_error(
@@ -1967,11 +1969,10 @@ function migrate_old_storage(path, localStorage) {
     };
   }
 
-  async function control_rotation({
-    startCharacter,
-    stopCharacter,
-    authority = "ROTATION",
-  } = {}) {
+  async function control_rotation(
+    { startCharacter, stopCharacter } = {},
+    { authority = "ROTATION" } = {},
+  ) {
     const plan = createRotationPlan(character_manage, {
       startCharacter,
       stopCharacter,
