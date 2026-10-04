@@ -868,9 +868,7 @@ class PersistenceService {
       Math.max(1, Math.trunc(Number(limit) || 500)),
     );
     const normalizedStatus =
-      typeof status === "string" && status.trim()
-        ? status.trim()
-        : null;
+      typeof status === "string" && status.trim() ? status.trim() : null;
     const where = normalizedStatus ? "WHERE status = ?" : "";
     const params = normalizedStatus
       ? [normalizedStatus, boundedLimit]
