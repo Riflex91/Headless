@@ -311,6 +311,20 @@ test("coupled live wiring carries explicit target and has no retry loop", () => 
   assert.match(thread, /expected_slots/);
   assert.match(coordinator, /ECONOMY_PREBUFF_EXECUTION_CONFIRMATION/);
   assert.match(coordinator, /expected_slots: \[\.\.\.expected_slots\]/);
+  const supervisorStart = coordinator.indexOf(
+    "async function run_gear_scoring_live_test",
+  );
+  const confirmationGate = coordinator.indexOf(
+    "options.confirmationToken !== ECONOMY_PREBUFF_EXECUTION_CONFIRMATION",
+    supervisorStart,
+  );
+  const runtimeRestart = coordinator.indexOf(
+    "await restart_character_for_movement_runtime",
+    supervisorStart,
+  );
+  assert.ok(supervisorStart >= 0);
+  assert.ok(confirmationGate > supervisorStart);
+  assert.ok(runtimeRestart > confirmationGate);
   assert.match(dashboard, /confirmationToken: req\.body\?\.confirmationToken/);
   assert.doesNotMatch(launcher, /while\s*\(/);
   assert.doesNotMatch(launcher, /executeNext/);
