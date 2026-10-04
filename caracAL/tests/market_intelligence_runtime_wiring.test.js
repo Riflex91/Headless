@@ -25,6 +25,9 @@ test("Phase 16 Market Intelligence runtime wiring stays read-only", () => {
   );
   assert.match(kernel, /runWhenPaused: true/);
   assert.match(kernel, /server: runtimeRealm/);
+  assert.match(kernel, /localHistory: \(\) => this\.marketLocalHistory/);
+  assert.match(kernel, /setMarketLocalHistory\(observations: unknown\)/);
+  assert.match(kernel, /MARKET_INTELLIGENCE_LOCAL_HISTORY_APPLIED/);
   assert.match(kernel, /MarketIntelligenceController",/);
 
   const schedulerStart = kernel.indexOf("id: MARKET_INTELLIGENCE_JOB_ID");
@@ -48,10 +51,18 @@ test("supervisor propagates realm and persists deduped LIVE_VISIBLE samples only
   const coordinator = read("standalones/CharacterCoordinator.js");
 
   assert.match(thread, /extensions\.realm = proc_args\.realm \|\| null/);
+  assert.match(thread, /case "market_intelligence_history"/);
+  assert.match(thread, /runtime\.setMarketLocalHistory\(observations\)/);
+  assert.match(thread, /market_intelligence_history_applied/);
   assert.match(coordinator, /realm: char_block\.realm/);
   assert.match(coordinator, /market_intelligence_runtime/);
   assert.match(coordinator, /market_live_observation_signatures/);
+  assert.match(coordinator, /market_local_history_sync_signature/);
   assert.match(coordinator, /selectNewLiveMarketObservations/);
+  assert.match(coordinator, /selectMarketLocalHistoryForRuntime/);
+  assert.match(coordinator, /marketLocalHistorySyncSignature/);
+  assert.match(coordinator, /persistence\.listMarketHistory\(\{ limit: 500 \}\)/);
+  assert.match(coordinator, /type: "market_intelligence_history"/);
   assert.match(coordinator, /persistence\.appendMarketObservation/);
   assert.match(coordinator, /source: "LIVE_VISIBLE"/);
   assert.match(coordinator, /market_intelligence_live_visible/);
@@ -73,4 +84,24 @@ test("supervisor propagates realm and persists deduped LIVE_VISIBLE samples only
   assert.doesNotMatch(persistenceBlock, /pontyBuy/);
   assert.doesNotMatch(persistenceBlock, /buy\(/);
   assert.doesNotMatch(persistenceBlock, /sell\(/);
+
+  const historyStart = coordinator.indexOf(
+    "function sync_market_local_history",
+  );
+  const historyEnd = coordinator.indexOf(
+    "function persist_character_runtime_state",
+    historyStart,
+  );
+  assert.ok(historyStart >= 0);
+  assert.ok(historyEnd > historyStart);
+  const historyBlock = coordinator.slice(historyStart, historyEnd);
+
+  assert.match(historyBlock, /listMarketHistory/);
+  assert.match(historyBlock, /selectMarketLocalHistoryForRuntime/);
+  assert.match(historyBlock, /market_intelligence_history/);
+  assert.doesNotMatch(historyBlock, /tradeList/);
+  assert.doesNotMatch(historyBlock, /tradeUnlist/);
+  assert.doesNotMatch(historyBlock, /pontyBuy/);
+  assert.doesNotMatch(historyBlock, /buy\(/);
+  assert.doesNotMatch(historyBlock, /sell\(/);
 });
