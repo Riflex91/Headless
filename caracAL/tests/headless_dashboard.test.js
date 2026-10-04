@@ -214,6 +214,47 @@ test("supervisor snapshot counts active lifecycle states", () => {
     snapshot.characters.map((character) => character.name),
     ["My_Merchant", "My_Ranger1", "My_Ranger2", "My_Ranger3"],
   );
+  assert.equal(snapshot.account_strategy.readOnly, true);
+  assert.equal(snapshot.account_strategy.state, "EMPTY");
+});
+
+test("supervisor snapshot exposes supplied read-only account strategy projection", () => {
+  const accountStrategy = {
+    timestamp: 1234,
+    state: "READY",
+    reason: "ACCOUNT_STRATEGY_PROFILES_READY",
+    readOnly: true,
+    expectedCharacters: 8,
+    profiles: [
+      {
+        name: "My_Ranger1",
+        class: "ranger",
+        level: 77,
+        capabilities: ["DPS", "AOE", "RANGED"],
+      },
+    ],
+    summary: {
+      accountOwnedCharacters: 8,
+      onlineCharacters: 4,
+      liveLevelProfiles: 4,
+      historyProfiles: 3,
+      capabilities: {
+        DPS: 5,
+      },
+    },
+  };
+
+  const snapshot = buildSupervisorSnapshot(
+    {},
+    {},
+    null,
+    null,
+    null,
+    null,
+    accountStrategy,
+  );
+
+  assert.deepEqual(snapshot.account_strategy, accountStrategy);
 });
 
 test("diagnostic time range query is bounded", () => {
