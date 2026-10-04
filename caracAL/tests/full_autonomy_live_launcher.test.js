@@ -179,6 +179,8 @@ test("Full Autonomy live gate source stays lifecycle-only and preflight-gated", 
   assert.match(dashboard, /runFullAutonomyLiveTest/);
 
   assert.match(coordinator, /async function run_full_autonomy_live_test/);
+  assert.match(coordinator, /FULL_AUTONOMY_LIVE_TEST_SUPERVISOR_NOT_READY/);
+  assert.match(coordinator, /coordinator_ready = true/);
   assert.match(coordinator, /FULL_AUTONOMY_LIVE_TEST_REQUIRES_OBSERVER_ONLY/);
   assert.match(coordinator, /FULL_AUTONOMY_LIVE_TEST_REQUIRES_IDLE_SUPERVISOR/);
   assert.match(coordinator, /FULL_AUTONOMY_LIVE_TEST_ROTATION_NOT_PLANNED/);
