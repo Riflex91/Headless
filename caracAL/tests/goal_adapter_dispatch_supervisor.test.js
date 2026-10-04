@@ -566,6 +566,55 @@ test("only one dispatch can be in flight globally", async () => {
   await first;
 });
 
+test("Coordinator and dashboard expose only current-plan explicit one-shot dispatch", () => {
+  const coordinator = fs.readFileSync(
+    path.join(__dirname, "..", "standalones", "CharacterCoordinator.js"),
+    "utf8",
+  );
+  const dashboard = fs.readFileSync(
+    path.join(__dirname, "..", "src", "HeadlessDashboard.js"),
+    "utf8",
+  );
+
+  assert.match(coordinator, /GoalAdapterDispatchSupervisor/);
+  assert.match(
+    coordinator,
+    /getGoalDispatchState:\s*\(\)\s*=>\s*\n?\s*goal_adapter_dispatch_supervisor\.snapshot\(\)/,
+  );
+  assert.match(
+    coordinator,
+    /runGoalAdapterDispatch:\s*\(\{ expectedGoalId, expectedTaskId \}\)\s*=>/,
+  );
+  assert.match(coordinator, /case "goal_adapter_dispatch_result"/);
+  assert.match(coordinator, /dispatch_unknown_hold/);
+  assert.match(coordinator, /dispatch_last_result/);
+  assert.match(
+    coordinator,
+    /goal_adapter_dispatch_supervisor\.cancelAll/,
+  );
+  assert.match(
+    coordinator,
+    /goal_execution_automatic_reconcile_enabled:\s*false/,
+  );
+  assert.doesNotMatch(coordinator, /function reconcile_goal_execution/);
+
+  assert.match(dashboard, /"\/headless\/api\/goals\/adapter-dispatch"/);
+  const routeStart = dashboard.indexOf(
+    '"/headless/api/goals/adapter-dispatch"',
+  );
+  const routeEnd = dashboard.indexOf(
+    'router.get("/headless/api/characters/:name/config"',
+    routeStart,
+  );
+  assert.ok(routeStart >= 0);
+  assert.ok(routeEnd > routeStart);
+  const route = dashboard.slice(routeStart, routeEnd);
+  assert.match(route, /expectedGoalId:\s*req\.body\?\.expectedGoalId/);
+  assert.match(route, /expectedTaskId:\s*req\.body\?\.expectedTaskId/);
+  assert.doesNotMatch(route, /req\.body\?\.request/);
+  assert.doesNotMatch(route, /characterName:\s*req\.body/);
+});
+
 test("dispatch supervisor contains no lifecycle control or retry loop", () => {
   const source = fs.readFileSync(
     path.join(__dirname, "..", "src", "GoalAdapterDispatchSupervisor.js"),
