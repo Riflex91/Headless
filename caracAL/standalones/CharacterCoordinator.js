@@ -425,10 +425,8 @@ function migrate_old_storage(path, localStorage) {
     emit: emit_supervisor_event,
   });
   const persisted_goal_dispatch_hold =
-    persistence.getStructuredState(
-      "goal_execution",
-      "dispatch_unknown_hold",
-    )?.value || null;
+    persistence.getStructuredState("goal_execution", "dispatch_unknown_hold")
+      ?.value || null;
   const goal_adapter_dispatch_supervisor = new GoalAdapterDispatchSupervisor({
     getExecutionDecision: goal_execution_state,
     getAdapterPlan: goal_adapter_state,
@@ -525,8 +523,7 @@ function migrate_old_storage(path, localStorage) {
         getGoalHandoffState: goal_handoff_state,
         getGoalExecutionState: goal_execution_state,
         getGoalAdapterState: goal_adapter_state,
-        getGoalDispatchState: () =>
-          goal_adapter_dispatch_supervisor.snapshot(),
+        getGoalDispatchState: () => goal_adapter_dispatch_supervisor.snapshot(),
         runGoalAdapterPreflight: ({ characterName, request }) =>
           goal_adapter_preflight_supervisor.run(characterName, request),
         runGoalAdapterDispatch: ({ expectedGoalId, expectedTaskId }) =>
@@ -15184,8 +15181,7 @@ function migrate_old_storage(path, localStorage) {
                 char_name,
                 {
                   request_id: m.request_id || null,
-                  error:
-                    error instanceof Error ? error.message : String(error),
+                  error: error instanceof Error ? error.message : String(error),
                 },
               );
               dashboard?.publishSnapshot();
