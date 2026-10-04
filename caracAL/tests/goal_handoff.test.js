@@ -254,6 +254,19 @@ test("Full Autonomy readiness is evidence only and never dispatches", () => {
     satisfied: false,
   });
 
+  assert.equal(
+    fullAutonomyGuard(
+      {
+        executionEnabled: true,
+        execution: {},
+      },
+      {
+        requiresFullAutonomy: true,
+      },
+    ).satisfied,
+    false,
+  );
+
   const result = buildGoalHandoff(plan([plannedGoal()]), {
     fullAutonomy: {
       executionEnabled: false,
