@@ -263,7 +263,7 @@ test("one character cannot have concurrent preflight requests", async () => {
   await first;
 });
 
-test("Coordinator and dashboard expose only the read-only Goal adapter preflight path", () => {
+test("Coordinator keeps read-only preflight separate from explicit Goal dispatch", () => {
   const coordinator = fs.readFileSync(
     path.join(__dirname, "..", "standalones", "CharacterCoordinator.js"),
     "utf8",
@@ -289,7 +289,8 @@ test("Coordinator and dashboard expose only the read-only Goal adapter preflight
 
   assert.match(dashboard, /"\/headless\/api\/goals\/adapter-preflight"/);
   assert.match(dashboard, /runGoalAdapterPreflight/);
-  assert.doesNotMatch(dashboard, /"\/headless\/api\/goals\/adapter-dispatch"/);
+  assert.match(dashboard, /"\/headless\/api\/goals\/adapter-dispatch"/);
+  assert.match(dashboard, /runGoalAdapterDispatch/);
 });
 
 test("supervisor client contains no lifecycle or gameplay execution dependency", () => {
