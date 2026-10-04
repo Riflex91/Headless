@@ -177,6 +177,17 @@ export class CharacterTrainingTaskRunner {
       };
     };
 
+    const cleanup = (): void => {
+      if (!combatOverrideCleared) {
+        this.deps.combat.clearConfigOverride();
+        combatOverrideCleared = true;
+      }
+    };
+    const finishClean = (): CharacterTrainingTaskResult => {
+      cleanup();
+      return finish();
+    };
+
     if (
       !targetLevel ||
       !monsterType ||
@@ -209,11 +220,11 @@ export class CharacterTrainingTaskRunner {
       if (movement.status === "UNKNOWN") {
         outcome = "UNKNOWN";
         reason = "CHARACTER_TRAINING_NAVIGATION_UNKNOWN";
-        return finish();
+        return finishClean();
       }
       if (movement.status !== "CONFIRMED") {
         reason = `CHARACTER_TRAINING_NAVIGATION_${movement.status || "FAILED"}`;
-        return finish();
+        return finishClean();
       }
 
       while (this.now() - startedAt < timeoutMs) {
@@ -232,18 +243,18 @@ export class CharacterTrainingTaskRunner {
         ) {
           outcome = "UNKNOWN";
           reason = `CHARACTER_TRAINING_${combat.reason}`;
-          return finish();
+          return finishClean();
         }
 
         if (character.rip) {
           reason = "CHARACTER_TRAINING_WORKER_DEAD";
-          return finish();
+          return finishClean();
         }
 
         if (level !== null && level >= targetLevel) {
           outcome = "PASS";
           reason = "CHARACTER_TRAINING_TARGET_LEVEL_REACHED";
-          return finish();
+          return finishClean();
         }
 
         if (
@@ -254,7 +265,7 @@ export class CharacterTrainingTaskRunner {
         ) {
           outcome = "PASS";
           reason = "CHARACTER_TRAINING_PROGRESS_CONFIRMED";
-          return finish();
+          return finishClean();
         }
 
         await this.sleep(pollMs);
@@ -262,10 +273,9 @@ export class CharacterTrainingTaskRunner {
 
       outcome = "TIMEOUT";
       reason = "CHARACTER_TRAINING_PROGRESS_TIMEOUT";
-      return finish();
+      return finishClean();
     } finally {
-      this.deps.combat.clearConfigOverride();
-      combatOverrideCleared = true;
+      cleanup();
     }
   }
 }
