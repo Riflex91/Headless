@@ -6907,6 +6907,7 @@ function migrate_old_storage(path, localStorage) {
           .filter((slot) => Number.isInteger(slot) && slot >= 0)
       : [];
     const expected_count = expected_kind === "COMPOUND" ? 3 : 1;
+    const preflight_only = options.preflightOnly === true;
     if (
       !expected_kind ||
       !expected_name ||
@@ -6976,6 +6977,7 @@ function migrate_old_storage(path, localStorage) {
       expectedKind: expected_kind,
       expectedName: expected_name,
       expectedSlots: [...expected_slots],
+      preflightOnly: preflight_only,
       started_at,
       completed_at: null,
     };
@@ -6988,8 +6990,9 @@ function migrate_old_storage(path, localStorage) {
         expected_name,
         expected_slots: [...expected_slots],
         original_desired_state,
-        irreversible_mutation: true,
-        max_value_mutations: 1,
+        preflight_only,
+        irreversible_mutation: !preflight_only,
+        max_value_mutations: preflight_only ? 0 : 1,
         blind_retry_allowed: false,
       },
     );
@@ -7041,6 +7044,7 @@ function migrate_old_storage(path, localStorage) {
         expected_kind,
         expected_name,
         expected_slots: [...expected_slots],
+        preflight_only,
       });
       if (!sent) {
         const pending =
@@ -7079,7 +7083,7 @@ function migrate_old_storage(path, localStorage) {
       const equipment_baseline_restored =
         gear_scoring_equipment_signature(final_block) === baseline_equipment;
       const execution = child_result.execution || null;
-      const prebuff_attempted = !!execution?.prebuffAction;
+      const preflight_attempted = !!execution?.prebuffAction;
       const value_mutation_attempted = !!execution?.economyAction;
 
       result = {
@@ -7101,17 +7105,17 @@ function migrate_old_storage(path, localStorage) {
         after,
         coupledExecution: child_result,
         scope: {
-          readOnly: false,
-          irreversibleMutationAllowed: true,
-          prebuffMutationForced: prebuff_attempted,
-          valueMutationForced: value_mutation_attempted,
+          readOnly: preflight_only,
+          irreversibleMutationAllowed: !preflight_only,
+          prebuffMutationForced: preflight_attempted && !preflight_only,
+          valueMutationForced: value_mutation_attempted && !preflight_only,
           movementMutationForced: false,
           combatMutationForced: false,
           equipmentMutationForced: false,
           upgradeMutationForced:
-            value_mutation_attempted && expected_kind === "UPGRADE",
+            value_mutation_attempted && !preflight_only && expected_kind === "UPGRADE",
           compoundMutationForced:
-            value_mutation_attempted && expected_kind === "COMPOUND",
+            value_mutation_attempted && !preflight_only && expected_kind === "COMPOUND",
           exchangeMutationForced: false,
           craftMutationForced: false,
           logisticsMutationForced: false,
@@ -7149,17 +7153,21 @@ function migrate_old_storage(path, localStorage) {
         after: null,
         coupledExecution: child_result,
         scope: {
-          readOnly: false,
-          irreversibleMutationAllowed: true,
-          prebuffMutationForced: !!child_result?.execution?.prebuffAction,
-          valueMutationForced: !!child_result?.execution?.economyAction,
+          readOnly: preflight_only,
+          irreversibleMutationAllowed: !preflight_only,
+          prebuffMutationForced:
+            !preflight_only && !!child_result?.execution?.prebuffAction,
+          valueMutationForced:
+            !preflight_only && !!child_result?.execution?.economyAction,
           movementMutationForced: false,
           combatMutationForced: false,
           equipmentMutationForced: false,
           upgradeMutationForced:
+            !preflight_only &&
             !!child_result?.execution?.economyAction &&
             expected_kind === "UPGRADE",
           compoundMutationForced:
+            !preflight_only &&
             !!child_result?.execution?.economyAction &&
             expected_kind === "COMPOUND",
           exchangeMutationForced: false,
