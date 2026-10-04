@@ -558,6 +558,9 @@ test("Economy Arbiter runtime is read-only and projects fixed lane priority", ()
   assert.match(kernel, /ECONOMY_ARBITER_JOB_ID/);
   assert.match(kernel, /economyArbiter: this\.economyArbiter\.status\(\)/);
   assert.match(kernel, /this\.economyArbiter\.tick\(\)/);
+  assert.match(kernel, /authorizeIntent: \(intent\) => this\.authorizeEconomyIntent\(intent\)/);
+  assert.match(kernel, /this\.economyArbiter\.authorize\(lane\)/);
+  assert.match(kernel, /economyArbiterLaneForIntent/);
   assert.match(kernel, /priority: 72/);
   assert.match(kernel, /ECONOMY_PREBUFF_NOT_IMPLEMENTED/);
   assert.match(kernel, /LOGISTICS_OUTCOME_UNCERTAIN/);
@@ -583,6 +586,10 @@ test("Economy Arbiter runtime is read-only and projects fixed lane priority", ()
   assert.match(controller, /"MERCHANT_STAND"/);
   assert.match(controller, /"BACKGROUND"/);
   assert.match(controller, /unknownBlocksLowerPriority: true/);
+  assert.match(controller, /enforcementEnabled/);
+  assert.match(controller, /ECONOMY_ARBITER_HIGHER_PRIORITY_LANE_SELECTED/);
+  assert.match(controller, /MERRIT_STATUS_REQUEST/);
+  assert.match(controller, /why\.includes\("RESTORE"\)/);
   assert.match(controller, /executionEnabled: false/);
   assert.match(controller, /valueMutationForced: false/);
 });
