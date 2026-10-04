@@ -1078,6 +1078,7 @@ export class BotRuntimeKernel {
     const requestId =
       options.requestId ||
       `economy-prebuff-execution-live-${Date.now()}`;
+    const preflightOnly = options.preflightOnly === true;
     const suspended = {
       merchantAutonomy: this.scheduler.unregister(MERCHANT_AUTONOMY_JOB_ID),
       bankTravel: this.scheduler.unregister(BANK_TRAVEL_JOB_ID),
@@ -1091,39 +1092,166 @@ export class BotRuntimeKernel {
     this.eventBus.emit({
       module: "EconomyPrebuffExecutionLiveTest",
       type: "ECONOMY_PREBUFF_EXECUTION_LIVE_TEST_STARTED",
-      why: "EXPLICIT_SINGLE_COUPLED_PREBUFF_ECONOMY_E2E",
+      why: preflightOnly
+        ? "EXPLICIT_READ_ONLY_COUPLED_PREBUFF_ECONOMY_PREFLIGHT"
+        : "EXPLICIT_SINGLE_COUPLED_PREBUFF_ECONOMY_E2E",
       correlationId: requestId,
       data: {
         requestId,
         expectedKind: options.expectedKind,
         expectedName: options.expectedName,
         expectedSlots: [...options.expectedSlots],
-        irreversibleMutation: true,
-        maxValueMutations: 1,
+        preflightOnly,
+        irreversibleMutation: !preflightOnly,
+        maxValueMutations: preflightOnly ? 0 : 1,
         blindRetryAllowed: false,
         suspended,
         ...runtimeIdentity(),
       },
     });
 
+    let result: EconomyPrebuffExecutionLiveTestResult | null = null;
+    let verificationPolicyApplied = false;
+    let verificationPolicyConfigOverrideCleared = false;
+    let verificationPolicyPlanningRestored = false;
+
+    const refreshPlanning = () => {
+      this.inventoryIntelligence.tick();
+      this.upgrade.tick();
+      this.compound.tick();
+      this.expectedValue.tick();
+      this.riskPolicy.tick();
+      this.economyPrebuff.tick();
+    };
+
     try {
+      const intelligence = this.inventoryIntelligence.tick();
+      const intelligenceBySlot = new Map(
+        intelligence.entries.map((entry) => [entry.slot, entry]),
+      );
+      const inventory = this.game.inventory();
+      const expectedSlots = [...options.expectedSlots].sort(
+        (left, right) => left - right,
+      );
+      const targetItems = expectedSlots.map(
+        (slot) => inventory.find((entry) => entry.slot === slot)?.item || null,
+      );
+
+      if (targetItems.some((item) => !item)) {
+        throw new Error(
+          "ECONOMY_PREBUFF_EXECUTION_VERIFICATION_TARGET_MISSING",
+        );
+      }
+
+      for (let index = 0; index < expectedSlots.length; index += 1) {
+        const slot = expectedSlots[index];
+        const item = targetItems[index] as Record<string, unknown>;
+        const entry = intelligenceBySlot.get(slot);
+        if (
+          item.name !== options.expectedName ||
+          !entry ||
+          entry.protected ||
+          entry.protections.length > 0
+        ) {
+          throw new Error(
+            "ECONOMY_PREBUFF_EXECUTION_VERIFICATION_TARGET_NOT_SAFE",
+          );
+        }
+      }
+
+      const levels = targetItems.map((item) => {
+        const level = Number((item as Record<string, unknown>).level ?? 0);
+        return Number.isInteger(level) && level >= 0 ? level : null;
+      });
+      if (levels.some((level) => level === null)) {
+        throw new Error(
+          "ECONOMY_PREBUFF_EXECUTION_VERIFICATION_LEVEL_UNKNOWN",
+        );
+      }
+      if (
+        options.expectedKind === "COMPOUND" &&
+        new Set(levels).size !== 1
+      ) {
+        throw new Error(
+          "ECONOMY_PREBUFF_EXECUTION_VERIFICATION_COMPOUND_LEVEL_MISMATCH",
+        );
+      }
+
+      const grades = targetItems.map((item) =>
+        this.game.itemGrade(item as Record<string, unknown>),
+      );
+      if (
+        grades.some(
+          (grade) =>
+            grade === null ||
+            !Number.isInteger(grade) ||
+            Number(grade) < 0,
+        ) ||
+        (options.expectedKind === "COMPOUND" && new Set(grades).size !== 1)
+      ) {
+        throw new Error(
+          "ECONOMY_PREBUFF_EXECUTION_VERIFICATION_GRADE_UNKNOWN",
+        );
+      }
+
+      const level = levels[0] as number;
+      const grade = grades[0] as number;
+      const scrollName =
+        options.expectedKind === "UPGRADE"
+          ? `scroll${grade}`
+          : `cscroll${grade}`;
+      const scrollSafe = inventory.some((inventorySlot) => {
+        const item = inventorySlot.item as Record<string, unknown> | null;
+        const entry = intelligenceBySlot.get(inventorySlot.slot);
+        return (
+          item?.name === scrollName &&
+          !!entry &&
+          !entry.protected &&
+          entry.protections.length === 0
+        );
+      });
+      if (!scrollSafe) {
+        throw new Error(
+          "ECONOMY_PREBUFF_EXECUTION_VERIFICATION_SCROLL_MISSING",
+        );
+      }
+
+      if (options.expectedKind === "UPGRADE") {
+        this.upgrade.setConfigOverride({
+          upgrade: {
+            enabled: true,
+            allowedSlots: expectedSlots,
+            maxLevel: level + 1,
+            scrollByCurrentLevel: {
+              [level]: scrollName,
+            },
+          },
+        });
+      } else {
+        this.compound.setConfigOverride({
+          compound: {
+            enabled: true,
+            allowedSlots: expectedSlots,
+            maxLevel: level + 1,
+            scrollByGrade: {
+              [grade]: scrollName,
+            },
+          },
+        });
+      }
+      verificationPolicyApplied = true;
+      refreshPlanning();
+
       const runner = new EconomyPrebuffExecutionLiveTestRunner({
         game: this.game,
-        refreshPlanning: () => {
-          this.inventoryIntelligence.tick();
-          this.upgrade.tick();
-          this.compound.tick();
-          this.expectedValue.tick();
-          this.riskPolicy.tick();
-          this.economyPrebuff.tick();
-        },
+        refreshPlanning,
         riskPolicy: this.riskPolicy,
         prebuff: this.economyPrebuff,
         arbiter: this.economyArbiter,
         execution: this.economyPrebuffExecution,
         characterName: () => character.name,
       });
-      const result = await runner.run({
+      result = await runner.run({
         ...options,
         requestId,
       });
@@ -1146,8 +1274,25 @@ export class BotRuntimeKernel {
           economyPrebuffExecution: this.economyPrebuffExecution.status(),
         },
       });
-      return result;
     } finally {
+      if (verificationPolicyApplied) {
+        if (options.expectedKind === "UPGRADE") {
+          this.upgrade.clearConfigOverride();
+        } else {
+          this.compound.clearConfigOverride();
+        }
+        verificationPolicyConfigOverrideCleared = true;
+        refreshPlanning();
+        verificationPolicyPlanningRestored = true;
+      }
+
+      if (result) {
+        result.cleanup.verificationPolicyConfigOverrideCleared =
+          verificationPolicyConfigOverrideCleared;
+        result.cleanup.verificationPolicyPlanningRestored =
+          verificationPolicyPlanningRestored;
+      }
+
       if (suspended.merchantAutonomy) this.registerMerchantAutonomyJob();
       if (suspended.bankTravel) this.registerBankTravelJob();
       if (suspended.merrit) this.registerMerritJob();
@@ -1157,6 +1302,13 @@ export class BotRuntimeKernel {
       if (suspended.combat) this.registerCombatJob();
       this.economyPrebuffExecutionRunning = false;
     }
+
+    if (!result) {
+      throw new Error(
+        "Economy Prebuff execution live test returned no result",
+      );
+    }
+    return result;
   }
 
   async runEconomyArbiterEnforcementProbe(
