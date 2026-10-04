@@ -114,17 +114,16 @@ function profileEvidence(profile) {
   const goldValid = nullableNonNegativeValid(source.gold);
   const historyValid =
     history.length <= 10 && history.every((entry) => historyEntryValid(entry));
-  const completenessValid =
-    [
-      "class",
-      "level",
-      "gear",
-      "stats",
-      "training",
-      "map",
-      "gold",
-      "history",
-    ].every((key) => typeof completeness[key] === "boolean");
+  const completenessValid = [
+    "class",
+    "level",
+    "gear",
+    "stats",
+    "training",
+    "map",
+    "gold",
+    "history",
+  ].every((key) => typeof completeness[key] === "boolean");
 
   const liveProfileComplete =
     source.online !== true ||
@@ -201,20 +200,14 @@ function accountStrategyEvidence(snapshot) {
     profiles.length === expectedCharacters &&
     uniqueNames;
   const fieldsValid = checks.every((check) => check.complete);
-  const liveProfilesValid = checks.every(
-    (check) => check.liveProfileComplete,
-  );
+  const liveProfilesValid = checks.every((check) => check.liveProfileComplete);
   const ready =
     strategy.state === "READY" &&
     strategy.reason === "ACCOUNT_STRATEGY_PROFILES_READY";
   const readOnly = strategy.readOnly === true;
 
   const structuralComplete =
-    ready &&
-    readOnly &&
-    profileCountValid &&
-    fieldsValid &&
-    summaryValid;
+    ready && readOnly && profileCountValid && fieldsValid && summaryValid;
 
   const complete =
     structuralComplete && onlineProfiles > 0 && liveProfilesValid;
@@ -253,8 +246,8 @@ function evaluateAccountStrategy(snapshot) {
     reason: evidence.complete
       ? "ACCOUNT_STRATEGY_LIVE_E2E_CONFIRMED"
       : watch
-        ? "ACCOUNT_STRATEGY_LIVE_PROFILE_COVERAGE_PENDING"
-        : "ACCOUNT_STRATEGY_LIVE_EVIDENCE_INCOMPLETE",
+      ? "ACCOUNT_STRATEGY_LIVE_PROFILE_COVERAGE_PENDING"
+      : "ACCOUNT_STRATEGY_LIVE_EVIDENCE_INCOMPLETE",
     evidence,
     scope: {
       readOnly: true,
