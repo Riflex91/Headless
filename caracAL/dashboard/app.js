@@ -489,14 +489,24 @@ function renderFullAutonomySummary() {
     Number(autonomy.maxOnlineCharacters) || state.maxOnlineCharacters || 4;
   const protectedStops = Number(summary.manualStopProtected) || 0;
 
-  fullAutonomySummary.className =
-    `revision-summary revision-${status.toLowerCase()}`;
+  const merchant = summary.selectedMerchant ?? 0;
+  const combat = summary.selectedCombat ?? 0;
+  const executionMode = autonomy.executionEnabled ? "ENABLED" : "READ-ONLY";
+
+  fullAutonomySummary.className = [
+    "revision-summary",
+    `revision-${status.toLowerCase()}`,
+  ].join(" ");
   fullAutonomyStatus.textContent = `Full Autonomy: ${status}`;
-  fullAutonomySelection.textContent =
-    `Plan: ${selected} / ${maxOnline} · Merchant ${summary.selectedMerchant ?? 0} · Combat ${summary.selectedCombat ?? 0}`;
-  fullAutonomyExecution.textContent = autonomy.executionEnabled
-    ? `Execution: ENABLED · STOP-Schutz ${protectedStops}`
-    : `Execution: READ-ONLY · STOP-Schutz ${protectedStops}`;
+  fullAutonomySelection.textContent = [
+    `Plan: ${selected} / ${maxOnline}`,
+    `Merchant ${merchant}`,
+    `Combat ${combat}`,
+  ].join(" · ");
+  fullAutonomyExecution.textContent = [
+    `Execution: ${executionMode}`,
+    `STOP-Schutz ${protectedStops}`,
+  ].join(" · ");
 }
 
 function renderEmergencyStop() {
