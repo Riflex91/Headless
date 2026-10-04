@@ -535,14 +535,11 @@ function formatCompactResult(result) {
       );
     }
     if (finiteNumber(candidate.expectedDeltaGold) !== null) {
-      lines.push(
-        "Expected delta gold: " + String(candidate.expectedDeltaGold),
-      );
+      lines.push("Expected delta gold: " + String(candidate.expectedDeltaGold));
     }
     if (finiteNumber(candidate.successProbability) !== null) {
       lines.push(
-        "Success probability: " +
-          String(candidate.successProbability),
+        "Success probability: " + String(candidate.successProbability),
       );
     }
   } else if (attempts.length > 0) {
