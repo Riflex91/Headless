@@ -174,6 +174,59 @@ test("Market Intelligence combines Ponty and local history with transparent metr
   assert.deepEqual(aggregate.sources, ["LOCAL_HISTORY", "PONTY"]);
 });
 
+test("Market Intelligence replaces LOCAL_HISTORY from supervisor snapshots", () => {
+  const setup = makeController({
+    localHistory: [
+      {
+        itemName: "gem0",
+        level: 0,
+        price: 100,
+        quantity: 1,
+        server: "EU I",
+        observedAt: 900_000,
+      },
+    ],
+  });
+
+  assert.equal(setup.controller.tick().summary.localHistory, 1);
+
+  setup.controller.setLocalHistory([
+    {
+      item_name: "gem0",
+      level: 0,
+      price: 200,
+      quantity: 2,
+      server: "EU I",
+      observed_at: 950_000,
+    },
+    {
+      item_name: "scroll0",
+      level: 0,
+      price: 500,
+      quantity: 1,
+      server: "EU I",
+      observed_at: 960_000,
+    },
+  ]);
+
+  const replaced = setup.controller.tick();
+
+  assert.equal(replaced.summary.localHistory, 2);
+  assert.deepEqual(
+    replaced.aggregates.map((aggregate) => [
+      aggregate.itemName,
+      aggregate.medianPrice,
+    ]),
+    [
+      ["gem0", 200],
+      ["scroll0", 500],
+    ],
+  );
+
+  setup.controller.setLocalHistory([]);
+  assert.equal(setup.controller.tick().summary.localHistory, 0);
+});
+
 test("Market Intelligence keeps item levels and servers in separate aggregates", () => {
   const setup = makeController({
     market: [
