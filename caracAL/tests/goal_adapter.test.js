@@ -270,6 +270,41 @@ test("PLAN_CRAFT maps to guarded preflight plus one scoped one-shot", () => {
   assert.equal(result.mutationDispatched, false);
 });
 
+test("PLAN_CRAFT accepts an explicit runtime worker hint without inventing a character", () => {
+  const hinted = buildGoalAdapterPlan(
+    readyDecision({
+      kind: "PLAN_CRAFT",
+      characterName: null,
+      target: { itemName: "fireblade", quantity: 1 },
+      metadata: {
+        runtime: {
+          workerCharacter: "My_Merchant",
+        },
+      },
+      mutationDomain: "VALUE",
+    }),
+  );
+
+  assert.equal(hinted.state, GOAL_ADAPTER_STATES.READY);
+  assert.equal(hinted.request.characterName, "My_Merchant");
+
+  const fixed = buildGoalAdapterPlan(
+    readyDecision({
+      kind: "PLAN_CRAFT",
+      characterName: "My_Merchant",
+      target: { itemName: "fireblade", quantity: 1 },
+      metadata: {
+        runtime: {
+          workerCharacter: "My_Ranger1",
+        },
+      },
+      mutationDomain: "VALUE",
+    }),
+  );
+
+  assert.equal(fixed.request.characterName, "My_Merchant");
+});
+
 test("unsupported runtime workers remain explicitly blocked", () => {
   const cases = [
     ["TRAIN_CHARACTER", "GOAL_ADAPTER_TRAINING_RUNTIME_WORKER_MISSING"],
