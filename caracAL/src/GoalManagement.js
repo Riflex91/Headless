@@ -396,7 +396,10 @@ class GoalManagementService {
       plan: candidatePlan(persisted, this.getPlanningContext()),
     };
     this.onMutation?.({
-      type: mutation === GOAL_MUTATIONS.STATUS ? "GOAL_STATUS_CHANGED" : "GOAL_UPDATED",
+      type:
+        mutation === GOAL_MUTATIONS.STATUS
+          ? "GOAL_STATUS_CHANGED"
+          : "GOAL_UPDATED",
       goalId: normalizedId,
       characterName,
       status,
