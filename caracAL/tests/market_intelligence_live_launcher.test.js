@@ -56,13 +56,7 @@ function observation({
   };
 }
 
-function aggregate({
-  itemName,
-  level = 0,
-  price,
-  source,
-  ageMs = 0,
-} = {}) {
+function aggregate({ itemName, level = 0, price, source, ageMs = 0 } = {}) {
   return {
     itemName,
     level,
@@ -229,10 +223,7 @@ test("Market Intelligence live evidence fails on inconsistent metrics", () => {
   );
 
   assert.equal(result.outcome, "FAIL");
-  assert.equal(
-    result.reason,
-    "MARKET_INTELLIGENCE_LIVE_EVIDENCE_INCOMPLETE",
-  );
+  assert.equal(result.reason, "MARKET_INTELLIGENCE_LIVE_EVIDENCE_INCOMPLETE");
   assert.equal(result.evidence.summaryMatches, false);
   assert.equal(result.evidence.aggregatesValid, false);
   assert.equal(result.evidence.metricsValid, false);
