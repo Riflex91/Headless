@@ -356,4 +356,3 @@ test("Goals live launcher has no POST, control or gameplay mutation path", () =>
   assert.doesNotMatch(source, /ActionBoundary/);
   assert.doesNotMatch(source, /socket\.emit/);
 });
-
