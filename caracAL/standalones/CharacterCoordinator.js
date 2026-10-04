@@ -2068,6 +2068,56 @@ function migrate_old_storage(path, localStorage) {
     );
   }
 
+  async function wait_for_account_strategy_live_profile(
+    char_name,
+    timeout_ms = MOVEMENT_LIVE_TEST_RUNTIME_TIMEOUT_MS,
+  ) {
+    const started_at = Date.now();
+    const stat_keys = [
+      "hp",
+      "max_hp",
+      "mp",
+      "max_mp",
+      "attack",
+      "frequency",
+      "speed",
+      "armor",
+      "resistance",
+      "range",
+      "str",
+      "dex",
+      "int",
+      "vit",
+    ];
+
+    while (Date.now() - started_at < timeout_ms) {
+      const char_block = character_manage[char_name];
+      const live = char_block?.live_state;
+      const has_stats =
+        live &&
+        stat_keys.some((key) => Number.isFinite(Number(live[key])));
+
+      if (
+        char_block?.instance &&
+        char_block.connected &&
+        Number.isFinite(Number(live?.level)) &&
+        typeof live?.map === "string" &&
+        live.map.length > 0 &&
+        Number.isFinite(Number(live?.gold)) &&
+        has_stats
+      ) {
+        return char_block;
+      }
+      await sleep(100);
+    }
+
+    throw make_control_error(
+      "ACCOUNT_STRATEGY_LIVE_PROFILE_TIMEOUT",
+      `Account Strategy live profile did not become ready for ${char_name}`,
+      504,
+    );
+  }
+
   async function wait_for_market_intelligence_live_runtime(
     char_name,
     timeout_ms = MOVEMENT_LIVE_TEST_RUNTIME_TIMEOUT_MS,
@@ -2523,6 +2573,60 @@ function migrate_old_storage(path, localStorage) {
     if (original_desired_state === DESIRED_RUNTIME_STATES.PAUSED) {
       await control_character(char_name, CONTROL_ACTIONS.PAUSE);
     }
+  }
+
+  async function restore_account_strategy_live_test_execution_source(
+    char_name,
+    original_desired_state,
+  ) {
+    const char_block = character_manage[char_name];
+    if (!char_block) return;
+
+    char_block.movement_live_test_typescript_override = null;
+    emit_supervisor_event(
+      "ACCOUNT_STRATEGY_LIVE_TEST_RUNTIME_OVERRIDE_CLEARED",
+      char_name,
+      {
+        desired_runtime_state: original_desired_state,
+      },
+    );
+
+    clear_restart_timer(char_block);
+    clear_stable_timer(char_block);
+
+    if (original_desired_state === DESIRED_RUNTIME_STATES.STOPPED) {
+      char_block.enabled = false;
+      char_block.desired_runtime_state = DESIRED_RUNTIME_STATES.STOPPED;
+      if (char_block.instance) {
+        await softkill_block(char_block);
+      } else {
+        set_lifecycle_state(
+          char_name,
+          LIFECYCLE_STATES.STOPPED,
+          "account_strategy_live_test_restore",
+        );
+      }
+      return;
+    }
+
+    char_block.enabled = true;
+    char_block.desired_runtime_state = original_desired_state;
+
+    if (char_block.instance) {
+      char_block.controlled_restart = true;
+      await softkill_block(char_block);
+    } else {
+      const started = start_char(char_name);
+      if (!started) {
+        throw make_control_error(
+          "CHARACTER_RESTORE_START_FAILED",
+          `Could not restart original runtime for ${char_name}`,
+          503,
+        );
+      }
+    }
+
+    await wait_for_character_connected(char_name);
   }
 
   async function restore_market_intelligence_live_test_execution_source(
@@ -7900,6 +8004,276 @@ function migrate_old_storage(path, localStorage) {
     }
 
     return char_block.gear_scoring_live_test;
+  }
+
+  async function run_account_strategy_live_test(
+    char_name,
+    sample_ms = 1200,
+  ) {
+    const char_block = character_manage[char_name];
+    if (!char_block) {
+      throw make_control_error(
+        "CHARACTER_NOT_FOUND",
+        `Unknown character: ${char_name}`,
+        404,
+      );
+    }
+    if (char_block.account_owned !== true) {
+      throw make_control_error(
+        "ACCOUNT_STRATEGY_LIVE_TEST_ACCOUNT_REQUIRED",
+        "Account Strategy live test requires an account-owned character",
+        400,
+      );
+    }
+    if (account_strategy_live_test_active) {
+      throw make_control_error(
+        "ACCOUNT_STRATEGY_LIVE_TEST_ALREADY_RUNNING",
+        "Account Strategy live test is already running",
+        409,
+      );
+    }
+    if (
+      economy_prebuff_execution_live_test_active ||
+      upgrade_live_test_active ||
+      compound_live_test_active ||
+      exchange_live_test_active ||
+      craft_live_test_active ||
+      npc_trading_live_test_active ||
+      market_trading_live_test_active ||
+      account_gear_reservation_live_test_active
+    ) {
+      throw make_control_error(
+        "MUTATION_VERIFICATION_ALREADY_RUNNING",
+        "A conflicting verification is already running",
+        409,
+      );
+    }
+
+    for (const active of [
+      char_block.movement_live_test,
+      char_block.combat_live_test,
+      char_block.class_skill_live_test,
+      char_block.group_live_test,
+      char_block.farm_live_test,
+      char_block.inventory_live_test,
+      char_block.gear_scoring_live_test,
+      char_block.market_intelligence_live_test,
+    ]) {
+      if (["STARTING", "RUNNING"].includes(active?.status)) {
+        throw make_control_error(
+          "ACCOUNT_STRATEGY_LIVE_TEST_CONFLICT",
+          `Another live test is active for ${char_name}`,
+          409,
+        );
+      }
+    }
+
+    const original_desired_state =
+      char_block.desired_runtime_state ||
+      (char_block.enabled
+        ? DESIRED_RUNTIME_STATES.RUNNING
+        : DESIRED_RUNTIME_STATES.STOPPED);
+    const started_at = Date.now();
+    const bounded_sample_ms = Math.max(
+      500,
+      Math.min(5000, Number(sample_ms) || 1200),
+    );
+    account_strategy_live_test_sequence += 1;
+    const request_id =
+      `account-strategy-live-${started_at}-${account_strategy_live_test_sequence}`;
+
+    account_strategy_live_test_active = true;
+    char_block.account_strategy_live_test = {
+      request_id,
+      status: "STARTING",
+      outcome: null,
+      reason: null,
+      started_at,
+      completed_at: null,
+    };
+    emit_supervisor_event("ACCOUNT_STRATEGY_LIVE_TEST_REQUESTED", char_name, {
+      request_id,
+      original_desired_state,
+      sample_ms: bounded_sample_ms,
+      verification_runtime_state: DESIRED_RUNTIME_STATES.PAUSED,
+    });
+    dashboard?.publishSnapshot();
+
+    let runtime_override_applied = false;
+    let runtime_state_restored = false;
+    let result = null;
+
+    try {
+      const bundle_path = path.join(
+        process.cwd(),
+        "TYPECODE.out",
+        MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE,
+      );
+      if (!fs_regular.existsSync(bundle_path)) {
+        throw make_control_error(
+          "ACCOUNT_STRATEGY_LIVE_TEST_RUNTIME_BUNDLE_MISSING",
+          `Account Strategy runtime bundle is missing: ${bundle_path}`,
+          503,
+        );
+      }
+
+      char_block.movement_live_test_typescript_override =
+        MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE;
+      runtime_override_applied = true;
+      char_block.live_state = null;
+      char_block.enabled = true;
+      char_block.desired_runtime_state = DESIRED_RUNTIME_STATES.PAUSED;
+
+      emit_supervisor_event(
+        "ACCOUNT_STRATEGY_LIVE_TEST_RUNTIME_OVERRIDE_APPLIED",
+        char_name,
+        {
+          request_id,
+          typescript_file: MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE,
+          runtime_state: DESIRED_RUNTIME_STATES.PAUSED,
+        },
+      );
+
+      await restart_character_for_movement_runtime(char_name, char_block);
+      await wait_for_account_strategy_live_profile(char_name);
+      await sleep(bounded_sample_ms);
+
+      const strategy = buildAccountStrategy(character_manage);
+      const profile = Array.isArray(strategy.profiles)
+        ? strategy.profiles.find((entry) => entry?.name === char_name) || null
+        : null;
+      const stats = profile?.stats;
+      const live_profile_complete =
+        profile?.online === true &&
+        Number.isFinite(Number(profile?.level)) &&
+        typeof profile?.map === "string" &&
+        profile.map.length > 0 &&
+        Number.isFinite(Number(profile?.gold)) &&
+        stats &&
+        typeof stats === "object" &&
+        Object.keys(stats).length > 0;
+      const structural_complete =
+        strategy?.state === "READY" &&
+        strategy?.readOnly === true &&
+        Array.isArray(strategy?.profiles) &&
+        strategy.profiles.length === 8;
+
+      result = {
+        request_id,
+        outcome:
+          structural_complete && live_profile_complete ? "PASS" : "WATCH",
+        reason:
+          structural_complete && live_profile_complete
+            ? "ACCOUNT_STRATEGY_LIVE_PROFILE_CONFIRMED"
+            : "ACCOUNT_STRATEGY_LIVE_PROFILE_COVERAGE_PENDING",
+        character: char_name,
+        realm: char_block.realm || null,
+        started_at,
+        completed_at: Date.now(),
+        strategy: JSON.parse(JSON.stringify(strategy)),
+        profile: profile ? JSON.parse(JSON.stringify(profile)) : null,
+        scope: {
+          readOnly: true,
+          runtimeStateDuringTest: DESIRED_RUNTIME_STATES.PAUSED,
+          lifecycleMutationDispatched: true,
+          gameplayMutationDispatched: false,
+          movementMutationDispatched: false,
+          combatMutationDispatched: false,
+          valueMutationDispatched: false,
+          equipmentMutationDispatched: false,
+          socketRequestDispatched: false,
+          runtimeOverrideApplied: true,
+        },
+        cleanup: {
+          runtimeStateRestored: false,
+        },
+      };
+    } catch (error) {
+      result = {
+        request_id,
+        outcome:
+          error.code === "ACCOUNT_STRATEGY_LIVE_PROFILE_TIMEOUT"
+            ? "TIMEOUT"
+            : "FAIL",
+        reason:
+          error.code || error.message || "ACCOUNT_STRATEGY_LIVE_TEST_FAILED",
+        error: error.message || String(error),
+        character: char_name,
+        realm: char_block.realm || null,
+        started_at,
+        completed_at: Date.now(),
+        strategy: null,
+        profile: null,
+        scope: {
+          readOnly: true,
+          runtimeStateDuringTest: DESIRED_RUNTIME_STATES.PAUSED,
+          lifecycleMutationDispatched: runtime_override_applied,
+          gameplayMutationDispatched: false,
+          movementMutationDispatched: false,
+          combatMutationDispatched: false,
+          valueMutationDispatched: false,
+          equipmentMutationDispatched: false,
+          socketRequestDispatched: false,
+          runtimeOverrideApplied: runtime_override_applied,
+        },
+        cleanup: {
+          runtimeStateRestored: false,
+        },
+      };
+    } finally {
+      try {
+        if (runtime_override_applied) {
+          await restore_account_strategy_live_test_execution_source(
+            char_name,
+            original_desired_state,
+          );
+        }
+        runtime_state_restored = true;
+      } catch (restore_error) {
+        result = {
+          ...result,
+          outcome: "FAIL",
+          reason: "ACCOUNT_STRATEGY_LIVE_TEST_STATE_RESTORE_FAILED",
+          restore_error:
+            restore_error instanceof Error
+              ? restore_error.message
+              : String(restore_error),
+        };
+      }
+
+      account_strategy_live_test_active = false;
+      const completed_at = Date.now();
+      result = {
+        ...result,
+        completed_at,
+        durationMs: Math.max(0, completed_at - started_at),
+        cleanup: {
+          ...(result?.cleanup || {}),
+          runtimeStateRestored: runtime_state_restored,
+          originalDesiredState: original_desired_state,
+        },
+      };
+      const completed = ["PASS", "WATCH"].includes(result.outcome);
+      char_block.account_strategy_live_test = {
+        ...result,
+        status: completed ? "COMPLETED" : "FAILED",
+      };
+      emit_supervisor_event(
+        completed
+          ? "ACCOUNT_STRATEGY_LIVE_TEST_COMPLETED"
+          : "ACCOUNT_STRATEGY_LIVE_TEST_FAILED",
+        char_name,
+        {
+          request_id,
+          outcome: result.outcome,
+          reason: result.reason,
+          runtime_state_restored,
+        },
+      );
+      dashboard?.publishSnapshot();
+    }
+
+    return char_block.account_strategy_live_test;
   }
 
   async function run_market_intelligence_live_test(
