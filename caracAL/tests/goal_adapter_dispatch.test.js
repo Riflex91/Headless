@@ -79,6 +79,31 @@ function farmRequest(overrides = {}) {
   };
 }
 
+function gearRequest(overrides = {}) {
+  return {
+    version: 1,
+    type: "GOAL_RUNTIME_METHOD",
+    goalId: "gear-1",
+    taskId: "gear-1:2",
+    kind: "ACQUIRE_GEAR",
+    bridge: "MaterialGatheringTaskRunner",
+    runtimeMethod: "runMaterialGatherTask",
+    characterName: "My_Ranger1",
+    arguments: {
+      itemName: "helmet",
+      minimumItemLevel: 2,
+      monsterType: "goo",
+      quantity: 1,
+      deliveryMode: "KEEP_ON_WORKER",
+      timeoutMs: 45000,
+      pollMs: 100,
+    },
+    dispatchAllowed: false,
+    dispatchImplemented: false,
+    ...overrides,
+  };
+}
+
 function craftRequest(overrides = {}) {
   return {
     version: 1,
@@ -144,20 +169,29 @@ function setup({
         worker: "My_Ranger1",
         itemName: options.itemName,
         itemLevel: options.itemLevel ?? null,
+        minimumItemLevel: options.minimumItemLevel ?? null,
         monsterType: options.monsterType,
         quantity: options.quantity,
-        recipient: options.recipient,
+        deliveryMode: options.deliveryMode || "DELIVER",
+        recipient: options.recipient ?? null,
         inventory: {
           initialQuantity: 0,
           gatheredQuantity: options.quantity,
-          deliveredQuantity: options.quantity,
+          deliveredQuantity:
+            options.deliveryMode === "KEEP_ON_WORKER" ? 0 : options.quantity,
         },
         evidence: {
           combatControllerUsed: true,
           attackUnknownReconciled: false,
           lootConfirmed: true,
           materialObserved: true,
-          deliveryConfirmed: materialResult.outcome === "PASS",
+          deliveryConfirmed:
+            options.deliveryMode !== "KEEP_ON_WORKER" &&
+            materialResult.outcome === "PASS",
+          keptOnWorkerConfirmed:
+            options.deliveryMode === "KEEP_ON_WORKER" &&
+            materialResult.outcome === "PASS" &&
+            materialResult.keptOnWorkerConfirmed !== false,
           blindRetryUsed: false,
         },
         cleanup: {
@@ -322,6 +356,101 @@ test("FARM_ITEM UNKNOWN is surfaced without blind retry", async () => {
   assert.match(result.reason, /MATERIAL_ATTACK_OUTCOME_UNKNOWN/);
   assert.equal(result.scope.blindRetryUsed, false);
   assert.equal(s.calls.filter(([name]) => name === "material").length, 1);
+});
+
+test("ACQUIRE_GEAR invokes retained material worker exactly once after preflight", async () => {
+  const s = setup({
+    preflightResult: preflight({
+      kind: "ACQUIRE_GEAR",
+      goalId: "gear-1",
+      taskId: "gear-1:2",
+    }),
+  });
+
+  const result = await s.runner.run(gearRequest(), {
+    requestId: "dispatch-gear",
+    authorized: true,
+  });
+
+  assert.equal(result.outcome, "PASS");
+  assert.equal(result.reason, "GOAL_ADAPTER_DISPATCH_GEAR_CONFIRMED");
+  assert.equal(result.scope.mutationPathInvoked, true);
+  assert.equal(result.scope.blindRetryUsed, false);
+  assert.equal(s.calls.filter(([name]) => name === "preflight").length, 1);
+  assert.equal(s.calls.filter(([name]) => name === "material").length, 1);
+  const material = s.calls.find(([name]) => name === "material")[1];
+  assert.deepEqual(material, {
+    requestId: "dispatch-gear:gear",
+    itemName: "helmet",
+    minimumItemLevel: 2,
+    monsterType: "goo",
+    quantity: 1,
+    deliveryMode: "KEEP_ON_WORKER",
+    timeoutMs: 45000,
+    pollMs: 100,
+  });
+  assert.equal(
+    result.execution.materialGather.evidence.keptOnWorkerConfirmed,
+    true,
+  );
+});
+
+test("ACQUIRE_GEAR rejects a worker PASS without retained gear evidence", async () => {
+  const s = setup({
+    preflightResult: preflight({
+      kind: "ACQUIRE_GEAR",
+      goalId: "gear-1",
+      taskId: "gear-1:2",
+    }),
+    materialResult: {
+      outcome: "PASS",
+      reason: "MATERIAL_GATHER_KEEP_ON_WORKER_CONFIRMED",
+      keptOnWorkerConfirmed: false,
+    },
+  });
+
+  const result = await s.runner.run(gearRequest(), {
+    requestId: "dispatch-gear",
+    authorized: true,
+  });
+
+  assert.equal(result.outcome, "FAIL");
+  assert.equal(result.reason, "GOAL_ADAPTER_DISPATCH_GEAR_NOT_CONFIRMED");
+  assert.equal(s.calls.filter(([name]) => name === "material").length, 1);
+});
+
+test("ACQUIRE_GEAR contract rejects delivery mode drift before mutation", async () => {
+  const s = setup({
+    preflightResult: preflight({
+      kind: "ACQUIRE_GEAR",
+      goalId: "gear-1",
+      taskId: "gear-1:2",
+    }),
+  });
+
+  const result = await s.runner.run(
+    gearRequest({
+      arguments: {
+        itemName: "helmet",
+        minimumItemLevel: 2,
+        monsterType: "goo",
+        quantity: 1,
+        deliveryMode: "DELIVER",
+      },
+    }),
+    {
+      requestId: "dispatch-gear",
+      authorized: true,
+    },
+  );
+
+  assert.equal(result.outcome, "BLOCKED");
+  assert.equal(result.reason, "GOAL_ADAPTER_DISPATCH_GEAR_CONTRACT_INVALID");
+  assert.equal(result.scope.mutationPathInvoked, false);
+  assert.equal(
+    s.calls.some(([name]) => name === "material"),
+    false,
+  );
 });
 
 test("PLAN_CRAFT requires preflight evidence that the recipe is already ready", async () => {
