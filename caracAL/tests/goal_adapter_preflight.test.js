@@ -47,6 +47,29 @@ function farmRequest(overrides = {}) {
   };
 }
 
+function gearRequest(overrides = {}) {
+  return {
+    version: 1,
+    type: "GOAL_RUNTIME_METHOD",
+    goalId: "gear-helmet",
+    taskId: "gear-helmet:2",
+    kind: "ACQUIRE_GEAR",
+    bridge: "MaterialGatheringTaskRunner",
+    runtimeMethod: "runMaterialGatherTask",
+    characterName: "My_Ranger1",
+    dispatchAllowed: false,
+    dispatchImplemented: false,
+    arguments: {
+      itemName: "helmet",
+      minimumItemLevel: 2,
+      monsterType: "goo",
+      quantity: 1,
+      deliveryMode: "KEEP_ON_WORKER",
+    },
+    ...overrides,
+  };
+}
+
 function craftRequest(overrides = {}) {
   return {
     version: 1,
@@ -297,6 +320,109 @@ test("FARM_ITEM preflight always clears scoped override after runtime errors", a
     ["farm:clear"],
     ["farm:tick", 2],
   ]);
+});
+
+test("ACQUIRE_GEAR preflight confirms the explicit retained gear source", async () => {
+  const setupResult = setup({
+    farmStatus: {
+      state: "READY",
+      reason: "FARM_CANDIDATE_SELECTED",
+      candidates: [
+        {
+          monster: "goo",
+          estimated: {
+            dropItems: ["helmet"],
+          },
+        },
+      ],
+    },
+  });
+
+  const result = await setupResult.runner.run(gearRequest());
+
+  assert.equal(result.outcome, "PASS");
+  assert.equal(result.reason, "GOAL_ADAPTER_PREFLIGHT_GEAR_CONFIRMED");
+  assert.equal(result.goalId, "gear-helmet");
+  assert.equal(result.kind, "ACQUIRE_GEAR");
+  assert.equal(result.evidence.itemName, "helmet");
+  assert.equal(result.evidence.minimumItemLevel, 2);
+  assert.equal(result.evidence.deliveryMode, "KEEP_ON_WORKER");
+  assert.deepEqual(result.evidence.dropItems, ["helmet"]);
+  assert.equal(result.cleanup.farmOverrideCleared, true);
+  assert.equal(setupResult.override, null);
+});
+
+test("ACQUIRE_GEAR preflight requires KEEP_ON_WORKER and valid minimum level", async () => {
+  const setupResult = setup();
+
+  const wrongMode = await setupResult.runner.run(
+    gearRequest({
+      arguments: {
+        itemName: "helmet",
+        minimumItemLevel: 2,
+        monsterType: "goo",
+        quantity: 1,
+        deliveryMode: "DELIVER",
+      },
+    }),
+  );
+  assert.equal(wrongMode.outcome, "BLOCKED");
+  assert.equal(
+    wrongMode.reason,
+    "GOAL_ADAPTER_PREFLIGHT_GEAR_CONTRACT_INVALID",
+  );
+
+  const invalidLevel = await setupResult.runner.run(
+    gearRequest({
+      arguments: {
+        itemName: "helmet",
+        minimumItemLevel: -1,
+        monsterType: "goo",
+        quantity: 1,
+        deliveryMode: "KEEP_ON_WORKER",
+      },
+    }),
+  );
+  assert.equal(invalidLevel.outcome, "BLOCKED");
+  assert.equal(
+    invalidLevel.reason,
+    "GOAL_ADAPTER_PREFLIGHT_GEAR_ARGUMENTS_INVALID",
+  );
+});
+
+test("ACQUIRE_GEAR preflight requires exact ranger worker and confirmed drop source", async () => {
+  const wrongWorker = setup({
+    character: { name: "My_Ranger2", ctype: "ranger" },
+  });
+  const mismatch = await wrongWorker.runner.run(gearRequest());
+  assert.equal(mismatch.outcome, "BLOCKED");
+  assert.equal(
+    mismatch.reason,
+    "GOAL_ADAPTER_PREFLIGHT_GEAR_WORKER_MISMATCH",
+  );
+  assert.deepEqual(wrongWorker.calls, []);
+
+  const missingSource = setup({
+    farmStatus: {
+      state: "READY",
+      reason: "FARM_CANDIDATE_SELECTED",
+      candidates: [
+        {
+          monster: "goo",
+          estimated: {
+            dropItems: ["slime"],
+          },
+        },
+      ],
+    },
+  });
+  const blocked = await missingSource.runner.run(gearRequest());
+  assert.equal(blocked.outcome, "BLOCKED");
+  assert.equal(
+    blocked.reason,
+    "GOAL_ADAPTER_PREFLIGHT_GEAR_SOURCE_NOT_CONFIRMED",
+  );
+  assert.equal(blocked.cleanup.farmOverrideCleared, true);
 });
 
 test("PLAN_CRAFT preflight requires the guarded one-shot and cleanup contract", async () => {
