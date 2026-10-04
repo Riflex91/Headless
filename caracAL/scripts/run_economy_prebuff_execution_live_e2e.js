@@ -25,7 +25,10 @@ function parseExpectedSlots(kind, raw) {
     .filter((value) => Number.isInteger(value) && value >= 0)
     .sort((left, right) => left - right);
 
-  if (values.length !== expectedCount || new Set(values).size !== expectedCount) {
+  if (
+    values.length !== expectedCount ||
+    new Set(values).size !== expectedCount
+  ) {
     return null;
   }
   return values;
@@ -40,7 +43,9 @@ async function readJson(response) {
     throw new Error("Invalid JSON response from Headless dashboard");
   }
   if (!response.ok) {
-    const error = new Error(payload.message || payload.error || "HTTP request failed");
+    const error = new Error(
+      payload.message || payload.error || "HTTP request failed",
+    );
     error.code = payload.error || "HTTP_REQUEST_FAILED";
     throw error;
   }
@@ -106,8 +111,7 @@ function coupledExecutionEvidence(result) {
       economyAction.status === "CONFIRMED",
     exactKindExecuted: childEvidence.exactKindExecuted === true,
     exactNameExecuted: childEvidence.exactNameExecuted === true,
-    inventoryMutationObserved:
-      childEvidence.inventoryMutationObserved === true,
+    inventoryMutationObserved: childEvidence.inventoryMutationObserved === true,
     oneValueMutationMaximum:
       childEvidence.oneValueMutationMaximum === true &&
       Number(execution.policy?.maxValueMutations) === 1 &&
@@ -127,8 +131,7 @@ function coupledExecutionEvidence(result) {
       childScope.craftMutationAllowed === false &&
       supervisorScope.exchangeMutationForced === false &&
       supervisorScope.craftMutationForced === false,
-    arbiterOverrideCleared:
-      childCleanup.arbiterConfigOverrideCleared === true,
+    arbiterOverrideCleared: childCleanup.arbiterConfigOverrideCleared === true,
     arbiterEnforcementRestored:
       childCleanup.arbiterEnforcementRestored === true,
     equipmentBaselineRestored:
@@ -158,7 +161,9 @@ function combineEconomyPrebuffExecutionSupervisorResult(result) {
 
 async function main() {
   const requestedCharacter = process.argv[2] || null;
-  const kind = String(process.argv[3] || "").trim().toUpperCase();
+  const kind = String(process.argv[3] || "")
+    .trim()
+    .toUpperCase();
   const name = String(process.argv[4] || "").trim();
   const slots = parseExpectedSlots(kind, process.argv[5]);
 
