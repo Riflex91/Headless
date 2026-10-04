@@ -299,6 +299,86 @@ test("compound material worker preserves exact level and purpose in delivery cla
   assert.equal(delivery[1].metadata.itemLevel, 0);
 });
 
+test("material worker can keep qualifying minimum-level gear on the worker", async () => {
+  const s = setup({ existingMaterial: true });
+  s.state.inventory[0].item = { name: "helmet", level: 2 };
+
+  const result = await s.runner.run({
+    requestId: "gear-1",
+    itemName: "helmet",
+    minimumItemLevel: 1,
+    monsterType: "goo",
+    quantity: 1,
+    deliveryMode: "KEEP_ON_WORKER",
+    timeoutMs: 30000,
+    pollMs: 100,
+  });
+
+  assert.equal(result.outcome, "PASS");
+  assert.equal(result.reason, "MATERIAL_GATHER_KEEP_ON_WORKER_CONFIRMED");
+  assert.equal(result.minimumItemLevel, 1);
+  assert.equal(result.deliveryMode, "KEEP_ON_WORKER");
+  assert.equal(result.recipient, null);
+  assert.equal(result.evidence.materialObserved, true);
+  assert.equal(result.evidence.deliveryConfirmed, false);
+  assert.equal(result.evidence.keptOnWorkerConfirmed, true);
+  assert.equal(
+    s.calls.some(([name]) => name === "logistics"),
+    false,
+  );
+});
+
+test("minimum-level gear filtering does not accept a lower-level item", async () => {
+  const s = setup({ existingMaterial: true });
+  s.state.inventory[0].item = { name: "helmet", level: 0 };
+
+  const result = await s.runner.run({
+    requestId: "gear-2",
+    itemName: "helmet",
+    minimumItemLevel: 1,
+    monsterType: "missingmonster",
+    quantity: 1,
+    deliveryMode: "KEEP_ON_WORKER",
+    timeoutMs: 30000,
+    pollMs: 100,
+  });
+
+  assert.equal(result.outcome, "TIMEOUT");
+  assert.equal(result.reason, "MATERIAL_GATHER_TIMEOUT");
+  assert.equal(result.evidence.materialObserved, false);
+  assert.equal(result.evidence.keptOnWorkerConfirmed, false);
+  assert.equal(
+    s.calls.some(([name]) => name === "logistics"),
+    false,
+  );
+});
+
+test("material worker rejects simultaneous exact and minimum item levels", async () => {
+  const s = setup({ existingMaterial: true });
+  s.state.inventory[0].item = { name: "helmet", level: 2 };
+
+  const result = await s.runner.run({
+    requestId: "gear-invalid",
+    itemName: "helmet",
+    itemLevel: 2,
+    minimumItemLevel: 1,
+    monsterType: "goo",
+    quantity: 1,
+    deliveryMode: "KEEP_ON_WORKER",
+  });
+
+  assert.equal(result.outcome, "FAIL");
+  assert.equal(result.reason, "MATERIAL_GATHER_REQUEST_INVALID");
+  assert.equal(
+    s.calls.some(([name]) => name === "combatOverride"),
+    false,
+  );
+  assert.equal(
+    s.calls.some(([name]) => name === "logistics"),
+    false,
+  );
+});
+
 test("material worker never fails over internally after unreconciled UNKNOWN attack", async () => {
   const s = setup({ unknownAttack: true });
 
