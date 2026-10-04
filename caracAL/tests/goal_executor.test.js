@@ -300,7 +300,7 @@ test("Unsupported handoff kinds fail closed", () => {
   assert.equal(decision.action, null);
 });
 
-test("Coordinator and dashboard project Goal execution decisions without a dispatcher", () => {
+test("Coordinator keeps Goal execution decisions separate from explicit one-shot dispatch", () => {
   const coordinator = fs.readFileSync(
     path.join(__dirname, "..", "standalones", "CharacterCoordinator.js"),
     "utf8",
@@ -313,13 +313,22 @@ test("Coordinator and dashboard project Goal execution decisions without a dispa
   assert.match(coordinator, /buildGoalExecutionDecision/);
   assert.match(coordinator, /readGoalExecutionPolicy/);
   assert.match(coordinator, /getGoalExecutionState:\s*goal_execution_state/);
-  assert.match(coordinator, /goal_execution_dispatch_implemented:\s*false/);
+  assert.match(coordinator, /goal_execution_dispatch_implemented:\s*true/);
+  assert.match(
+    coordinator,
+    /goal_execution_automatic_reconcile_enabled:\s*false/,
+  );
+  assert.match(
+    coordinator,
+    /executionInFlight:\s*\n?\s*goal_adapter_dispatch_supervisor\.snapshot\(\)\.pending > 0/,
+  );
   assert.doesNotMatch(coordinator, /function reconcile_goal_execution/);
-  assert.doesNotMatch(coordinator, /dispatch_goal_execution/);
+  assert.doesNotMatch(coordinator, /setInterval\([^)]*goal_adapter_dispatch/);
 
   assert.match(dashboard, /goal_execution:\s*goalExecutionState/);
   assert.match(dashboard, /getGoalExecutionState/);
   assert.match(dashboard, /dispatchImplemented:\s*false/);
+  assert.match(dashboard, /runGoalAdapterDispatch/);
 });
 
 test("Goal execution gate has no mutation or controller dependency", () => {
