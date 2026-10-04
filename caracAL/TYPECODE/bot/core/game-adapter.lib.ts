@@ -252,6 +252,18 @@ function runtimeValue(name: string): unknown {
   return parentScope?.[name];
 }
 
+let runtimePontySnapshot: unknown[] | null = null;
+
+export function setRuntimePontySnapshot(items: unknown): number {
+  if (!Array.isArray(items)) {
+    throw new Error("Ponty snapshot must be an array");
+  }
+
+  const cloned = cloneJsonValue(items);
+  runtimePontySnapshot = Array.isArray(cloned) ? cloned : [];
+  return runtimePontySnapshot.length;
+}
+
 function positionsFromMapNpc(value: unknown): NpcPositionSnapshot[] {
   const npc = record(value);
   const positions: NpcPositionSnapshot[] = [];
@@ -279,7 +291,7 @@ export function createRuntimeGameAdapterSource(): GameAdapterSource {
     gameData: () => runtimeValue("G"),
     nextSkill: () => runtimeValue("next_skill"),
     bankPacks: () => runtimeValue("bank_packs"),
-    secondhands: () => runtimeValue("secondhands"),
+    secondhands: () => runtimePontySnapshot ?? runtimeValue("secondhands"),
     calculateItemValue: (item: unknown) => {
       const candidate = runtimeValue("calculate_item_value");
       return typeof candidate === "function"

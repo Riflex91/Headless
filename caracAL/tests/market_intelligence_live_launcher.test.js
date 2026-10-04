@@ -304,6 +304,37 @@ test("Market Intelligence compact WATCH output names missing sources", () => {
   assert.match(output, /Value mutation dispatched: no/);
 });
 
+test("Market Intelligence compact bootstrap output exposes correlated Ponty response", () => {
+  const result = evaluateMarketIntelligence(
+    character("My_Merchant", {
+      market_intelligence_runtime: projection({
+        includePonty: false,
+      }),
+    }),
+  );
+  result.scope = {
+    ...result.scope,
+    dashboardGetOnly: false,
+    bootstrapUsed: true,
+    runtimeStateDuringTest: "PAUSED",
+    movementMutationForced: true,
+    socketReadRequestDispatched: true,
+    valueMutationDispatched: false,
+  };
+  result.sourceProbe = {
+    evidence: {
+      pontySnapshotResponseReceived: true,
+      pontySnapshotItems: 0,
+    },
+  };
+
+  const output = formatCompactResult(result);
+  assert.match(output, /Bootstrap runtime: PAUSED/);
+  assert.match(output, /Ponty snapshot response: yes/);
+  assert.match(output, /Ponty snapshot items: 0/);
+  assert.match(output, /Value mutation dispatched: no/);
+});
+
 test("Market Intelligence CLI defaults to compact output", () => {
   assert.deepEqual(parseCliArgs(["My_Merchant"]), {
     requestedCharacter: "My_Merchant",
@@ -459,6 +490,17 @@ test("Market Intelligence live launcher bootstraps only through paused read-only
     ),
     "utf8",
   );
+  const gameAdapter = fs.readFileSync(
+    path.join(
+      __dirname,
+      "..",
+      "TYPECODE",
+      "bot",
+      "core",
+      "game-adapter.lib.ts",
+    ),
+    "utf8",
+  );
 
   assert.match(
     dashboard,
@@ -503,9 +545,7 @@ test("Market Intelligence live launcher bootstraps only through paused read-only
   assert.doesNotMatch(probeBlock, /tradeUnlist/);
   assert.doesNotMatch(probeBlock, /"sbuy"/);
 
-  const snapshotStart = boundary.indexOf(
-    "requestPontySnapshot(request: BoundaryRequest)",
-  );
+  const snapshotStart = boundary.indexOf("async requestPontySnapshot(");
   const snapshotEnd = boundary.indexOf("pontyBuy(request:", snapshotStart);
   assert.ok(snapshotStart >= 0);
   assert.ok(snapshotEnd > snapshotStart);
@@ -514,7 +554,22 @@ test("Market Intelligence live launcher bootstraps only through paused read-only
   assert.match(snapshotBlock, /PONTY_SNAPSHOT_REQUEST/);
   assert.match(snapshotBlock, /valueMutation: false/);
   assert.match(snapshotBlock, /readOnly: true/);
+  assert.match(snapshotBlock, /responseReceived: true/);
+  assert.match(snapshotBlock, /itemCount: result\.items\.length/);
   assert.doesNotMatch(snapshotBlock, /sbuy/);
+
+  assert.match(boundary, /runtimeFunction\("get_secondhands"\)\(10000\)/);
+  assert.match(boundary, /setRuntimePontySnapshot\(result\.items\)/);
+  assert.doesNotMatch(
+    boundary,
+    /requestPontySnapshot:\s*\(\)\s*=>\s*runtimeSocketEmit\("secondhands"\)/,
+  );
+  assert.match(gameAdapter, /let runtimePontySnapshot: unknown\[\] \| null/);
+  assert.match(gameAdapter, /setRuntimePontySnapshot\(items: unknown\)/);
+  assert.match(
+    gameAdapter,
+    /secondhands: \(\) => runtimePontySnapshot \?\? runtimeValue\("secondhands"\)/,
+  );
 
   assert.doesNotMatch(launcher, /ActionBoundary/);
   assert.doesNotMatch(launcher, /socket\.emit/);

@@ -977,6 +977,9 @@ export class BotRuntimeKernel {
         projection,
         evidence: {
           pontySamples: projection.summary.ponty,
+          pontySnapshotResponseReceived:
+            snapshotAction?.evidence?.responseReceived === true,
+          pontySnapshotItems: Number(snapshotAction?.evidence?.itemCount ?? 0),
           observations: projection.summary.observations,
           aggregates: projection.summary.aggregates,
         },
@@ -1060,7 +1063,7 @@ export class BotRuntimeKernel {
         );
       }
 
-      snapshotAction = this.actions.requestPontySnapshot({
+      snapshotAction = await this.actions.requestPontySnapshot({
         module,
         why: "PHASE16_PONTY_READ_REQUEST",
         correlationId: requestId,
@@ -1079,6 +1082,19 @@ export class BotRuntimeKernel {
         return complete(
           "WATCH",
           "MARKET_INTELLIGENCE_PONTY_READ_REQUEST_UNAVAILABLE",
+        );
+      }
+
+      const pontySnapshotItems = Number(snapshotAction.evidence?.itemCount ?? 0);
+      if (
+        snapshotAction.status === "CONFIRMED" &&
+        snapshotAction.evidence?.responseReceived === true &&
+        pontySnapshotItems === 0
+      ) {
+        projection = this.marketIntelligence.tick();
+        return complete(
+          "WATCH",
+          "MARKET_INTELLIGENCE_PONTY_SOURCE_EMPTY",
         );
       }
 

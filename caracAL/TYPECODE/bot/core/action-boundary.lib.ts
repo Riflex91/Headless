@@ -1,4 +1,5 @@
 import type { ActionRecord } from "./action-ledger.lib";
+import { setRuntimePontySnapshot } from "./game-adapter.lib";
 import type {
   BankSnapshot,
   CharacterSnapshot,
@@ -267,7 +268,7 @@ export interface MutationDriver {
   ): Promise<unknown> | unknown;
   tradeUnlist(slot: string): Promise<unknown> | unknown;
   requestMerritStatus(): unknown;
-  requestPontySnapshot(): unknown;
+  requestPontySnapshot(): Promise<unknown> | unknown;
   wishlist(
     slot: string | number,
     itemName: string,
@@ -402,7 +403,15 @@ export function createRuntimeMutationDriver(): MutationDriver {
     tradeUnlist: (slot) => runtimeFunction("unequip")(slot),
     requestMerritStatus: () =>
       runtimeSocketEmit("interaction", { type: "merrit_info" }),
-    requestPontySnapshot: () => runtimeSocketEmit("secondhands"),
+    requestPontySnapshot: async () => {
+      const response = await runtimeFunction("get_secondhands")(10000);
+      const result = objectRecord(response);
+      if (!Array.isArray(result.items)) {
+        throw new Error("Adventure Land Ponty snapshot response missing items");
+      }
+      setRuntimePontySnapshot(result.items);
+      return response;
+    },
     wishlist: (slot, itemName, price, level, quantity) =>
       runtimeFunction("wishlist")(slot, itemName, price, level, quantity),
     pontyBuy: (rid) => runtimeSocketEmit("sbuy", { rid }),
@@ -3636,7 +3645,9 @@ export class ActionBoundary {
   }
 
 
-  requestPontySnapshot(request: BoundaryRequest): ActionRecord {
+  async requestPontySnapshot(
+    request: BoundaryRequest,
+  ): Promise<ActionRecord> {
     const transaction = this.ledger.create({
       module: request.module,
       action: "PONTY_SNAPSHOT_REQUEST",
@@ -3655,12 +3666,25 @@ export class ActionBoundary {
     });
 
     try {
-      this.driver.requestPontySnapshot();
+      const response = await this.driver.requestPontySnapshot();
+      const result = objectRecord(response);
+      if (!Array.isArray(result.items)) {
+        return this.ledger.unknown(transaction.id, {
+          why: "PONTY_SNAPSHOT_RESPONSE_INVALID",
+          evidence: {
+            requestDispatched: true,
+            readOnly: true,
+            responseReceived: true,
+          },
+        });
+      }
       return this.ledger.confirm(transaction.id, {
-        why: "PONTY_SNAPSHOT_REQUEST_DISPATCHED",
+        why: "PONTY_SNAPSHOT_RESPONSE_CONFIRMED",
         evidence: {
           requestDispatched: true,
           readOnly: true,
+          responseReceived: true,
+          itemCount: result.items.length,
         },
       });
     } catch (error) {
