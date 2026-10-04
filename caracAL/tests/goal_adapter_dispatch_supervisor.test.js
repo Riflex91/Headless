@@ -205,14 +205,14 @@ function setup({
 }
 
 async function start(supervisor, input = {}) {
-  const promise = supervisor.run({
+  const pending = supervisor.run({
     expectedGoalId: "goal-1",
     expectedTaskId: "goal-1:3",
     ...input,
   });
   await Promise.resolve();
   await Promise.resolve();
-  return promise;
+  return { pending };
 }
 
 test("request fingerprint is stable across key ordering", () => {
@@ -349,7 +349,7 @@ test("request drift after preflight blocks before dispatch", async () => {
 
 test("confirmed preflight sends exactly one authorized runtime dispatch", async () => {
   const s = setup();
-  const promise = await start(s.supervisor);
+  const { pending: promise } = await start(s.supervisor);
 
   assert.equal(s.preflights.length, 1);
   assert.equal(s.sent.length, 1);
@@ -385,7 +385,7 @@ test("confirmed preflight sends exactly one authorized runtime dispatch", async 
 
 test("UNKNOWN result persists hold and blocks an exact retry", async () => {
   const s = setup();
-  const promise = await start(s.supervisor);
+  const { pending: promise } = await start(s.supervisor);
 
   await s.supervisor.handleResult("My_Ranger1", {
     type: "goal_adapter_dispatch_result",
@@ -461,7 +461,7 @@ test("a different current request supersedes the old unknown hold", async () => 
     },
   });
 
-  const promise = await start(s.supervisor);
+  const { pending: promise } = await start(s.supervisor);
   assert.equal(s.holds[0].active, false);
   assert.equal(
     s.holds[0].reason,
@@ -478,7 +478,7 @@ test("a different current request supersedes the old unknown hold", async () => 
 
 test("dispatch timeout persists unknown hold before rejecting", async () => {
   const s = setup();
-  const promise = await start(s.supervisor);
+  const { pending: promise } = await start(s.supervisor);
   const [timer] = [...s.timers.values()];
 
   timer.fn();
@@ -498,7 +498,7 @@ test("dispatch timeout persists unknown hold before rejecting", async () => {
 
 test("runtime result error is treated as unknown and persisted", async () => {
   const s = setup();
-  const promise = await start(s.supervisor);
+  const { pending: promise } = await start(s.supervisor);
 
   await s.supervisor.handleResult("My_Ranger1", {
     request_id: "goal-adapter-dispatch-1000-1",
@@ -547,7 +547,7 @@ test("FAIL after mutation path requires unknown hold", () => {
 
 test("only one dispatch can be in flight globally", async () => {
   const s = setup();
-  const first = await start(s.supervisor);
+  const { pending: first } = await start(s.supervisor);
 
   await assert.rejects(
     () =>
