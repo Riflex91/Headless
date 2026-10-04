@@ -108,7 +108,29 @@ function candidateForGoal(goal) {
   }
 
   const selectedTask = record(task);
+  const goalId = text(source.goalId);
+  const type = text(source.type);
+  const priority = finite(source.priority);
+  const taskId = text(selectedTask.taskId);
+  const kind = text(selectedTask.kind);
   const subsystem = text(selectedTask.subsystem);
+  const description = text(selectedTask.description);
+
+  if (
+    !goalId ||
+    !type ||
+    priority === null ||
+    !taskId ||
+    !kind ||
+    !subsystem ||
+    !description
+  ) {
+    return {
+      malformed: true,
+      goalId,
+    };
+  }
+
   const owners = subsystem
     ? subsystem
         .split("/")
@@ -118,18 +140,18 @@ function candidateForGoal(goal) {
 
   return {
     malformed: false,
-    goalId: text(source.goalId),
-    type: text(source.type),
-    priority: finite(source.priority) ?? 0,
+    goalId,
+    type,
+    priority,
     characterName: text(source.characterName),
     target: record(source.target),
     task: {
-      taskId: text(selectedTask.taskId),
-      kind: text(selectedTask.kind),
+      taskId,
+      kind,
       subsystem,
       owners,
-      description: text(selectedTask.description),
-      lane: TASK_LANES[selectedTask.kind] || "PLANNING_ONLY",
+      description,
+      lane: TASK_LANES[kind] || "PLANNING_ONLY",
       status: selectedTask.status,
       executionAllowed: false,
       mutationDispatched: false,
