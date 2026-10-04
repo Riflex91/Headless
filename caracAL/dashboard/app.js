@@ -1180,8 +1180,9 @@ function updateCharacterCard(card, character) {
     character.desired_runtime_state ||
     (character.enabled ? "RUNNING" : "STOPPED");
   const desiredSource = character.desired_runtime_state_source || "UNKNOWN";
-  card.querySelector(".character-desired-state").textContent =
-    `${desiredState} · ${desiredSource}`;
+  card.querySelector(
+    ".character-desired-state",
+  ).textContent = `${desiredState} · ${desiredSource}`;
   card.querySelector(".character-class").textContent = game?.ctype || "—";
   card.querySelector(".character-map").textContent = game?.map || "—";
   card.querySelector(".character-position").textContent = game
