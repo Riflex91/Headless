@@ -114,6 +114,17 @@ export function economyArbiterLaneForIntent(
       ? intent.metadata.skill.trim().toLowerCase()
       : "";
 
+  if (action === "MERRIT_STATUS_REQUEST") {
+    return null;
+  }
+  if (
+    (module === "MerchantMerritController" ||
+      module === "MerchantFishingController") &&
+    why.includes("RESTORE")
+  ) {
+    return null;
+  }
+
   if (module === "MerchantMerritController" || why.startsWith("MERRIT_")) {
     return "MERRIT";
   }
