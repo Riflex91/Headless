@@ -349,12 +349,16 @@ class GoalAdapterDispatchSupervisor {
           };
           try {
             await this.persistHold(hold);
-            this.emit("GOAL_ADAPTER_DISPATCH_UNKNOWN_HOLD_SET", current.identity.characterName, {
-              request_id: requestId,
-              goal_id: current.identity.goalId,
-              task_id: current.identity.taskId,
-              reason: hold.reason,
-            });
+            this.emit(
+              "GOAL_ADAPTER_DISPATCH_UNKNOWN_HOLD_SET",
+              current.identity.characterName,
+              {
+                request_id: requestId,
+                goal_id: current.identity.goalId,
+                task_id: current.identity.taskId,
+                reason: hold.reason,
+              },
+            );
           } finally {
             reject(
               dispatchError(
@@ -435,8 +439,7 @@ class GoalAdapterDispatchSupervisor {
       resultIdentity.taskId === pending.identity.taskId &&
       resultIdentity.kind === pending.identity.kind;
 
-    const unknown =
-      !identityValid || resultRequiresUnknownHold(result, error);
+    const unknown = !identityValid || resultRequiresUnknownHold(result, error);
     if (unknown) {
       const hold = {
         active: true,
@@ -450,8 +453,8 @@ class GoalAdapterDispatchSupervisor {
         reason: error
           ? "GOAL_ADAPTER_DISPATCH_RUNTIME_RESULT_ERROR"
           : !identityValid
-            ? "GOAL_ADAPTER_DISPATCH_RESULT_IDENTITY_INVALID"
-            : `GOAL_ADAPTER_DISPATCH_${text(result.outcome) || "UNKNOWN"}_HOLD`,
+          ? "GOAL_ADAPTER_DISPATCH_RESULT_IDENTITY_INVALID"
+          : `GOAL_ADAPTER_DISPATCH_${text(result.outcome) || "UNKNOWN"}_HOLD`,
       };
       await this.persistHold(hold);
       this.emit("GOAL_ADAPTER_DISPATCH_UNKNOWN_HOLD_SET", characterName, {
