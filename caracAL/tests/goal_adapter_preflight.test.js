@@ -1,12 +1,9 @@
 "use strict";
 
 const assert = require("node:assert/strict");
-const childProcess = require("node:child_process");
 const fs = require("node:fs");
-const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
-const prettier = require("prettier");
 
 const { loadTypeScriptModule } = require("./load_typescript_module");
 
@@ -159,10 +156,9 @@ function setup({
 test("Goal adapter preflight rejects unsupported request versions", async () => {
   const setupResult = setup();
 
-  const result = await setupResult.runner.run(
-    farmRequest({ version: 2 }),
-    { requestId: "preflight-1" },
-  );
+  const result = await setupResult.runner.run(farmRequest({ version: 2 }), {
+    requestId: "preflight-1",
+  });
 
   assert.equal(result.requestId, "preflight-1");
   assert.equal(result.outcome, "BLOCKED");
@@ -271,10 +267,7 @@ test("FARM_ITEM preflight requires the exact ranger worker", async () => {
 
   const mismatch = await wrongCharacter.runner.run(farmRequest());
   assert.equal(mismatch.outcome, "BLOCKED");
-  assert.equal(
-    mismatch.reason,
-    "GOAL_ADAPTER_PREFLIGHT_FARM_WORKER_MISMATCH",
-  );
+  assert.equal(mismatch.reason, "GOAL_ADAPTER_PREFLIGHT_FARM_WORKER_MISMATCH");
   assert.deepEqual(wrongCharacter.calls, []);
 
   const wrongClass = setup({
@@ -468,7 +461,10 @@ test("runtime and CharacterThread wire preflight IPC without a supervisor dispat
   assert.match(kernel, /GoalAdapterPreflightRunner/);
   assert.match(kernel, /async runGoalAdapterPreflight\(/);
   assert.match(kernel, /goalAdapterPreflightRunning/);
-  assert.match(kernel, /craftMaterialPlan:\s*\(recipe\)\s*=>\s*this\.runCraftMaterialPlan\(recipe\)/);
+  assert.match(
+    kernel,
+    /craftMaterialPlan:\s*\(recipe\)\s*=>\s*this\.runCraftMaterialPlan\(recipe\)/,
+  );
 
   const start = kernel.indexOf("async runGoalAdapterPreflight(");
   const end = kernel.indexOf("async runMaterialGatherTask(", start);
@@ -482,7 +478,10 @@ test("runtime and CharacterThread wire preflight IPC without a supervisor dispat
   assert.doesNotMatch(preflightBlock, /this\.combat\./);
 
   assert.match(thread, /case "goal_adapter_preflight"/);
-  assert.match(thread, /runGoalAdapterPreflight\(m\.request, \{ requestId \}\)/);
+  assert.match(
+    thread,
+    /runGoalAdapterPreflight\(m\.request, \{ requestId \}\)/,
+  );
   assert.match(thread, /type: "goal_adapter_preflight_result"/);
   assert.doesNotMatch(coordinator, /goal_adapter_preflight/);
 });
@@ -509,35 +508,4 @@ test("Goal adapter runtime preflight contains no gameplay or value mutation path
   assert.doesNotMatch(source, /\.executeNext\s*\(/);
   assert.doesNotMatch(source, /\.runMaterialGatherTask\s*\(/);
   assert.doesNotMatch(source, /\.executeCraftNext\s*\(/);
-});
-
-test("temporary Goal adapter preflight formatter probe", async () => {
-  const target = path.join(
-    __dirname,
-    "..",
-    "tests",
-    "goal_adapter_preflight.test.js",
-  );
-  const source = fs.readFileSync(target, "utf8");
-  const formatted = await prettier.format(source, { filepath: target });
-  const tempDir = fs.mkdtempSync(
-    path.join(os.tmpdir(), "goal-adapter-preflight-prettier-"),
-  );
-  const temp = path.join(tempDir, "goal_adapter_preflight.test.js");
-
-  try {
-    fs.writeFileSync(temp, formatted);
-    let diff = "";
-    try {
-      childProcess.execFileSync("diff", ["-u", target, temp], {
-        encoding: "utf8",
-      });
-    } catch (error) {
-      diff = String(error.stdout || "");
-    }
-    console.log("GOAL_ADAPTER_PREFLIGHT_PRETTIER_DIFF");
-    console.log(diff || "NO_DIFF");
-  } finally {
-    fs.rmSync(tempDir, { recursive: true, force: true });
-  }
 });
