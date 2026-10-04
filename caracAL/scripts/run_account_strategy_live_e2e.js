@@ -1,5 +1,11 @@
 "use strict";
 
+const {
+  ensureDashboardAvailable,
+  startManagedRuntime,
+  stopManagedRuntime,
+} = require("../src/MovementLiveTestLauncher");
+
 const baseUrl = process.env.CARACAL_HEADLESS_URL || "http://127.0.0.1:924";
 
 const CAPABILITIES = Object.freeze([
@@ -13,6 +19,19 @@ const CAPABILITIES = Object.freeze([
   "ECONOMY",
   "LOGISTICS",
 ]);
+
+function observerRuntimeEnv(env = process.env) {
+  return {
+    ...env,
+    CARACAL_OBSERVER_ONLY: "1",
+  };
+}
+
+function startObserverRuntime() {
+  return startManagedRuntime({
+    env: observerRuntimeEnv(),
+  });
+}
 
 function record(value) {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -286,6 +305,8 @@ function formatCompactResult(result) {
     "Dashboard GET only: " + (scope.dashboardGetOnly === true ? "yes" : "no"),
     "Mutation dispatched: " +
       (scope.mutationDispatched === true ? "yes" : "no"),
+    "Observer-only bootstrap: " +
+      (scope.observerOnlyBootstrap === true ? "yes" : "no"),
   ];
 
   const incomplete = array(evidence.incompleteLiveProfiles);
@@ -313,17 +334,37 @@ async function readState({ fetchImpl = fetch } = {}) {
 
 async function main() {
   const verbose = process.argv.includes("--verbose");
-  const snapshot = await readState();
-  const result = evaluateAccountStrategy(snapshot);
+  const dashboard = await ensureDashboardAvailable(readState, {
+    startRuntime: startObserverRuntime,
+  });
+  const managedRuntime = dashboard.runtime;
 
-  if (verbose) {
-    process.stdout.write(JSON.stringify(result, null, 2) + "\n");
-  } else {
-    process.stdout.write(formatCompactResult(result));
-  }
+  try {
+    if (dashboard.startedRuntime) {
+      process.stdout.write(
+        "caracAL dashboard was not running; using temporary observer-only supervisor\n",
+      );
+    }
 
-  if (result.outcome !== "PASS") {
-    process.exitCode = 1;
+    const result = evaluateAccountStrategy(dashboard.state);
+    result.scope = {
+      ...record(result.scope),
+      observerOnlyBootstrap: dashboard.startedRuntime === true,
+    };
+
+    if (verbose) {
+      process.stdout.write(JSON.stringify(result, null, 2) + "\n");
+    } else {
+      process.stdout.write(formatCompactResult(result));
+    }
+
+    if (result.outcome !== "PASS") {
+      process.exitCode = 1;
+    }
+  } finally {
+    if (managedRuntime) {
+      await stopManagedRuntime(managedRuntime);
+    }
   }
 }
 
@@ -341,6 +382,8 @@ module.exports = {
   evaluateAccountStrategy,
   formatCompactResult,
   historyEntryValid,
+  observerRuntimeEnv,
   profileEvidence,
   readState,
+  startObserverRuntime,
 };

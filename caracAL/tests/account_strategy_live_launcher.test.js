@@ -10,6 +10,7 @@ const {
   accountStrategyEvidence,
   evaluateAccountStrategy,
   formatCompactResult,
+  observerRuntimeEnv,
   profileEvidence,
 } = require("../scripts/run_account_strategy_live_e2e");
 
@@ -227,18 +228,37 @@ test("Account Strategy compact output exposes read-only GET-only safety scope", 
   assert.match(output, /Mutation dispatched: no/);
 });
 
-test("Account Strategy live launcher is strictly GET-only and has no runtime control path", () => {
+test("Account Strategy observer bootstrap forces observer-only supervisor mode", () => {
+  const env = observerRuntimeEnv({
+    TEST_ENV: "kept",
+    CARACAL_OBSERVER_ONLY: "0",
+  });
+
+  assert.equal(env.TEST_ENV, "kept");
+  assert.equal(env.CARACAL_OBSERVER_ONLY, "1");
+});
+
+test("Account Strategy live launcher is GET-only and observer bootstrap starts no characters", () => {
   const source = fs.readFileSync(
     path.join(__dirname, "..", "scripts", "run_account_strategy_live_e2e.js"),
+    "utf8",
+  );
+  const coordinator = fs.readFileSync(
+    path.join(__dirname, "..", "standalones", "CharacterCoordinator.js"),
     "utf8",
   );
 
   assert.match(source, /\/headless\/api\/state/);
   assert.match(source, /method:\s*"GET"/);
+  assert.match(source, /ensureDashboardAvailable/);
+  assert.match(source, /CARACAL_OBSERVER_ONLY:\s*"1"/);
   assert.doesNotMatch(source, /method:\s*"POST"/);
   assert.doesNotMatch(source, /controlCharacter/);
   assert.doesNotMatch(source, /run.*LiveTest/);
-  assert.doesNotMatch(source, /MovementLiveTestLauncher/);
   assert.doesNotMatch(source, /socket\.emit/);
   assert.doesNotMatch(source, /desired_runtime_state/);
+
+  assert.match(coordinator, /process\.env\.CARACAL_OBSERVER_ONLY\s*===\s*"1"/);
+  assert.match(coordinator, /const startup_chars = observer_only\s*\? \[\]/);
+  assert.match(coordinator, /observer_only,/);
 });
