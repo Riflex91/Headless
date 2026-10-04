@@ -23,11 +23,16 @@ export type SkillRangeMode =
   | "TRIPLE_ATTACK_PLUS_20"
   | "ATTACK_1_2_PLUS_32";
 
+export type ClassSkillExecutionOwner =
+  | "CLASS_SKILL_LOOP"
+  | "ECONOMY_PREBUFF";
+
 export interface ClassSkillPolicy {
   skill: string;
   targetMode: SkillTargetMode;
   rangeMode?: SkillRangeMode;
   sharedCooldown?: string;
+  executionOwner?: ClassSkillExecutionOwner;
 }
 
 export interface ClassSkillControllerStatus {
@@ -327,6 +332,14 @@ export class ClassSkillController {
 
       for (const entry of configured) {
         const policy = entry.policy;
+        if (
+          policy.executionOwner &&
+          policy.executionOwner !== "CLASS_SKILL_LOOP"
+        ) {
+          lastReason = "SKILL_EXTERNALLY_OWNED";
+          continue;
+        }
+
         const skill = skills.find((candidate) => candidate.key === policy.skill);
         if (
           !skill ||
