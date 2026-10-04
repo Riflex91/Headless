@@ -230,7 +230,8 @@ function craftRequest(action, capability, base) {
       kind: "PLAN_CRAFT",
       bridge: capability.bridge,
       characterName:
-        text(action.characterName) || text(runtimeHints(action).workerCharacter),
+        text(action.characterName) ||
+        text(runtimeHints(action).workerCharacter),
       preflight: {
         runtimeMethod: capability.preflightMethod,
         arguments: { recipe: itemName },
