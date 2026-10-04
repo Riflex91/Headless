@@ -463,7 +463,7 @@ test("unsupported Goal kinds never reach a mutation dependency", async () => {
   );
 });
 
-test("runtime and CharacterThread expose guarded dispatch without supervisor reachability", () => {
+test("runtime, thread and supervisor expose only guarded explicit one-shot dispatch", () => {
   const kernel = fs.readFileSync(
     path.join(
       __dirname,
@@ -511,9 +511,16 @@ test("runtime and CharacterThread expose guarded dispatch without supervisor rea
   assert.match(thread, /authorization\.preflight_required === true/);
   assert.match(thread, /type: "goal_adapter_dispatch_result"/);
 
-  assert.doesNotMatch(coordinator, /type:\s*"goal_adapter_dispatch"/);
-  assert.doesNotMatch(coordinator, /goal_adapter_dispatch_result/);
-  assert.doesNotMatch(dashboard, /"\/headless\/api\/goals\/adapter-dispatch"/);
+  assert.match(coordinator, /GoalAdapterDispatchSupervisor/);
+  assert.match(coordinator, /goal_adapter_dispatch_result/);
+  assert.match(
+    coordinator,
+    /goal_execution_automatic_reconcile_enabled:\s*false/,
+  );
+  assert.doesNotMatch(coordinator, /function reconcile_goal_execution/);
+  assert.match(dashboard, /"\/headless\/api\/goals\/adapter-dispatch"/);
+  assert.match(dashboard, /expectedGoalId/);
+  assert.match(dashboard, /expectedTaskId/);
 });
 
 test("Goal adapter dispatcher has no internal retry or lifecycle control path", () => {
