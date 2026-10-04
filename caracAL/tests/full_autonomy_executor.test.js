@@ -106,6 +106,26 @@ test("Observer-only, emergency stop, shutdown and in-flight execution block muta
   }
 });
 
+test("Controlled operations block Full Autonomy lifecycle mutations", () => {
+  const decision = buildFullAutonomyExecutionDecision(
+    plan([
+      recommendation("My_Mage", {
+        selected: true,
+        currentDesiredState: "STOPPED",
+      }),
+    ]),
+    {
+      policy: enabledPolicy,
+      safetyBlockReason: "LIVE_TEST_ACTIVE",
+    },
+  );
+
+  assert.equal(decision.state, "BLOCKED");
+  assert.equal(decision.reason, "FULL_AUTONOMY_SAFETY_BLOCK_ACTIVE");
+  assert.equal(decision.safetyBlockReason, "LIVE_TEST_ACTIVE");
+  assert.equal(decision.action, null);
+});
+
 test("Account Strategy readiness gates lifecycle execution", () => {
   const decision = buildFullAutonomyExecutionDecision(
     plan([], { state: "PARTIAL" }),
