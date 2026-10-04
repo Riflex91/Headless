@@ -7113,9 +7113,13 @@ function migrate_old_storage(path, localStorage) {
           combatMutationForced: false,
           equipmentMutationForced: false,
           upgradeMutationForced:
-            value_mutation_attempted && !preflight_only && expected_kind === "UPGRADE",
+            value_mutation_attempted &&
+            !preflight_only &&
+            expected_kind === "UPGRADE",
           compoundMutationForced:
-            value_mutation_attempted && !preflight_only && expected_kind === "COMPOUND",
+            value_mutation_attempted &&
+            !preflight_only &&
+            expected_kind === "COMPOUND",
           exchangeMutationForced: false,
           craftMutationForced: false,
           logisticsMutationForced: false,
