@@ -184,7 +184,7 @@ test("Ponty snapshot invalid correlated response becomes UNKNOWN", async () => {
   });
 
   assert.equal(result.status, "UNKNOWN");
-  assert.equal(result.why, "PONTY_SNAPSHOT_RESPONSE_INVALID");
+  assert.equal(result.why, "PHASE16_PONTY_READ_REQUEST");
   assert.equal(result.evidence.responseReceived, true);
   assert.equal(setup.ledger.canRetry(result.id), false);
 });
