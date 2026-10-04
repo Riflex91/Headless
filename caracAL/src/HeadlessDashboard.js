@@ -617,6 +617,7 @@ function attachHeadlessDashboard({
             expectedKind: req.body?.expectedKind,
             expectedName: req.body?.expectedName,
             expectedSlots: req.body?.expectedSlots,
+            preflightOnly: req.body?.preflightOnly === true,
           },
         );
         res.json({
