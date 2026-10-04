@@ -546,7 +546,7 @@ test("Market Intelligence live launcher bootstraps only through paused read-only
   assert.doesNotMatch(probeBlock, /"sbuy"/);
 
   const snapshotStart = boundary.indexOf(
-    "requestPontySnapshot(request: BoundaryRequest)",
+    "async requestPontySnapshot(",
   );
   const snapshotEnd = boundary.indexOf("pontyBuy(request:", snapshotStart);
   assert.ok(snapshotStart >= 0);
