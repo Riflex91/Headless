@@ -133,6 +133,59 @@ test("inventory intelligence covers every Phase 10 disposition", () => {
   }
 });
 
+test("inventory intelligence infers upgrade and compound before generic craft ingredients", () => {
+  const setup = makeController({
+    items: [
+      { name: "helmet", level: 1 },
+      { name: "ring", level: 0 },
+      { name: "forcedcraft", level: 0 },
+    ],
+    gameData: {
+      items: {
+        helmet: {
+          type: "helmet",
+          upgrade: { armor: 2 },
+        },
+        ring: {
+          type: "ring",
+          compound: { dex: 1 },
+        },
+        forcedcraft: {
+          type: "weapon",
+          upgrade: { attack: 1 },
+        },
+      },
+      craft: {
+        crafted_output: {
+          items: [
+            [1, "helmet", 0],
+            [1, "ring", 0],
+            [1, "forcedcraft", 0],
+          ],
+        },
+      },
+    },
+    inventory: {
+      intelligence: { enabled: true },
+      dispositions: {
+        CRAFT: ["forcedcraft"],
+      },
+    },
+  });
+
+  const status = setup.controller.tick();
+  const byName = Object.fromEntries(
+    status.entries.map((entry) => [entry.name, entry]),
+  );
+
+  assert.equal(byName.helmet.disposition, "UPGRADE");
+  assert.equal(byName.ring.disposition, "COMPOUND");
+  assert.equal(byName.forcedcraft.disposition, "CRAFT");
+  assert.equal(status.summary.dispositions.UPGRADE, 1);
+  assert.equal(status.summary.dispositions.COMPOUND, 1);
+  assert.equal(status.summary.dispositions.CRAFT, 1);
+});
+
 test("inventory intelligence supports explicit COMPOUND classification", () => {
   const setup = makeController({
     items: [{ name: "ring", level: 0 }],
