@@ -6857,6 +6857,15 @@ function migrate_old_storage(path, localStorage) {
   ) {
     const enforcement_probe_requested =
       options.economyArbiterEnforcementProbe === true;
+    const coupled_execution_requested =
+      options.economyPrebuffExecutionLiveTest === true;
+    if (enforcement_probe_requested && coupled_execution_requested) {
+      throw make_control_error(
+        "GEAR_SCORING_LIVE_TEST_PROBE_CONFLICT",
+        "Economy Arbiter enforcement probe and coupled Economy Prebuff execution cannot run together",
+        400,
+      );
+    }
     const char_block = character_manage[char_name];
     if (!char_block) {
       throw make_control_error(
@@ -6919,6 +6928,10 @@ function migrate_old_storage(path, localStorage) {
       original_desired_state,
       sample_ms: bounded_sample_ms,
       economy_arbiter_enforcement_probe: enforcement_probe_requested,
+      economy_prebuff_execution_live_test: coupled_execution_requested,
+      irreversible_mutation: coupled_execution_requested,
+      max_value_mutations: coupled_execution_requested ? 1 : 0,
+      blind_retry_allowed: false,
     });
     dashboard?.publishSnapshot();
 
@@ -6926,6 +6939,8 @@ function migrate_old_storage(path, localStorage) {
     let runtime_state_restored = false;
     let enforcement_probe_result = null;
     let enforcement_probe_request_id = null;
+    let coupled_execution_result = null;
+    let coupled_execution_request_id = null;
     let result = null;
 
     try {
@@ -6964,6 +6979,46 @@ function migrate_old_storage(path, localStorage) {
       const ready_block = await wait_for_gear_scoring_live_runtime(char_name);
       const baseline_signature = gear_scoring_equipment_signature(ready_block);
       const before = gear_scoring_live_snapshot(ready_block);
+
+      if (coupled_execution_requested) {
+        coupled_execution_request_id = `${request_id}-coupled-execution`;
+        const execution_promise =
+          wait_for_economy_prebuff_execution_live_test_result(
+            char_name,
+            coupled_execution_request_id,
+          );
+        const sent = safe_send(ready_block.instance, {
+          type: "economy_prebuff_execution_live_test",
+          request_id: coupled_execution_request_id,
+        });
+        if (!sent) {
+          const pending = economy_prebuff_execution_live_test_requests.get(
+            coupled_execution_request_id,
+          );
+          if (pending) {
+            clearTimeout(pending.timer);
+            economy_prebuff_execution_live_test_requests.delete(
+              coupled_execution_request_id,
+            );
+          }
+          throw make_control_error(
+            "ECONOMY_PREBUFF_EXECUTION_LIVE_TEST_DISPATCH_FAILED",
+            `Could not dispatch Economy Prebuff execution live test to ${char_name}`,
+            503,
+          );
+        }
+
+        const child_response = await execution_promise;
+        if (child_response.error || !child_response.result) {
+          throw make_control_error(
+            "ECONOMY_PREBUFF_EXECUTION_LIVE_TEST_RUNTIME_FAILED",
+            child_response.error ||
+              "Economy Prebuff execution live test returned no result",
+            500,
+          );
+        }
+        coupled_execution_result = child_response.result;
+      }
 
       if (enforcement_probe_requested) {
         enforcement_probe_request_id = `${request_id}-enforcement-probe`;
@@ -7037,13 +7092,19 @@ function migrate_old_storage(path, localStorage) {
         before,
         after,
         enforcementProbe: enforcement_probe_result,
+        coupledExecution: coupled_execution_result,
         scope: {
-          readOnly: true,
+          readOnly: !coupled_execution_requested,
           movementMutationForced: false,
           combatMutationForced: false,
-          valueMutationForced: false,
+          valueMutationForced:
+            coupled_execution_result?.scope?.valueMutationForced === true,
+          prebuffMutationForced:
+            coupled_execution_result?.scope?.prebuffMutationForced === true,
           equipmentMutationForced: false,
           runtimeOverrideApplied: true,
+          maxValueMutations: coupled_execution_requested ? 1 : 0,
+          blindRetryAllowed: false,
         },
         cleanup: {
           equipmentBaselineRestored: equipment_baseline_restored,
@@ -7066,13 +7127,19 @@ function migrate_old_storage(path, localStorage) {
         before: null,
         after: null,
         enforcementProbe: enforcement_probe_result,
+        coupledExecution: coupled_execution_result,
         scope: {
-          readOnly: true,
+          readOnly: !coupled_execution_requested,
           movementMutationForced: false,
           combatMutationForced: false,
-          valueMutationForced: false,
+          valueMutationForced:
+            coupled_execution_result?.scope?.valueMutationForced === true,
+          prebuffMutationForced:
+            coupled_execution_result?.scope?.prebuffMutationForced === true,
           equipmentMutationForced: false,
           runtimeOverrideApplied: runtime_override_applied,
+          maxValueMutations: coupled_execution_requested ? 1 : 0,
+          blindRetryAllowed: false,
         },
         cleanup: {
           equipmentBaselineRestored: false,
@@ -7080,6 +7147,18 @@ function migrate_old_storage(path, localStorage) {
         },
       };
     } finally {
+      if (coupled_execution_request_id) {
+        const pending = economy_prebuff_execution_live_test_requests.get(
+          coupled_execution_request_id,
+        );
+        if (pending) {
+          clearTimeout(pending.timer);
+          economy_prebuff_execution_live_test_requests.delete(
+            coupled_execution_request_id,
+          );
+        }
+      }
+
       if (enforcement_probe_request_id) {
         const pending = economy_arbiter_enforcement_probe_requests.get(
           enforcement_probe_request_id,
