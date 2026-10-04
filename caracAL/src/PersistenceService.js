@@ -231,6 +231,12 @@ function decodeJson(value) {
   return JSON.parse(String(value));
 }
 
+function optionalNonNegativeInteger(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : null;
+}
+
 async function readExistingDatabase(databasePath) {
   try {
     return await fs.readFile(databasePath);
@@ -904,9 +910,7 @@ class PersistenceService {
         `,
         [
           String(observation.itemName || observation.item || ""),
-          Number.isFinite(Number(observation.level))
-            ? Number(observation.level)
-            : null,
+          optionalNonNegativeInteger(observation.level),
           Number(observation.price) || 0,
           Number(observation.quantity) || 0,
           observation.server ? String(observation.server) : null,
@@ -971,9 +975,7 @@ class PersistenceService {
         `,
         [
           String(observation.itemName || observation.item || ""),
-          Number.isFinite(Number(observation.level))
-            ? Number(observation.level)
-            : null,
+          optionalNonNegativeInteger(observation.level),
           Number(observation.price) || 0,
           Number(observation.quantity) || 0,
           observation.server ? String(observation.server) : null,
