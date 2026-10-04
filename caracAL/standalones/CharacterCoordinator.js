@@ -8042,9 +8042,7 @@ function migrate_old_storage(path, localStorage) {
             ? "TIMEOUT"
             : "FAIL",
         reason:
-          error.code ||
-          error.message ||
-          "MARKET_INTELLIGENCE_LIVE_TEST_FAILED",
+          error.code || error.message || "MARKET_INTELLIGENCE_LIVE_TEST_FAILED",
         error: error.message || String(error),
         character: char_name,
         realm: char_block.realm || null,
