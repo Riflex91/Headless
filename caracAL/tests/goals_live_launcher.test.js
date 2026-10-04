@@ -116,16 +116,25 @@ function goal(overrides = {}) {
 
 function snapshot(goals = []) {
   const invalid = goals.some((entry) => entry.state === "INVALID");
+  let state = "READY";
+  if (goals.length === 0) {
+    state = "EMPTY";
+  } else if (invalid) {
+    state = "PARTIAL";
+  }
+
+  const reason =
+    state === "EMPTY"
+      ? "GOALS_EMPTY"
+      : state === "PARTIAL"
+      ? "GOALS_PARTIAL_INVALID"
+      : "GOAL_PLANS_READY";
+
   return {
     goals: {
       timestamp: 123456,
-      state: goals.length === 0 ? "EMPTY" : invalid ? "PARTIAL" : "READY",
-      reason:
-        goals.length === 0
-          ? "GOALS_EMPTY"
-          : invalid
-            ? "GOALS_PARTIAL_INVALID"
-            : "GOAL_PLANS_READY",
+      state,
+      reason,
       readOnly: true,
       executionEnabled: false,
       gameplayMutationDispatched: false,
