@@ -383,6 +383,28 @@ test("paused, cancelled and persisted-completed goals emit no tasks", () => {
   );
 });
 
+test("Phase 19 goal projection is wired Persistence -> Coordinator -> Dashboard", () => {
+  const persistence = fs.readFileSync(
+    path.join(__dirname, "..", "src", "PersistenceService.js"),
+    "utf8",
+  );
+  const coordinator = fs.readFileSync(
+    path.join(__dirname, "..", "standalones", "CharacterCoordinator.js"),
+    "utf8",
+  );
+  const dashboard = fs.readFileSync(
+    path.join(__dirname, "..", "src", "HeadlessDashboard.js"),
+    "utf8",
+  );
+
+  assert.match(persistence, /listGoals\(/);
+  assert.match(coordinator, /buildGoalPlan/);
+  assert.match(coordinator, /persistence\.listGoals\(\)/);
+  assert.match(coordinator, /getGoalPlanState:\s*goal_plan_state/);
+  assert.match(dashboard, /goals:\s*goalPlanState/);
+  assert.match(dashboard, /getGoalPlanState\?\.\(\)/);
+});
+
 test("invalid goals fail closed and GoalPlanner has no mutation executor", () => {
   const context = setup();
   const plan = buildGoalPlan(
