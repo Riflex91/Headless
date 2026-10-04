@@ -481,9 +481,7 @@ test("Market Intelligence live launcher bootstraps only through paused read-only
   assert.match(coordinator, /market_intelligence_source_probe/);
   assert.match(thread, /case "market_intelligence_source_probe"/);
 
-  const probeStart = kernel.indexOf(
-    "async runMarketIntelligenceSourceProbe(",
-  );
+  const probeStart = kernel.indexOf("async runMarketIntelligenceSourceProbe(");
   const probeEnd = kernel.indexOf(
     "async executeEconomyPrebuffNext(",
     probeStart,
