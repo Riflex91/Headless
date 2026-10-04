@@ -123,7 +123,12 @@ function sameRiskSelection(
 }
 
 function actionSummary(
-  action: Pick<ActionRecord, "id" | "status" | "why" | "error">,
+  action: {
+    id: string;
+    status: ActionRecord["status"];
+    why: string;
+    error?: string | null;
+  },
 ): EconomyPrebuffExecutionAction {
   return {
     id: action.id,
