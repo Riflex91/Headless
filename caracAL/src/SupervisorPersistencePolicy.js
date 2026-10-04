@@ -145,13 +145,19 @@ function marketLocalHistorySyncSignature(observations) {
 
 function selectMarketLocalHistoryForRuntime(
   rows,
-  { server = null, liveSignatures = [], limit = 250 } = {},
+  {
+    server = null,
+    liveSignatures = [],
+    pontySignatures = [],
+    limit = 250,
+  } = {},
 ) {
   const normalizedServer =
     typeof server === "string" && server.trim() ? server.trim() : null;
-  const activeLive = new Set(
-    Array.isArray(liveSignatures) ? liveSignatures : [],
-  );
+  const activeObservations = new Set([
+    ...(Array.isArray(liveSignatures) ? liveSignatures : []),
+    ...(Array.isArray(pontySignatures) ? pontySignatures : []),
+  ]);
   const boundedLimit = Math.min(
     1000,
     Math.max(1, Math.trunc(Number(limit) || 250)),
@@ -222,7 +228,9 @@ function selectMarketLocalHistoryForRuntime(
       },
     };
 
-    if (activeLive.has(marketObservationSignature(observation))) continue;
+    if (activeObservations.has(marketObservationSignature(observation))) {
+      continue;
+    }
 
     observations.push(observation);
     if (observations.length >= boundedLimit) break;
