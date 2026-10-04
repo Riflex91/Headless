@@ -257,14 +257,9 @@ test("Economy Prebuff live verifier accepts READY upgrade planning while lane st
       unknown: 0,
     },
     selectedSkill: "massproductionpp",
-    candidates: [
-      candidate("massproductionpp"),
-      candidate("massproduction"),
-    ],
+    candidates: [candidate("massproductionpp"), candidate("massproduction")],
   });
-  const evidence = economyPrebuffEvidence(
-    snapshot({ risk, economyPrebuff }),
-  );
+  const evidence = economyPrebuffEvidence(snapshot({ risk, economyPrebuff }));
 
   assert.equal(evidenceComplete(evidence), true);
   assert.equal(evidence.selectedSkill, "massproductionpp");
@@ -293,9 +288,7 @@ test("Economy Prebuff live verifier accepts fail-closed Risk Policy UNKNOWN", ()
       unknown: 1,
     },
   });
-  const evidence = economyPrebuffEvidence(
-    snapshot({ risk, economyPrebuff }),
-  );
+  const evidence = economyPrebuffEvidence(snapshot({ risk, economyPrebuff }));
 
   assert.equal(evidenceComplete(evidence), true);
   assert.equal(evidence.stateReasonMatchesRiskPolicy, true);
@@ -346,12 +339,7 @@ test("Economy Prebuff live verifier rejects source-policy or restoration drift",
 
 test("Economy Prebuff live launcher stays on the read-only Gear Scoring supervisor", () => {
   const launcher = fs.readFileSync(
-    path.join(
-      __dirname,
-      "..",
-      "scripts",
-      "run_economy_prebuff_live_e2e.js",
-    ),
+    path.join(__dirname, "..", "scripts", "run_economy_prebuff_live_e2e.js"),
     "utf8",
   );
 
