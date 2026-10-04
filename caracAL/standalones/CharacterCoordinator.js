@@ -7974,10 +7974,7 @@ function migrate_old_storage(path, localStorage) {
 
       const final_block = character_manage[char_name];
       const projection = final_block?.market_intelligence_runtime;
-      if (
-        !projection ||
-        !["READY", "EMPTY"].includes(projection.state)
-      ) {
+      if (!projection || !["READY", "EMPTY"].includes(projection.state)) {
         throw make_control_error(
           "MARKET_INTELLIGENCE_LIVE_TEST_PROJECTION_LOST",
           `Market Intelligence projection was lost for ${char_name}`,
