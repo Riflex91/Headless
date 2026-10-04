@@ -202,6 +202,48 @@ async function make_runner(upper, CODE_file, version, is_typescript) {
           });
         break;
       }
+      case "economy_prebuff_execution_live_test": {
+        const requestId =
+          typeof m.request_id === "string" && m.request_id
+            ? m.request_id
+            : `economy-prebuff-execution-live-${Date.now()}`;
+        const runtime = runner_context.__caracalBotRuntime;
+        if (!runtime?.runEconomyPrebuffExecutionLiveTest) {
+          sendIpcMessage(process, {
+            type: "economy_prebuff_execution_live_test_result",
+            request_id: requestId,
+            error: "ECONOMY_PREBUFF_EXECUTION_LIVE_TEST_RUNTIME_NOT_READY",
+          });
+          break;
+        }
+
+        void runtime
+          .runEconomyPrebuffExecutionLiveTest({
+            requestId,
+            expectedKind:
+              m.expected_kind === "COMPOUND" ? "COMPOUND" : "UPGRADE",
+            expectedName:
+              typeof m.expected_name === "string" ? m.expected_name : "",
+            expectedSlots: Array.isArray(m.expected_slots)
+              ? m.expected_slots.map((slot) => Number(slot))
+              : [],
+          })
+          .then((result) => {
+            sendIpcMessage(process, {
+              type: "economy_prebuff_execution_live_test_result",
+              request_id: requestId,
+              result,
+            });
+          })
+          .catch((error) => {
+            sendIpcMessage(process, {
+              type: "economy_prebuff_execution_live_test_result",
+              request_id: requestId,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          });
+        break;
+      }
       case "economy_arbiter_enforcement_probe": {
         const requestId =
           typeof m.request_id === "string" && m.request_id
