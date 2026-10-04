@@ -109,6 +109,8 @@ test("supervisor propagates realm and persists deduped LIVE_VISIBLE samples only
   const historyBlock = coordinator.slice(historyStart, historyEnd);
 
   assert.match(historyBlock, /listMarketHistory/);
+  assert.match(historyBlock, /listPontyHistory/);
+  assert.match(historyBlock, /pontySignatures/);
   assert.match(historyBlock, /selectMarketLocalHistoryForRuntime/);
   assert.match(historyBlock, /market_intelligence_history/);
   assert.doesNotMatch(historyBlock, /tradeList/);
