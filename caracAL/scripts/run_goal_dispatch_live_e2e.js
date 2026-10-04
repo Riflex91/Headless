@@ -158,14 +158,17 @@ function armedPrerequisites(snapshot) {
   if (evidence.executionState !== "READY") {
     errors.push("GOAL_EXECUTION_NOT_READY");
   }
-  if (!evidence.dispatchAllowed) errors.push("GOAL_EXECUTION_DISPATCH_NOT_ALLOWED");
+  if (!evidence.dispatchAllowed)
+    errors.push("GOAL_EXECUTION_DISPATCH_NOT_ALLOWED");
   if (evidence.adapterState !== "READY") errors.push("GOAL_ADAPTER_NOT_READY");
   if (!evidence.goalId) errors.push("GOAL_ID_MISSING");
   if (!evidence.taskId) errors.push("GOAL_TASK_ID_MISSING");
   if (!evidence.kind) errors.push("GOAL_KIND_MISSING");
   if (!evidence.targetCharacter) errors.push("GOAL_TARGET_RUNTIME_MISSING");
-  if (evidence.dispatchPending !== 0) errors.push("GOAL_DISPATCH_ALREADY_RUNNING");
-  if (evidence.unknownHoldActive) errors.push("GOAL_DISPATCH_UNKNOWN_HOLD_ACTIVE");
+  if (evidence.dispatchPending !== 0)
+    errors.push("GOAL_DISPATCH_ALREADY_RUNNING");
+  if (evidence.unknownHoldActive)
+    errors.push("GOAL_DISPATCH_UNKNOWN_HOLD_ACTIVE");
 
   return {
     ...evidence,
@@ -229,9 +232,13 @@ function evaluateArmedResult(before, dispatchResponse, after) {
     Number(runtimeScope.maxExecutionInvocations) === 1 &&
     runtimeScope.blindRetryUsed === false;
 
-  const terminalOutcome = ["PASS", "BLOCKED", "FAIL", "UNKNOWN", "TIMEOUT"].includes(
-    runtimeOutcome,
-  );
+  const terminalOutcome = [
+    "PASS",
+    "BLOCKED",
+    "FAIL",
+    "UNKNOWN",
+    "TIMEOUT",
+  ].includes(runtimeOutcome);
   const unknownOutcome =
     ["UNKNOWN", "TIMEOUT"].includes(runtimeOutcome) ||
     responseError !== null ||
