@@ -122,101 +122,92 @@ test("snapshot signature changes for inventory or equipment changes", () => {
   assert.notEqual(base, equipmentChanged);
 });
 
-test(
-  "live market persistence dedupes unchanged listings but allows reappearance",
-  () => {
-    const observation = {
-      itemName: "gem0",
-      level: 1,
-      price: 2500,
-      quantity: 2,
-      server: "EU I",
-      seller: "Trader",
-      timestamp: 1000,
-      source: "LIVE_VISIBLE",
-      metadata: {
-        merchantId: "M-1",
-        slot: "trade2",
-        rid: "RID-1",
-      },
-    };
+test("live market persistence dedupes unchanged listings but allows reappearance", () => {
+  const observation = {
+    itemName: "gem0",
+    level: 1,
+    price: 2500,
+    quantity: 2,
+    server: "EU I",
+    seller: "Trader",
+    timestamp: 1000,
+    source: "LIVE_VISIBLE",
+    metadata: {
+      merchantId: "M-1",
+      slot: "trade2",
+      rid: "RID-1",
+    },
+  };
 
-    const first = selectNewLiveMarketObservations([], [observation]);
-    assert.deepEqual(first.observations, [observation]);
-    assert.equal(first.signatures.length, 1);
+  const first = selectNewLiveMarketObservations([], [observation]);
+  assert.deepEqual(first.observations, [observation]);
+  assert.equal(first.signatures.length, 1);
 
-    const unchanged = selectNewLiveMarketObservations(first.signatures, [
+  const unchanged = selectNewLiveMarketObservations(first.signatures, [
+    {
+      ...observation,
+      timestamp: 2000,
+    },
+  ]);
+  assert.deepEqual(unchanged.observations, []);
+  assert.deepEqual(unchanged.signatures, first.signatures);
+
+  const disappeared = selectNewLiveMarketObservations(unchanged.signatures, []);
+  assert.deepEqual(disappeared.observations, []);
+  assert.deepEqual(disappeared.signatures, []);
+
+  const reappeared = selectNewLiveMarketObservations(
+    disappeared.signatures,
+    [
       {
         ...observation,
-        timestamp: 2000,
+        timestamp: 3000,
       },
-    ]);
-    assert.deepEqual(unchanged.observations, []);
-    assert.deepEqual(unchanged.signatures, first.signatures);
+    ],
+  );
+  assert.equal(reappeared.observations.length, 1);
+  assert.equal(
+    marketObservationSignature(reappeared.observations[0]),
+    first.signatures[0],
+  );
+});
 
-    const disappeared = selectNewLiveMarketObservations(
-      unchanged.signatures,
-      [],
-    );
-    assert.deepEqual(disappeared.observations, []);
-    assert.deepEqual(disappeared.signatures, []);
+test("live market persistence treats changed price or quantity as new evidence", () => {
+  const base = {
+    itemName: "gem0",
+    level: 0,
+    price: 100,
+    quantity: 1,
+    server: "EU I",
+    seller: "Trader",
+    source: "LIVE_VISIBLE",
+    metadata: {
+      merchantId: "M-1",
+      slot: "trade1",
+    },
+  };
+  const initial = selectNewLiveMarketObservations([], [base]);
 
-    const reappeared = selectNewLiveMarketObservations(
-      disappeared.signatures,
-      [
-        {
-          ...observation,
-          timestamp: 3000,
-        },
-      ],
-    );
-    assert.equal(reappeared.observations.length, 1);
-    assert.equal(
-      marketObservationSignature(reappeared.observations[0]),
-      first.signatures[0],
-    );
-  },
-);
+  const changed = selectNewLiveMarketObservations(initial.signatures, [
+    {
+      ...base,
+      price: 120,
+    },
+    {
+      ...base,
+      quantity: 3,
+    },
+    {
+      ...base,
+      source: "LOCAL_HISTORY",
+    },
+  ]);
 
-test(
-  "live market persistence treats changed price or quantity as new evidence",
-  () => {
-    const base = {
-      itemName: "gem0",
-      level: 0,
-      price: 100,
-      quantity: 1,
-      server: "EU I",
-      seller: "Trader",
-      source: "LIVE_VISIBLE",
-      metadata: {
-        merchantId: "M-1",
-        slot: "trade1",
-      },
-    };
-    const initial = selectNewLiveMarketObservations([], [base]);
-
-    const changed = selectNewLiveMarketObservations(initial.signatures, [
-      {
-        ...base,
-        price: 120,
-      },
-      {
-        ...base,
-        quantity: 3,
-      },
-      {
-        ...base,
-        source: "LOCAL_HISTORY",
-      },
-    ]);
-
-    assert.equal(changed.observations.length, 2);
-    assert.equal(changed.signatures.length, 2);
-    assert.notEqual(changed.signatures[0], initial.signatures[0]);
-    assert.notEqual(changed.signatures[1], initial.signatures[0]);
-  },
-);
+  assert.equal(changed.observations.length, 2);
+  assert.equal(changed.signatures.length, 2);
+  assert.notEqual(changed.signatures[0], initial.signatures[0]);
+  assert.notEqual(changed.signatures[1], initial.signatures[0]);
+});
 
 test("character profile keeps only stable supervisor fields", () => {
   const profile = buildCharacterProfile(
