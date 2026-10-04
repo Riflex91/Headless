@@ -75,8 +75,7 @@ function prebuff(kind = "UPGRADE") {
       riskPolicyState: "READY",
       unknown: 0,
     },
-    selectedSkill:
-      kind === "UPGRADE" ? "massproductionpp" : "massproduction",
+    selectedSkill: kind === "UPGRADE" ? "massproductionpp" : "massproduction",
     candidates: [],
     policy: {
       preferEnhanced: true,
@@ -124,8 +123,7 @@ function execution(kind = "UPGRADE") {
     activeLane: null,
     kind,
     name: kind === "UPGRADE" ? "helmet" : "ringsj",
-    selectedSkill:
-      kind === "UPGRADE" ? "massproductionpp" : "massproduction",
+    selectedSkill: kind === "UPGRADE" ? "massproductionpp" : "massproduction",
     prebuffAction: {
       id: "skill-1",
       status: "CONFIRMED",
@@ -176,10 +174,11 @@ function setup({
 
   const runner = new EconomyPrebuffExecutionLiveTestRunner({
     game: {
-      inventory: () => inventory.map((entry) => ({
-        slot: entry.slot,
-        item: entry.item ? { ...entry.item } : null,
-      })),
+      inventory: () =>
+        inventory.map((entry) => ({
+          slot: entry.slot,
+          item: entry.item ? { ...entry.item } : null,
+        })),
     },
     refreshPlanning() {
       refreshCalls += 1;
@@ -193,7 +192,9 @@ function setup({
     arbiter: {
       status: () => currentArbiter,
       tick() {
-        currentArbiter = arbiter(override?.economyArbiter?.enforcementEnabled === true);
+        currentArbiter = arbiter(
+          override?.economyArbiter?.enforcementEnabled === true,
+        );
         return currentArbiter;
       },
       setConfigOverride(value) {
@@ -254,10 +255,7 @@ test("coupled live runner confirms expected upgrade and one observed mutation", 
   });
 
   assert.equal(result.outcome, "PASS");
-  assert.equal(
-    result.reason,
-    "ECONOMY_PREBUFF_EXECUTION_LIVE_E2E_CONFIRMED",
-  );
+  assert.equal(result.reason, "ECONOMY_PREBUFF_EXECUTION_LIVE_E2E_CONFIRMED");
   assert.equal(result.evidence.expectedCandidateMatched, true);
   assert.equal(result.evidence.arbiterEnforcementObserved, true);
   assert.equal(result.evidence.prebuffActionConfirmed, true);
@@ -359,18 +357,12 @@ test("confirmed coupled action without observed inventory change is TIMEOUT", as
 test("slot normalization is exact for upgrade and compound expectations", () => {
   const { normalizeEconomyPrebuffExecutionSlots } = loadRunner();
 
-  assert.deepEqual(
-    normalizeEconomyPrebuffExecutionSlots("UPGRADE", [2]),
-    [2],
-  );
+  assert.deepEqual(normalizeEconomyPrebuffExecutionSlots("UPGRADE", [2]), [2]);
   assert.deepEqual(
     normalizeEconomyPrebuffExecutionSlots("COMPOUND", [5, 3, 4]),
     [3, 4, 5],
   );
-  assert.equal(
-    normalizeEconomyPrebuffExecutionSlots("UPGRADE", [2, 3]),
-    null,
-  );
+  assert.equal(normalizeEconomyPrebuffExecutionSlots("UPGRADE", [2, 3]), null);
   assert.equal(
     normalizeEconomyPrebuffExecutionSlots("COMPOUND", [3, 3, 4]),
     null,
