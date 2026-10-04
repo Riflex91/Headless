@@ -970,6 +970,14 @@ function migrate_old_storage(path, localStorage) {
 
     if (
       char_block &&
+      normalized.data?.economyPrebuff &&
+      typeof normalized.data.economyPrebuff === "object"
+    ) {
+      char_block.economy_prebuff_runtime = normalized.data.economyPrebuff;
+    }
+
+    if (
+      char_block &&
       normalized.data?.economyArbiter &&
       typeof normalized.data.economyArbiter === "object"
     ) {
@@ -1086,6 +1094,7 @@ function migrate_old_storage(path, localStorage) {
         normalized.data?.groupCombat ||
         normalized.data?.farmIntelligence ||
         normalized.data?.inventoryIntelligence ||
+        normalized.data?.economyPrebuff ||
         normalized.data?.merchantMerrit ||
         normalized.data?.merchantFishing)
     ) {
@@ -1260,6 +1269,8 @@ function migrate_old_storage(path, localStorage) {
     char_block.expected_value_runtime =
       char_block.expected_value_runtime || null;
     char_block.risk_policy_runtime = char_block.risk_policy_runtime || null;
+    char_block.economy_prebuff_runtime =
+      char_block.economy_prebuff_runtime || null;
     char_block.economy_arbiter_runtime =
       char_block.economy_arbiter_runtime || null;
     char_block.upgrade_runtime = char_block.upgrade_runtime || null;
@@ -1755,6 +1766,9 @@ function migrate_old_storage(path, localStorage) {
       ),
       riskPolicy: JSON.parse(
         JSON.stringify(char_block?.risk_policy_runtime || null),
+      ),
+      economyPrebuff: JSON.parse(
+        JSON.stringify(char_block?.economy_prebuff_runtime || null),
       ),
       economyArbiter: JSON.parse(
         JSON.stringify(char_block?.economy_arbiter_runtime || null),
