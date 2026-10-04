@@ -7,6 +7,8 @@ const test = require("node:test");
 
 const {
   normalizeCandidate,
+  normalizeVerificationPolicyPreflight,
+  verificationPolicyCandidates,
 } = require("../scripts/run_economy_prebuff_execution_preflight");
 
 function result({
@@ -202,6 +204,147 @@ test("preflight explains an empty upstream candidate chain without mutation", ()
   assert.equal(preflight.scope.mutationDispatched, false);
 });
 
+test("preflight discovers only exact policy-missing verification candidates", () => {
+  const snapshot = result({
+    riskState: "EMPTY",
+    selected: null,
+    prebuffState: "IDLE",
+    selectedSkill: null,
+  });
+  snapshot.after.upgrade = {
+    state: "EMPTY",
+    reason: "UPGRADE_NO_ELIGIBLE_CANDIDATE",
+    decisions: [
+      {
+        itemSlot: 2,
+        name: "helmet",
+        protections: [],
+        reason: "UPGRADE_MAX_LEVEL_POLICY_MISSING",
+      },
+      {
+        itemSlot: 19,
+        name: "gloves",
+        protections: ["FUTURE_GEAR"],
+        reason: "UPGRADE_MAX_LEVEL_POLICY_MISSING",
+      },
+    ],
+  };
+  snapshot.after.compound = {
+    state: "EMPTY",
+    reason: "COMPOUND_NO_ELIGIBLE_CANDIDATE",
+    decisions: [
+      {
+        itemSlots: [5],
+        name: "hpamulet",
+        protections: [],
+        reason: "COMPOUND_TRIPLE_MISSING",
+      },
+    ],
+  };
+
+  assert.deepEqual(verificationPolicyCandidates(snapshot), [
+    {
+      kind: "UPGRADE",
+      name: "helmet",
+      slots: [2],
+    },
+  ]);
+});
+
+test("temporary verification policy emits command only after read-only coupled confirmation", () => {
+  const expected = {
+    kind: "UPGRADE",
+    name: "helmet",
+    slots: [2],
+  };
+  const diagnostics = {
+    upgrade: {
+      state: "EMPTY",
+      reason: "UPGRADE_NO_ELIGIBLE_CANDIDATE",
+    },
+  };
+  const source = {
+    outcome: "PASS",
+    scope: {
+      readOnly: true,
+      prebuffMutationForced: false,
+      valueMutationForced: false,
+    },
+    cleanup: {
+      equipmentBaselineRestored: true,
+      runtimeStateRestored: true,
+    },
+    coupledExecution: {
+      outcome: "PASS",
+      reason: "ECONOMY_PREBUFF_EXECUTION_LIVE_PREFLIGHT_CONFIRMED",
+      execution: null,
+      before: {
+        riskPolicy: {
+          state: "READY",
+          reason: "RISK_POLICY_CANDIDATE_ALLOWED",
+          selected: {
+            kind: "UPGRADE",
+            name: "helmet",
+            currentLevel: 1,
+            targetLevel: 2,
+            itemSlots: [2],
+            expectedDeltaGold: 25,
+            successProbability: 0.8,
+            failureLossGold: 10,
+            decision: "ALLOW",
+          },
+          summary: {
+            unknown: 0,
+          },
+        },
+        economyPrebuff: {
+          state: "READY",
+          reason: "ECONOMY_PREBUFF_READY",
+          selectedSkill: "massproductionpp",
+          demand: {
+            kind: "UPGRADE",
+            name: "helmet",
+            unknown: 0,
+          },
+        },
+      },
+      scope: {
+        readOnly: true,
+      },
+      cleanup: {
+        verificationPolicyConfigOverrideCleared: true,
+        verificationPolicyPlanningRestored: true,
+      },
+    },
+  };
+
+  const preflight = normalizeVerificationPolicyPreflight(
+    source,
+    "My_Merchant",
+    expected,
+    diagnostics,
+  );
+
+  assert.equal(preflight.outcome, "READY");
+  assert.equal(preflight.verificationPolicy.temporary, true);
+  assert.equal(preflight.verificationPolicy.cleanupConfirmed, true);
+  assert.equal(
+    preflight.command,
+    "npm run test:live:economy-prebuff-execution -- My_Merchant UPGRADE helmet 2",
+  );
+
+  source.coupledExecution.cleanup.verificationPolicyPlanningRestored = false;
+  assert.equal(
+    normalizeVerificationPolicyPreflight(
+      source,
+      "My_Merchant",
+      expected,
+      diagnostics,
+    ).outcome,
+    "NO_CANDIDATE",
+  );
+});
+
 test("preflight refuses malformed slot cardinality and stale Prebuff demand", () => {
   const invalidSlots = normalizeCandidate(
     result({
@@ -243,7 +386,8 @@ test("preflight source remains on read-only Gear Scoring supervisor", () => {
   assert.match(source, /inventoryIntelligence/);
   assert.match(source, /expectedValue/);
   assert.match(source, /diagnostics/);
-  assert.doesNotMatch(source, /economy-prebuff-execution",/);
+  assert.match(source, /preflightOnly: true/);
+  assert.match(source, /verificationPolicyCandidates/);
   assert.doesNotMatch(source, /executeNext/);
   assert.doesNotMatch(source, /useSkill/);
 });
