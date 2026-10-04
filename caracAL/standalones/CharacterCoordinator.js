@@ -7902,8 +7902,7 @@ function migrate_old_storage(path, localStorage) {
       Math.min(15000, Number(sample_ms) || 5500),
     );
     market_intelligence_live_test_sequence += 1;
-    const request_id =
-      `market-intelligence-live-${started_at}-${market_intelligence_live_test_sequence}`;
+    const request_id = `market-intelligence-live-${started_at}-${market_intelligence_live_test_sequence}`;
 
     char_block.market_intelligence_live_test = {
       request_id,
