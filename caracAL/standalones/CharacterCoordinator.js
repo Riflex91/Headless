@@ -585,6 +585,7 @@ function migrate_old_storage(path, localStorage) {
       npc_trading_live_test_active ||
       market_trading_live_test_active ||
       account_gear_reservation_live_test_active ||
+      account_strategy_live_test_active ||
       fishing_live_test_active ||
       material_worker_active_count > 0
     )
@@ -2099,10 +2100,10 @@ function migrate_old_storage(path, localStorage) {
       if (
         char_block?.instance &&
         char_block.connected &&
-        Number.isFinite(Number(live?.level)) &&
+        Number.isFinite(live?.level) &&
         typeof live?.map === "string" &&
         live.map.length > 0 &&
-        Number.isFinite(Number(live?.gold)) &&
+        Number.isFinite(live?.gold) &&
         has_stats
       ) {
         return char_block;
@@ -8140,10 +8141,10 @@ function migrate_old_storage(path, localStorage) {
       const stats = profile?.stats;
       const live_profile_complete =
         profile?.online === true &&
-        Number.isFinite(Number(profile?.level)) &&
+        Number.isFinite(profile?.level) &&
         typeof profile?.map === "string" &&
         profile.map.length > 0 &&
-        Number.isFinite(Number(profile?.gold)) &&
+        Number.isFinite(profile?.gold) &&
         stats &&
         typeof stats === "object" &&
         Object.keys(stats).length > 0;
