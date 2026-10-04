@@ -677,6 +677,495 @@ function migrate_old_storage(path, localStorage) {
     return dispatch_full_autonomy_decision(decision, trigger);
   }
 
+  async function wait_for_full_autonomy_probe_connection(
+    char_name,
+    timeout_ms = 45000,
+  ) {
+    const started_at = Date.now();
+    while (Date.now() - started_at < timeout_ms) {
+      const char_block = character_manage[char_name];
+      if (
+        char_block?.instance &&
+        char_block.connected === true &&
+        char_block.desired_runtime_state === DESIRED_RUNTIME_STATES.RUNNING &&
+        char_block.desired_runtime_state_source === "FULL_AUTONOMY"
+      ) {
+        return char_block;
+      }
+      await sleep(100);
+    }
+
+    throw make_control_error(
+      "FULL_AUTONOMY_LIVE_TEST_CONNECTION_TIMEOUT",
+      `Full Autonomy lifecycle-only probe did not connect: ${char_name}`,
+      504,
+    );
+  }
+
+  async function wait_for_full_autonomy_probe_exit(
+    char_name,
+    timeout_ms = 5000,
+  ) {
+    const started_at = Date.now();
+    while (Date.now() - started_at < timeout_ms) {
+      if (!character_manage[char_name]?.instance) return true;
+      await sleep(50);
+    }
+    return !character_manage[char_name]?.instance;
+  }
+
+  function full_autonomy_live_probe_candidate(
+    plan,
+    requested_char_name = null,
+  ) {
+    const recommendations = Array.isArray(plan?.recommendations)
+      ? plan.recommendations
+      : [];
+    const eligible = recommendations
+      .filter(
+        (entry) =>
+          entry?.selected === true &&
+          entry?.manualStopProtected !== true &&
+          entry?.recommendedDesiredState === DESIRED_RUNTIME_STATES.RUNNING &&
+          entry?.currentDesiredState === DESIRED_RUNTIME_STATES.STOPPED &&
+          character_manage[entry?.name]?.account_owned === true &&
+          !character_manage[entry?.name]?.instance,
+      )
+      .sort((left, right) => {
+        if (left.role === "MERCHANT" && right.role !== "MERCHANT") return -1;
+        if (right.role === "MERCHANT" && left.role !== "MERCHANT") return 1;
+        return String(left.name).localeCompare(String(right.name));
+      });
+
+    if (requested_char_name) {
+      return (
+        eligible.find((entry) => entry.name === requested_char_name) || null
+      );
+    }
+    return eligible[0] || null;
+  }
+
+  function full_autonomy_linkage_evidence(plan) {
+    const recommendations = Array.isArray(plan?.recommendations)
+      ? plan.recommendations
+      : [];
+    const signals_complete =
+      recommendations.length > 0 &&
+      recommendations.every(
+        (entry) =>
+          entry?.signals?.lifecycle &&
+          entry?.signals?.farming &&
+          entry?.signals?.economy &&
+          entry?.signals?.encounter,
+      );
+
+    return {
+      accountStrategy:
+        plan?.state === "READY" &&
+        account_strategy_state()?.state === "READY" &&
+        Array.isArray(account_strategy_state()?.profiles) &&
+        account_strategy_state().profiles.length === 8,
+      lifecycle: signals_complete,
+      farming:
+        signals_complete &&
+        recommendations.every((entry) => !!entry.signals.farming),
+      merchant: plan?.merchantIndependent === true,
+      economy:
+        signals_complete &&
+        recommendations.every((entry) => !!entry.signals.economy),
+      encounters:
+        signals_complete &&
+        recommendations.every((entry) => !!entry.signals.encounter),
+    };
+  }
+
+  async function run_full_autonomy_live_test(
+    requested_char_name = null,
+    settle_ms = 750,
+  ) {
+    if (!observer_only) {
+      throw make_control_error(
+        "FULL_AUTONOMY_LIVE_TEST_OBSERVER_ONLY_REQUIRED",
+        "Full Autonomy live test requires CARACAL_OBSERVER_ONLY=1",
+        409,
+      );
+    }
+    if (full_autonomy_live_test_active) {
+      throw make_control_error(
+        "FULL_AUTONOMY_LIVE_TEST_ALREADY_RUNNING",
+        "Full Autonomy live test is already running",
+        409,
+      );
+    }
+    if (countActiveCharacters(character_manage) > 0) {
+      throw make_control_error(
+        "FULL_AUTONOMY_LIVE_TEST_REQUIRES_IDLE_SUPERVISOR",
+        "Full Autonomy live test requires an idle observer-only supervisor",
+        409,
+      );
+    }
+    if (emergency_stop.snapshot().active) {
+      throw make_control_error(
+        "FULL_AUTONOMY_LIVE_TEST_EMERGENCY_STOP_ACTIVE",
+        "Clear Emergency Stop before running the Full Autonomy live test",
+        409,
+      );
+    }
+    if (full_autonomy_execution_inflight) {
+      throw make_control_error(
+        "FULL_AUTONOMY_LIVE_TEST_EXECUTION_BUSY",
+        "Full Autonomy execution is already in flight",
+        409,
+      );
+    }
+
+    const conflict = full_autonomy_safety_block_reason();
+    if (conflict) {
+      throw make_control_error(
+        "FULL_AUTONOMY_LIVE_TEST_CONFLICT",
+        `A conflicting controlled operation is active: ${conflict}`,
+        409,
+      );
+    }
+
+    const started_at = Date.now();
+    const bounded_settle_ms = Math.max(
+      250,
+      Math.min(3000, Number(settle_ms) || 750),
+    );
+    const plan = build_full_autonomy_plan();
+    const linkage = full_autonomy_linkage_evidence(plan);
+    const candidate = full_autonomy_live_probe_candidate(
+      plan,
+      requested_char_name,
+    );
+
+    if (requested_char_name && !character_manage[requested_char_name]) {
+      throw make_control_error(
+        "CHARACTER_NOT_FOUND",
+        `Unknown character: ${requested_char_name}`,
+        404,
+      );
+    }
+
+    if (plan.state !== "READY" || !candidate) {
+      return {
+        request_id: null,
+        outcome: "WATCH",
+        reason:
+          plan.state !== "READY"
+            ? "FULL_AUTONOMY_LIVE_PLAN_NOT_READY"
+            : "FULL_AUTONOMY_LIVE_SAFE_START_CANDIDATE_PENDING",
+        character: requested_char_name,
+        started_at,
+        completed_at: Date.now(),
+        plan: JSON.parse(JSON.stringify(plan)),
+        linkage,
+        decision: null,
+        scope: {
+          observerOnly: true,
+          lifecycleOnlyProbe: true,
+          lifecycleMutationDispatched: false,
+          gameplayMutationDispatched: false,
+          valueMutationDispatched: false,
+        },
+        cleanup: {
+          runtimeStateRestored: true,
+          probeProcessStopped: true,
+        },
+      };
+    }
+
+    const char_name = candidate.name;
+    const char_block = character_manage[char_name];
+    const original = {
+      enabled: char_block.enabled === true,
+      desiredState:
+        char_block.desired_runtime_state || DESIRED_RUNTIME_STATES.STOPPED,
+      desiredStateSource: char_block.desired_runtime_state_source || "CONFIG",
+      lifecycleOnlyProbe: char_block.lifecycle_only_probe === true,
+    };
+    const probe_plan = {
+      ...plan,
+      recommendations: [candidate],
+    };
+    const decision = buildFullAutonomyExecutionDecision(probe_plan, {
+      policy: {
+        ...full_autonomy_policy,
+        enabled: true,
+        maxActionsPerCycle: 1,
+      },
+      observerOnly: false,
+      emergencyStopActive: false,
+      coordinatorShuttingDown: false,
+      executionInFlight: false,
+      safetyBlockReason: null,
+    });
+
+    if (
+      decision?.action?.type !== "START" ||
+      decision.action.character !== char_name
+    ) {
+      return {
+        request_id: null,
+        outcome: "FAIL",
+        reason: "FULL_AUTONOMY_LIVE_START_DECISION_NOT_PRODUCED",
+        character: char_name,
+        started_at,
+        completed_at: Date.now(),
+        plan: JSON.parse(JSON.stringify(plan)),
+        linkage,
+        decision: JSON.parse(JSON.stringify(decision)),
+        scope: {
+          observerOnly: true,
+          lifecycleOnlyProbe: true,
+          lifecycleMutationDispatched: false,
+          gameplayMutationDispatched: false,
+          valueMutationDispatched: false,
+        },
+        cleanup: {
+          runtimeStateRestored: true,
+          probeProcessStopped: true,
+        },
+      };
+    }
+
+    full_autonomy_live_test_sequence += 1;
+    const request_id = `full-autonomy-live-${started_at}-${full_autonomy_live_test_sequence}`;
+    full_autonomy_live_test_active = true;
+    char_block.lifecycle_only_probe = true;
+    char_block.full_autonomy_live_test = {
+      request_id,
+      status: "STARTING",
+      outcome: null,
+      reason: null,
+      started_at,
+      completed_at: null,
+    };
+    emit_supervisor_event("FULL_AUTONOMY_LIVE_TEST_REQUESTED", char_name, {
+      request_id,
+      action: decision.action,
+      original_desired_state: original.desiredState,
+      original_desired_state_source: original.desiredStateSource,
+    });
+    dashboard?.publishSnapshot();
+
+    let result = null;
+    let runtime_state_restored = false;
+    let probe_process_stopped = false;
+
+    try {
+      const execution = await dispatch_full_autonomy_decision(
+        decision,
+        "LIVE_TEST",
+      );
+      if (execution?.dispatched !== true) {
+        throw make_control_error(
+          "FULL_AUTONOMY_LIVE_DISPATCH_FAILED",
+          execution?.error?.message ||
+            "Full Autonomy live test did not dispatch the START action",
+          500,
+        );
+      }
+
+      const connected_block =
+        await wait_for_full_autonomy_probe_connection(char_name);
+      await sleep(bounded_settle_ms);
+
+      const desired_state_reconciled =
+        connected_block.desired_runtime_state ===
+          DESIRED_RUNTIME_STATES.RUNNING &&
+        connected_block.desired_runtime_state_source === "FULL_AUTONOMY";
+      const linkage_complete = Object.values(linkage).every(
+        (value) => value === true,
+      );
+      const selected_within_limit =
+        Number(plan?.summary?.selectedCharacters) <=
+          Number(plan?.maxOnlineCharacters) &&
+        Number(plan?.summary?.selectedCharacters) <= 4;
+
+      result = {
+        request_id,
+        outcome:
+          desired_state_reconciled &&
+          linkage_complete &&
+          selected_within_limit &&
+          connected_block.lifecycle_only_probe === true
+            ? "PASS"
+            : "FAIL",
+        reason:
+          desired_state_reconciled &&
+          linkage_complete &&
+          selected_within_limit &&
+          connected_block.lifecycle_only_probe === true
+            ? "FULL_AUTONOMY_LIVE_RECONCILIATION_CONFIRMED"
+            : "FULL_AUTONOMY_LIVE_RECONCILIATION_INCOMPLETE",
+        character: char_name,
+        role: candidate.role || null,
+        started_at,
+        completed_at: Date.now(),
+        plan: JSON.parse(JSON.stringify(plan)),
+        linkage,
+        decision: JSON.parse(JSON.stringify(decision)),
+        execution: JSON.parse(JSON.stringify(execution)),
+        observed: {
+          desiredState: connected_block.desired_runtime_state,
+          desiredStateSource: connected_block.desired_runtime_state_source,
+          lifecycleState: connected_block.lifecycle_state,
+          connected: connected_block.connected === true,
+          lifecycleOnlyProbe: connected_block.lifecycle_only_probe === true,
+          selectedCharacters: Number(plan?.summary?.selectedCharacters) || 0,
+          maxOnlineCharacters: Number(plan?.maxOnlineCharacters) || 4,
+        },
+        scope: {
+          observerOnly: true,
+          lifecycleOnlyProbe: true,
+          lifecycleMutationDispatched: true,
+          socketConnectionDispatched: true,
+          gameplayMutationDispatched: false,
+          movementMutationDispatched: false,
+          combatMutationDispatched: false,
+          valueMutationDispatched: false,
+          equipmentMutationDispatched: false,
+        },
+        cleanup: {
+          runtimeStateRestored: false,
+          probeProcessStopped: false,
+          originalDesiredState: original.desiredState,
+          originalDesiredStateSource: original.desiredStateSource,
+        },
+      };
+    } catch (error) {
+      result = {
+        request_id,
+        outcome:
+          error.code === "FULL_AUTONOMY_LIVE_TEST_CONNECTION_TIMEOUT"
+            ? "TIMEOUT"
+            : "FAIL",
+        reason: error.code || error.message || "FULL_AUTONOMY_LIVE_TEST_FAILED",
+        error: error instanceof Error ? error.message : String(error),
+        character: char_name,
+        role: candidate.role || null,
+        started_at,
+        completed_at: Date.now(),
+        plan: JSON.parse(JSON.stringify(plan)),
+        linkage,
+        decision: JSON.parse(JSON.stringify(decision)),
+        scope: {
+          observerOnly: true,
+          lifecycleOnlyProbe: true,
+          lifecycleMutationDispatched:
+            full_autonomy_last_execution?.dispatched === true,
+          socketConnectionDispatched: !!char_block.instance,
+          gameplayMutationDispatched: false,
+          movementMutationDispatched: false,
+          combatMutationDispatched: false,
+          valueMutationDispatched: false,
+          equipmentMutationDispatched: false,
+        },
+        cleanup: {
+          runtimeStateRestored: false,
+          probeProcessStopped: false,
+          originalDesiredState: original.desiredState,
+          originalDesiredStateSource: original.desiredStateSource,
+        },
+      };
+    } finally {
+      try {
+        char_block.enabled = false;
+        char_block.desired_runtime_state = DESIRED_RUNTIME_STATES.STOPPED;
+        char_block.desired_runtime_state_source =
+          "FULL_AUTONOMY_LIVE_TEST_CLEANUP";
+        clear_restart_timer(char_block);
+        clear_stable_timer(char_block);
+
+        if (char_block.instance) {
+          await softkill_block(char_block);
+        }
+        probe_process_stopped =
+          await wait_for_full_autonomy_probe_exit(char_name);
+
+        char_block.lifecycle_only_probe = original.lifecycleOnlyProbe;
+        char_block.enabled = original.enabled;
+        char_block.desired_runtime_state = original.desiredState;
+        char_block.desired_runtime_state_source = original.desiredStateSource;
+        char_block.connected = false;
+        set_lifecycle_state(
+          char_name,
+          LIFECYCLE_STATES.STOPPED,
+          "full_autonomy_live_test_cleanup",
+        );
+        await persistence.saveCharacterRuntimeState(char_name, {
+          desiredState: original.desiredState,
+          desiredStateSource: original.desiredStateSource,
+          actualState: LIFECYCLE_STATES.STOPPED,
+          codeRevision: char_block.running_code_revision || null,
+          configRevision: char_block.running_config_revision || null,
+        });
+
+        runtime_state_restored =
+          probe_process_stopped &&
+          !char_block.instance &&
+          char_block.enabled === original.enabled &&
+          char_block.desired_runtime_state === original.desiredState &&
+          char_block.desired_runtime_state_source ===
+            original.desiredStateSource &&
+          char_block.lifecycle_only_probe === original.lifecycleOnlyProbe;
+      } catch (restore_error) {
+        result = {
+          ...result,
+          outcome: "FAIL",
+          reason: "FULL_AUTONOMY_LIVE_TEST_STATE_RESTORE_FAILED",
+          restore_error:
+            restore_error instanceof Error
+              ? restore_error.message
+              : String(restore_error),
+        };
+      }
+
+      full_autonomy_live_test_active = false;
+      const completed_at = Date.now();
+      result = {
+        ...result,
+        completed_at,
+        durationMs: Math.max(0, completed_at - started_at),
+        cleanup: {
+          ...(result?.cleanup || {}),
+          runtimeStateRestored: runtime_state_restored,
+          probeProcessStopped: probe_process_stopped,
+        },
+      };
+      if (
+        result.outcome === "PASS" &&
+        (!runtime_state_restored || !probe_process_stopped)
+      ) {
+        result.outcome = "FAIL";
+        result.reason = "FULL_AUTONOMY_LIVE_TEST_STATE_RESTORE_FAILED";
+      }
+
+      char_block.full_autonomy_live_test = {
+        ...result,
+        status: result.outcome === "PASS" ? "COMPLETED" : "FAILED",
+      };
+      emit_supervisor_event(
+        result.outcome === "PASS"
+          ? "FULL_AUTONOMY_LIVE_TEST_COMPLETED"
+          : "FULL_AUTONOMY_LIVE_TEST_FAILED",
+        char_name,
+        {
+          request_id,
+          outcome: result.outcome,
+          reason: result.reason,
+          runtime_state_restored,
+          probe_process_stopped,
+        },
+      );
+      dashboard?.publishSnapshot();
+    }
+
+    return char_block.full_autonomy_live_test;
+  }
+
   function logistics_record(value) {
     return value && typeof value === "object" && !Array.isArray(value)
       ? value
