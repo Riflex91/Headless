@@ -68,7 +68,8 @@ function failSnapshotPersist(charBlock) {
 }
 
 function marketObservationSignature(observation) {
-  const source = observation && typeof observation === "object" ? observation : {};
+  const source =
+    observation && typeof observation === "object" ? observation : {};
   const metadata =
     source.metadata && typeof source.metadata === "object"
       ? source.metadata
