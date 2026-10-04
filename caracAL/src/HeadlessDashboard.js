@@ -264,6 +264,7 @@ function buildSupervisorSnapshot(
   goalPlanState = null,
   goalHandoffState = null,
   goalExecutionState = null,
+  goalAdapterState = null,
 ) {
   const characters = Object.entries(characterManage)
     .map(([name, charBlock]) => publicCharacterState(name, charBlock))
@@ -433,6 +434,32 @@ function buildSupervisorSnapshot(
       maxActionsPerCycle: 1,
       reconcileIntervalMs: 5000,
     },
+    goal_adapter: goalAdapterState || {
+      timestamp: null,
+      state: "EMPTY",
+      reason: "GOAL_ADAPTER_EXECUTION_DISABLED",
+      readOnly: true,
+      dispatchAllowed: false,
+      dispatchImplemented: false,
+      requestDispatched: false,
+      mutationDispatched: false,
+      decisionState: "DISABLED",
+      decisionReason: "GOAL_EXECUTION_DISABLED",
+      goalId: null,
+      kind: null,
+      request: null,
+      capability: null,
+      policy: {
+        existingRuntimeBridgesOnly: true,
+        explicitRuntimeHintsRequired: true,
+        noInventedExecutionParameters: true,
+        singleRequestPlanOnly: true,
+        dispatcherRequired: true,
+        directGameplayMutationAllowed: false,
+        directValueMutationAllowed: false,
+        directLifecycleMutationAllowed: false,
+      },
+    },
     characters,
   };
 }
@@ -505,6 +532,7 @@ function attachHeadlessDashboard({
   getGoalPlanState,
   getGoalHandoffState,
   getGoalExecutionState,
+  getGoalAdapterState,
   createGoal,
   updateGoal,
   getMapScene,
@@ -531,6 +559,7 @@ function attachHeadlessDashboard({
       getGoalPlanState?.(),
       getGoalHandoffState?.(),
       getGoalExecutionState?.(),
+      getGoalAdapterState?.(),
     );
 
   router.use("/headless", (req, res, next) => {
