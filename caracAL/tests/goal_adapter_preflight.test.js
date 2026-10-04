@@ -800,9 +800,9 @@ test("unsupported adapter kinds remain blocked", async () => {
   const result = await setupResult.runner.run({
     version: 1,
     type: "GOAL_RUNTIME_METHOD",
-    goalId: "gold",
-    taskId: "gold:2",
-    kind: "ACCUMULATE_GOLD",
+    goalId: "unknown",
+    taskId: "unknown:1",
+    kind: "UNKNOWN_KIND",
     dispatchAllowed: false,
     dispatchImplemented: false,
   });
