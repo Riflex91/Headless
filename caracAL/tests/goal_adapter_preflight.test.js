@@ -1,9 +1,12 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const childProcess = require("node:child_process");
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
+const prettier = require("prettier");
 
 const { loadTypeScriptModule } = require("./load_typescript_module");
 
@@ -506,4 +509,35 @@ test("Goal adapter runtime preflight contains no gameplay or value mutation path
   assert.doesNotMatch(source, /\.executeNext\s*\(/);
   assert.doesNotMatch(source, /\.runMaterialGatherTask\s*\(/);
   assert.doesNotMatch(source, /\.executeCraftNext\s*\(/);
+});
+
+test("temporary Goal adapter preflight formatter probe", async () => {
+  const target = path.join(
+    __dirname,
+    "..",
+    "tests",
+    "goal_adapter_preflight.test.js",
+  );
+  const source = fs.readFileSync(target, "utf8");
+  const formatted = await prettier.format(source, { filepath: target });
+  const tempDir = fs.mkdtempSync(
+    path.join(os.tmpdir(), "goal-adapter-preflight-prettier-"),
+  );
+  const temp = path.join(tempDir, "goal_adapter_preflight.test.js");
+
+  try {
+    fs.writeFileSync(temp, formatted);
+    let diff = "";
+    try {
+      childProcess.execFileSync("diff", ["-u", target, temp], {
+        encoding: "utf8",
+      });
+    } catch (error) {
+      diff = String(error.stdout || "");
+    }
+    console.log("GOAL_ADAPTER_PREFLIGHT_PRETTIER_DIFF");
+    console.log(diff || "NO_DIFF");
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
 });
