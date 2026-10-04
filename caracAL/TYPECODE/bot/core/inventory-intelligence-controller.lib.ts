@@ -258,6 +258,18 @@ function definitionType(
   return text(definition.type)?.toLowerCase() || null;
 }
 
+function isDefinitionUpgradable(
+  definition: Record<string, unknown>,
+): boolean {
+  return Object.prototype.hasOwnProperty.call(definition, "upgrade");
+}
+
+function isDefinitionCompoundable(
+  definition: Record<string, unknown>,
+): boolean {
+  return Object.prototype.hasOwnProperty.call(definition, "compound");
+}
+
 function recipeIngredientNames(gameData: Record<string, unknown>): Set<string> {
   const result = new Set<string>();
   const craft = record(gameData.craft);
@@ -330,11 +342,12 @@ function inferredDisposition(
     return "EXCHANGE";
   }
 
+  if (isDefinitionUpgradable(definition)) return "UPGRADE";
+  if (isDefinitionCompoundable(definition)) return "COMPOUND";
+
   if (craftIngredients.has(name) || definition.craft === true) {
     return "CRAFT";
   }
-
-  if (definition.upgrade === true) return "UPGRADE";
 
   if (
     (type && EQUIPMENT_TYPES.has(type)) ||
