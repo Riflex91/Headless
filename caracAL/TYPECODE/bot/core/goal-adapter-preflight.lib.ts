@@ -277,7 +277,10 @@ export class GoalAdapterPreflightRunner {
       const targetLevel = positiveInteger(args.targetLevel);
       const monsterType = text(args.monsterType);
       const workerCharacter = text(request.characterName);
-      const currentLevel = finite(character.level);
+      const currentLevel =
+        typeof character.level === "number" && Number.isFinite(character.level)
+          ? character.level
+          : null;
 
       if (
         request.type !== "GOAL_RUNTIME_METHOD" ||
