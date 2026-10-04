@@ -241,6 +241,8 @@ function migrate_old_storage(path, localStorage) {
   let full_autonomy_execution_inflight = false;
   let full_autonomy_last_execution = null;
   let full_autonomy_task = null;
+  let full_autonomy_live_test_sequence = 0;
+  let full_autonomy_live_test_active = false;
   if (cfg.cull_versions) {
     await game_files.cull_versions([version]);
   }
@@ -421,6 +423,7 @@ function migrate_old_storage(path, localStorage) {
         runInventoryLiveTest: run_inventory_live_test,
         runGearScoringLiveTest: run_gear_scoring_live_test,
         runAccountStrategyLiveTest: run_account_strategy_live_test,
+        runFullAutonomyLiveTest: run_full_autonomy_live_test,
         runMarketIntelligenceLiveTest: run_market_intelligence_live_test,
         runEconomyPrebuffExecutionLiveTest:
           run_economy_prebuff_execution_live_test,
@@ -527,6 +530,7 @@ function migrate_old_storage(path, localStorage) {
       craft_material_plan_requests.size > 0 ||
       logistics_claim_requests.size > 0 ||
       account_strategy_live_test_active ||
+      full_autonomy_live_test_active ||
       economy_prebuff_execution_live_test_active ||
       account_gear_reservation_live_test_active ||
       logistics_live_test_active ||
@@ -769,6 +773,7 @@ function migrate_old_storage(path, localStorage) {
       market_trading_live_test_active ||
       account_gear_reservation_live_test_active ||
       account_strategy_live_test_active ||
+      full_autonomy_live_test_active ||
       fishing_live_test_active ||
       material_worker_active_count > 0
     )
@@ -1718,6 +1723,9 @@ function migrate_old_storage(path, localStorage) {
       char_block.gear_scoring_live_test || null;
     char_block.account_strategy_live_test =
       char_block.account_strategy_live_test || null;
+    char_block.full_autonomy_live_test =
+      char_block.full_autonomy_live_test || null;
+    char_block.lifecycle_only_probe = false;
     char_block.account_gear_reservation_live_test =
       char_block.account_gear_reservation_live_test || null;
     char_block.upgrade_live_test = char_block.upgrade_live_test || null;
@@ -14210,6 +14218,7 @@ function migrate_old_storage(path, localStorage) {
       clid: ctype_to_clid[char.type] || -1,
       heartbeat_interval_ms: lifecycle_policy.heartbeatIntervalMs,
       runtime_state: char_block.desired_runtime_state,
+      lifecycle_only_probe: char_block.lifecycle_only_probe === true,
       emergency_stop: emergency_stop.snapshot(),
     };
     if (execution_source.typescriptFile) {
