@@ -355,6 +355,7 @@ export class BotRuntimeKernel {
   private fishingLiveTestRunning = false;
   private materialGatherTaskRunning = false;
   private economyPrebuffExecutionRunning = false;
+  private economyPrebuffExecutionLiveTestRunning = false;
   private logisticsClaimRunning = false;
   private lastLogisticsExecution: LogisticsExecutionResult | null = null;
 
@@ -887,6 +888,196 @@ export class BotRuntimeKernel {
     } finally {
       this.economyPrebuffExecutionRunning = false;
     }
+  }
+
+  async runEconomyPrebuffExecutionLiveTest(
+    options: { requestId?: string } = {},
+  ): Promise<Record<string, unknown>> {
+    if (
+      this.economyPrebuffExecutionLiveTestRunning ||
+      this.economyPrebuffExecutionRunning ||
+      this.upgradeLiveTestRunning ||
+      this.upgradePreflightRunning ||
+      this.compoundLiveTestRunning ||
+      this.exchangePreflightRunning ||
+      this.exchangeLiveTestRunning ||
+      this.craftPreflightRunning ||
+      this.craftLiveTestRunning
+    ) {
+      throw new Error("mutation verification already running");
+    }
+    if (!this.started || this.stopping) {
+      throw new Error(
+        "runtime is not ready for Economy Prebuff execution live test",
+      );
+    }
+    if (runtimeState() !== "RUNNING") {
+      throw new Error(
+        "runtime must be RUNNING for Economy Prebuff execution live test",
+      );
+    }
+
+    const requestId =
+      options.requestId || `economy-prebuff-execution-live-${Date.now()}`;
+    const beforeArbiter = this.economyArbiter.tick();
+    const beforeExecution = this.economyPrebuffExecution.status();
+    const suspended = {
+      merchantAutonomy: this.scheduler.unregister(MERCHANT_AUTONOMY_JOB_ID),
+      bankTravel: this.scheduler.unregister(BANK_TRAVEL_JOB_ID),
+      merrit: this.scheduler.unregister(MERRIT_AUTONOMY_JOB_ID),
+      fishing: this.scheduler.unregister(FISHING_AUTONOMY_JOB_ID),
+      groupCombat: this.scheduler.unregister(GROUP_COMBAT_JOB_ID),
+      classSkill: this.scheduler.unregister(CLASS_SKILL_JOB_ID),
+      combat: this.scheduler.unregister(COMBAT_JOB_ID),
+    };
+    let execution: ReturnType<
+      EconomyPrebuffExecutionController["status"]
+    > | null = null;
+    let enforced: ReturnType<EconomyArbiterController["status"]> | null = null;
+    let result: Record<string, unknown> | null = null;
+
+    this.economyPrebuffExecutionLiveTestRunning = true;
+    this.eventBus.emit({
+      module: "EconomyPrebuffExecutionLiveTest",
+      type: "ECONOMY_PREBUFF_EXECUTION_LIVE_TEST_STARTED",
+      why: "EXPLICIT_SINGLE_PREBUFF_ECONOMY_E2E",
+      correlationId: requestId,
+      data: {
+        requestId,
+        irreversibleMutation: true,
+        maxValueMutations: 1,
+        blindRetryAllowed: false,
+        supportedKinds: ["UPGRADE", "COMPOUND"],
+        suspended,
+        ...runtimeIdentity(),
+      },
+    });
+
+    this.economyArbiter.setConfigOverride({
+      economyArbiter: {
+        enabled: true,
+        enforcementEnabled: true,
+      },
+    });
+
+    try {
+      enforced = this.economyArbiter.tick();
+      this.economyPrebuffExecutionRunning = true;
+      try {
+        execution = await this.economyPrebuffExecution.executeNext();
+      } finally {
+        this.economyPrebuffExecutionRunning = false;
+      }
+
+      const prebuffAttempted = execution.prebuffAction !== null;
+      const valueMutationAttempted = execution.economyAction !== null;
+      const confirmed = execution.state === "CONFIRMED";
+      const unknown = execution.state === "UNKNOWN_HOLD";
+      const outcome = confirmed ? "PASS" : unknown ? "UNKNOWN" : "FAIL";
+      const reason = confirmed
+        ? "ECONOMY_PREBUFF_EXECUTION_LIVE_E2E_CONFIRMED"
+        : unknown
+          ? "ECONOMY_PREBUFF_EXECUTION_LIVE_OUTCOME_UNKNOWN_NO_RETRY"
+          : execution.reason;
+
+      result = {
+        requestId,
+        outcome,
+        reason,
+        execution,
+        beforeExecution,
+        beforeArbiter,
+        enforced,
+        evidence: {
+          enforcementEnabledObserved:
+            enforced.policy.enforcementEnabled === true,
+          exactlyOnePrebuffAttempt:
+            prebuffAttempted && execution.prebuffAction?.id !== null,
+          valueMutationAttempted,
+          maxValueMutationsRespected: true,
+          blindRetryAllowed: false,
+          unknownHold:
+            execution.state === "UNKNOWN_HOLD"
+              ? execution.unknownStage
+              : null,
+          confirmedCoupling:
+            confirmed &&
+            execution.prebuffAction?.status === "CONFIRMED" &&
+            execution.economyAction?.status === "CONFIRMED",
+        },
+        scope: {
+          readOnly: false,
+          irreversibleMutationAllowed: true,
+          prebuffMutationForced: prebuffAttempted,
+          valueMutationForced: valueMutationAttempted,
+          maxValueMutations: 1,
+          movementMutationForced: false,
+          combatMutationForced: false,
+          equipmentMutationForced: false,
+          upgradeMutationForced:
+            valueMutationAttempted && execution.kind === "UPGRADE",
+          compoundMutationForced:
+            valueMutationAttempted && execution.kind === "COMPOUND",
+          exchangeMutationForced: false,
+          craftMutationForced: false,
+          logisticsMutationForced: false,
+          merchantMutationForced: false,
+        },
+      };
+
+      this.eventBus.emit({
+        module: "EconomyPrebuffExecutionLiveTest",
+        type: confirmed
+          ? "ECONOMY_PREBUFF_EXECUTION_LIVE_TEST_COMPLETED"
+          : unknown
+            ? "ECONOMY_PREBUFF_EXECUTION_LIVE_TEST_UNKNOWN"
+            : "ECONOMY_PREBUFF_EXECUTION_LIVE_TEST_FAILED",
+        why: reason,
+        correlationId: requestId,
+        ...(execution.economyAction?.id && {
+          actionId: execution.economyAction.id,
+        }),
+        data: {
+          result,
+          economyPrebuffExecution: execution,
+        },
+      });
+    } finally {
+      this.economyPrebuffExecutionRunning = false;
+      this.economyArbiter.clearConfigOverride();
+      const restored = this.economyArbiter.tick();
+      const configRestored =
+        restored.policy.enforcementEnabled ===
+        beforeArbiter.policy.enforcementEnabled;
+
+      if (suspended.merchantAutonomy) this.registerMerchantAutonomyJob();
+      if (suspended.bankTravel) this.registerBankTravelJob();
+      if (suspended.merrit) this.registerMerritJob();
+      if (suspended.fishing) this.registerFishingJob();
+      if (suspended.groupCombat) this.registerGroupCombatJob();
+      if (suspended.classSkill) this.registerClassSkillJob();
+      if (suspended.combat) this.registerCombatJob();
+      this.economyPrebuffExecutionLiveTestRunning = false;
+
+      result = {
+        ...(result || {
+          requestId,
+          outcome: "FAIL",
+          reason: "ECONOMY_PREBUFF_EXECUTION_LIVE_RUNTIME_ERROR",
+          execution,
+          beforeExecution,
+          beforeArbiter,
+          enforced,
+        }),
+        restored,
+        cleanup: {
+          configRestored,
+          schedulerRestored: true,
+        },
+      };
+    }
+
+    return result;
   }
 
   async executeUpgradeNext(): Promise<Record<string, unknown>> {
