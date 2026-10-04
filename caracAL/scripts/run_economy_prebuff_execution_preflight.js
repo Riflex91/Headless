@@ -486,10 +486,7 @@ function compactAttemptLine(attempt) {
     source.riskPolicyState,
     source.riskPolicyReason,
   );
-  const prebuff = statusWithReason(
-    source.prebuffState,
-    source.prebuffReason,
-  );
+  const prebuff = statusWithReason(source.prebuffState, source.prebuffReason);
 
   return `  - ${target}: risk=${risk}; prebuff=${prebuff}`;
 }
@@ -504,10 +501,7 @@ function formatCompactResult(result) {
     source.riskPolicyState,
     source.riskPolicyReason,
   );
-  const prebuff = statusWithReason(
-    source.prebuffState,
-    source.prebuffReason,
-  );
+  const prebuff = statusWithReason(source.prebuffState, source.prebuffReason);
   const lines = [
     "Economy Prebuff Execution Preflight",
     `Outcome: ${source.outcome || "UNKNOWN"}`,
@@ -533,9 +527,7 @@ function formatCompactResult(result) {
       lines.push(`Expected delta gold: ${candidate.expectedDeltaGold}`);
     }
     if (finiteNumber(candidate.successProbability) !== null) {
-      lines.push(
-        `Success probability: ${candidate.successProbability}`,
-      );
+      lines.push(`Success probability: ${candidate.successProbability}`);
     }
   } else if (attempts.length > 0) {
     lines.push(`Verification attempts: ${attempts.length}`);
@@ -545,8 +537,7 @@ function formatCompactResult(result) {
   }
 
   const hasCleanupStatus =
-    policy.cleanupConfirmed === true ||
-    policy.prebuffCleanupConfirmed === true;
+    policy.cleanupConfirmed === true || policy.prebuffCleanupConfirmed === true;
   if (hasCleanupStatus) {
     const cleanupConfirmed =
       policy.cleanupConfirmed === true &&
