@@ -371,5 +371,9 @@ test("Account Strategy live launcher uses GET for observation and only dedicated
   );
   assert.match(coordinator, /gameplayMutationDispatched: false/);
   assert.match(coordinator, /valueMutationDispatched: false/);
+  assert.match(
+    coordinator,
+    /account_gear_reservation_live_test_active\s*\|\|\s*account_strategy_live_test_active/,
+  );
   assert.match(coordinator, /runtimeStateRestored/);
 });
