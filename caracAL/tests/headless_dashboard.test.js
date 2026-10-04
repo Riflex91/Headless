@@ -101,6 +101,7 @@ test("public character state exposes only dashboard-safe fields", () => {
     class_skill_runtime: null,
     group_combat_runtime: null,
     farm_intelligence_runtime: null,
+    market_intelligence_runtime: null,
     inventory_intelligence_runtime: null,
     gear_scoring_runtime: null,
     future_gear_runtime: null,

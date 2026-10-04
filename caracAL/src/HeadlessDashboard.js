@@ -129,6 +129,7 @@ function publicCharacterState(name, charBlock = {}) {
     class_skill_runtime: charBlock.class_skill_runtime || null,
     group_combat_runtime: charBlock.group_combat_runtime || null,
     farm_intelligence_runtime: charBlock.farm_intelligence_runtime || null,
+    market_intelligence_runtime: charBlock.market_intelligence_runtime || null,
     inventory_intelligence_runtime:
       charBlock.inventory_intelligence_runtime || null,
     gear_scoring_runtime: charBlock.gear_scoring_runtime || null,

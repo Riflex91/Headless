@@ -229,6 +229,36 @@ test("Market Intelligence marks fresh ten-sample evidence HIGH confidence", () =
   assert.equal(aggregate.ageMs, 0);
 });
 
+test("Market Intelligence preserves null item levels", () => {
+  const setup = makeController({
+    market: [
+      listing({
+        name: "scroll0",
+        level: null,
+        price: 1000,
+      }),
+    ],
+    localHistory: [
+      {
+        itemName: "scroll0",
+        level: null,
+        price: 900,
+        quantity: 1,
+        server: "EU I",
+        observedAt: 999000,
+      },
+    ],
+  });
+
+  const status = setup.controller.tick();
+
+  assert.equal(status.observations.length, 2);
+  assert.equal(status.observations[0].level, null);
+  assert.equal(status.observations[1].level, null);
+  assert.equal(status.aggregates.length, 1);
+  assert.equal(status.aggregates[0].level, null);
+});
+
 test("Market Intelligence stays EMPTY when no valid sample exists", () => {
   const setup = makeController({
     market: [
