@@ -358,6 +358,9 @@ test("dashboard static assets are present", () => {
   const index = fs.readFileSync(path.join(dashboardDir, "index.html"), "utf8");
   assert.match(index, /Letzter Incident/);
   assert.match(index, /Persistence: UNKNOWN/);
+  assert.match(index, /id="full-autonomy-summary"/);
+  assert.match(index, /Full Autonomy: EMPTY/);
+  assert.match(index, /Execution: READ-ONLY/);
   assert.match(index, /data-control="restart"/);
   assert.match(index, /data-config/);
   assert.match(index, /id="config-dialog"/);
@@ -407,6 +410,9 @@ test("dashboard panels and character cards support persistent collapsing", () =>
 
   assert.match(dashboardApp, /initializeDashboardCollapsibles/);
   assert.match(dashboardApp, /initializeCollapsible/);
+  assert.match(dashboardApp, /renderFullAutonomySummary/);
+  assert.match(dashboardApp, /snapshot\.full_autonomy/);
+  assert.match(dashboardApp, /desired_runtime_state_source/);
   assert.match(dashboardApp, /localStorage/);
   assert.match(dashboardApp, /movement-panel/);
   assert.match(styles, /\.collapse-toggle/);
