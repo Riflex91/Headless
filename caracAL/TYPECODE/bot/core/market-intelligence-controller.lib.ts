@@ -294,6 +294,8 @@ export class MarketIntelligenceController {
   private readonly ponty: () => MarketIntelligenceObservationInput[];
   private readonly localHistory: () => MarketIntelligenceObservationInput[];
   private readonly onEvent?: (event: MarketIntelligenceEvent) => void;
+  private localHistorySnapshot: MarketIntelligenceObservationInput[] | null =
+    null;
   private lastStatus: MarketIntelligenceStatus | null = null;
 
   constructor(
@@ -309,6 +311,14 @@ export class MarketIntelligenceController {
 
   status(): MarketIntelligenceStatus {
     return this.lastStatus || this.buildStatus();
+  }
+
+  setLocalHistory(
+    observations: MarketIntelligenceObservationInput[],
+  ): void {
+    this.localHistorySnapshot = Array.isArray(observations)
+      ? observations.map((observation) => ({ ...record(observation) }))
+      : [];
   }
 
   tick(): MarketIntelligenceStatus {
@@ -344,7 +354,11 @@ export class MarketIntelligenceController {
         ): observation is MarketIntelligenceObservation =>
           observation !== null,
       );
-    const localHistory = this.localHistory()
+    const localHistorySource =
+      this.localHistorySnapshot === null
+        ? this.localHistory()
+        : this.localHistorySnapshot;
+    const localHistory = localHistorySource
       .map((observation) =>
         normalizeHistoricalObservation(observation, "LOCAL_HISTORY", now),
       )
