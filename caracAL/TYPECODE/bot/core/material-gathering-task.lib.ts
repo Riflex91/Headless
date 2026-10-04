@@ -256,6 +256,7 @@ export class MaterialGatheringTaskRunner {
         this.deps.game.inventory(),
         options.itemName,
         requiredLevel,
+        minimumLevel,
       );
       return {
         requestId,
@@ -337,6 +338,7 @@ export class MaterialGatheringTaskRunner {
           this.deps.game.inventory(),
           options.itemName,
           requiredLevel,
+          minimumLevel,
         );
         if (available >= quantity) break;
 
@@ -472,6 +474,7 @@ export class MaterialGatheringTaskRunner {
                 this.deps.game.inventory(),
                 options.itemName,
                 requiredLevel,
+                minimumLevel,
               ) < quantity
             ) {
               outcome = "UNKNOWN";
@@ -506,6 +509,7 @@ export class MaterialGatheringTaskRunner {
           this.deps.game.inventory(),
           options.itemName,
           requiredLevel,
+          minimumLevel,
         ) < quantity
       ) {
         outcome = "TIMEOUT";
