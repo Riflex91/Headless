@@ -118,6 +118,10 @@ function profileEvidence(profile) {
     gear.equipment &&
     typeof gear.equipment === "object" &&
     !Array.isArray(gear.equipment);
+  const gearVisible =
+    gearValid &&
+    Object.keys(record(gear.equipment)).length > 0 &&
+    completeness.gear === true;
   const statsValid =
     source.stats &&
     typeof source.stats === "object" &&
@@ -160,6 +164,7 @@ function profileEvidence(profile) {
       text(source.map) !== null &&
       finite(source.gold) !== null &&
       finite(source.gold) >= 0 &&
+      gearVisible &&
       Object.keys(stats).length > 0);
 
   return {
@@ -178,6 +183,7 @@ function profileEvidence(profile) {
       historyValid &&
       completenessValid,
     liveProfileComplete,
+    gearVisible,
     capabilities,
     online: source.online === true,
     levelVisible: nonNegativeInteger(source.level) !== null,
@@ -241,6 +247,9 @@ function accountStrategyEvidence(snapshot) {
   );
   const onlineProfiles = checks.filter((check) => check.online).length;
   const liveLevelProfiles = checks.filter((check) => check.levelVisible).length;
+  const liveGearProfiles = checks.filter(
+    (check) => check.online && check.gearVisible,
+  ).length;
   const historyProfiles = checks.filter((check) => check.historyVisible).length;
 
   const summaryValid =
@@ -274,6 +283,7 @@ function accountStrategyEvidence(snapshot) {
     profiles: profiles.length,
     onlineProfiles,
     liveLevelProfiles,
+    liveGearProfiles,
     historyProfiles,
     readOnly,
     profileCountValid,
@@ -329,6 +339,7 @@ function formatCompactResult(result) {
       String(evidence.expectedCharacters ?? 8),
     "Online profiles: " + String(evidence.onlineProfiles ?? 0),
     "Live level profiles: " + String(evidence.liveLevelProfiles ?? 0),
+    "Live gear profiles: " + String(evidence.liveGearProfiles ?? 0),
     "History profiles: " + String(evidence.historyProfiles ?? 0),
     "Required fields valid: " + (evidence.fieldsValid === true ? "yes" : "no"),
     "Capabilities valid: " +
