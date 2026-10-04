@@ -7985,16 +7985,42 @@ function migrate_old_storage(path, localStorage) {
         );
       }
 
+      const observed_sources = {
+        LIVE_VISIBLE: Array.isArray(projection.observations)
+          ? projection.observations.filter(
+              (observation) => observation?.source === "LIVE_VISIBLE",
+            ).length
+          : 0,
+        PONTY: Array.isArray(projection.observations)
+          ? projection.observations.filter(
+              (observation) => observation?.source === "PONTY",
+            ).length
+          : 0,
+        LOCAL_HISTORY: Array.isArray(projection.observations)
+          ? projection.observations.filter(
+              (observation) => observation?.source === "LOCAL_HISTORY",
+            ).length
+          : 0,
+      };
+      const missing_sources = Object.entries(observed_sources)
+        .filter(([, count]) => count <= 0)
+        .map(([source]) => source);
+      const source_coverage_complete = missing_sources.length === 0;
+
       result = {
         request_id,
-        outcome: "PASS",
-        reason: "MARKET_INTELLIGENCE_LIVE_RUNTIME_E2E_CONFIRMED",
+        outcome: source_coverage_complete ? "PASS" : "WATCH",
+        reason: source_coverage_complete
+          ? "MARKET_INTELLIGENCE_LIVE_RUNTIME_E2E_CONFIRMED"
+          : "MARKET_INTELLIGENCE_LIVE_SOURCE_COVERAGE_PENDING",
         character: char_name,
         realm: final_block.realm || null,
         started_at,
         completed_at: Date.now(),
         durationMs: Date.now() - started_at,
         projection: JSON.parse(JSON.stringify(projection)),
+        observedSources: observed_sources,
+        missingSources: missing_sources,
         scope: {
           readOnly: true,
           runtimeStateDuringTest: DESIRED_RUNTIME_STATES.PAUSED,
@@ -8078,12 +8104,13 @@ function migrate_old_storage(path, localStorage) {
           runtimeStateRestored: runtime_state_restored,
         },
       };
+      const live_test_completed = ["PASS", "WATCH"].includes(result.outcome);
       char_block.market_intelligence_live_test = {
         ...result,
-        status: result.outcome === "PASS" ? "COMPLETED" : "FAILED",
+        status: live_test_completed ? "COMPLETED" : "FAILED",
       };
       emit_supervisor_event(
-        result.outcome === "PASS"
+        live_test_completed
           ? "MARKET_INTELLIGENCE_LIVE_TEST_COMPLETED"
           : "MARKET_INTELLIGENCE_LIVE_TEST_FAILED",
         char_name,
