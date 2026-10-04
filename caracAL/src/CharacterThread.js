@@ -352,6 +352,53 @@ async function make_runner(upper, CODE_file, version, is_typescript) {
           });
         break;
       }
+      case "goal_adapter_dispatch": {
+        const requestId =
+          typeof m.request_id === "string" && m.request_id
+            ? m.request_id
+            : "goal-adapter-dispatch-" + Date.now();
+        const runtime = runner_context.__caracalBotRuntime;
+        if (!runtime?.runGoalAdapterDispatch) {
+          sendIpcMessage(process, {
+            type: "goal_adapter_dispatch_result",
+            request_id: requestId,
+            error: "GOAL_ADAPTER_DISPATCH_RUNTIME_NOT_READY",
+          });
+          break;
+        }
+
+        const authorization =
+          m.authorization &&
+          typeof m.authorization === "object" &&
+          !Array.isArray(m.authorization)
+            ? m.authorization
+            : {};
+        const authorized =
+          authorization.goal_execution_enabled === true &&
+          authorization.one_shot === true &&
+          authorization.preflight_required === true;
+
+        void runtime
+          .runGoalAdapterDispatch(m.request, {
+            requestId,
+            authorized,
+          })
+          .then((result) => {
+            sendIpcMessage(process, {
+              type: "goal_adapter_dispatch_result",
+              request_id: requestId,
+              result,
+            });
+          })
+          .catch((error) => {
+            sendIpcMessage(process, {
+              type: "goal_adapter_dispatch_result",
+              request_id: requestId,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          });
+        break;
+      }
       case "material_gather_task": {
         const requestId =
           typeof m.request_id === "string" && m.request_id
