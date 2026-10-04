@@ -1,6 +1,7 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
 
@@ -478,4 +479,79 @@ test("unsupported Goal kinds never reach a mutation dependency", async () => {
     s.calls.some(([name]) => ["material", "craftExecute"].includes(name)),
     false,
   );
+});
+
+test("runtime and CharacterThread expose guarded dispatch without supervisor reachability", () => {
+  const kernel = fs.readFileSync(
+    path.join(
+      __dirname,
+      "..",
+      "TYPECODE",
+      "bot",
+      "core",
+      "runtime-kernel.lib.ts",
+    ),
+    "utf8",
+  );
+  const thread = fs.readFileSync(
+    path.join(__dirname, "..", "src", "CharacterThread.js"),
+    "utf8",
+  );
+  const coordinator = fs.readFileSync(
+    path.join(__dirname, "..", "standalones", "CharacterCoordinator.js"),
+    "utf8",
+  );
+  const dashboard = fs.readFileSync(
+    path.join(__dirname, "..", "src", "HeadlessDashboard.js"),
+    "utf8",
+  );
+
+  assert.match(kernel, /GoalAdapterDispatchRunner/);
+  assert.match(kernel, /private goalAdapterDispatchRunning = false/);
+  assert.match(kernel, /async runGoalAdapterDispatch\(/);
+  assert.match(kernel, /authorized: options\.authorized === true/);
+  assert.match(kernel, /maxExecutionInvocations: 1/);
+  assert.match(kernel, /blindRetryAllowed: false/);
+  assert.doesNotMatch(
+    kernel.slice(
+      kernel.indexOf("async runGoalAdapterDispatch("),
+      kernel.indexOf("async runMaterialGatherTask(", kernel.indexOf("async runGoalAdapterDispatch(")),
+    ),
+    /setInterval\s*\(/,
+  );
+
+  assert.match(thread, /case "goal_adapter_dispatch"/);
+  assert.match(thread, /authorization\.goal_execution_enabled === true/);
+  assert.match(thread, /authorization\.one_shot === true/);
+  assert.match(thread, /authorization\.preflight_required === true/);
+  assert.match(thread, /type: "goal_adapter_dispatch_result"/);
+
+  assert.doesNotMatch(coordinator, /type:\s*"goal_adapter_dispatch"/);
+  assert.doesNotMatch(coordinator, /goal_adapter_dispatch_result/);
+  assert.doesNotMatch(
+    dashboard,
+    /"\/headless\/api\/goals\/adapter-dispatch"/,
+  );
+});
+
+test("Goal adapter dispatcher has no internal retry or lifecycle control path", () => {
+  const source = fs.readFileSync(
+    path.join(
+      __dirname,
+      "..",
+      "TYPECODE",
+      "bot",
+      "core",
+      "goal-adapter-dispatch.lib.ts",
+    ),
+    "utf8",
+  );
+
+  assert.doesNotMatch(source, /controlCharacter/);
+  assert.doesNotMatch(source, /controlRotation/);
+  assert.doesNotMatch(source, /setInterval\s*\(/);
+  assert.doesNotMatch(source, /while\s*\(/);
+  assert.doesNotMatch(source, /for\s*\([^)]*retry/i);
+  assert.match(source, /maxExecutionInvocations: 1/);
+  assert.match(source, /blindRetryUsed: false/);
 });
