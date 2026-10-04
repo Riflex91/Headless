@@ -332,3 +332,29 @@ test("Economy Arbiter enforcement fails closed for UNKNOWN and inactive Prebuff"
   assert.equal(prebuff.allowed, false);
   assert.equal(prebuff.selectedLane, "ECONOMY");
 });
+
+test("Economy Arbiter scoped config override restores the configured policy", () => {
+  const setup = makeController({
+    config: {
+      economyArbiter: {
+        enabled: true,
+        enforcementEnabled: false,
+      },
+    },
+  });
+
+  const before = setup.controller.tick();
+  setup.controller.setConfigOverride({
+    economyArbiter: {
+      enabled: true,
+      enforcementEnabled: true,
+    },
+  });
+  const enforced = setup.controller.tick();
+  setup.controller.clearConfigOverride();
+  const restored = setup.controller.tick();
+
+  assert.equal(before.policy.enforcementEnabled, false);
+  assert.equal(enforced.policy.enforcementEnabled, true);
+  assert.equal(restored.policy.enforcementEnabled, false);
+});
