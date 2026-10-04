@@ -29,10 +29,7 @@ function normalizeSlots(kind, value) {
 
   const normalized = slots
     .filter(
-      (slot) =>
-        Number.isInteger(slot) &&
-        Number.isFinite(slot) &&
-        slot >= 0,
+      (slot) => Number.isInteger(slot) && Number.isFinite(slot) && slot >= 0,
     )
     .sort((left, right) => left - right);
 
@@ -53,7 +50,9 @@ function sameSlots(left, right) {
     left.length === right.length &&
     [...left]
       .sort((a, b) => a - b)
-      .every((value, index) => value === [...right].sort((a, b) => a - b)[index])
+      .every(
+        (value, index) => value === [...right].sort((a, b) => a - b)[index],
+      )
   );
 }
 
@@ -62,8 +61,7 @@ function parseExplicitExpectation(argv) {
   const kind = typeof argv[1] === "string" ? argv[1].trim().toUpperCase() : "";
   const name = typeof argv[2] === "string" ? argv[2].trim() : "";
   const slots = normalizeSlots(kind, argv[3]);
-  const confirmationToken =
-    typeof argv[4] === "string" ? argv[4].trim() : "";
+  const confirmationToken = typeof argv[4] === "string" ? argv[4].trim() : "";
 
   if (
     !character ||
@@ -175,10 +173,8 @@ function coupledExecutionEvidence(value, expected) {
     offeringMutationAllowed: scope.offeringMutationAllowed === true,
     scopeMaxValueMutations: Number(scope.maxValueMutations),
     scopeBlindRetryAllowed: scope.blindRetryAllowed === true,
-    arbiterConfigOverrideCleared:
-      cleanup.arbiterConfigOverrideCleared === true,
-    arbiterEnforcementRestored:
-      cleanup.arbiterEnforcementRestored === true,
+    arbiterConfigOverrideCleared: cleanup.arbiterConfigOverrideCleared === true,
+    arbiterEnforcementRestored: cleanup.arbiterEnforcementRestored === true,
   };
 }
 
@@ -244,8 +240,7 @@ function combineEconomyPrebuffExecutionSupervisorResult(result, expected) {
   const supervisorMaxValueMutations = Number(
     source.scope?.maxValueMutations || 0,
   );
-  const supervisorBlindRetryAllowed =
-    source.scope?.blindRetryAllowed === true;
+  const supervisorBlindRetryAllowed = source.scope?.blindRetryAllowed === true;
   const supervisorMutationKindOnly =
     (expected.kind === "UPGRADE" &&
       source.scope?.upgradeMutationForced === true &&
@@ -284,8 +279,8 @@ function combineEconomyPrebuffExecutionSupervisorResult(result, expected) {
     reason: passed
       ? "ECONOMY_PREBUFF_EXECUTION_LIVE_E2E_CONFIRMED"
       : unknown
-        ? "ECONOMY_PREBUFF_EXECUTION_LIVE_UNKNOWN_NO_RETRY"
-        : "ECONOMY_PREBUFF_EXECUTION_LIVE_E2E_EVIDENCE_INCOMPLETE",
+      ? "ECONOMY_PREBUFF_EXECUTION_LIVE_UNKNOWN_NO_RETRY"
+      : "ECONOMY_PREBUFF_EXECUTION_LIVE_E2E_EVIDENCE_INCOMPLETE",
     coupledExecution: probe,
     economyPrebuffExecution:
       probe.execution || source.after?.economyPrebuffExecution || null,
@@ -309,8 +304,7 @@ function combineEconomyPrebuffExecutionSupervisorResult(result, expected) {
       ...record(source.cleanup),
       runtimeStateRestored,
       equipmentBaselineRestored,
-      arbiterConfigOverrideCleared:
-        probeEvidence.arbiterConfigOverrideCleared,
+      arbiterConfigOverrideCleared: probeEvidence.arbiterConfigOverrideCleared,
       arbiterEnforcementRestored: probeEvidence.arbiterEnforcementRestored,
     },
   };
