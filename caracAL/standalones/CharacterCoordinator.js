@@ -105,6 +105,10 @@ const {
 const { buildAccountStrategy } = require("../src/AccountStrategy");
 const { buildFullAutonomyPlan } = require("../src/FullAutonomy");
 const {
+  buildFullAutonomyExecutionDecision,
+  readFullAutonomyExecutionPolicy,
+} = require("../src/FullAutonomyExecutor");
+const {
   beginSnapshotPersist,
   buildCharacterProfile,
   completeSnapshotPersist,
@@ -230,8 +234,12 @@ function migrate_old_storage(path, localStorage) {
 
   const cfg = require("../config");
   const lifecycle_policy = readLifecyclePolicy(cfg);
+  const full_autonomy_policy = readFullAutonomyExecutionPolicy(cfg);
   const observer_only = process.env.CARACAL_OBSERVER_ONLY === "1";
   let coordinator_shutting_down = false;
+  let full_autonomy_execution_inflight = false;
+  let full_autonomy_last_execution = null;
+  let full_autonomy_task = null;
   if (cfg.cull_versions) {
     await game_files.cull_versions([version]);
   }
@@ -485,12 +493,174 @@ function migrate_old_storage(path, localStorage) {
     return buildAccountStrategy(character_manage);
   }
 
-  function full_autonomy_state() {
+  function build_full_autonomy_plan() {
     return buildFullAutonomyPlan(character_manage, {
       accountStrategy: account_strategy_state(),
       merchantLogistics: merchant_logistics_board,
       maxOnlineCharacters: lifecycle_policy.maxOnlineCharacters,
     });
+  }
+
+  function full_autonomy_safety_block_reason() {
+    const controlled_operation_active =
+      movement_live_test_requests.size > 0 ||
+      combat_live_test_requests.size > 0 ||
+      class_skill_live_test_requests.size > 0 ||
+      group_live_test_requests.size > 0 ||
+      farm_live_test_requests.size > 0 ||
+      inventory_live_test_requests.size > 0 ||
+      logistics_live_test_requests.size > 0 ||
+      merchant_live_test_requests.size > 0 ||
+      bank_travel_live_test_requests.size > 0 ||
+      bank_gold_live_test_requests.size > 0 ||
+      upgrade_live_test_requests.size > 0 ||
+      compound_live_test_requests.size > 0 ||
+      exchange_live_test_requests.size > 0 ||
+      craft_live_test_requests.size > 0 ||
+      npc_trading_live_test_requests.size > 0 ||
+      market_trading_live_test_requests.size > 0 ||
+      merrit_live_test_requests.size > 0 ||
+      fishing_live_test_requests.size > 0 ||
+      material_gather_task_requests.size > 0 ||
+      compound_gather_plan_requests.size > 0 ||
+      craft_material_plan_requests.size > 0 ||
+      logistics_claim_requests.size > 0 ||
+      account_strategy_live_test_active ||
+      economy_prebuff_execution_live_test_active ||
+      account_gear_reservation_live_test_active ||
+      logistics_live_test_active ||
+      bank_travel_live_test_active ||
+      bank_gold_live_test_active ||
+      upgrade_live_test_active ||
+      compound_live_test_active ||
+      upgrade_live_preflight_active ||
+      exchange_preflight_active ||
+      craft_preflight_active ||
+      exchange_live_test_active ||
+      craft_live_test_active ||
+      npc_trading_live_test_active ||
+      market_trading_live_test_active ||
+      fishing_live_test_active ||
+      compound_material_preparation_active ||
+      craft_material_preparation_active ||
+      material_worker_active_count > 0;
+
+    return controlled_operation_active ? "CONTROLLED_OPERATION_ACTIVE" : null;
+  }
+
+  function build_full_autonomy_execution_decision(plan) {
+    return buildFullAutonomyExecutionDecision(plan, {
+      policy: full_autonomy_policy,
+      observerOnly: observer_only,
+      emergencyStopActive: emergency_stop.snapshot().active,
+      coordinatorShuttingDown: coordinator_shutting_down,
+      executionInFlight: full_autonomy_execution_inflight,
+      safetyBlockReason: full_autonomy_safety_block_reason(),
+    });
+  }
+
+  function full_autonomy_state() {
+    const plan = build_full_autonomy_plan();
+    const execution = build_full_autonomy_execution_decision(plan);
+    return {
+      ...plan,
+      readOnly: !full_autonomy_policy.enabled || observer_only,
+      executionEnabled: full_autonomy_policy.enabled && !observer_only,
+      desiredStateMutationDispatched:
+        full_autonomy_last_execution?.dispatched === true,
+      execution: {
+        ...execution,
+        lastExecution: full_autonomy_last_execution,
+      },
+    };
+  }
+
+  async function reconcile_full_autonomy(trigger = "INTERVAL") {
+    const plan = build_full_autonomy_plan();
+    const decision = build_full_autonomy_execution_decision(plan);
+    const timestamp = Date.now();
+
+    full_autonomy_last_execution = {
+      timestamp,
+      trigger,
+      state: decision.state,
+      reason: decision.reason,
+      action: decision.action || null,
+      dispatched: false,
+      outcome: decision.action ? "PENDING" : decision.state,
+      error: null,
+    };
+
+    if (!decision.action) {
+      dashboard?.publishSnapshot();
+      return full_autonomy_last_execution;
+    }
+
+    full_autonomy_execution_inflight = true;
+    try {
+      switch (decision.action.type) {
+        case "START":
+        case "RESUME":
+          await control_character(
+            decision.action.character,
+            CONTROL_ACTIONS.START,
+            { authority: "FULL_AUTONOMY" },
+          );
+          break;
+        case "STOP":
+          await control_character(
+            decision.action.character,
+            CONTROL_ACTIONS.STOP,
+            { authority: "FULL_AUTONOMY" },
+          );
+          break;
+        case "ROTATE":
+          await control_rotation({
+            startCharacter: decision.action.startCharacter,
+            stopCharacter: decision.action.stopCharacter,
+            authority: "FULL_AUTONOMY",
+          });
+          break;
+        default:
+          throw make_control_error(
+            "FULL_AUTONOMY_ACTION_UNSUPPORTED",
+            `Unsupported Full Autonomy action: ${decision.action.type}`,
+            500,
+          );
+      }
+
+      full_autonomy_last_execution = {
+        ...full_autonomy_last_execution,
+        dispatched: true,
+        outcome: "DISPATCHED",
+      };
+      emit_supervisor_event("FULL_AUTONOMY_ACTION_DISPATCHED", null, {
+        trigger,
+        reason: decision.reason,
+        action: decision.action,
+      });
+    } catch (error) {
+      full_autonomy_last_execution = {
+        ...full_autonomy_last_execution,
+        dispatched: false,
+        outcome: "FAILED",
+        error: {
+          code: error?.code || "FULL_AUTONOMY_EXECUTION_FAILED",
+          message: error instanceof Error ? error.message : String(error),
+        },
+      };
+      emit_supervisor_event("FULL_AUTONOMY_ACTION_FAILED", null, {
+        trigger,
+        reason: decision.reason,
+        action: decision.action,
+        error: full_autonomy_last_execution.error,
+      });
+    } finally {
+      full_autonomy_execution_inflight = false;
+      dashboard?.publishSnapshot();
+    }
+
+    return full_autonomy_last_execution;
   }
 
   function logistics_record(value) {
@@ -1797,7 +1967,11 @@ function migrate_old_storage(path, localStorage) {
     };
   }
 
-  async function control_rotation({ startCharacter, stopCharacter } = {}) {
+  async function control_rotation({
+    startCharacter,
+    stopCharacter,
+    authority = "ROTATION",
+  } = {}) {
     const plan = createRotationPlan(character_manage, {
       startCharacter,
       stopCharacter,
@@ -1810,21 +1984,28 @@ function migrate_old_storage(path, localStorage) {
     clear_restart_timer(target);
     clear_stable_timer(target);
 
+    const desired_state_source =
+      authority === "FULL_AUTONOMY" ? "FULL_AUTONOMY" : "ROTATION";
+
     source.enabled = false;
     source.desired_runtime_state = DESIRED_RUNTIME_STATES.STOPPED;
-    source.desired_runtime_state_source = "ROTATION";
+    source.desired_runtime_state_source = desired_state_source;
     source.rotation_replacement = plan.start_character;
 
     target.enabled = true;
     target.desired_runtime_state = DESIRED_RUNTIME_STATES.RUNNING;
-    target.desired_runtime_state_source = "ROTATION";
+    target.desired_runtime_state_source = desired_state_source;
     target.rotation_source = plan.stop_character;
 
     persist_character_runtime_state(plan.stop_character, "rotation_source");
     persist_character_runtime_state(plan.start_character, "rotation_target");
 
     emit_supervisor_event("CHARACTER_ROTATION_REQUESTED", null, {
-      why: "EXPLICIT_SLOT_ROTATION",
+      why:
+        authority === "FULL_AUTONOMY"
+          ? "FULL_AUTONOMY_RECONCILIATION"
+          : "EXPLICIT_SLOT_ROTATION",
+      authority,
       stop_character: plan.stop_character,
       start_character: plan.start_character,
       source_desired_state: plan.source_desired_state,
@@ -13769,8 +13950,13 @@ function migrate_old_storage(path, localStorage) {
     return character_manage[char_name]?.merchant_live_test;
   }
 
-  async function control_character(char_name, action) {
+  async function control_character(
+    char_name,
+    action,
+    { authority = "MANUAL" } = {},
+  ) {
     const char_block = character_manage[char_name];
+    const autonomous = authority === "FULL_AUTONOMY";
     if (!char_block) {
       throw make_control_error(
         "CHARACTER_NOT_FOUND",
@@ -13795,12 +13981,18 @@ function migrate_old_storage(path, localStorage) {
 
         char_block.enabled = true;
         char_block.desired_runtime_state = DESIRED_RUNTIME_STATES.RUNNING;
-        char_block.desired_runtime_state_source = "MANUAL_START";
+        char_block.desired_runtime_state_source = autonomous
+          ? "FULL_AUTONOMY"
+          : "MANUAL_START";
         clear_restart_timer(char_block);
-        persist_character_runtime_state(char_name, "manual_start");
+        persist_character_runtime_state(
+          char_name,
+          autonomous ? "full_autonomy_start" : "manual_start",
+        );
 
         emit_supervisor_event("CHARACTER_CONTROL_REQUESTED", char_name, {
           action,
+          authority,
           desired_runtime_state: char_block.desired_runtime_state,
         });
 
@@ -13841,7 +14033,9 @@ function migrate_old_storage(path, localStorage) {
       case CONTROL_ACTIONS.STOP:
         char_block.enabled = false;
         char_block.desired_runtime_state = DESIRED_RUNTIME_STATES.STOPPED;
-        char_block.desired_runtime_state_source = "MANUAL_STOP";
+        char_block.desired_runtime_state_source = autonomous
+          ? "FULL_AUTONOMY"
+          : "MANUAL_STOP";
         if (char_block.rotation_source) {
           const rotation_source = char_block.rotation_source;
           const source = character_manage[rotation_source];
@@ -13858,9 +14052,13 @@ function migrate_old_storage(path, localStorage) {
         }
         clear_restart_timer(char_block);
         clear_stable_timer(char_block);
-        persist_character_runtime_state(char_name, "manual_stop");
+        persist_character_runtime_state(
+          char_name,
+          autonomous ? "full_autonomy_stop" : "manual_stop",
+        );
         emit_supervisor_event("CHARACTER_CONTROL_REQUESTED", char_name, {
           action,
+          authority,
           desired_runtime_state: char_block.desired_runtime_state,
         });
 
@@ -15450,6 +15648,10 @@ function migrate_old_storage(path, localStorage) {
       if (coordinator_shutting_down) return;
       coordinator_shutting_down = true;
       clearInterval(watchdog_task);
+      if (full_autonomy_task) {
+        clearInterval(full_autonomy_task);
+        full_autonomy_task = null;
+      }
       emit_supervisor_event("COORDINATOR_SHUTDOWN", null, { signal });
       dashboard?.close();
       if (owned_web_server) {
@@ -15510,12 +15712,22 @@ function migrate_old_storage(path, localStorage) {
     watchdog_interval_ms: lifecycle_policy.watchdogIntervalMs,
     scheduled_characters: startup_chars,
     observer_only,
+    full_autonomy_enabled: full_autonomy_policy.enabled,
+    full_autonomy_reconcile_interval_ms:
+      full_autonomy_policy.reconcileIntervalMs,
   });
 
   startup_chars.forEach((char_name, index) => {
     const delay = index * lifecycle_policy.startupStaggerMs;
     setTimeout(() => start_char(char_name), delay);
   });
+
+  if (full_autonomy_policy.enabled && !observer_only) {
+    full_autonomy_task = setInterval(() => {
+      void reconcile_full_autonomy("INTERVAL");
+    }, full_autonomy_policy.reconcileIntervalMs);
+    full_autonomy_task.unref?.();
+  }
 
   my_acc.add_listener(update_siblings_and_acc);
 })().catch((e) => {
