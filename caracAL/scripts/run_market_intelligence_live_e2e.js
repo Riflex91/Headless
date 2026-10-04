@@ -87,14 +87,18 @@ function selectMarketIntelligenceCharacter(snapshot, requested = null) {
     );
   }
 
-  const connectedOwned = characters.filter(
-    (character) =>
-      character?.account_owned === true && character?.connected === true,
+  const owned = characters.filter(
+    (character) => character?.account_owned === true,
+  );
+  const connectedOwned = owned.filter(
+    (character) => character?.connected === true,
   );
 
   return (
     connectedOwned.find((character) => hasProjection(character)) ||
     connectedOwned[0] ||
+    owned.find((character) => character?.enabled === true) ||
+    owned[0] ||
     null
   );
 }
@@ -244,6 +248,16 @@ function marketIntelligenceEvidence(character) {
     projection.reason === "MARKET_INTELLIGENCE_READY" &&
     observations.length > 0 &&
     aggregates.length > 0;
+  const projectionEmpty =
+    projection.state === "EMPTY" &&
+    projection.reason === "MARKET_INTELLIGENCE_NO_SAMPLES" &&
+    observations.length === 0 &&
+    aggregates.length === 0;
+  const projectionConsistent =
+    (projectionReady || projectionEmpty) &&
+    summaryMatches &&
+    observationsValid &&
+    aggregatesValid;
   const metricsValid =
     projectionReady && summaryMatches && observationsValid && aggregatesValid;
 
@@ -251,6 +265,8 @@ function marketIntelligenceEvidence(character) {
     projectionVisible:
       projection.state === "READY" || projection.state === "EMPTY",
     projectionReady,
+    projectionEmpty,
+    projectionConsistent,
     state: projection.state || "MISSING",
     reason: projection.reason || null,
     observations: observations.length,
@@ -274,18 +290,15 @@ function evaluateMarketIntelligence(character) {
     evidence.policyValid &&
     evidence.allSourcesObserved;
 
-  const partial =
-    evidence.projectionReady &&
-    evidence.metricsValid &&
-    evidence.policyValid &&
-    !evidence.allSourcesObserved;
+  const watch =
+    !complete && evidence.projectionConsistent && evidence.policyValid;
 
   return {
-    outcome: complete ? "PASS" : partial ? "PARTIAL" : "FAIL",
+    outcome: complete ? "PASS" : watch ? "WATCH" : "FAIL",
     reason: complete
       ? "MARKET_INTELLIGENCE_LIVE_E2E_CONFIRMED"
-      : partial
-      ? "MARKET_INTELLIGENCE_LIVE_PARTIAL_SOURCE_COVERAGE"
+      : watch
+      ? "MARKET_INTELLIGENCE_LIVE_SOURCE_COVERAGE_PENDING"
       : "MARKET_INTELLIGENCE_LIVE_EVIDENCE_INCOMPLETE",
     character: character?.name || null,
     realm: character?.realm || null,
@@ -313,7 +326,7 @@ function formatCompactResult(result) {
   const scope = record(result?.scope);
 
   const lines = [
-    "Market Intelligence Live Preflight",
+    "Market Intelligence Live E2E",
     "Outcome: " + (result?.outcome || "UNKNOWN"),
     "Reason: " + (result?.reason || "UNKNOWN"),
     "Character: " + (result?.character || "UNKNOWN"),
@@ -328,17 +341,46 @@ function formatCompactResult(result) {
       " | LOCAL_HISTORY=" +
       String(sources.LOCAL_HISTORY ?? 0),
     "Metrics valid: " + (evidence.metricsValid === true ? "yes" : "no"),
-    "Read-only policy: " + (evidence.policyValid === true ? "yes" : "no"),
+    "Read-only: " +
+      (scope.readOnly === true && evidence.policyValid === true ? "yes" : "no"),
     "Dashboard GET only: " + (scope.dashboardGetOnly === true ? "yes" : "no"),
     "Mutation dispatched: " +
       (scope.mutationDispatched === true ? "yes" : "no"),
   ];
 
+  if (scope.bootstrapUsed === true) {
+    lines.push(
+      "Bootstrap runtime: " + (scope.runtimeStateDuringTest || "UNKNOWN"),
+    );
+  }
+
   if (missingSources.length > 0) {
-    lines.push("Missing sources: " + missingSources.join(", "));
+    lines.push("WATCH sources: " + missingSources.join(", "));
   }
 
   return lines.join("\n") + "\n";
+}
+
+async function runMarketIntelligenceSupervisorLiveTest(
+  characterName,
+  sampleMs = Number(
+    process.env.CARACAL_MARKET_INTELLIGENCE_LIVE_SETTLE_MS || 5500,
+  ),
+  { fetchImpl = fetch } = {},
+) {
+  return readJson(
+    await fetchImpl(
+      baseUrl +
+        "/headless/api/characters/" +
+        encodeURIComponent(characterName) +
+        "/tests/market-intelligence",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sampleMs }),
+      },
+    ),
+  );
 }
 
 function clearInteractiveTerminal() {
@@ -366,26 +408,56 @@ async function main() {
   let result = null;
 
   try {
-    const selected = await waitForMarketIntelligenceCharacter(
+    const selected = selectMarketIntelligenceCharacter(
+      dashboard.state,
       requestedCharacter,
-      {
-        initialState: dashboard.state,
-      },
     );
-
-    await sleep(
-      Number(process.env.CARACAL_MARKET_INTELLIGENCE_LIVE_SETTLE_MS || 5500),
-    );
-    const state = await readState();
-    const current = array(state.characters).find(
-      (character) => character?.name === selected.name,
-    );
-    if (!current) {
+    if (!selected) {
+      const target = requestedCharacter ? ": " + requestedCharacter : "";
+      throw new Error("No account-owned character available" + target);
+    }
+    if (selected.account_owned !== true) {
       throw new Error(
-        "Character disappeared from dashboard state: " + selected.name,
+        "Market Intelligence live test requires an account-owned character: " +
+          selected.name,
       );
     }
-    result = evaluateMarketIntelligence(current);
+
+    if (selected.connected === true && hasProjection(selected)) {
+      await sleep(
+        Number(process.env.CARACAL_MARKET_INTELLIGENCE_LIVE_SETTLE_MS || 5500),
+      );
+      const state = await readState();
+      const current = array(state.characters).find(
+        (character) => character?.name === selected.name,
+      );
+      if (!current) {
+        throw new Error(
+          "Character disappeared from dashboard state: " + selected.name,
+        );
+      }
+      result = evaluateMarketIntelligence(current);
+    } else {
+      const payload = await runMarketIntelligenceSupervisorLiveTest(
+        selected.name,
+      );
+      const supervisor = record(payload.result);
+      const projection = record(supervisor.projection);
+      result = evaluateMarketIntelligence({
+        name: supervisor.character || selected.name,
+        realm: supervisor.realm || selected.realm || null,
+        account_owned: true,
+        connected: true,
+        market_intelligence_runtime: projection,
+      });
+      result.scope = {
+        ...result.scope,
+        ...record(supervisor.scope),
+        dashboardGetOnly: false,
+        bootstrapUsed: true,
+      };
+      result.cleanup = record(supervisor.cleanup);
+    }
   } finally {
     if (managedRuntime) {
       if (verbose) {
@@ -426,6 +498,7 @@ module.exports = {
   observationValid,
   parseCliArgs,
   readState,
+  runMarketIntelligenceSupervisorLiveTest,
   selectMarketIntelligenceCharacter,
   waitForMarketIntelligenceCharacter,
 };

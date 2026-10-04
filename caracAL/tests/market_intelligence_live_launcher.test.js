@@ -10,6 +10,7 @@ const {
   formatCompactResult,
   marketIntelligenceEvidence,
   parseCliArgs,
+  runMarketIntelligenceSupervisorLiveTest,
   selectMarketIntelligenceCharacter,
   waitForMarketIntelligenceCharacter,
 } = require("../scripts/run_market_intelligence_live_e2e");
@@ -192,7 +193,7 @@ test("Market Intelligence live evidence confirms all three Phase 16 sources", ()
   assert.equal(result.scope.mutationDispatched, false);
 });
 
-test("Market Intelligence live evidence is PARTIAL when a source is absent", () => {
+test("Market Intelligence live evidence is WATCH when a source is absent", () => {
   const result = evaluateMarketIntelligence(
     character("My_Merchant", {
       market_intelligence_runtime: projection({
@@ -201,14 +202,46 @@ test("Market Intelligence live evidence is PARTIAL when a source is absent", () 
     }),
   );
 
-  assert.equal(result.outcome, "PARTIAL");
+  assert.equal(result.outcome, "WATCH");
   assert.equal(
     result.reason,
-    "MARKET_INTELLIGENCE_LIVE_PARTIAL_SOURCE_COVERAGE",
+    "MARKET_INTELLIGENCE_LIVE_SOURCE_COVERAGE_PENDING",
   );
   assert.deepEqual(result.evidence.missingSources, ["PONTY"]);
   assert.equal(result.evidence.metricsValid, true);
   assert.equal(result.evidence.policyValid, true);
+  assert.equal(result.scope.mutationDispatched, false);
+});
+
+test("Market Intelligence live evidence is WATCH when projection is safely EMPTY", () => {
+  const result = evaluateMarketIntelligence(
+    character("My_Merchant", {
+      market_intelligence_runtime: {
+        timestamp: 1000,
+        state: "EMPTY",
+        reason: "MARKET_INTELLIGENCE_NO_SAMPLES",
+        observations: [],
+        aggregates: [],
+        summary: {
+          observations: 0,
+          aggregates: 0,
+          liveVisible: 0,
+          ponty: 0,
+          localHistory: 0,
+        },
+        policy: policy(),
+      },
+    }),
+  );
+
+  assert.equal(result.outcome, "WATCH");
+  assert.equal(result.evidence.projectionEmpty, true);
+  assert.equal(result.evidence.projectionConsistent, true);
+  assert.deepEqual(result.evidence.missingSources, [
+    "LIVE_VISIBLE",
+    "PONTY",
+    "LOCAL_HISTORY",
+  ]);
   assert.equal(result.scope.mutationDispatched, false);
 });
 
@@ -243,17 +276,17 @@ test("Market Intelligence evidence preserves null item levels", () => {
 test("Market Intelligence compact output shows source coverage and no mutation", () => {
   const output = formatCompactResult(evaluateMarketIntelligence(character()));
 
-  assert.match(output, /Market Intelligence Live Preflight/);
+  assert.match(output, /Market Intelligence Live E2E/);
   assert.match(output, /Outcome: PASS/);
   assert.match(output, /LIVE_VISIBLE=1 \| PONTY=1 \| LOCAL_HISTORY=1/);
   assert.match(output, /Metrics valid: yes/);
-  assert.match(output, /Read-only policy: yes/);
+  assert.match(output, /Read-only: yes/);
   assert.match(output, /Dashboard GET only: yes/);
   assert.match(output, /Mutation dispatched: no/);
   assert.doesNotMatch(output, /Exact guarded mutation command/);
 });
 
-test("Market Intelligence compact PARTIAL output names missing sources", () => {
+test("Market Intelligence compact WATCH output names missing sources", () => {
   const output = formatCompactResult(
     evaluateMarketIntelligence(
       character("My_Merchant", {
@@ -264,8 +297,8 @@ test("Market Intelligence compact PARTIAL output names missing sources", () => {
     ),
   );
 
-  assert.match(output, /Outcome: PARTIAL/);
-  assert.match(output, /Missing sources: PONTY/);
+  assert.match(output, /Outcome: WATCH/);
+  assert.match(output, /WATCH sources: PONTY/);
   assert.match(output, /Mutation dispatched: no/);
 });
 
@@ -302,6 +335,17 @@ test("Market Intelligence character selection prefers connected owned projection
     ).name,
     "My_Merchant",
   );
+
+  const offlineOnly = selectMarketIntelligenceCharacter({
+    characters: [
+      character("Offline", {
+        connected: false,
+        market_intelligence_runtime: null,
+      }),
+    ],
+  });
+  assert.equal(offlineOnly.name, "Offline");
+  assert.equal(offlineOnly.connected, false);
 });
 
 test("Market Intelligence wait survives dashboard-ready before projection-ready", async () => {
@@ -337,7 +381,39 @@ test("Market Intelligence wait survives dashboard-ready before projection-ready"
   assert.equal(reads, 1);
 });
 
-test("Market Intelligence live launcher is GET-only and dashboard exposes projection", () => {
+test("Market Intelligence supervisor bootstrap uses only the dedicated read-only endpoint", async () => {
+  const calls = [];
+  const payload = await runMarketIntelligenceSupervisorLiveTest(
+    "My_Merchant",
+    5500,
+    {
+      fetchImpl: async (url, options) => {
+        calls.push({ url, options });
+        return {
+          ok: true,
+          json: async () => ({
+            ok: true,
+            result: {
+              outcome: "PASS",
+              projection: projection(),
+            },
+          }),
+        };
+      },
+    },
+  );
+
+  assert.equal(payload.result.outcome, "PASS");
+  assert.equal(calls.length, 1);
+  assert.match(
+    calls[0].url,
+    /\/headless\/api\/characters\/My_Merchant\/tests\/market-intelligence$/,
+  );
+  assert.equal(calls[0].options.method, "POST");
+  assert.deepEqual(JSON.parse(calls[0].options.body), { sampleMs: 5500 });
+});
+
+test("Market Intelligence live launcher bootstraps only through paused read-only supervisor path", () => {
   const launcher = fs.readFileSync(
     path.join(
       __dirname,
@@ -351,13 +427,29 @@ test("Market Intelligence live launcher is GET-only and dashboard exposes projec
     path.join(__dirname, "..", "src", "HeadlessDashboard.js"),
     "utf8",
   );
+  const coordinator = fs.readFileSync(
+    path.join(__dirname, "..", "standalones", "CharacterCoordinator.js"),
+    "utf8",
+  );
 
   assert.match(
     dashboard,
     /market_intelligence_runtime:\s*charBlock\.market_intelligence_runtime/,
   );
   assert.match(launcher, /fetch\(baseUrl \+ "\/headless\/api\/state"/);
-  assert.doesNotMatch(launcher, /method:\s*"POST"/);
+  assert.match(
+    dashboard,
+    /\/headless\/api\/characters\/:name\/tests\/market-intelligence/,
+  );
+  assert.match(launcher, /method:\s*"POST"/);
+  assert.match(
+    coordinator,
+    /verification_runtime_state:\s*DESIRED_RUNTIME_STATES\.PAUSED/,
+  );
+  assert.match(
+    coordinator,
+    /runtimeStateDuringTest:\s*DESIRED_RUNTIME_STATES\.PAUSED/,
+  );
   assert.doesNotMatch(launcher, /ActionBoundary/);
   assert.doesNotMatch(launcher, /socket\.emit/);
   assert.doesNotMatch(launcher, /pontyBuy\s*\(/);
