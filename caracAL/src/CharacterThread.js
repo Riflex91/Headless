@@ -202,6 +202,39 @@ async function make_runner(upper, CODE_file, version, is_typescript) {
           });
         break;
       }
+      case "economy_arbiter_enforcement_probe": {
+        const requestId =
+          typeof m.request_id === "string" && m.request_id
+            ? m.request_id
+            : `economy-arbiter-enforcement-${Date.now()}`;
+        const runtime = runner_context.__caracalBotRuntime;
+        if (!runtime?.runEconomyArbiterEnforcementProbe) {
+          sendIpcMessage(process, {
+            type: "economy_arbiter_enforcement_probe_result",
+            request_id: requestId,
+            error: "ECONOMY_ARBITER_ENFORCEMENT_PROBE_RUNTIME_NOT_READY",
+          });
+          break;
+        }
+
+        void runtime
+          .runEconomyArbiterEnforcementProbe({ requestId })
+          .then((result) => {
+            sendIpcMessage(process, {
+              type: "economy_arbiter_enforcement_probe_result",
+              request_id: requestId,
+              result,
+            });
+          })
+          .catch((error) => {
+            sendIpcMessage(process, {
+              type: "economy_arbiter_enforcement_probe_result",
+              request_id: requestId,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          });
+        break;
+      }
       case "fishing_material_request_result": {
         const runtime = runner_context.__caracalBotRuntime;
         if (runtime?.reportFishingMaterialRequestResult) {
