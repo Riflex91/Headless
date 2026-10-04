@@ -242,6 +242,36 @@ test("Economy Prebuff holds when Risk Policy contains UNKNOWN evidence", () => {
   assert.equal(status.demand.unknown, 1);
 });
 
+test("Economy Prebuff supports a temporary Merchant Skill override and restores config", () => {
+  const setup = makeController({
+    config: merchantConfig({}),
+  });
+
+  assert.equal(
+    setup.controller.tick().reason,
+    "ECONOMY_PREBUFF_NO_CONFIGURED_SKILL",
+  );
+
+  setup.controller.setConfigOverride(
+    merchantConfig({
+      massproduction: true,
+      massproductionpp: true,
+    }),
+  );
+  const overridden = setup.controller.tick();
+
+  assert.equal(overridden.state, "READY");
+  assert.equal(overridden.reason, "ECONOMY_PREBUFF_READY");
+  assert.equal(overridden.selectedSkill, "massproductionpp");
+
+  setup.controller.clearConfigOverride();
+  const restored = setup.controller.tick();
+
+  assert.equal(restored.state, "BLOCKED");
+  assert.equal(restored.reason, "ECONOMY_PREBUFF_NO_CONFIGURED_SKILL");
+  assert.equal(restored.selectedSkill, null);
+});
+
 test("Economy Prebuff requires explicit Merchant Skill configuration", () => {
   const setup = makeController({
     config: merchantConfig({}),

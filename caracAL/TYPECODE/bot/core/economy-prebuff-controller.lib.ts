@@ -192,6 +192,7 @@ export class EconomyPrebuffController {
   private readonly configSource: () => unknown;
   private readonly now: () => number;
   private readonly onEvent?: (event: EconomyPrebuffEvent) => void;
+  private configOverride: unknown | undefined;
   private lastEventSignature: string | null = null;
   private lastStatus: EconomyPrebuffStatus;
 
@@ -216,13 +217,25 @@ export class EconomyPrebuffController {
     );
   }
 
+  setConfigOverride(config: unknown): void {
+    this.configOverride = config;
+  }
+
+  clearConfigOverride(): void {
+    this.configOverride = undefined;
+  }
+
   status(): EconomyPrebuffStatus {
     return this.lastStatus;
   }
 
   tick(): EconomyPrebuffStatus {
     const timestamp = this.now();
-    const config = normalizeConfig(this.configSource());
+    const config = normalizeConfig(
+      this.configOverride === undefined
+        ? this.configSource()
+        : this.configOverride,
+    );
     const risk = this.riskPolicy.status();
     const character = this.game.character();
 

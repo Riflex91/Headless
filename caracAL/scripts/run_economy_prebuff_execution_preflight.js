@@ -266,6 +266,8 @@ function normalizeVerificationPolicyPreflight(
     prebuff.selectedSkill.length > 0 &&
     childCleanup.verificationPolicyConfigOverrideCleared === true &&
     childCleanup.verificationPolicyPlanningRestored === true &&
+    childCleanup.prebuffVerificationConfigOverrideCleared === true &&
+    childCleanup.prebuffVerificationPlanningRestored === true &&
     supervisorCleanup.equipmentBaselineRestored === true &&
     supervisorCleanup.runtimeStateRestored === true;
 
@@ -305,6 +307,8 @@ function normalizeVerificationPolicyPreflight(
       temporary: true,
       exactTarget: true,
       cleanupConfirmed: true,
+      temporaryPrebuffSkills: true,
+      prebuffCleanupConfirmed: true,
     },
     candidate: {
       kind: selected.kind,

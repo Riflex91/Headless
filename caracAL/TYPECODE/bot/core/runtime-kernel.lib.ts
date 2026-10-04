@@ -1114,6 +1114,9 @@ export class BotRuntimeKernel {
     let verificationPolicyApplied = false;
     let verificationPolicyConfigOverrideCleared = false;
     let verificationPolicyPlanningRestored = false;
+    let prebuffVerificationPolicyApplied = false;
+    let prebuffVerificationConfigOverrideCleared = false;
+    let prebuffVerificationPlanningRestored = false;
 
     const refreshPlanning = () => {
       this.inventoryIntelligence.tick();
@@ -1240,6 +1243,27 @@ export class BotRuntimeKernel {
         });
       }
       verificationPolicyApplied = true;
+
+      this.economyPrebuff.setConfigOverride({
+        economyPrebuff: {
+          enabled: true,
+          preferEnhanced: true,
+        },
+        classSkills: {
+          merchant: {
+            enabled: true,
+            skills: {
+              massproduction: {
+                enabled: true,
+              },
+              massproductionpp: {
+                enabled: true,
+              },
+            },
+          },
+        },
+      });
+      prebuffVerificationPolicyApplied = true;
       refreshPlanning();
 
       const runner = new EconomyPrebuffExecutionLiveTestRunner({
@@ -1282,8 +1306,18 @@ export class BotRuntimeKernel {
           this.compound.clearConfigOverride();
         }
         verificationPolicyConfigOverrideCleared = true;
+      }
+
+      if (prebuffVerificationPolicyApplied) {
+        this.economyPrebuff.clearConfigOverride();
+        prebuffVerificationConfigOverrideCleared = true;
+      }
+
+      if (verificationPolicyApplied || prebuffVerificationPolicyApplied) {
         refreshPlanning();
-        verificationPolicyPlanningRestored = true;
+        verificationPolicyPlanningRestored = verificationPolicyApplied;
+        prebuffVerificationPlanningRestored =
+          prebuffVerificationPolicyApplied;
       }
 
       if (result) {
@@ -1291,6 +1325,10 @@ export class BotRuntimeKernel {
           verificationPolicyConfigOverrideCleared;
         result.cleanup.verificationPolicyPlanningRestored =
           verificationPolicyPlanningRestored;
+        result.cleanup.prebuffVerificationConfigOverrideCleared =
+          prebuffVerificationConfigOverrideCleared;
+        result.cleanup.prebuffVerificationPlanningRestored =
+          prebuffVerificationPlanningRestored;
       }
 
       if (suspended.merchantAutonomy) this.registerMerchantAutonomyJob();
