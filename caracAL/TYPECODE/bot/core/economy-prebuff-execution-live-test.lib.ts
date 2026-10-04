@@ -227,6 +227,7 @@ export class EconomyPrebuffExecutionLiveTestRunner {
     let reason = "ECONOMY_PREBUFF_EXECUTION_LIVE_EVIDENCE_INCOMPLETE";
     let arbiterConfigOverrideCleared = false;
     let arbiterEnforcementRestored = false;
+    let finalResult: EconomyPrebuffExecutionLiveTestResult | null = null;
 
     this.deps.refreshPlanning();
     beforeRisk = this.deps.riskPolicy.status();
@@ -325,7 +326,7 @@ export class EconomyPrebuffExecutionLiveTestRunner {
         enforced.policy.enforcementEnabled === true;
       if (!evidence.arbiterEnforcementObserved) {
         reason = "ECONOMY_PREBUFF_EXECUTION_LIVE_ENFORCEMENT_NOT_ACTIVE";
-        return finish();
+        return (finalResult = finish());
       }
 
       execution = await this.deps.execution.executeNext();
@@ -343,7 +344,7 @@ export class EconomyPrebuffExecutionLiveTestRunner {
       if (execution.state === "UNKNOWN_HOLD") {
         outcome = "UNKNOWN";
         reason = "ECONOMY_PREBUFF_EXECUTION_LIVE_UNKNOWN_NO_RETRY";
-        return finish();
+        return (finalResult = finish());
       }
 
       if (
@@ -356,7 +357,7 @@ export class EconomyPrebuffExecutionLiveTestRunner {
         reason =
           execution.reason ||
           "ECONOMY_PREBUFF_EXECUTION_LIVE_COUPLED_ACTION_NOT_CONFIRMED";
-        return finish();
+        return (finalResult = finish());
       }
 
       const settleStartedAt = this.now();
@@ -381,18 +382,24 @@ export class EconomyPrebuffExecutionLiveTestRunner {
         outcome = "TIMEOUT";
         reason =
           "ECONOMY_PREBUFF_EXECUTION_LIVE_CONFIRMED_BUT_MUTATION_NOT_OBSERVED";
-        return finish();
+        return (finalResult = finish());
       }
 
       outcome = "PASS";
       reason = "ECONOMY_PREBUFF_EXECUTION_LIVE_E2E_CONFIRMED";
-      return finish();
+      return (finalResult = finish());
     } finally {
       this.deps.arbiter.clearConfigOverride();
       arbiterConfigOverrideCleared = true;
       const restored = this.deps.arbiter.tick();
       arbiterEnforcementRestored =
         restored.policy.enforcementEnabled === originalEnforcement;
+      if (finalResult) {
+        finalResult.cleanup.arbiterConfigOverrideCleared =
+          arbiterConfigOverrideCleared;
+        finalResult.cleanup.arbiterEnforcementRestored =
+          arbiterEnforcementRestored;
+      }
     }
   }
 }
