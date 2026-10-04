@@ -14,6 +14,7 @@ const {
   marketLocalHistorySyncSignature,
   marketObservationSignature,
   restoreDesiredRuntimeState,
+  restoreDesiredRuntimeStateSource,
   selectMarketLocalHistoryForRuntime,
   selectNewLiveMarketObservations,
   selectNewPontyMarketObservations,
@@ -70,6 +71,45 @@ test("invalid persisted desired state falls back to configured state", () => {
   assert.equal(
     restoreDesiredRuntimeState(disabled, null).desired_runtime_state,
     "STOPPED",
+  );
+});
+
+test("persisted desired-state authority wins during restore", () => {
+  const charBlock = { desired_runtime_state: "STOPPED" };
+  assert.equal(
+    restoreDesiredRuntimeStateSource(
+      charBlock,
+      { desired_state: "STOPPED" },
+      { desired_state_source: "MANUAL_STOP" },
+      { configuredEnabled: false },
+    ),
+    "MANUAL_STOP",
+  );
+});
+
+test("legacy configured-disabled STOP remains config-controlled", () => {
+  const charBlock = { desired_runtime_state: "STOPPED" };
+  assert.equal(
+    restoreDesiredRuntimeStateSource(
+      charBlock,
+      { desired_state: "STOPPED" },
+      null,
+      { configuredEnabled: false },
+    ),
+    "CONFIG",
+  );
+});
+
+test("legacy STOP overriding configured enabled stays conservatively protected", () => {
+  const charBlock = { desired_runtime_state: "STOPPED" };
+  assert.equal(
+    restoreDesiredRuntimeStateSource(
+      charBlock,
+      { desired_state: "STOPPED" },
+      null,
+      { configuredEnabled: true },
+    ),
+    "PERSISTED_STOP",
   );
 });
 

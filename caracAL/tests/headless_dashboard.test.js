@@ -526,10 +526,17 @@ test("dashboard module and coordinator remain syntactically valid", () => {
   assert.match(coordinator, /CharacterConfigService/);
   assert.match(coordinator, /getPersistenceHealth/);
   assert.match(coordinator, /restoreDesiredRuntimeState/);
+  assert.match(coordinator, /restoreDesiredRuntimeStateSource/);
   assert.match(coordinator, /getDesiredStateAuthority/);
   assert.match(coordinator, /desiredStateSource/);
   assert.match(coordinator, /persisted_authority/);
   assert.match(coordinator, /buildFullAutonomyPlan/);
+  assert.match(coordinator, /buildFullAutonomyExecutionDecision/);
+  assert.match(coordinator, /readFullAutonomyExecutionPolicy/);
+  assert.match(coordinator, /reconcile_full_autonomy/);
+  assert.match(coordinator, /full_autonomy_safety_block_reason/);
+  assert.match(coordinator, /FULL_AUTONOMY_ACTION_DISPATCHED/);
+  assert.match(coordinator, /FULL_AUTONOMY_ACTION_FAILED/);
   assert.match(coordinator, /getFullAutonomyState/);
   assert.match(coordinator, /desired_runtime_state_source/);
   assert.match(coordinator, /saveCharacterRuntimeState/);

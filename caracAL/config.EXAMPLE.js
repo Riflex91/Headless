@@ -13,6 +13,12 @@ module.exports = {
   //how much logging you want
   //set to "debug" for more logging and "warn" for less logging
   log_level: "info",
+  full_autonomy: {
+    //explicit opt-in; keep false until Phase 18 execution is intentionally enabled
+    enabled: false,
+    //at most one lifecycle mutation is dispatched per reconciliation cycle
+    reconcile_interval_ms: 5000,
+  },
   lifecycle: {
     //hard cap for this bot; never start more than four character processes
     max_online_characters: 4,
