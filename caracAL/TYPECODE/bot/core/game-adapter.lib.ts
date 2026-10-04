@@ -100,6 +100,18 @@ export interface BankSnapshot {
   access: BankPackAccessSnapshot[];
 }
 
+export interface PontyListingSnapshot {
+  item: {
+    name: string | null;
+    level: number | null;
+    quantity: number;
+    rid: string | null;
+  };
+  unitPrice: number;
+  totalPrice: number;
+  cashMultiplier: boolean;
+}
+
 export interface MarketListingSnapshot {
   merchantId: string;
   merchantName: string | null;
@@ -153,6 +165,8 @@ export interface GameAdapterSource {
   gameData(): unknown;
   nextSkill(): unknown;
   bankPacks(): unknown;
+  secondhands?(): unknown;
+  calculateItemValue?(item: unknown): unknown;
   itemGrade?(item: unknown): unknown;
   now(): number;
 }
@@ -265,6 +279,13 @@ export function createRuntimeGameAdapterSource(): GameAdapterSource {
     gameData: () => runtimeValue("G"),
     nextSkill: () => runtimeValue("next_skill"),
     bankPacks: () => runtimeValue("bank_packs"),
+    secondhands: () => runtimeValue("secondhands"),
+    calculateItemValue: (item: unknown) => {
+      const candidate = runtimeValue("calculate_item_value");
+      return typeof candidate === "function"
+        ? (candidate as (value: unknown) => unknown)(item)
+        : null;
+    },
     itemGrade: (item: unknown) => {
       const candidate = runtimeValue("item_grade");
       return typeof candidate === "function"
@@ -284,6 +305,7 @@ export const GAME_ADAPTER_READ_CAPABILITIES = [
   "NPC",
   "BANK",
   "MARKET",
+  "PONTY",
   "SKILLS",
   "COOLDOWNS",
   "MAP",
@@ -506,6 +528,61 @@ export class GameAdapter {
       packs,
       access,
     };
+  }
+
+  ponty(): PontyListingSnapshot[] {
+    const rawListings = this.source.secondhands?.();
+    if (!Array.isArray(rawListings) || !this.source.calculateItemValue) {
+      return [];
+    }
+
+    const definitions = record(record(this.source.gameData()).items);
+    const listings: PontyListingSnapshot[] = [];
+
+    for (const rawItem of rawListings) {
+      if (!rawItem || typeof rawItem !== "object") continue;
+
+      const item = record(rawItem);
+      const name = stringOrNull(item.name);
+      const rid = stringOrNull(item.rid);
+      if (!name || !rid) continue;
+
+      const quantityValue = numberOrNull(item.q);
+      const quantity =
+        quantityValue !== null && quantityValue > 0 ? quantityValue : 1;
+
+      let baseValue: number | null = null;
+      try {
+        baseValue = numberOrNull(
+          this.source.calculateItemValue(cloneJsonValue(item)),
+        );
+      } catch {
+        baseValue = null;
+      }
+      if (baseValue === null || baseValue <= 0) continue;
+
+      const cashMultiplier = !!record(definitions[name]).cash;
+      const unitPrice = baseValue * (cashMultiplier ? 3 : 2);
+
+      listings.push({
+        item: {
+          name,
+          level: numberOrNull(item.level),
+          quantity,
+          rid,
+        },
+        unitPrice,
+        totalPrice: unitPrice * quantity,
+        cashMultiplier,
+      });
+    }
+
+    return listings.sort(
+      (a, b) =>
+        String(a.item.name || "").localeCompare(String(b.item.name || "")) ||
+        (a.item.level ?? -1) - (b.item.level ?? -1) ||
+        String(a.item.rid || "").localeCompare(String(b.item.rid || "")),
+    );
   }
 
   market(): MarketListingSnapshot[] {
