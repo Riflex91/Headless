@@ -241,7 +241,6 @@ export class GoalAdapterDispatchRunner {
           quantity,
           recipient,
           recipientPosition,
-          purpose: "CRAFT_TEST_MATERIAL",
           ...(timeoutMs !== undefined && timeoutMs !== null && { timeoutMs }),
           ...(pollMs !== undefined && pollMs !== null && { pollMs }),
         });
