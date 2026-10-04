@@ -251,32 +251,35 @@ test("Ponty market persistence dedupes unchanged snapshots by RID and value", ()
 });
 
 test("Ponty market persistence ignores non-PONTY market sources", () => {
-  const result = selectNewPontyMarketObservations([], [
-    {
-      itemName: "sword",
-      level: 2,
-      price: 1000,
-      quantity: 1,
-      server: "EU I",
-      seller: "Trader",
-      timestamp: 1000,
-      source: "LIVE_VISIBLE",
-      metadata: {
-        rid: "RID-LIVE",
+  const result = selectNewPontyMarketObservations(
+    [],
+    [
+      {
+        itemName: "sword",
+        level: 2,
+        price: 1000,
+        quantity: 1,
+        server: "EU I",
+        seller: "Trader",
+        timestamp: 1000,
+        source: "LIVE_VISIBLE",
+        metadata: {
+          rid: "RID-LIVE",
+        },
       },
-    },
-    {
-      itemName: "sword",
-      level: 2,
-      price: 900,
-      quantity: 1,
-      server: "EU I",
-      seller: "History",
-      timestamp: 900,
-      source: "LOCAL_HISTORY",
-      metadata: {},
-    },
-  ]);
+      {
+        itemName: "sword",
+        level: 2,
+        price: 900,
+        quantity: 1,
+        server: "EU I",
+        seller: "History",
+        timestamp: 900,
+        source: "LOCAL_HISTORY",
+        metadata: {},
+      },
+    ],
+  );
 
   assert.deepEqual(result.observations, []);
   assert.deepEqual(result.signatures, []);
