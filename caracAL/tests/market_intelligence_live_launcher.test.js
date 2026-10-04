@@ -549,10 +549,7 @@ test("Market Intelligence live launcher bootstraps only through paused read-only
   );
   assert.match(coordinator, /market_intelligence_source_probe/);
   assert.match(thread, /case "market_intelligence_source_probe"/);
-  assert.match(
-    coordinator,
-    /probe_timestamp\s*>=\s*dashboard_timestamp/,
-  );
+  assert.match(coordinator, /probe_timestamp\s*>=\s*dashboard_timestamp/);
   assert.match(coordinator, /projection_source\s*=\s*use_probe_projection/);
   assert.match(coordinator, /"SOURCE_PROBE"/);
   assert.match(coordinator, /"DASHBOARD_RUNTIME"/);
