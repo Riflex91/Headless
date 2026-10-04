@@ -296,6 +296,7 @@ function migrate_old_storage(path, localStorage) {
   let inventory_live_test_sequence = 0;
   let gear_scoring_live_test_sequence = 0;
   const economy_arbiter_enforcement_probe_requests = new Map();
+  const economy_prebuff_execution_live_test_requests = new Map();
   let account_gear_reservation_live_test_sequence = 0;
   let account_gear_reservation_live_test_active = false;
   const logistics_live_test_requests = new Map();
@@ -978,6 +979,15 @@ function migrate_old_storage(path, localStorage) {
 
     if (
       char_block &&
+      normalized.data?.economyPrebuffExecution &&
+      typeof normalized.data.economyPrebuffExecution === "object"
+    ) {
+      char_block.economy_prebuff_execution_runtime =
+        normalized.data.economyPrebuffExecution;
+    }
+
+    if (
+      char_block &&
       normalized.data?.economyArbiter &&
       typeof normalized.data.economyArbiter === "object"
     ) {
@@ -1095,6 +1105,7 @@ function migrate_old_storage(path, localStorage) {
         normalized.data?.farmIntelligence ||
         normalized.data?.inventoryIntelligence ||
         normalized.data?.economyPrebuff ||
+        normalized.data?.economyPrebuffExecution ||
         normalized.data?.merchantMerrit ||
         normalized.data?.merchantFishing)
     ) {
@@ -1271,6 +1282,8 @@ function migrate_old_storage(path, localStorage) {
     char_block.risk_policy_runtime = char_block.risk_policy_runtime || null;
     char_block.economy_prebuff_runtime =
       char_block.economy_prebuff_runtime || null;
+    char_block.economy_prebuff_execution_runtime =
+      char_block.economy_prebuff_execution_runtime || null;
     char_block.economy_arbiter_runtime =
       char_block.economy_arbiter_runtime || null;
     char_block.upgrade_runtime = char_block.upgrade_runtime || null;
@@ -1769,6 +1782,9 @@ function migrate_old_storage(path, localStorage) {
       ),
       economyPrebuff: JSON.parse(
         JSON.stringify(char_block?.economy_prebuff_runtime || null),
+      ),
+      economyPrebuffExecution: JSON.parse(
+        JSON.stringify(char_block?.economy_prebuff_execution_runtime || null),
       ),
       economyArbiter: JSON.parse(
         JSON.stringify(char_block?.economy_arbiter_runtime || null),
@@ -2530,6 +2546,31 @@ function migrate_old_storage(path, localStorage) {
       }, UPGRADE_LIVE_TEST_RESULT_TIMEOUT_MS);
 
       exchange_live_test_requests.set(request_id, {
+        character: char_name,
+        resolve,
+        reject,
+        timer,
+      });
+    });
+  }
+
+  function wait_for_economy_prebuff_execution_live_test_result(
+    char_name,
+    request_id,
+  ) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        economy_prebuff_execution_live_test_requests.delete(request_id);
+        reject(
+          make_control_error(
+            "ECONOMY_PREBUFF_EXECUTION_LIVE_TEST_TIMEOUT",
+            `Economy Prebuff execution live test timed out for ${char_name}`,
+            504,
+          ),
+        );
+      }, UPGRADE_LIVE_TEST_RESULT_TIMEOUT_MS);
+
+      economy_prebuff_execution_live_test_requests.set(request_id, {
         character: char_name,
         resolve,
         reject,
@@ -13275,6 +13316,39 @@ function migrate_old_storage(path, localStorage) {
           });
           emit_supervisor_event(
             "BANK_TRAVEL_LIVE_TEST_RESULT_RECEIVED",
+            char_name,
+            {
+              request_id: m.request_id,
+              outcome: m.result?.outcome || null,
+              error: m.error || null,
+            },
+          );
+          break;
+        }
+        case "economy_prebuff_execution_live_test_result": {
+          const pending = economy_prebuff_execution_live_test_requests.get(
+            m.request_id,
+          );
+          if (!pending || pending.character !== char_name) {
+            emit_supervisor_event(
+              "ECONOMY_PREBUFF_EXECUTION_LIVE_TEST_RESULT_IGNORED",
+              char_name,
+              {
+                why: "UNKNOWN_OR_STALE_REQUEST",
+                request_id: m.request_id || null,
+              },
+            );
+            break;
+          }
+
+          clearTimeout(pending.timer);
+          economy_prebuff_execution_live_test_requests.delete(m.request_id);
+          pending.resolve({
+            result: m.result || null,
+            error: m.error || null,
+          });
+          emit_supervisor_event(
+            "ECONOMY_PREBUFF_EXECUTION_LIVE_TEST_RESULT_RECEIVED",
             char_name,
             {
               request_id: m.request_id,
