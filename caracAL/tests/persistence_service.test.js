@@ -585,6 +585,16 @@ test("structured persistence domains survive a restart", async () => {
       goal: { item: "gem0", type: "FARM_ITEM" },
       updated_at: 5000,
     });
+    assert.deepEqual(reopened.listGoals(), [
+      {
+        goal_id: "goal-1",
+        character_name: "My_Ranger1",
+        status: "ACTIVE",
+        goal: { item: "gem0", type: "FARM_ITEM" },
+        updated_at: 5000,
+      },
+    ]);
+    assert.deepEqual(reopened.listGoals({ status: "PAUSED" }), []);
     assert.deepEqual(reopened.getCooldown("My_Merchant", "merrit"), {
       ready_at: 9000,
       state: { phase: "COOLDOWN" },
