@@ -1,12 +1,9 @@
 "use strict";
 
 const assert = require("node:assert/strict");
-const childProcess = require("node:child_process");
 const fs = require("node:fs");
-const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
-const prettier = require("prettier");
 
 const { loadTypeScriptModule } = require("./load_typescript_module");
 
@@ -232,13 +229,10 @@ test("dispatch is blocked without explicit authorization before preflight", asyn
 test("dispatch preserves the non-dispatchable adapter contract", async () => {
   const s = setup();
 
-  const result = await s.runner.run(
-    farmRequest({ dispatchAllowed: true }),
-    {
-      requestId: "dispatch-1",
-      authorized: true,
-    },
-  );
+  const result = await s.runner.run(farmRequest({ dispatchAllowed: true }), {
+    requestId: "dispatch-1",
+    authorized: true,
+  });
 
   assert.equal(result.outcome, "BLOCKED");
   assert.equal(result.reason, "GOAL_ADAPTER_DISPATCH_CONTRACT_INVALID");
@@ -291,14 +285,8 @@ test("FARM_ITEM invokes the existing material worker exactly once after prefligh
   assert.equal(result.scope.maxExecutionInvocations, 1);
   assert.equal(result.scope.blindRetryUsed, false);
   assert.equal(result.scope.mutationPathInvoked, true);
-  assert.equal(
-    s.calls.filter(([name]) => name === "preflight").length,
-    1,
-  );
-  assert.equal(
-    s.calls.filter(([name]) => name === "material").length,
-    1,
-  );
+  assert.equal(s.calls.filter(([name]) => name === "preflight").length, 1);
+  assert.equal(s.calls.filter(([name]) => name === "material").length, 1);
   const material = s.calls.find(([name]) => name === "material")[1];
   assert.deepEqual(material, {
     requestId: "dispatch-1:farm",
@@ -333,10 +321,7 @@ test("FARM_ITEM UNKNOWN is surfaced without blind retry", async () => {
   assert.equal(result.outcome, "UNKNOWN");
   assert.match(result.reason, /MATERIAL_ATTACK_OUTCOME_UNKNOWN/);
   assert.equal(result.scope.blindRetryUsed, false);
-  assert.equal(
-    s.calls.filter(([name]) => name === "material").length,
-    1,
-  );
+  assert.equal(s.calls.filter(([name]) => name === "material").length, 1);
 });
 
 test("PLAN_CRAFT requires preflight evidence that the recipe is already ready", async () => {
@@ -388,10 +373,7 @@ test("PLAN_CRAFT executes exactly one scoped CraftController action and cleans u
   assert.equal(result.outcome, "PASS");
   assert.equal(result.reason, "GOAL_ADAPTER_DISPATCH_CRAFT_CONFIRMED");
   assert.equal(result.scope.mutationPathInvoked, true);
-  assert.equal(
-    s.calls.filter(([name]) => name === "craftExecute").length,
-    1,
-  );
+  assert.equal(s.calls.filter(([name]) => name === "craftExecute").length, 1);
   assert.equal(result.cleanup.craftOverrideCleared, true);
   assert.equal(result.cleanup.craftPlanningRefreshed, true);
   assert.equal(s.getCraftOverride(), null);
@@ -518,7 +500,10 @@ test("runtime and CharacterThread expose guarded dispatch without supervisor rea
   assert.doesNotMatch(
     kernel.slice(
       kernel.indexOf("async runGoalAdapterDispatch("),
-      kernel.indexOf("async runMaterialGatherTask(", kernel.indexOf("async runGoalAdapterDispatch(")),
+      kernel.indexOf(
+        "async runMaterialGatherTask(",
+        kernel.indexOf("async runGoalAdapterDispatch("),
+      ),
     ),
     /setInterval\s*\(/,
   );
@@ -531,10 +516,7 @@ test("runtime and CharacterThread expose guarded dispatch without supervisor rea
 
   assert.doesNotMatch(coordinator, /type:\s*"goal_adapter_dispatch"/);
   assert.doesNotMatch(coordinator, /goal_adapter_dispatch_result/);
-  assert.doesNotMatch(
-    dashboard,
-    /"\/headless\/api\/goals\/adapter-dispatch"/,
-  );
+  assert.doesNotMatch(dashboard, /"\/headless\/api\/goals\/adapter-dispatch"/);
 });
 
 test("Goal adapter dispatcher has no internal retry or lifecycle control path", () => {
@@ -557,34 +539,4 @@ test("Goal adapter dispatcher has no internal retry or lifecycle control path", 
   assert.doesNotMatch(source, /for\s*\([^)]*retry/i);
   assert.match(source, /maxExecutionInvocations: 1/);
   assert.match(source, /blindRetryUsed: false/);
-});
-
-test("temporary Phase 19.9 formatter probe", async () => {
-  const targets = [
-    path.join(__dirname, "goal_adapter_dispatch.test.js"),
-    path.join(__dirname, "goal_adapter_preflight.test.js"),
-  ];
-
-  for (const target of targets) {
-    const source = fs.readFileSync(target, "utf8");
-    const formatted = await prettier.format(source, { filepath: target });
-    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "phase19-9-prettier-"));
-    const temp = path.join(tempDir, path.basename(target));
-
-    try {
-      fs.writeFileSync(temp, formatted);
-      let diff = "";
-      try {
-        childProcess.execFileSync("diff", ["-u", target, temp], {
-          encoding: "utf8",
-        });
-      } catch (error) {
-        diff = String(error.stdout || "");
-      }
-      console.log("PHASE19_9_PRETTIER_DIFF", path.basename(target));
-      console.log(diff || "NO_DIFF");
-    } finally {
-      fs.rmSync(tempDir, { recursive: true, force: true });
-    }
-  }
 });
