@@ -195,6 +195,32 @@ test("Phase 17 reports PARTIAL until all eight account characters are registered
   assert.equal(strategy.summary.accountOwnedCharacters, 2);
 });
 
+test("Phase 17 account strategy is wired into supervisor state and persisted history cache", () => {
+  const coordinator = fs.readFileSync(
+    path.join(__dirname, "..", "standalones", "CharacterCoordinator.js"),
+    "utf8",
+  );
+  const dashboard = fs.readFileSync(
+    path.join(__dirname, "..", "src", "HeadlessDashboard.js"),
+    "utf8",
+  );
+  const monitoring = fs.readFileSync(
+    path.join(__dirname, "..", "monitoring_util.js"),
+    "utf8",
+  );
+
+  assert.match(coordinator, /buildAccountStrategy/);
+  assert.match(coordinator, /getAccountStrategyState:\s*account_strategy_state/);
+  assert.match(coordinator, /persistence\.listFarmStatistics\(/);
+  assert.match(coordinator, /account_strategy_history/);
+  assert.match(dashboard, /account_strategy:\s*accountStrategyState/);
+  assert.match(dashboard, /getAccountStrategyState\?\.\(\)/);
+  assert.match(monitoring, /"attack"/);
+  assert.match(monitoring, /"armor"/);
+  assert.match(monitoring, /"resistance"/);
+  assert.match(monitoring, /"range"/);
+});
+
 test("Account Strategy foundation is read-only and has no action/control dependency", () => {
   const source = fs.readFileSync(
     path.join(__dirname, "..", "src", "AccountStrategy.js"),
