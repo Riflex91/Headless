@@ -16,11 +16,10 @@ const GOAL_ADAPTER_CAPABILITIES = Object.freeze({
     runtimeBridgeImplemented: false,
   }),
   TRAIN_CHARACTER: Object.freeze({
-    bridge: null,
-    runtimeMethod: null,
-    translationSupported: false,
+    bridge: "CharacterTrainingTaskRunner",
+    runtimeMethod: "runCharacterTrainingTask",
+    translationSupported: true,
     runtimeBridgeImplemented: false,
-    blockedReason: "GOAL_ADAPTER_TRAINING_RUNTIME_WORKER_MISSING",
   }),
   ACQUIRE_GEAR: Object.freeze({
     bridge: "MaterialGatheringTaskRunner",
@@ -201,6 +200,78 @@ function farmItemRequest(action, capability, base) {
         "UNKNOWN_OUTCOME_NO_BLIND_RETRY",
       ],
       mutationDomain: "GAMEPLAY_VALUE",
+      dispatchAllowed: false,
+      dispatchImplemented: false,
+    },
+  };
+}
+
+function trainCharacterRequest(action, capability, base) {
+  const target = record(action.target);
+  const hints = runtimeHints(action);
+  const characterName = text(action.characterName ?? target.characterName);
+  const workerCharacter = text(hints.workerCharacter) || characterName;
+  const targetLevel = positiveInteger(target.level);
+  const monsterType = text(hints.monsterType);
+
+  if (!characterName || !targetLevel) {
+    return blocked(base, "GOAL_ADAPTER_TRAINING_TARGET_INVALID");
+  }
+  if (!workerCharacter || !monsterType) {
+    const missing = [];
+    if (!workerCharacter) missing.push("workerCharacter");
+    if (!monsterType) missing.push("monsterType");
+    return blocked(base, "GOAL_ADAPTER_TRAINING_RUNTIME_HINTS_REQUIRED", {
+      missing,
+    });
+  }
+  if (workerCharacter !== characterName) {
+    return blocked(base, "GOAL_ADAPTER_TRAINING_WORKER_MUST_MATCH_TARGET", {
+      characterName,
+      workerCharacter,
+    });
+  }
+
+  const timeoutMs =
+    hints.timeoutMs === undefined ? null : positiveInteger(hints.timeoutMs);
+  const pollMs =
+    hints.pollMs === undefined ? null : positiveInteger(hints.pollMs);
+  if (hints.timeoutMs !== undefined && timeoutMs === null) {
+    return blocked(base, "GOAL_ADAPTER_TRAINING_TIMEOUT_INVALID");
+  }
+  if (hints.pollMs !== undefined && pollMs === null) {
+    return blocked(base, "GOAL_ADAPTER_TRAINING_POLL_INVALID");
+  }
+
+  return {
+    ...base,
+    state: GOAL_ADAPTER_STATES.READY,
+    reason: "GOAL_ADAPTER_TRAINING_REQUEST_READY",
+    capability,
+    request: {
+      version: GOAL_ADAPTER_REQUEST_VERSION,
+      type: "GOAL_RUNTIME_METHOD",
+      goalId: text(action.goalId),
+      taskId: text(action.taskId),
+      kind: "TRAIN_CHARACTER",
+      bridge: capability.bridge,
+      runtimeMethod: capability.runtimeMethod,
+      characterName,
+      arguments: {
+        targetLevel,
+        monsterType,
+        ...(timeoutMs !== null && { timeoutMs }),
+        ...(pollMs !== null && { pollMs }),
+      },
+      runtimeGuards: [
+        "TARGET_RUNTIME_RUNNING",
+        "NO_CONTROLLED_ACTIVITY",
+        "COMBAT_SCHEDULER_REQUIRED",
+        "EMERGENCY_STOP_CLEAR",
+        "SCOPED_COMBAT_OVERRIDE_MUST_BE_CLEARED",
+        "UNKNOWN_OUTCOME_NO_BLIND_RETRY",
+      ],
+      mutationDomain: "GAMEPLAY",
       dispatchAllowed: false,
       dispatchImplemented: false,
     },
@@ -397,6 +468,9 @@ function buildGoalAdapterPlan(goalExecutionDecision, { now = Date.now } = {}) {
   if (kind === "FARM_ITEM") {
     return farmItemRequest(action, capability, base);
   }
+  if (kind === "TRAIN_CHARACTER") {
+    return trainCharacterRequest(action, capability, base);
+  }
   if (kind === "ACQUIRE_GEAR") {
     return acquireGearRequest(action, capability, base);
   }
@@ -417,4 +491,5 @@ module.exports = {
   farmItemRequest,
   recipientPosition,
   runtimeHints,
+  trainCharacterRequest,
 };

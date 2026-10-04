@@ -49,6 +49,8 @@ interface GoalAdapterPreflightDependencies {
   character(): {
     name: string | null;
     ctype: string | null;
+    level?: number | null;
+    xp?: number | null;
   };
   craftMaterialPlan(recipe: string): unknown | Promise<unknown>;
   now?: () => number;
@@ -264,6 +266,122 @@ export class GoalAdapterPreflightRunner {
           this.deps.farmIntelligence.tick();
         } catch (_error) {
           // Cleanup state is still restored even if the refresh projection fails.
+        }
+      }
+
+      return finish(outcome, reason, evidence);
+    }
+
+    if (identity.kind === "TRAIN_CHARACTER") {
+      const args = record(request.arguments);
+      const targetLevel = positiveInteger(args.targetLevel);
+      const monsterType = text(args.monsterType);
+      const workerCharacter = text(request.characterName);
+      const currentLevel =
+        typeof character.level === "number" && Number.isFinite(character.level)
+          ? character.level
+          : null;
+
+      if (
+        request.type !== "GOAL_RUNTIME_METHOD" ||
+        text(request.runtimeMethod) !== "runCharacterTrainingTask" ||
+        text(request.bridge) !== "CharacterTrainingTaskRunner"
+      ) {
+        return finish(
+          "BLOCKED",
+          "GOAL_ADAPTER_PREFLIGHT_TRAINING_CONTRACT_INVALID",
+        );
+      }
+      if (!targetLevel || !monsterType || !workerCharacter) {
+        return finish(
+          "BLOCKED",
+          "GOAL_ADAPTER_PREFLIGHT_TRAINING_ARGUMENTS_INVALID",
+        );
+      }
+      if (character.name !== workerCharacter) {
+        return finish(
+          "BLOCKED",
+          "GOAL_ADAPTER_PREFLIGHT_TRAINING_WORKER_MISMATCH",
+          {
+            expectedCharacter: workerCharacter,
+            actualCharacter: character.name,
+            actualClass: character.ctype,
+          },
+        );
+      }
+      if (
+        currentLevel === null ||
+        !Number.isInteger(currentLevel) ||
+        currentLevel < 0
+      ) {
+        return finish(
+          "BLOCKED",
+          "GOAL_ADAPTER_PREFLIGHT_TRAINING_LEVEL_UNAVAILABLE",
+        );
+      }
+      if (currentLevel >= targetLevel) {
+        return finish("PASS", "GOAL_ADAPTER_PREFLIGHT_TRAINING_ALREADY_REACHED", {
+          targetLevel,
+          currentLevel,
+          monsterType,
+          alreadyReached: true,
+        });
+      }
+
+      farmOverrideCleared = false;
+      let outcome: GoalAdapterPreflightOutcome = "FAIL";
+      let reason = "GOAL_ADAPTER_PREFLIGHT_TRAINING_RUNTIME_ERROR";
+      let evidence: Record<string, unknown> = {};
+
+      try {
+        this.deps.farmIntelligence.setConfigOverride({
+          farming: {
+            enabled: true,
+            goalMonster: monsterType,
+          },
+        });
+        const status = this.deps.farmIntelligence.tick();
+        const candidates = Array.isArray(status.candidates)
+          ? status.candidates
+          : [];
+        const exact = candidates.find(
+          (candidate) => text(candidate?.monster) === monsterType,
+        );
+
+        if (!exact) {
+          outcome = "BLOCKED";
+          reason = "GOAL_ADAPTER_PREFLIGHT_TRAINING_SOURCE_NOT_CONFIRMED";
+          evidence = {
+            targetLevel,
+            currentLevel,
+            monsterType,
+            farmState: text(status.state),
+            farmReason: text(status.reason),
+            candidateCount: candidates.length,
+          };
+        } else {
+          outcome = "PASS";
+          reason = "GOAL_ADAPTER_PREFLIGHT_TRAINING_CONFIRMED";
+          evidence = {
+            targetLevel,
+            currentLevel,
+            monsterType,
+            alreadyReached: false,
+            farmState: text(status.state),
+            farmReason: text(status.reason),
+          };
+        }
+      } catch (error) {
+        evidence = {
+          error: error instanceof Error ? error.message : String(error),
+        };
+      } finally {
+        this.deps.farmIntelligence.clearConfigOverride();
+        farmOverrideCleared = true;
+        try {
+          this.deps.farmIntelligence.tick();
+        } catch (_error) {
+          // Cleanup state is restored even if the refresh projection fails.
         }
       }
 

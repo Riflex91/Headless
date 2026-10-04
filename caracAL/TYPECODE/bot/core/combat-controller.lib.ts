@@ -104,6 +104,7 @@ interface NormalizedCombatConfig {
   autoTarget: boolean;
   avoidKillSteal: boolean;
   targetMaxDistance: number;
+  targetMonsterTypes: string[];
   potionEnabled: boolean;
   hpPotionPercent: number;
   mpPotionPercent: number;
@@ -142,6 +143,14 @@ function bool(value: unknown, fallback: boolean): boolean {
 
 function finite(value: unknown, fallback: number): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function stringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value)]
+    .filter((entry): entry is string => typeof entry === "string")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
 }
 
 function percent(value: unknown, fallback: number): number {
@@ -190,6 +199,14 @@ function normalizeConfig(value: unknown): NormalizedCombatConfig {
     targetMaxDistance: Math.max(
       0,
       finite(first(combat, ["targetMaxDistance", "target_max_distance"]), 800),
+    ),
+    targetMonsterTypes: stringList(
+      first(combat, [
+        "targetMonsterTypes",
+        "target_monster_types",
+        "allowedMonsterTypes",
+        "allowed_monster_types",
+      ]),
     ),
     potionEnabled: bool(first(potion, ["enabled", "active"]), enabled),
     hpPotionPercent: percent(
@@ -620,6 +637,12 @@ export class CombatController {
   ): EntitySnapshot | null {
     const eligible = (entity: EntitySnapshot): boolean => {
       if (entity.type !== "monster" || entity.dead || entity.rip) return false;
+      if (
+        config.targetMonsterTypes.length > 0 &&
+        (!entity.mtype || !config.targetMonsterTypes.includes(entity.mtype))
+      ) {
+        return false;
+      }
       if (entity.hp !== null && entity.hp <= 0) return false;
       if (character.map && entity.map && character.map !== entity.map) return false;
       if (

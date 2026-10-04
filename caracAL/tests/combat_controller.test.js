@@ -244,6 +244,33 @@ test("nearest eligible monster is attacked in range", async () => {
   assert.equal(status.target.inRange, true);
 });
 
+test("scoped monster-type filter excludes other otherwise-eligible targets", async () => {
+  const setup = makeController();
+  setup.state.entities[0].mtype = "goo";
+  setup.state.entities[0].x = 10;
+  setup.state.entities[1].mtype = "bee";
+  setup.state.entities[1].x = 20;
+
+  setup.controller.setConfigOverride({
+    combat: {
+      enabled: true,
+      autoTarget: true,
+      targetMaxDistance: 100,
+      targetMonsterTypes: ["bee"],
+    },
+    potionUsage: { enabled: false },
+    safety: {},
+  });
+
+  const status = await setup.controller.tick();
+  const attackCall = setup.calls.find((entry) => entry[0] === "attack");
+  assert.deepEqual(attackCall, ["attack", "far"]);
+  assert.equal(status.target.id, "far");
+  assert.equal(status.target.mtype, "bee");
+
+  setup.controller.clearConfigOverride();
+});
+
 test("UNKNOWN attack outcome is not blindly retried", async () => {
   let attacks = 0;
   const setup = makeController({

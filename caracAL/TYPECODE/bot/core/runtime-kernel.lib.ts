@@ -146,6 +146,11 @@ import {
   FishingLiveTestRunner,
 } from "./fishing-live-test.lib";
 import {
+  CharacterTrainingTaskOptions,
+  CharacterTrainingTaskResult,
+  CharacterTrainingTaskRunner,
+} from "./character-training-task.lib";
+import {
   MaterialGatherTaskOptions,
   MaterialGatherTaskResult,
   MaterialGatheringTaskRunner,
@@ -388,6 +393,7 @@ export class BotRuntimeKernel {
   private merritLiveTestRunning = false;
   private fishingLiveTestRunning = false;
   private materialGatherTaskRunning = false;
+  private characterTrainingTaskRunning = false;
   private goalAdapterPreflightRunning = false;
   private goalAdapterDispatchRunning = false;
   private economyPrebuffExecutionRunning = false;
@@ -3139,6 +3145,7 @@ export class BotRuntimeKernel {
     }
     if (
       this.materialGatherTaskRunning ||
+      this.characterTrainingTaskRunning ||
       this.economyPrebuffExecutionRunning ||
       this.movementLiveTestRunning ||
       this.combatLiveTestRunning ||
@@ -3193,6 +3200,8 @@ export class BotRuntimeKernel {
           return {
             name: snapshot.name,
             ctype: snapshot.ctype,
+            level: snapshot.level,
+            xp: snapshot.xp,
           };
         },
         craftMaterialPlan: (recipe) => this.runCraftMaterialPlan(recipe),
@@ -3237,6 +3246,7 @@ export class BotRuntimeKernel {
     if (
       this.goalAdapterPreflightRunning ||
       this.materialGatherTaskRunning ||
+      this.characterTrainingTaskRunning ||
       this.economyPrebuffExecutionRunning ||
       this.movementLiveTestRunning ||
       this.combatLiveTestRunning ||
@@ -3296,6 +3306,8 @@ export class BotRuntimeKernel {
               return {
                 name: snapshot.name,
                 ctype: snapshot.ctype,
+                level: snapshot.level,
+                xp: snapshot.xp,
               };
             },
             craftMaterialPlan: (recipe) => this.runCraftMaterialPlan(recipe),
@@ -3304,6 +3316,8 @@ export class BotRuntimeKernel {
         },
         runMaterialGatherTask: (materialOptions) =>
           this.runMaterialGatherTask(materialOptions),
+        runCharacterTrainingTask: (trainingOptions) =>
+          this.runCharacterTrainingTask(trainingOptions),
         craft: {
           setConfigOverride: (config) => this.craft.setConfigOverride(config),
           clearConfigOverride: () => this.craft.clearConfigOverride(),
@@ -3347,6 +3361,114 @@ export class BotRuntimeKernel {
     }
   }
 
+  async runCharacterTrainingTask(
+    options: CharacterTrainingTaskOptions,
+  ): Promise<CharacterTrainingTaskResult> {
+    if (this.characterTrainingTaskRunning) {
+      throw new Error("character training task already running");
+    }
+    if (
+      this.materialGatherTaskRunning ||
+      this.economyPrebuffExecutionRunning ||
+      this.movementLiveTestRunning ||
+      this.combatLiveTestRunning ||
+      this.classSkillLiveTestRunning ||
+      this.groupLiveTestRunning ||
+      this.farmLiveTestRunning ||
+      this.inventoryLiveTestRunning ||
+      this.upgradeLiveTestRunning ||
+      this.upgradePreflightRunning ||
+      this.compoundLiveTestRunning ||
+      this.exchangePreflightRunning ||
+      this.exchangeLiveTestRunning ||
+      this.craftPreflightRunning ||
+      this.craftLiveTestRunning ||
+      this.logisticsLiveTestRunning ||
+      this.merchantLiveTestRunning ||
+      this.bankTravelLiveTestRunning ||
+      this.bankGoldLiveTestRunning ||
+      this.npcTradingLiveTestRunning ||
+      this.marketTradingLiveTestRunning ||
+      this.marketIntelligenceSourceProbeRunning ||
+      this.merritLiveTestRunning ||
+      this.fishingLiveTestRunning ||
+      this.logisticsClaimRunning
+    ) {
+      throw new Error("runtime is busy with another controlled activity");
+    }
+    if (!this.started || this.stopping || runtimeState() !== "RUNNING") {
+      throw new Error("runtime is not ready for character training task");
+    }
+    if (!this.scheduler.has(COMBAT_JOB_ID)) {
+      throw new Error("character training task requires active Combat scheduler");
+    }
+
+    this.characterTrainingTaskRunning = true;
+    const requestId =
+      options.requestId || `character-training-${Date.now()}`;
+    const suspended = {
+      groupCombat: this.scheduler.unregister(GROUP_COMBAT_JOB_ID),
+      classSkill: this.scheduler.unregister(CLASS_SKILL_JOB_ID),
+      combat: false,
+    };
+
+    this.eventBus.emit({
+      module: "CharacterTrainingTask",
+      type: "CHARACTER_TRAINING_TASK_STARTED",
+      why: "PHASE19_BOUNDED_SCHEDULER_DRIVEN_TRAINING",
+      correlationId: requestId,
+      data: {
+        requestId,
+        targetLevel: options.targetLevel,
+        monsterType: options.monsterType,
+        combatSchedulerRetained: true,
+        suspended,
+        ...runtimeIdentity(),
+      },
+    });
+
+    try {
+      const runner = new CharacterTrainingTaskRunner({
+        game: this.game,
+        combat: this.combat,
+        movement: this.movement,
+      });
+      const result = await runner.run({
+        ...options,
+        requestId,
+      });
+      this.eventBus.emit({
+        module: "CharacterTrainingTask",
+        type: "CHARACTER_TRAINING_TASK_COMPLETED",
+        why: result.reason,
+        correlationId: requestId,
+        data: {
+          result,
+          combatSchedulerRetained: true,
+          suspended,
+        },
+      });
+      return result;
+    } catch (error) {
+      this.eventBus.emit({
+        module: "CharacterTrainingTask",
+        type: "CHARACTER_TRAINING_TASK_FAILED",
+        why: "CHARACTER_TRAINING_TASK_RUNTIME_ERROR",
+        correlationId: requestId,
+        data: {
+          error: error instanceof Error ? error.message : String(error),
+          combatSchedulerRetained: true,
+          suspended,
+        },
+      });
+      throw error;
+    } finally {
+      if (suspended.groupCombat) this.registerGroupCombatJob();
+      if (suspended.classSkill) this.registerClassSkillJob();
+      this.characterTrainingTaskRunning = false;
+    }
+  }
+
   async runMaterialGatherTask(
     options: MaterialGatherTaskOptions,
   ): Promise<MaterialGatherTaskResult> {
@@ -3354,6 +3476,7 @@ export class BotRuntimeKernel {
       throw new Error("material gathering task already running");
     }
     if (
+      this.characterTrainingTaskRunning ||
       this.movementLiveTestRunning ||
       this.combatLiveTestRunning ||
       this.classSkillLiveTestRunning ||
