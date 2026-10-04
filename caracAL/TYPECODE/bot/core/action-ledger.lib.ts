@@ -46,6 +46,12 @@ export interface ActionLedgerEvent {
   data?: Record<string, unknown>;
 }
 
+export interface ActionAuthorizationDecision {
+  allowed: boolean;
+  reason: string;
+  data?: Record<string, unknown>;
+}
+
 export interface ActionLedgerOptions {
   now?: () => number;
   nextActionId?: () => string;
@@ -53,6 +59,9 @@ export interface ActionLedgerOptions {
   maxRecords?: number;
   isEmergencyStopActive?: () => boolean;
   allowDuringEmergencyStop?: (action: string) => boolean;
+  authorizeIntent?: (
+    intent: ActionIntent,
+  ) => ActionAuthorizationDecision | null;
   emit?: (event: ActionLedgerEvent) => void;
 }
 
@@ -65,6 +74,9 @@ export class ActionLedger {
   private readonly maxRecords: number;
   private readonly isEmergencyStopActive: () => boolean;
   private readonly allowDuringEmergencyStop: (action: string) => boolean;
+  private readonly authorizeIntent?: (
+    intent: ActionIntent,
+  ) => ActionAuthorizationDecision | null;
   private readonly emit?: (event: ActionLedgerEvent) => void;
   private actionSequence = 0;
   private correlationSequence = 0;
@@ -88,6 +100,7 @@ export class ActionLedger {
       options.isEmergencyStopActive || (() => false);
     this.allowDuringEmergencyStop =
       options.allowDuringEmergencyStop || (() => false);
+    this.authorizeIntent = options.authorizeIntent;
     this.emit = options.emit;
   }
 
@@ -122,6 +135,18 @@ export class ActionLedger {
       !this.allowDuringEmergencyStop(record.action)
     ) {
       return this.block(record.id, "EMERGENCY_STOP_ACTIVE");
+    }
+
+    const authorization = this.authorizeIntent?.(this.clone(record));
+    if (authorization && !authorization.allowed) {
+      record.metadata = {
+        ...(record.metadata || {}),
+        policyBlock: {
+          reason: authorization.reason,
+          ...(authorization.data || {}),
+        },
+      };
+      return this.block(record.id, authorization.reason);
     }
 
     return this.clone(record);
