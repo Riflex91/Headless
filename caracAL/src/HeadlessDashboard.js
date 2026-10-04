@@ -123,6 +123,7 @@ function publicCharacterState(name, charBlock = {}) {
     farm_live_test: charBlock.farm_live_test || null,
     inventory_live_test: charBlock.inventory_live_test || null,
     gear_scoring_live_test: charBlock.gear_scoring_live_test || null,
+    account_strategy_live_test: charBlock.account_strategy_live_test || null,
     economy_prebuff_execution_live_test:
       charBlock.economy_prebuff_execution_live_test || null,
     account_gear_reservation_live_test:
@@ -360,6 +361,7 @@ function attachHeadlessDashboard({
   runFarmLiveTest,
   runInventoryLiveTest,
   runGearScoringLiveTest,
+  runAccountStrategyLiveTest,
   runMarketIntelligenceLiveTest,
   runEconomyPrebuffExecutionLiveTest,
   runAccountGearReservationLiveTest,
@@ -630,6 +632,36 @@ function attachHeadlessDashboard({
       } catch (error) {
         res.status(Number(error.statusCode) || 500).json({
           error: error.code || "GEAR_SCORING_LIVE_TEST_FAILED",
+          message: error.message,
+        });
+      }
+    },
+  );
+
+  router.post(
+    "/headless/api/characters/:name/tests/account-strategy",
+    express.json({ limit: "8kb" }),
+    async (req, res) => {
+      if (!runAccountStrategyLiveTest) {
+        res
+          .status(503)
+          .json({ error: "ACCOUNT_STRATEGY_LIVE_TEST_UNAVAILABLE" });
+        return;
+      }
+
+      try {
+        const result = await runAccountStrategyLiveTest(
+          req.params.name,
+          Number(req.body?.sampleMs) || 1200,
+        );
+        res.json({
+          ok: result?.outcome === "PASS",
+          result,
+          snapshot: getSnapshot(),
+        });
+      } catch (error) {
+        res.status(Number(error.statusCode) || 500).json({
+          error: error.code || "ACCOUNT_STRATEGY_LIVE_TEST_FAILED",
           message: error.message,
         });
       }
