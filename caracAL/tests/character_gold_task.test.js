@@ -280,3 +280,48 @@ test("gold task contains no direct Combat tick or retry loop", () => {
   assert.match(source, /trainingCombatOverride\(monsterType\)/);
   assert.match(source, /blindRetryUsed:\s*false/);
 });
+
+test("gold runtime retains Combat scheduler and wires Goal preflight/dispatch safely", () => {
+  const kernel = fs.readFileSync(
+    path.join(
+      __dirname,
+      "..",
+      "TYPECODE",
+      "bot",
+      "core",
+      "runtime-kernel.lib.ts",
+    ),
+    "utf8",
+  );
+
+  const start = kernel.indexOf("async runCharacterGoldTask(");
+  const end = kernel.indexOf("async runCharacterTrainingTask(", start);
+  assert.ok(start >= 0);
+  assert.ok(end > start);
+  const goldBlock = kernel.slice(start, end);
+
+  assert.match(goldBlock, /scheduler\.has\(COMBAT_JOB_ID\)/);
+  assert.match(goldBlock, /scheduler\.unregister\(GROUP_COMBAT_JOB_ID\)/);
+  assert.match(goldBlock, /scheduler\.unregister\(CLASS_SKILL_JOB_ID\)/);
+  assert.doesNotMatch(goldBlock, /scheduler\.unregister\(COMBAT_JOB_ID\)/);
+  assert.match(goldBlock, /combatSchedulerRetained:\s*true/);
+  assert.match(goldBlock, /new CharacterGoldTaskRunner/);
+
+  const dispatchStart = kernel.indexOf("async runGoalAdapterDispatch(");
+  const dispatchEnd = kernel.indexOf("async runCharacterGoldTask(", dispatchStart);
+  const dispatchBlock = kernel.slice(dispatchStart, dispatchEnd);
+  assert.match(
+    dispatchBlock,
+    /runCharacterGoldTask:\s*\(goldOptions\)\s*=>/,
+  );
+  assert.match(dispatchBlock, /this\.runCharacterGoldTask\(goldOptions\)/);
+  assert.ok((dispatchBlock.match(/gold:\s*snapshot\.gold/g) || []).length >= 1);
+
+  const preflightStart = kernel.indexOf("async runGoalAdapterPreflight(");
+  const preflightEnd = kernel.indexOf(
+    "async runGoalAdapterDispatch(",
+    preflightStart,
+  );
+  const preflightBlock = kernel.slice(preflightStart, preflightEnd);
+  assert.match(preflightBlock, /gold:\s*snapshot\.gold/);
+});
