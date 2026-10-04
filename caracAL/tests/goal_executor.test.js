@@ -300,7 +300,7 @@ test("Unsupported handoff kinds fail closed", () => {
   assert.equal(decision.action, null);
 });
 
-test("Coordinator keeps Goal execution decisions separate from explicit one-shot dispatch", () => {
+test("Coordinator feeds Goal execution through the default-off serial reconciler", () => {
   const coordinator = fs.readFileSync(
     path.join(__dirname, "..", "standalones", "CharacterCoordinator.js"),
     "utf8",
@@ -312,18 +312,30 @@ test("Coordinator keeps Goal execution decisions separate from explicit one-shot
 
   assert.match(coordinator, /buildGoalExecutionDecision/);
   assert.match(coordinator, /readGoalExecutionPolicy/);
+  assert.match(coordinator, /GoalReconciler/);
   assert.match(coordinator, /getGoalExecutionState:\s*goal_execution_state/);
   assert.match(coordinator, /goal_execution_dispatch_implemented:\s*true/);
   assert.match(
     coordinator,
-    /goal_execution_automatic_reconcile_enabled:\s*false/,
+    /goal_execution_automatic_reconcile_enabled:\s*\n?\s*goal_reconciler\.snapshot\(\)\.enabled/,
   );
   assert.match(
     coordinator,
-    /executionInFlight:\s*\n?\s*goal_adapter_dispatch_supervisor\.snapshot\(\)\.pending > 0/,
+    /if \(goal_execution_policy\.enabled && !observer_only\)/,
   );
-  assert.doesNotMatch(coordinator, /function reconcile_goal_execution/);
-  assert.doesNotMatch(coordinator, /setInterval\([^)]*goal_adapter_dispatch/);
+  assert.match(
+    coordinator,
+    /goal_execution_task = setInterval\(\(\) => \{/,
+  );
+  assert.match(coordinator, /goal_reconciler\s*\n?\s*\.run\("INTERVAL"\)/);
+  assert.match(
+    coordinator,
+    /goal_execution_policy\.reconcileIntervalMs/,
+  );
+  assert.doesNotMatch(
+    coordinator,
+    /goal_execution_task = setInterval[\s\S]{0,500}goal_adapter_dispatch_supervisor\.run/,
+  );
 
   assert.match(dashboard, /goal_execution:\s*goalExecutionState/);
   assert.match(dashboard, /getGoalExecutionState/);
