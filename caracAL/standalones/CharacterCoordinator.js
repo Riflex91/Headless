@@ -296,6 +296,8 @@ function migrate_old_storage(path, localStorage) {
   let inventory_live_test_sequence = 0;
   let gear_scoring_live_test_sequence = 0;
   const economy_arbiter_enforcement_probe_requests = new Map();
+  const economy_prebuff_execution_live_test_requests = new Map();
+  const ECONOMY_PREBUFF_EXECUTION_CONFIRMATION = "CONFIRM_ONE_MUTATION";
   let account_gear_reservation_live_test_sequence = 0;
   let account_gear_reservation_live_test_active = false;
   const logistics_live_test_requests = new Map();
@@ -978,6 +980,15 @@ function migrate_old_storage(path, localStorage) {
 
     if (
       char_block &&
+      normalized.data?.economyPrebuffExecution &&
+      typeof normalized.data.economyPrebuffExecution === "object"
+    ) {
+      char_block.economy_prebuff_execution_runtime =
+        normalized.data.economyPrebuffExecution;
+    }
+
+    if (
+      char_block &&
       normalized.data?.economyArbiter &&
       typeof normalized.data.economyArbiter === "object"
     ) {
@@ -1095,6 +1106,7 @@ function migrate_old_storage(path, localStorage) {
         normalized.data?.farmIntelligence ||
         normalized.data?.inventoryIntelligence ||
         normalized.data?.economyPrebuff ||
+        normalized.data?.economyPrebuffExecution ||
         normalized.data?.merchantMerrit ||
         normalized.data?.merchantFishing)
     ) {
@@ -1271,6 +1283,8 @@ function migrate_old_storage(path, localStorage) {
     char_block.risk_policy_runtime = char_block.risk_policy_runtime || null;
     char_block.economy_prebuff_runtime =
       char_block.economy_prebuff_runtime || null;
+    char_block.economy_prebuff_execution_runtime =
+      char_block.economy_prebuff_execution_runtime || null;
     char_block.economy_arbiter_runtime =
       char_block.economy_arbiter_runtime || null;
     char_block.upgrade_runtime = char_block.upgrade_runtime || null;
@@ -1769,6 +1783,9 @@ function migrate_old_storage(path, localStorage) {
       ),
       economyPrebuff: JSON.parse(
         JSON.stringify(char_block?.economy_prebuff_runtime || null),
+      ),
+      economyPrebuffExecution: JSON.parse(
+        JSON.stringify(char_block?.economy_prebuff_execution_runtime || null),
       ),
       economyArbiter: JSON.parse(
         JSON.stringify(char_block?.economy_arbiter_runtime || null),
