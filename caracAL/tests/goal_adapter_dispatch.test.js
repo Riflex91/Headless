@@ -431,10 +431,7 @@ test("PLAN_CRAFT UNKNOWN is surfaced without a second execution", async () => {
   assert.equal(result.outcome, "UNKNOWN");
   assert.equal(result.reason, "GOAL_ADAPTER_DISPATCH_CRAFT_UNKNOWN");
   assert.equal(result.scope.blindRetryUsed, false);
-  assert.equal(
-    s.calls.filter(([name]) => name === "craftExecute").length,
-    1,
-  );
+  assert.equal(s.calls.filter(([name]) => name === "craftExecute").length, 1);
 });
 
 test("unsupported Goal kinds never reach a mutation dependency", async () => {
