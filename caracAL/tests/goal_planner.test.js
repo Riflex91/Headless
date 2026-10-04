@@ -1,12 +1,9 @@
 "use strict";
 
 const assert = require("node:assert/strict");
-const childProcess = require("node:child_process");
 const fs = require("node:fs");
-const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
-const prettier = require("prettier");
 
 const {
   GOAL_TYPES,
@@ -296,10 +293,7 @@ test("PREPARE_BOSS remains blocked until Phase 20 encounter planning", () => {
   const goal = plan.goals[0];
 
   assert.equal(goal.state, "BLOCKED");
-  assert.equal(
-    goal.reason,
-    "PHASE20_ENCOUNTER_PLANNING_DEFERRED",
-  );
+  assert.equal(goal.reason, "PHASE20_ENCOUNTER_PLANNING_DEFERRED");
   assert.equal(goal.completion.criteria[0].status, "MET");
   assert.equal(goal.completion.criteria[1].status, "UNKNOWN");
   assert.equal(
@@ -440,36 +434,4 @@ test("invalid goals fail closed and GoalPlanner has no mutation executor", () =>
   assert.doesNotMatch(source, /controlCharacter/);
   assert.doesNotMatch(source, /executeNext/);
   assert.doesNotMatch(source, /socket\.emit/);
-});
-
-test("temporary Phase 19 formatter probe", async () => {
-  const targets = [
-    path.join(__dirname, "..", "src", "GoalPlanner.js"),
-    path.join(__dirname, "..", "src", "PersistenceService.js"),
-    __filename,
-  ];
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "phase19-prettier-"));
-
-  try {
-    for (const target of targets) {
-      const source = fs.readFileSync(target, "utf8");
-      const formatted = await prettier.format(source, {
-        filepath: target,
-      });
-      const temp = path.join(tempDir, path.basename(target));
-      fs.writeFileSync(temp, formatted);
-      let diff = "";
-      try {
-        childProcess.execFileSync("diff", ["-u", target, temp], {
-          encoding: "utf8",
-        });
-      } catch (error) {
-        diff = String(error.stdout || "");
-      }
-      console.log("PHASE19_PRETTIER_DIFF", path.relative(path.join(__dirname, ".."), target));
-      console.log(diff || "NO_DIFF");
-    }
-  } finally {
-    fs.rmSync(tempDir, { recursive: true, force: true });
-  }
 });
