@@ -285,12 +285,18 @@ function buildGoalAdapterPlan(goalExecutionDecision, { now = Date.now } = {}) {
   if (decision.state !== "READY" || decision.dispatchAllowed !== true) {
     return blocked(base, "GOAL_ADAPTER_EXECUTION_DECISION_NOT_READY");
   }
-  if (decision.dispatchImplemented === true || decision.mutationDispatched === true) {
+  if (
+    decision.dispatchImplemented === true ||
+    decision.mutationDispatched === true
+  ) {
     return blocked(base, "GOAL_ADAPTER_EXECUTION_BOUNDARY_INVALID");
   }
 
   const action = record(decision.action);
-  if (action.type !== "GOAL_HANDOFF" || action.requiresAdapterDispatcher !== true) {
+  if (
+    action.type !== "GOAL_HANDOFF" ||
+    action.requiresAdapterDispatcher !== true
+  ) {
     return blocked(base, "GOAL_ADAPTER_ACTION_INVALID");
   }
 
@@ -300,9 +306,13 @@ function buildGoalAdapterPlan(goalExecutionDecision, { now = Date.now } = {}) {
     return blocked(base, "GOAL_ADAPTER_KIND_UNSUPPORTED");
   }
   if (capability.translationSupported !== true) {
-    return blocked(base, capability.blockedReason || "GOAL_ADAPTER_KIND_UNSUPPORTED", {
-      capability,
-    });
+    return blocked(
+      base,
+      capability.blockedReason || "GOAL_ADAPTER_KIND_UNSUPPORTED",
+      {
+        capability,
+      },
+    );
   }
 
   if (kind === "FARM_ITEM") {
