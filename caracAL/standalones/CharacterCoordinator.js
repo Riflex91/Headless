@@ -13488,6 +13488,40 @@ function migrate_old_storage(path, localStorage) {
           );
           break;
         }
+        case "economy_prebuff_execution_live_test_result": {
+          const pending = economy_prebuff_execution_live_test_requests.get(
+            m.request_id,
+          );
+          if (!pending || pending.character !== char_name) {
+            emit_supervisor_event(
+              "ECONOMY_PREBUFF_EXECUTION_LIVE_TEST_RESULT_IGNORED",
+              char_name,
+              {
+                why: "UNKNOWN_OR_STALE_REQUEST",
+                request_id: m.request_id || null,
+              },
+            );
+            break;
+          }
+
+          clearTimeout(pending.timer);
+          economy_prebuff_execution_live_test_requests.delete(m.request_id);
+          pending.resolve({
+            result: m.result || null,
+            error: m.error || null,
+          });
+          emit_supervisor_event(
+            "ECONOMY_PREBUFF_EXECUTION_LIVE_TEST_RESULT_RECEIVED",
+            char_name,
+            {
+              request_id: m.request_id,
+              outcome: m.result?.outcome || null,
+              reason: m.result?.reason || null,
+              error: m.error || null,
+            },
+          );
+          break;
+        }
         case "economy_arbiter_enforcement_probe_result": {
           const pending = economy_arbiter_enforcement_probe_requests.get(
             m.request_id,
