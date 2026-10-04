@@ -132,7 +132,10 @@ function selectMarketLocalHistoryForRuntime(
   const activeLive = new Set(
     Array.isArray(liveSignatures) ? liveSignatures : [],
   );
-  const boundedLimit = Math.min(1000, Math.max(1, Math.trunc(Number(limit) || 250)));
+  const boundedLimit = Math.min(
+    1000,
+    Math.max(1, Math.trunc(Number(limit) || 250)),
+  );
   const observations = [];
 
   for (const row of Array.isArray(rows) ? rows : []) {
@@ -142,10 +145,10 @@ function selectMarketLocalHistoryForRuntime(
       typeof row.itemName === "string" && row.itemName.trim()
         ? row.itemName.trim()
         : typeof row.item_name === "string" && row.item_name.trim()
-          ? row.item_name.trim()
-          : typeof row.item === "string" && row.item.trim()
-            ? row.item.trim()
-            : "";
+        ? row.item_name.trim()
+        : typeof row.item === "string" && row.item.trim()
+        ? row.item.trim()
+        : "";
     const price = Number(row.price);
     const quantity = Number(row.quantity);
     const rowServer =
@@ -168,7 +171,10 @@ function selectMarketLocalHistoryForRuntime(
     const observation = {
       itemName,
       level:
-        Number.isInteger(Number(row.level)) && Number(row.level) >= 0
+        row.level !== null &&
+        row.level !== undefined &&
+        Number.isInteger(Number(row.level)) &&
+        Number(row.level) >= 0
           ? Number(row.level)
           : null,
       price,
@@ -182,12 +188,11 @@ function selectMarketLocalHistoryForRuntime(
         Number.isFinite(Number(row.observedAt)) && Number(row.observedAt) >= 0
           ? Number(row.observedAt)
           : Number.isFinite(Number(row.observed_at)) &&
-              Number(row.observed_at) >= 0
-            ? Number(row.observed_at)
-            : Number.isFinite(Number(row.timestamp)) &&
-                Number(row.timestamp) >= 0
-              ? Number(row.timestamp)
-              : 0,
+            Number(row.observed_at) >= 0
+          ? Number(row.observed_at)
+          : Number.isFinite(Number(row.timestamp)) && Number(row.timestamp) >= 0
+          ? Number(row.timestamp)
+          : 0,
       metadata: {
         ...metadata,
         storedSource:
