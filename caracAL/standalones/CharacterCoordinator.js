@@ -241,6 +241,8 @@ function migrate_old_storage(path, localStorage) {
   let full_autonomy_execution_inflight = false;
   let full_autonomy_last_execution = null;
   let full_autonomy_task = null;
+  let full_autonomy_live_test_active = false;
+  let full_autonomy_live_test_sequence = 0;
   if (cfg.cull_versions) {
     await game_files.cull_versions([version]);
   }
@@ -421,6 +423,7 @@ function migrate_old_storage(path, localStorage) {
         runInventoryLiveTest: run_inventory_live_test,
         runGearScoringLiveTest: run_gear_scoring_live_test,
         runAccountStrategyLiveTest: run_account_strategy_live_test,
+        runFullAutonomyLiveTest: run_full_autonomy_live_test,
         runMarketIntelligenceLiveTest: run_market_intelligence_live_test,
         runEconomyPrebuffExecutionLiveTest:
           run_economy_prebuff_execution_live_test,
@@ -549,14 +552,21 @@ function migrate_old_storage(path, localStorage) {
     return controlled_operation_active ? "CONTROLLED_OPERATION_ACTIVE" : null;
   }
 
-  function build_full_autonomy_execution_decision(plan) {
+  function build_full_autonomy_execution_decision(
+    plan,
+    {
+      policy = full_autonomy_policy,
+      allowObserverOnly = false,
+      safetyBlockReason = full_autonomy_safety_block_reason(),
+    } = {},
+  ) {
     return buildFullAutonomyExecutionDecision(plan, {
-      policy: full_autonomy_policy,
-      observerOnly: observer_only,
+      policy,
+      observerOnly: allowObserverOnly ? false : observer_only,
       emergencyStopActive: emergency_stop.snapshot().active,
       coordinatorShuttingDown: coordinator_shutting_down,
       executionInFlight: full_autonomy_execution_inflight,
-      safetyBlockReason: full_autonomy_safety_block_reason(),
+      safetyBlockReason,
     });
   }
 
@@ -576,9 +586,23 @@ function migrate_old_storage(path, localStorage) {
     };
   }
 
-  async function reconcile_full_autonomy(trigger = "INTERVAL") {
+  async function reconcile_full_autonomy(
+    trigger = "INTERVAL",
+    {
+      policy = full_autonomy_policy,
+      allowObserverOnly = false,
+      safetyBlockReason,
+    } = {},
+  ) {
     const plan = build_full_autonomy_plan();
-    const decision = build_full_autonomy_execution_decision(plan);
+    const decision = build_full_autonomy_execution_decision(plan, {
+      policy,
+      allowObserverOnly,
+      safetyBlockReason:
+        safetyBlockReason === undefined
+          ? full_autonomy_safety_block_reason()
+          : safetyBlockReason,
+    });
     const timestamp = Date.now();
 
     full_autonomy_last_execution = {
@@ -1718,6 +1742,8 @@ function migrate_old_storage(path, localStorage) {
       char_block.gear_scoring_live_test || null;
     char_block.account_strategy_live_test =
       char_block.account_strategy_live_test || null;
+    char_block.full_autonomy_live_test_lifecycle_only =
+      char_block.full_autonomy_live_test_lifecycle_only === true;
     char_block.account_gear_reservation_live_test =
       char_block.account_gear_reservation_live_test || null;
     char_block.upgrade_live_test = char_block.upgrade_live_test || null;
@@ -14210,6 +14236,8 @@ function migrate_old_storage(path, localStorage) {
       clid: ctype_to_clid[char.type] || -1,
       heartbeat_interval_ms: lifecycle_policy.heartbeatIntervalMs,
       runtime_state: char_block.desired_runtime_state,
+      lifecycle_only_probe:
+        char_block.full_autonomy_live_test_lifecycle_only === true,
       emergency_stop: emergency_stop.snapshot(),
     };
     if (execution_source.typescriptFile) {
