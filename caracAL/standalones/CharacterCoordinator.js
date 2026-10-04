@@ -6882,8 +6882,8 @@ function migrate_old_storage(path, localStorage) {
       options.expectedKind === "COMPOUND"
         ? "COMPOUND"
         : options.expectedKind === "UPGRADE"
-          ? "UPGRADE"
-          : null;
+        ? "UPGRADE"
+        : null;
     const expected_name =
       typeof options.expectedName === "string"
         ? options.expectedName.trim()
@@ -6952,8 +6952,7 @@ function migrate_old_storage(path, localStorage) {
         : DESIRED_RUNTIME_STATES.STOPPED);
     const started_at = Date.now();
     economy_prebuff_execution_live_test_sequence += 1;
-    const request_id =
-      `economy-prebuff-execution-live-${started_at}-${economy_prebuff_execution_live_test_sequence}`;
+    const request_id = `economy-prebuff-execution-live-${started_at}-${economy_prebuff_execution_live_test_sequence}`;
 
     economy_prebuff_execution_live_test_active = true;
     char_block.economy_prebuff_execution_live_test = {
@@ -7019,11 +7018,10 @@ function migrate_old_storage(path, localStorage) {
       const before = gear_scoring_live_snapshot(ready_block);
 
       child_request_id = request_id + "-runtime";
-      const child_promise =
-        wait_for_economy_prebuff_execution_live_test_result(
-          char_name,
-          child_request_id,
-        );
+      const child_promise = wait_for_economy_prebuff_execution_live_test_result(
+        char_name,
+        child_request_id,
+      );
       const sent = safe_send(ready_block.instance, {
         type: "economy_prebuff_execution_live_test",
         request_id: child_request_id,
@@ -7073,9 +7071,7 @@ function migrate_old_storage(path, localStorage) {
 
       result = {
         request_id,
-        outcome: equipment_baseline_restored
-          ? child_result.outcome
-          : "FAIL",
+        outcome: equipment_baseline_restored ? child_result.outcome : "FAIL",
         reason: equipment_baseline_restored
           ? child_result.reason
           : "ECONOMY_PREBUFF_EXECUTION_LIVE_EQUIPMENT_CHANGED",
