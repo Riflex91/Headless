@@ -919,28 +919,31 @@ class PersistenceService {
     });
   }
 
-  listMarketHistory({ itemName, limit = 100 } = {}) {
+  listMarketHistory({ itemName, server, limit = 100 } = {}) {
     const boundedLimit = Math.min(1000, Math.max(1, Math.trunc(limit)));
-    const rows = itemName
-      ? this.allRows(
-          `
-            SELECT *
-            FROM market_history
-            WHERE item_name = ?
-            ORDER BY observed_at DESC, id DESC
-            LIMIT ?
-          `,
-          [String(itemName), boundedLimit],
-        )
-      : this.allRows(
-          `
-            SELECT *
-            FROM market_history
-            ORDER BY observed_at DESC, id DESC
-            LIMIT ?
-          `,
-          [boundedLimit],
-        );
+    const filters = [];
+    const params = [];
+
+    if (itemName) {
+      filters.push("item_name = ?");
+      params.push(String(itemName));
+    }
+    if (server) {
+      filters.push("server = ?");
+      params.push(String(server));
+    }
+
+    const where = filters.length > 0 ? `WHERE ${filters.join(" AND ")}` : "";
+    const rows = this.allRows(
+      `
+        SELECT *
+        FROM market_history
+        ${where}
+        ORDER BY observed_at DESC, id DESC
+        LIMIT ?
+      `,
+      [...params, boundedLimit],
+    );
     return rows.map((row) => ({
       item_name: row.item_name,
       level: row.level === null ? null : Number(row.level),
