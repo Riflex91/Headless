@@ -111,8 +111,7 @@ function inventoryEvidence(
     quantity,
     knownCharacters,
     expectedCharacters: scoped.length,
-    completeCoverage:
-      scoped.length > 0 && knownCharacters === scoped.length,
+    completeCoverage: scoped.length > 0 && knownCharacters === scoped.length,
   };
 }
 
@@ -190,8 +189,7 @@ function progressFromQuantity(current, target, evidenceKnown) {
     };
   }
 
-  const ratio =
-    target > 0 ? Math.max(0, Math.min(1, current / target)) : 1;
+  const ratio = target > 0 ? Math.max(0, Math.min(1, current / target)) : 1;
   return {
     state: current >= target ? "COMPLETE" : "IN_PROGRESS",
     current,
@@ -200,14 +198,7 @@ function progressFromQuantity(current, target, evidenceKnown) {
   };
 }
 
-function baseTask(
-  goalId,
-  index,
-  kind,
-  subsystem,
-  description,
-  extra = {},
-) {
+function baseTask(goalId, index, kind, subsystem, description, extra = {}) {
   return {
     taskId: `${goalId}:${index + 1}`,
     kind,
@@ -244,8 +235,8 @@ function planFarmItem(goalId, row, target, context) {
         progress.state === "COMPLETE"
           ? "MET"
           : progress.state === "UNKNOWN"
-            ? "UNKNOWN"
-            : "UNMET",
+          ? "UNKNOWN"
+          : "UNMET",
       observed: progress.current,
       target: quantity,
     }),
@@ -311,20 +302,16 @@ function planLevelCharacter(goalId, row, target, context) {
     target: { characterName, level },
     progress,
     criteria: [
-      criterion(
-        "CHARACTER_LEVEL",
-        `${characterName} reaches level ${level}`,
-        {
-          status:
-            progress.state === "COMPLETE"
-              ? "MET"
-              : progress.state === "UNKNOWN"
-                ? "UNKNOWN"
-                : "UNMET",
-          observed: current,
-          target: level,
-        },
-      ),
+      criterion("CHARACTER_LEVEL", `${characterName} reaches level ${level}`, {
+        status:
+          progress.state === "COMPLETE"
+            ? "MET"
+            : progress.state === "UNKNOWN"
+            ? "UNKNOWN"
+            : "UNMET",
+        observed: current,
+        target: level,
+      }),
     ],
     tasks: [
       baseTask(
@@ -349,10 +336,7 @@ function planLevelCharacter(goalId, row, target, context) {
 
 function planAcquireGear(goalId, row, target, context) {
   const itemName = text(target.itemName || target.item);
-  const minimumLevel = Math.max(
-    0,
-    Math.trunc(finite(target.level) ?? 0),
-  );
+  const minimumLevel = Math.max(0, Math.trunc(finite(target.level) ?? 0));
   const characterName = targetCharacterName(row, target);
 
   if (!itemName) {
@@ -378,11 +362,7 @@ function planAcquireGear(goalId, row, target, context) {
   return {
     target: { itemName, level: minimumLevel, characterName },
     progress: {
-      state: found
-        ? "COMPLETE"
-        : evidenceKnown
-          ? "IN_PROGRESS"
-          : "UNKNOWN",
+      state: found ? "COMPLETE" : evidenceKnown ? "IN_PROGRESS" : "UNKNOWN",
       current: found ? 1 : evidenceKnown ? 0 : null,
       target: 1,
       ratio: found ? 1 : evidenceKnown ? 0 : null,
@@ -394,11 +374,7 @@ function planAcquireGear(goalId, row, target, context) {
           minimumLevel > 0 ? ` +${minimumLevel} or better` : ""
         }`,
         {
-          status: found
-            ? "MET"
-            : evidenceKnown
-              ? "UNMET"
-              : "UNKNOWN",
+          status: found ? "MET" : evidenceKnown ? "UNMET" : "UNKNOWN",
           observed: found
             ? {
                 equipped,
@@ -441,18 +417,12 @@ function planAccumulateGold(goalId, row, target, context) {
   const profiles = array(context.accountStrategy?.profiles).filter(
     (profile) => !characterName || profile?.name === characterName,
   );
-  const known = profiles.filter(
-    (profile) => finite(profile?.gold) !== null,
-  );
+  const known = profiles.filter((profile) => finite(profile?.gold) !== null);
   const current = known.reduce(
     (sum, profile) => sum + (finite(profile.gold) ?? 0),
     0,
   );
-  const progress = progressFromQuantity(
-    current,
-    amount,
-    known.length > 0,
-  );
+  const progress = progressFromQuantity(current, amount, known.length > 0);
 
   return {
     target: { amount, characterName },
@@ -466,8 +436,8 @@ function planAccumulateGold(goalId, row, target, context) {
             progress.state === "COMPLETE"
               ? "MET"
               : progress.state === "UNKNOWN"
-                ? "UNKNOWN"
-                : "UNMET",
+              ? "UNKNOWN"
+              : "UNMET",
           observed: progress.current,
           target: amount,
         },
@@ -515,20 +485,16 @@ function planCraftItem(goalId, row, target, context) {
     target: { itemName, quantity },
     progress,
     criteria: [
-      criterion(
-        "CRAFT_OUTPUT_OWNERSHIP",
-        `Own ${quantity} x ${itemName}`,
-        {
-          status:
-            progress.state === "COMPLETE"
-              ? "MET"
-              : progress.state === "UNKNOWN"
-                ? "UNKNOWN"
-                : "UNMET",
-          observed: progress.current,
-          target: quantity,
-        },
-      ),
+      criterion("CRAFT_OUTPUT_OWNERSHIP", `Own ${quantity} x ${itemName}`, {
+        status:
+          progress.state === "COMPLETE"
+            ? "MET"
+            : progress.state === "UNKNOWN"
+            ? "UNKNOWN"
+            : "UNMET",
+        observed: progress.current,
+        target: quantity,
+      }),
     ],
     tasks: [
       baseTask(
@@ -638,11 +604,8 @@ function normalizeGoalRow(row) {
 
   return {
     goalId: text(source.goal_id || source.goalId),
-    characterName: text(
-      source.character_name || source.characterName,
-    ),
-    status:
-      text(source.status)?.toUpperCase() || GOAL_STATUSES.ACTIVE,
+    characterName: text(source.character_name || source.characterName),
+    status: text(source.status)?.toUpperCase() || GOAL_STATUSES.ACTIVE,
     type: text(goal.type)?.toUpperCase() || null,
     priority: boundedPriority(goal.priority),
     target: clone(record(goal.target), {}),
@@ -702,11 +665,7 @@ function planGoal(row, context) {
     context,
   );
   if (planned.error) {
-    return invalidPlan(
-      normalized,
-      planned.error,
-      [planned.error],
-    );
+    return invalidPlan(normalized, planned.error, [planned.error]);
   }
 
   const fixedCharacter = text(planned.target?.characterName);
@@ -717,12 +676,9 @@ function planGoal(row, context) {
   const evidenceComplete =
     planned.criteria.length > 0 &&
     planned.criteria.every((entry) => entry.status === "MET");
-  const persistedComplete =
-    normalized.status === GOAL_STATUSES.COMPLETED;
+  const persistedComplete = normalized.status === GOAL_STATUSES.COMPLETED;
   const complete = evidenceComplete || persistedComplete;
-  const blocked = preconditions.some(
-    (entry) => entry.ready === false,
-  );
+  const blocked = preconditions.some((entry) => entry.ready === false);
 
   let state = PLAN_STATES.PLANNED;
   let reason = "GOAL_PLAN_READY";
@@ -746,8 +702,7 @@ function planGoal(row, context) {
   }
 
   const tasks =
-    state === PLAN_STATES.PLANNED ||
-    state === PLAN_STATES.BLOCKED
+    state === PLAN_STATES.PLANNED || state === PLAN_STATES.BLOCKED
       ? planned.tasks.map((task) => ({
           ...task,
           status: blocked ? "BLOCKED" : task.status,
@@ -768,8 +723,8 @@ function planGoal(row, context) {
       source: persistedComplete
         ? "PERSISTED_STATUS"
         : evidenceComplete
-          ? "OBSERVED_EVIDENCE"
-          : null,
+        ? "OBSERVED_EVIDENCE"
+        : null,
       criteria: planned.criteria,
     },
     tasks,
@@ -798,12 +753,8 @@ function buildGoalPlan(
         right.priority - left.priority ||
         left.goalId.localeCompare(right.goalId),
     );
-  const active = goals.filter(
-    (goal) => goal.status === GOAL_STATUSES.ACTIVE,
-  );
-  const invalid = goals.some(
-    (goal) => goal.state === PLAN_STATES.INVALID,
-  );
+  const active = goals.filter((goal) => goal.status === GOAL_STATUSES.ACTIVE);
+  const invalid = goals.some((goal) => goal.state === PLAN_STATES.INVALID);
 
   return {
     timestamp: finite(now()) ?? Date.now(),
@@ -812,8 +763,8 @@ function buildGoalPlan(
       goals.length === 0
         ? "GOALS_EMPTY"
         : invalid
-          ? "GOALS_PARTIAL_INVALID"
-          : "GOAL_PLANS_READY",
+        ? "GOALS_PARTIAL_INVALID"
+        : "GOAL_PLANS_READY",
     readOnly: true,
     executionEnabled: false,
     gameplayMutationDispatched: false,
@@ -823,24 +774,17 @@ function buildGoalPlan(
     summary: {
       total: goals.length,
       active: active.length,
-      planned: goals.filter(
-        (goal) => goal.state === PLAN_STATES.PLANNED,
-      ).length,
-      blocked: goals.filter(
-        (goal) => goal.state === PLAN_STATES.BLOCKED,
-      ).length,
-      complete: goals.filter(
-        (goal) => goal.state === PLAN_STATES.COMPLETE,
-      ).length,
-      paused: goals.filter(
-        (goal) => goal.state === PLAN_STATES.PAUSED,
-      ).length,
-      cancelled: goals.filter(
-        (goal) => goal.state === PLAN_STATES.CANCELLED,
-      ).length,
-      invalid: goals.filter(
-        (goal) => goal.state === PLAN_STATES.INVALID,
-      ).length,
+      planned: goals.filter((goal) => goal.state === PLAN_STATES.PLANNED)
+        .length,
+      blocked: goals.filter((goal) => goal.state === PLAN_STATES.BLOCKED)
+        .length,
+      complete: goals.filter((goal) => goal.state === PLAN_STATES.COMPLETE)
+        .length,
+      paused: goals.filter((goal) => goal.state === PLAN_STATES.PAUSED).length,
+      cancelled: goals.filter((goal) => goal.state === PLAN_STATES.CANCELLED)
+        .length,
+      invalid: goals.filter((goal) => goal.state === PLAN_STATES.INVALID)
+        .length,
       byType: Object.fromEntries(
         Object.values(GOAL_TYPES).map((type) => [
           type,
