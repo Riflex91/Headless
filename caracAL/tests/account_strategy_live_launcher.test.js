@@ -352,7 +352,10 @@ test("Account Strategy live launcher uses GET for observation and only dedicated
   assert.match(source, /\/tests\/account-strategy/);
   assert.match(source, /method:\s*"POST"/);
   assert.doesNotMatch(source, /controlCharacter/);
-  assert.doesNotMatch(source, /run.*LiveTest/);
+  assert.doesNotMatch(
+    source,
+    /\/tests\/(?:movement|combat|farm|inventory|market-intelligence|account-gear-reservation)/,
+  );
   assert.doesNotMatch(source, /socket\.emit/);
   assert.doesNotMatch(source, /desired_runtime_state/);
 
