@@ -293,9 +293,14 @@ export function createRuntimeGameAdapterSource(): GameAdapterSource {
     bankPacks: () => runtimeValue("bank_packs"),
     secondhands: () => runtimePontySnapshot ?? runtimeValue("secondhands"),
     calculateItemValue: (item: unknown) => {
-      const candidate = runtimeValue("calculate_item_value");
-      return typeof candidate === "function"
-        ? (candidate as (value: unknown) => unknown)(item)
+      const publicValue = runtimeValue("item_value");
+      if (typeof publicValue === "function") {
+        return (publicValue as (value: unknown) => unknown)(item);
+      }
+
+      const legacyValue = runtimeValue("calculate_item_value");
+      return typeof legacyValue === "function"
+        ? (legacyValue as (value: unknown) => unknown)(item)
         : null;
     },
     itemGrade: (item: unknown) => {
@@ -548,7 +553,9 @@ export class GameAdapter {
       return [];
     }
 
-    const definitions = record(record(this.source.gameData()).items);
+    const gameData = record(this.source.gameData());
+    const definitions = record(gameData.items);
+    const multipliers = record(gameData.multipliers);
     const listings: PontyListingSnapshot[] = [];
 
     for (const rawItem of rawListings) {
@@ -574,7 +581,18 @@ export class GameAdapter {
       if (baseValue === null || baseValue <= 0) continue;
 
       const cashMultiplier = !!record(definitions[name]).cash;
-      const unitPrice = baseValue * (cashMultiplier ? 3 : 2);
+      const configuredMultiplier = numberOrNull(
+        cashMultiplier
+          ? multipliers.secondhands_cash_mult
+          : multipliers.secondhands_mult,
+      );
+      const priceMultiplier =
+        configuredMultiplier !== null && configuredMultiplier > 0
+          ? configuredMultiplier
+          : cashMultiplier
+            ? 3
+            : 2;
+      const unitPrice = baseValue * priceMultiplier;
 
       listings.push({
         item: {
