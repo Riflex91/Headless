@@ -215,7 +215,13 @@ test("Merchant selection is independent of combat farm readiness", () => {
 
 test("Active encounter continuity outranks a higher farm score", () => {
   const source = setup({
-    running: ["My_Merchant", "My_Warrior", "My_Priest", "My_Ranger1"],
+    running: [
+      "My_Merchant",
+      "My_Warrior",
+      "My_Priest",
+      "My_Ranger1",
+      "My_Ranger2",
+    ],
     encounters: ["My_Ranger2"],
     farmScores: {
       My_Warrior: 10,
@@ -224,13 +230,6 @@ test("Active encounter continuity outranks a higher farm score", () => {
       My_Ranger2: 0.01,
     },
   });
-
-  const ranger2 = source.characterManage.My_Ranger2;
-  ranger2.enabled = false;
-  ranger2.connected = false;
-  ranger2.lifecycle_state = "STOPPED";
-  ranger2.desired_runtime_state = "STOPPED";
-  ranger2.desired_runtime_state_source = "CONFIG";
 
   const plan = buildFullAutonomyPlan(source.characterManage, {
     accountStrategy: source.accountStrategy,
@@ -244,6 +243,28 @@ test("Active encounter continuity outranks a higher farm score", () => {
   assert.equal(ranger2Recommendation.selected, true);
   assert.equal(ranger2Recommendation.reason, "ACTIVE_ENCOUNTER_CONTINUITY");
   assert.equal(plan.summary.encounterSignals, 1);
+});
+
+test("Offline stale combat targets do not count as active encounters", () => {
+  const source = setup({
+    running: ["My_Merchant", "My_Warrior", "My_Priest", "My_Ranger1"],
+    encounters: ["My_Ranger2"],
+  });
+  const ranger2 = source.characterManage.My_Ranger2;
+  ranger2.enabled = false;
+  ranger2.connected = false;
+  ranger2.lifecycle_state = "STOPPED";
+  ranger2.desired_runtime_state = "STOPPED";
+
+  const plan = buildFullAutonomyPlan(source.characterManage, {
+    accountStrategy: source.accountStrategy,
+  });
+  const ranger2Recommendation = plan.recommendations.find(
+    (entry) => entry.name === "My_Ranger2",
+  );
+
+  assert.equal(ranger2Recommendation.signals.encounter.active, false);
+  assert.equal(plan.summary.encounterSignals, 0);
 });
 
 test("Full Autonomy stays PARTIAL when Account Strategy is not ready", () => {
