@@ -149,13 +149,15 @@ function encounterSignal(block) {
     text(combat.state) ||
     text(group.state) ||
     "UNKNOWN";
+  const connected = block?.connected === true;
   return {
     state,
     target,
     active:
-      explicit.active === true ||
-      target !== null ||
-      ["COMBAT", "ENGAGED", "ACTIVE"].includes(state),
+      connected &&
+      (explicit.active === true ||
+        target !== null ||
+        ["COMBAT", "ENGAGED", "ACTIVE"].includes(state)),
   };
 }
 
