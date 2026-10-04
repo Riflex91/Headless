@@ -121,6 +121,87 @@ test("preflight refuses UNKNOWN and emits no mutation command", () => {
   assert.equal(preflight.scope.mutationDispatched, false);
 });
 
+test("preflight explains an empty upstream candidate chain without mutation", () => {
+  const snapshot = result({
+    riskState: "EMPTY",
+    selected: null,
+    prebuffState: "IDLE",
+    selectedSkill: null,
+  });
+  snapshot.after.inventoryIntelligence = {
+    state: "READY",
+    reason: "INVENTORY_INTELLIGENCE_READY",
+    summary: {
+      totalItems: 2,
+      dispositions: {
+        UPGRADE: 0,
+        COMPOUND: 0,
+        GEAR: 1,
+        CONSUMABLE: 1,
+      },
+    },
+    entries: [
+      {
+        slot: 4,
+        name: "helmet",
+        level: 1,
+        disposition: "GEAR",
+        protected: false,
+        protections: [],
+        why: "GEAR via Adventure Land item metadata",
+      },
+    ],
+  };
+  snapshot.after.upgrade = {
+    state: "EMPTY",
+    reason: "UPGRADE_NO_ELIGIBLE_CANDIDATE",
+    summary: {
+      upgradeDispositionItems: 0,
+      eligibleCandidates: 0,
+    },
+    decisions: [],
+  };
+  snapshot.after.compound = {
+    state: "EMPTY",
+    reason: "COMPOUND_NO_ELIGIBLE_CANDIDATE",
+    summary: {
+      compoundDispositionItems: 0,
+      eligibleCandidates: 0,
+    },
+    decisions: [],
+  };
+  snapshot.after.expectedValue = {
+    state: "EMPTY",
+    reason: "EXPECTED_VALUE_NO_CANDIDATES",
+    summary: {
+      upgradeCandidates: 0,
+      compoundCandidates: 0,
+      evaluated: 0,
+      unknown: 0,
+    },
+  };
+
+  const preflight = normalizeCandidate(snapshot, "My_Merchant");
+
+  assert.equal(preflight.outcome, "NO_CANDIDATE");
+  assert.equal(preflight.command, null);
+  assert.equal(
+    preflight.diagnostics.expectedValue.reason,
+    "EXPECTED_VALUE_NO_CANDIDATES",
+  );
+  assert.equal(
+    preflight.diagnostics.inventoryIntelligence.summary.dispositions.UPGRADE,
+    0,
+  );
+  assert.equal(
+    preflight.diagnostics.inventoryIntelligence.entries[0].disposition,
+    "GEAR",
+  );
+  assert.equal(preflight.diagnostics.upgrade.summary.eligibleCandidates, 0);
+  assert.equal(preflight.diagnostics.compound.summary.eligibleCandidates, 0);
+  assert.equal(preflight.scope.mutationDispatched, false);
+});
+
 test("preflight refuses malformed slot cardinality and stale Prebuff demand", () => {
   const invalidSlots = normalizeCandidate(
     result({
@@ -159,6 +240,9 @@ test("preflight source remains on read-only Gear Scoring supervisor", () => {
   assert.match(source, /runGearScoringSupervisorLiveTest/);
   assert.match(source, /scope:\s*\{\s*readOnly: true/);
   assert.match(source, /mutationDispatched: false/);
+  assert.match(source, /inventoryIntelligence/);
+  assert.match(source, /expectedValue/);
+  assert.match(source, /diagnostics/);
   assert.doesNotMatch(source, /economy-prebuff-execution",/);
   assert.doesNotMatch(source, /executeNext/);
   assert.doesNotMatch(source, /useSkill/);
