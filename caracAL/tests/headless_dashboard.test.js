@@ -22,6 +22,7 @@ test("public character state exposes only dashboard-safe fields", () => {
     connected: true,
     lifecycle_state: "ONLINE",
     desired_runtime_state: "PAUSED",
+    desired_runtime_state_source: "MANUAL_PAUSE",
     rotation_source: "My_Warrior",
     rotation_replacement: null,
     account_owned: true,
@@ -53,6 +54,7 @@ test("public character state exposes only dashboard-safe fields", () => {
     connected: true,
     lifecycle_state: "ONLINE",
     desired_runtime_state: "PAUSED",
+    desired_runtime_state_source: "MANUAL_PAUSE",
     rotation_source: "My_Warrior",
     rotation_replacement: null,
     account_owned: true,
@@ -256,6 +258,57 @@ test("supervisor snapshot exposes supplied read-only account strategy projection
   );
 
   assert.deepEqual(snapshot.account_strategy, accountStrategy);
+});
+
+test("supervisor snapshot exposes supplied Full Autonomy reconciliation projection", () => {
+  const fullAutonomy = {
+    timestamp: 1234,
+    state: "READY",
+    reason: "FULL_AUTONOMY_RECONCILIATION_READY",
+    readOnly: true,
+    executionEnabled: false,
+    desiredStateMutationDispatched: false,
+    merchantIndependent: true,
+    maxOnlineCharacters: 4,
+    combatSlots: 3,
+    recommendations: [
+      {
+        name: "My_Merchant",
+        selected: true,
+        role: "MERCHANT",
+        recommendedDesiredState: "RUNNING",
+      },
+    ],
+    summary: {
+      accountOwnedCharacters: 8,
+      selectedCharacters: 4,
+      selectedMerchant: 1,
+      selectedCombat: 3,
+      manualStopProtected: 0,
+      farmSignals: 3,
+      economySignals: 1,
+      encounterSignals: 0,
+      merchantClaims: 0,
+    },
+    policy: {
+      manualStoppedNeverOverridden: true,
+    },
+  };
+
+  const snapshot = buildSupervisorSnapshot(
+    {},
+    { maxOnlineCharacters: 4 },
+    null,
+    null,
+    null,
+    null,
+    null,
+    fullAutonomy,
+  );
+
+  assert.deepEqual(snapshot.full_autonomy, fullAutonomy);
+  assert.equal(snapshot.full_autonomy.executionEnabled, false);
+  assert.equal(snapshot.full_autonomy.desiredStateMutationDispatched, false);
 });
 
 test("diagnostic time range query is bounded", () => {
@@ -467,6 +520,9 @@ test("dashboard module and coordinator remain syntactically valid", () => {
   assert.match(coordinator, /CharacterConfigService/);
   assert.match(coordinator, /getPersistenceHealth/);
   assert.match(coordinator, /restoreDesiredRuntimeState/);
+  assert.match(coordinator, /buildFullAutonomyPlan/);
+  assert.match(coordinator, /getFullAutonomyState/);
+  assert.match(coordinator, /desired_runtime_state_source/);
   assert.match(coordinator, /saveCharacterRuntimeState/);
   assert.match(coordinator, /saveCharacterSnapshot/);
   assert.match(coordinator, /UNEXPECTED_CHARACTER_EXIT/);
