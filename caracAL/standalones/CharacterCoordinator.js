@@ -8058,7 +8058,28 @@ function migrate_old_storage(path, localStorage) {
       await sleep(bounded_sample_ms);
 
       const final_block = character_manage[char_name];
-      const projection = final_block?.market_intelligence_runtime;
+      const dashboard_projection = final_block?.market_intelligence_runtime;
+      const probe_projection =
+        source_probe_result?.projection &&
+        typeof source_probe_result.projection === "object" &&
+        ["READY", "EMPTY"].includes(source_probe_result.projection.state)
+          ? source_probe_result.projection
+          : null;
+      const dashboard_timestamp = Number(dashboard_projection?.timestamp);
+      const probe_timestamp = Number(probe_projection?.timestamp);
+      const use_probe_projection =
+        !!probe_projection &&
+        (!dashboard_projection ||
+          !Number.isFinite(dashboard_timestamp) ||
+          (Number.isFinite(probe_timestamp) &&
+            probe_timestamp >= dashboard_timestamp));
+      const projection = use_probe_projection
+        ? probe_projection
+        : dashboard_projection;
+      const projection_source = use_probe_projection
+        ? "SOURCE_PROBE"
+        : "DASHBOARD_RUNTIME";
+
       if (!projection || !["READY", "EMPTY"].includes(projection.state)) {
         throw make_control_error(
           "MARKET_INTELLIGENCE_LIVE_TEST_PROJECTION_LOST",
@@ -8101,6 +8122,7 @@ function migrate_old_storage(path, localStorage) {
         completed_at: Date.now(),
         durationMs: Date.now() - started_at,
         projection: JSON.parse(JSON.stringify(projection)),
+        projectionSource: projection_source,
         observedSources: observed_sources,
         missingSources: missing_sources,
         sourceProbe: source_probe_result
