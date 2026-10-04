@@ -10,10 +10,7 @@ const {
   waitForGearScoringCharacter,
 } = require("./run_gear_scoring_live_e2e");
 
-const UPGRADE_COMPOUND_SKILLS = [
-  "massproductionpp",
-  "massproduction",
-];
+const UPGRADE_COMPOUND_SKILLS = ["massproductionpp", "massproduction"];
 const EXCHANGE_SKILLS = ["massexchangepp", "massexchange"];
 const SOURCE_REPOSITORY = "kaansoral/adventureland_mongodb";
 const SOURCE_COMMIT = "c0f405fd356d99d762ad44644ebfdbab8b4d12e4";
@@ -44,14 +41,12 @@ function normalizeCandidate(value) {
     available: candidate.available === true,
     ready: candidate.ready === true,
     reason: typeof candidate.reason === "string" ? candidate.reason : null,
-    levelRequired:
-      Number.isFinite(Number(candidate.levelRequired))
-        ? Number(candidate.levelRequired)
-        : null,
-    mpCost:
-      Number.isFinite(Number(candidate.mpCost))
-        ? Number(candidate.mpCost)
-        : null,
+    levelRequired: Number.isFinite(Number(candidate.levelRequired))
+      ? Number(candidate.levelRequired)
+      : null,
+    mpCost: Number.isFinite(Number(candidate.mpCost))
+      ? Number(candidate.mpCost)
+      : null,
     cooldownRemainingMs: Number(candidate.cooldownRemainingMs || 0),
   };
 }
@@ -123,8 +118,7 @@ function economyPrebuffEvidence(snapshot) {
         ].includes(prebuff.reason));
   }
 
-  const selectedKind =
-    typeof demand.kind === "string" ? demand.kind : null;
+  const selectedKind = typeof demand.kind === "string" ? demand.kind : null;
   const expectedCandidateSkills = selectedKind
     ? expectedSkills(selectedKind, policy.preferEnhanced)
     : [];
@@ -154,8 +148,7 @@ function economyPrebuffEvidence(snapshot) {
     (laneData.demandKind ?? null) === (demand.kind ?? null) &&
     (laneData.demandName ?? null) === (demand.name ?? null) &&
     (laneData.selectedSkill ?? null) === (prebuff.selectedSkill ?? null) &&
-    (laneData.riskPolicyState ?? null) ===
-      (demand.riskPolicyState ?? null) &&
+    (laneData.riskPolicyState ?? null) === (demand.riskPolicyState ?? null) &&
     Number(laneData.unknown || 0) === Number(demand.unknown || 0) &&
     laneData.executionEnabled === false &&
     laneData.arbiterLaneActivationEnabled === false;
