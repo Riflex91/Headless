@@ -266,21 +266,28 @@ test("Account Strategy supervisor profile probe uses only the dedicated local te
     },
   };
 
-  const result = await runAccountStrategySupervisorLiveTest("My_Merchant", 900, {
-    fetchImpl: async (url, options) => {
-      calls.push({ url, options });
-      return {
-        ok: true,
-        async text() {
-          return JSON.stringify(payload);
-        },
-      };
+  const result = await runAccountStrategySupervisorLiveTest(
+    "My_Merchant",
+    900,
+    {
+      fetchImpl: async (url, options) => {
+        calls.push({ url, options });
+        return {
+          ok: true,
+          async text() {
+            return JSON.stringify(payload);
+          },
+        };
+      },
     },
-  });
+  );
 
   assert.deepEqual(result, payload);
   assert.equal(calls.length, 1);
-  assert.match(calls[0].url, /\/characters\/My_Merchant\/tests\/account-strategy$/);
+  assert.match(
+    calls[0].url,
+    /\/characters\/My_Merchant\/tests\/account-strategy$/,
+  );
   assert.equal(calls[0].options.method, "POST");
   assert.deepEqual(JSON.parse(calls[0].options.body), { sampleMs: 900 });
 });
