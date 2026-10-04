@@ -229,6 +229,7 @@ function migrate_old_storage(path, localStorage) {
 
   const cfg = require("../config");
   const lifecycle_policy = readLifecyclePolicy(cfg);
+  const observer_only = process.env.CARACAL_OBSERVER_ONLY === "1";
   let coordinator_shutting_down = false;
   if (cfg.cull_versions) {
     await game_files.cull_versions([version]);
@@ -15053,13 +15054,17 @@ function migrate_old_storage(path, localStorage) {
     initialize_char_block(char_name, char_block);
   });
 
-  const requested_startup = Object.values(character_manage).filter(
-    (char_block) => char_block.enabled,
-  ).length;
-  const startup_chars = getInitialStartupCharacters(
-    character_manage,
-    lifecycle_policy.maxOnlineCharacters,
-  );
+  const requested_startup = observer_only
+    ? 0
+    : Object.values(character_manage).filter(
+        (char_block) => char_block.enabled,
+      ).length;
+  const startup_chars = observer_only
+    ? []
+    : getInitialStartupCharacters(
+        character_manage,
+        lifecycle_policy.maxOnlineCharacters,
+      );
   if (requested_startup > startup_chars.length) {
     log.warn(
       {
@@ -15081,6 +15086,7 @@ function migrate_old_storage(path, localStorage) {
     heartbeat_timeout_ms: lifecycle_policy.heartbeatTimeoutMs,
     watchdog_interval_ms: lifecycle_policy.watchdogIntervalMs,
     scheduled_characters: startup_chars,
+    observer_only,
   });
 
   startup_chars.forEach((char_name, index) => {
