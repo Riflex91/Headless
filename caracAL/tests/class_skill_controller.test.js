@@ -270,10 +270,10 @@ test("Phase 8 AoE skills are not exposed by Phase 7 ranger controller", () => {
   assert.deepEqual(status.configuredSkills, []);
 });
 
-test("merchant controller skips skills above character level", async () => {
+test("merchant Economy Prebuff skills stay configured but never run in the generic class-skill loop", async () => {
   const state = stateFor("merchant");
-  state.character.level = 58;
-  state.character.mp = 1000;
+  state.character.level = 80;
+  state.character.mp = 5000;
   const setup = makeController(
     "merchant",
     {
@@ -281,8 +281,10 @@ test("merchant controller skips skills above character level", async () => {
         merchant: {
           enabled: true,
           skills: {
-            mcourage: { enabled: true, priority: 200 },
             massproduction: { enabled: true, priority: 100 },
+            massproductionpp: { enabled: true, priority: 200 },
+            massexchange: { enabled: true, priority: 300 },
+            massexchangepp: { enabled: true, priority: 400 },
           },
         },
       },
@@ -290,18 +292,6 @@ test("merchant controller skips skills above character level", async () => {
     {
       state,
       skills: [
-        {
-          key: "mcourage",
-          name: "Merchant's Courage",
-          classes: ["merchant"],
-          level: 70,
-          mp: 2400,
-          cooldown: 2000,
-          range: null,
-          hostile: false,
-          party: false,
-          passive: false,
-        },
         {
           key: "massproduction",
           name: "Mass Production",
@@ -314,14 +304,56 @@ test("merchant controller skips skills above character level", async () => {
           party: false,
           passive: false,
         },
+        {
+          key: "massproductionpp",
+          name: "Mass Production++",
+          classes: ["merchant"],
+          level: 60,
+          mp: 200,
+          cooldown: 50,
+          range: null,
+          hostile: false,
+          party: false,
+          passive: false,
+        },
+        {
+          key: "massexchange",
+          name: "Mass Exchange",
+          classes: ["merchant"],
+          level: 40,
+          mp: 30,
+          cooldown: 50,
+          range: null,
+          hostile: false,
+          party: false,
+          passive: false,
+        },
+        {
+          key: "massexchangepp",
+          name: "Mass Exchange++",
+          classes: ["merchant"],
+          level: 70,
+          mp: 200,
+          cooldown: 50,
+          range: null,
+          hostile: false,
+          party: false,
+          passive: false,
+        },
       ],
     },
   );
 
   const status = await setup.controller.tick();
 
-  assert.equal(status.state, "USING");
-  assert.equal(status.selectedSkill, "massproduction");
-  assert.equal(setup.calls.length, 1);
-  assert.equal(setup.calls[0].skill, "massproduction");
+  assert.equal(status.state, "IDLE");
+  assert.equal(status.reason, "SKILL_EXTERNALLY_OWNED");
+  assert.deepEqual(status.configuredSkills, [
+    "massproduction",
+    "massproductionpp",
+    "massexchange",
+    "massexchangepp",
+  ]);
+  assert.equal(status.selectedSkill, null);
+  assert.equal(setup.calls.length, 0);
 });
