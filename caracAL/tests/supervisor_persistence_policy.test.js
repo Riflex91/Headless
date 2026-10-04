@@ -366,6 +366,90 @@ test("LOCAL_HISTORY selection stays server-bound and excludes active live listin
   ]);
 });
 
+test("market signatures keep null levels distinct from level zero", () => {
+  const base = {
+    itemName: "scroll0",
+    price: 1000,
+    quantity: 1,
+    server: "EU I",
+    seller: "Ponty",
+    metadata: {
+      rid: "RID-LEVEL",
+    },
+  };
+
+  assert.notEqual(
+    marketObservationSignature({ ...base, level: null }),
+    marketObservationSignature({ ...base, level: 0 }),
+  );
+});
+
+test("LOCAL_HISTORY excludes active Ponty snapshots but keeps older Ponty evidence", () => {
+  const activePonty = {
+    itemName: "sword",
+    level: 2,
+    price: 1000,
+    quantity: 1,
+    server: "EU I",
+    seller: "Ponty",
+    metadata: {
+      rid: "RID-CURRENT",
+    },
+  };
+
+  const history = selectMarketLocalHistoryForRuntime(
+    [
+      {
+        item_name: "sword",
+        level: 2,
+        price: 1000,
+        quantity: 1,
+        server: "EU I",
+        seller: "Ponty",
+        source: "PONTY",
+        observed_at: 5000,
+        metadata: {
+          rid: "RID-CURRENT",
+        },
+      },
+      {
+        item_name: "sword",
+        level: 2,
+        price: 900,
+        quantity: 1,
+        server: "EU I",
+        seller: "Ponty",
+        source: "PONTY",
+        observed_at: 4000,
+        metadata: {
+          rid: "RID-OLDER",
+        },
+      },
+    ],
+    {
+      server: "EU I",
+      pontySignatures: [marketObservationSignature(activePonty)],
+      limit: 250,
+    },
+  );
+
+  assert.deepEqual(history, [
+    {
+      itemName: "sword",
+      level: 2,
+      price: 900,
+      quantity: 1,
+      server: "EU I",
+      seller: "Ponty",
+      observedAt: 4000,
+      metadata: {
+        rid: "RID-OLDER",
+        storedSource: "PONTY",
+      },
+    },
+  ]);
+});
+
 test("LOCAL_HISTORY selection is bounded, normalized, and has a stable sync signature", () => {
   const rows = [
     {
