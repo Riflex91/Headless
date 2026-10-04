@@ -115,6 +115,7 @@ const {
   failSnapshotPersist,
   marketLocalHistorySyncSignature,
   restoreDesiredRuntimeState,
+  restoreDesiredRuntimeStateSource,
   selectMarketLocalHistoryForRuntime,
   selectNewLiveMarketObservations,
   selectNewPontyMarketObservations,
@@ -1638,6 +1639,7 @@ function migrate_old_storage(path, localStorage) {
   }
 
   function initialize_char_block(char_name, char_block) {
+    const configured_enabled = char_block.enabled === true;
     const persisted_lifecycle = persistence.getLifecycleState(char_name);
     const persisted_authority = persistence.getDesiredStateAuthority(char_name);
     const runtime_config = character_config_service.load(
@@ -1733,21 +1735,12 @@ function migrate_old_storage(path, localStorage) {
     char_block.last_persisted_snapshot_at = 0;
     char_block.last_persisted_snapshot_signature = null;
     restoreDesiredRuntimeState(char_block, persisted_lifecycle);
-    const persisted_source =
-      typeof persisted_authority?.desired_state_source === "string" &&
-      persisted_authority.desired_state_source
-        ? persisted_authority.desired_state_source
-        : null;
-    if (persisted_source) {
-      char_block.desired_runtime_state_source = persisted_source;
-    } else if (persisted_lifecycle) {
-      char_block.desired_runtime_state_source =
-        char_block.desired_runtime_state === DESIRED_RUNTIME_STATES.STOPPED
-          ? "PERSISTED_STOP"
-          : "PERSISTED";
-    } else {
-      char_block.desired_runtime_state_source = "CONFIG";
-    }
+    char_block.desired_runtime_state_source = restoreDesiredRuntimeStateSource(
+      char_block,
+      persisted_lifecycle,
+      persisted_authority,
+      { configuredEnabled: configured_enabled },
+    );
     refresh_character_revision(char_block);
     char_block.movement_trail = Array.isArray(char_block.movement_trail)
       ? char_block.movement_trail
