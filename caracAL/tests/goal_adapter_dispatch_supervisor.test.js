@@ -541,6 +541,64 @@ test("FAIL after mutation path requires unknown hold", () => {
   );
 });
 
+test("dispatch active lock serializes the preflight phase before pending IPC exists", async () => {
+  const s = setup();
+  let release;
+  const gate = new Promise((resolve) => {
+    release = resolve;
+  });
+  s.supervisor.runPreflight = async (input) => {
+    s.preflights.push(input);
+    await gate;
+    return {
+      requestId: "supervisor-preflight-locked",
+      characterName: input.characterName,
+      result: preflightResult(input.request),
+      error: null,
+      scope: {
+        readOnly: true,
+        retryUsed: false,
+        lifecycleMutationDispatched: false,
+        gameplayMutationDispatched: false,
+        valueMutationDispatched: false,
+      },
+    };
+  };
+
+  const first = s.supervisor.run({
+    expectedGoalId: "goal-1",
+    expectedTaskId: "goal-1:3",
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(s.supervisor.snapshot().active, true);
+  assert.equal(s.supervisor.snapshot().pending, 0);
+  assert.equal(s.preflights.length, 1);
+
+  await assert.rejects(
+    () =>
+      s.supervisor.run({
+        expectedGoalId: "goal-1",
+        expectedTaskId: "goal-1:3",
+      }),
+    (error) => error.code === "GOAL_ADAPTER_DISPATCH_ALREADY_RUNNING",
+  );
+  assert.equal(s.preflights.length, 1);
+  assert.equal(s.sent.length, 0);
+
+  release();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(s.sent.length, 1);
+  assert.equal(s.supervisor.snapshot().pending, 1);
+
+  await s.supervisor.handleResult("My_Ranger1", {
+    request_id: "goal-adapter-dispatch-1000-1",
+    result: dispatchResult(),
+  });
+  await first;
+  assert.equal(s.supervisor.snapshot().active, false);
+});
+
 test("only one dispatch can be in flight globally", async () => {
   const s = setup();
   const { pending: first } = await start(s.supervisor);
