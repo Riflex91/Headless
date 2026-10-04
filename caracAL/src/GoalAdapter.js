@@ -23,11 +23,10 @@ const GOAL_ADAPTER_CAPABILITIES = Object.freeze({
     blockedReason: "GOAL_ADAPTER_TRAINING_RUNTIME_WORKER_MISSING",
   }),
   ACQUIRE_GEAR: Object.freeze({
-    bridge: null,
-    runtimeMethod: null,
-    translationSupported: false,
+    bridge: "MaterialGatheringTaskRunner",
+    runtimeMethod: "runMaterialGatherTask",
+    translationSupported: true,
     runtimeBridgeImplemented: false,
-    blockedReason: "GOAL_ADAPTER_GEAR_ACQUISITION_RUNTIME_WORKER_MISSING",
   }),
   ACCUMULATE_GOLD: Object.freeze({
     bridge: null,
@@ -208,6 +207,84 @@ function farmItemRequest(action, capability, base) {
   };
 }
 
+function acquireGearRequest(action, capability, base) {
+  const target = record(action.target);
+  const hints = runtimeHints(action);
+  const itemName = text(target.itemName ?? target.item);
+  const minimumItemLevel = nonNegativeInteger(target.level ?? 0);
+  const fixedCharacter = text(action.characterName);
+  const workerCharacter = text(hints.workerCharacter) || fixedCharacter;
+  const monsterType = text(hints.monsterType);
+
+  if (!itemName || minimumItemLevel === null) {
+    return blocked(base, "GOAL_ADAPTER_GEAR_TARGET_INVALID");
+  }
+
+  if (!workerCharacter || !monsterType) {
+    const missing = [];
+    if (!workerCharacter) missing.push("workerCharacter");
+    if (!monsterType) missing.push("monsterType");
+    return blocked(base, "GOAL_ADAPTER_GEAR_RUNTIME_HINTS_REQUIRED", {
+      missing,
+    });
+  }
+
+  if (fixedCharacter && workerCharacter !== fixedCharacter) {
+    return blocked(base, "GOAL_ADAPTER_GEAR_WORKER_MUST_MATCH_TARGET", {
+      characterName: fixedCharacter,
+      workerCharacter,
+    });
+  }
+
+  const timeoutMs =
+    hints.timeoutMs === undefined ? null : positiveInteger(hints.timeoutMs);
+  const pollMs =
+    hints.pollMs === undefined ? null : positiveInteger(hints.pollMs);
+  if (hints.timeoutMs !== undefined && timeoutMs === null) {
+    return blocked(base, "GOAL_ADAPTER_GEAR_TIMEOUT_INVALID");
+  }
+  if (hints.pollMs !== undefined && pollMs === null) {
+    return blocked(base, "GOAL_ADAPTER_GEAR_POLL_INVALID");
+  }
+
+  return {
+    ...base,
+    state: GOAL_ADAPTER_STATES.READY,
+    reason: "GOAL_ADAPTER_GEAR_REQUEST_READY",
+    capability,
+    request: {
+      version: GOAL_ADAPTER_REQUEST_VERSION,
+      type: "GOAL_RUNTIME_METHOD",
+      goalId: text(action.goalId),
+      taskId: text(action.taskId),
+      kind: "ACQUIRE_GEAR",
+      bridge: capability.bridge,
+      runtimeMethod: capability.runtimeMethod,
+      characterName: workerCharacter,
+      arguments: {
+        itemName,
+        minimumItemLevel,
+        monsterType,
+        quantity: 1,
+        deliveryMode: "KEEP_ON_WORKER",
+        ...(timeoutMs !== null && { timeoutMs }),
+        ...(pollMs !== null && { pollMs }),
+      },
+      runtimeGuards: [
+        "TARGET_RUNTIME_RUNNING",
+        "TARGET_RANGER_REQUIRED",
+        "NO_CONTROLLED_ACTIVITY",
+        "EMERGENCY_STOP_CLEAR",
+        "UNKNOWN_OUTCOME_NO_BLIND_RETRY",
+        "QUALIFYING_GEAR_MUST_REMAIN_ON_WORKER",
+      ],
+      mutationDomain: "GAMEPLAY_VALUE",
+      dispatchAllowed: false,
+      dispatchImplemented: false,
+    },
+  };
+}
+
 function craftRequest(action, capability, base) {
   const target = record(action.target);
   const itemName = text(target.itemName ?? target.item);
@@ -320,6 +397,9 @@ function buildGoalAdapterPlan(goalExecutionDecision, { now = Date.now } = {}) {
   if (kind === "FARM_ITEM") {
     return farmItemRequest(action, capability, base);
   }
+  if (kind === "ACQUIRE_GEAR") {
+    return acquireGearRequest(action, capability, base);
+  }
   if (kind === "PLAN_CRAFT") {
     return craftRequest(action, capability, base);
   }
@@ -331,6 +411,7 @@ module.exports = {
   GOAL_ADAPTER_CAPABILITIES,
   GOAL_ADAPTER_REQUEST_VERSION,
   GOAL_ADAPTER_STATES,
+  acquireGearRequest,
   buildGoalAdapterPlan,
   craftRequest,
   farmItemRequest,
