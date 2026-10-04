@@ -138,6 +138,10 @@ function coupledExecutionEvidence(result) {
       childCleanup.verificationPolicyConfigOverrideCleared === true,
     verificationPolicyPlanningRestored:
       childCleanup.verificationPolicyPlanningRestored === true,
+    prebuffVerificationOverrideCleared:
+      childCleanup.prebuffVerificationConfigOverrideCleared === true,
+    prebuffVerificationPlanningRestored:
+      childCleanup.prebuffVerificationPlanningRestored === true,
     equipmentBaselineRestored:
       supervisorCleanup.equipmentBaselineRestored === true,
     runtimeStateRestored: supervisorCleanup.runtimeStateRestored === true,
