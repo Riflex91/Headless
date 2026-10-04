@@ -74,7 +74,9 @@ function clone(value, fallback) {
 function capabilitiesForClass(characterClass) {
   const normalized = text(characterClass)?.toLowerCase() || "";
   const capabilities = CLASS_CAPABILITIES[normalized] || [];
-  return CAPABILITY_ORDER.filter((capability) => capabilities.includes(capability));
+  return CAPABILITY_ORDER.filter((capability) =>
+    capabilities.includes(capability),
+  );
 }
 
 function strategyStats(liveState) {
@@ -192,8 +194,8 @@ function buildAccountStrategy(characterManage, { now = Date.now } = {}) {
     registered >= EXPECTED_ACCOUNT_CHARACTERS
       ? "READY"
       : registered > 0
-        ? "PARTIAL"
-        : "EMPTY";
+      ? "PARTIAL"
+      : "EMPTY";
 
   return {
     timestamp,
@@ -202,8 +204,8 @@ function buildAccountStrategy(characterManage, { now = Date.now } = {}) {
       state === "READY"
         ? "ACCOUNT_STRATEGY_PROFILES_READY"
         : state === "PARTIAL"
-          ? "ACCOUNT_STRATEGY_PROFILES_PARTIAL"
-          : "ACCOUNT_STRATEGY_NO_ACCOUNT_CHARACTERS",
+        ? "ACCOUNT_STRATEGY_PROFILES_PARTIAL"
+        : "ACCOUNT_STRATEGY_NO_ACCOUNT_CHARACTERS",
     readOnly: true,
     expectedCharacters: EXPECTED_ACCOUNT_CHARACTERS,
     profiles,
