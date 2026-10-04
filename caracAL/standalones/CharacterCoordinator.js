@@ -15056,9 +15056,8 @@ function migrate_old_storage(path, localStorage) {
 
   const requested_startup = observer_only
     ? 0
-    : Object.values(character_manage).filter(
-        (char_block) => char_block.enabled,
-      ).length;
+    : Object.values(character_manage).filter((char_block) => char_block.enabled)
+        .length;
   const startup_chars = observer_only
     ? []
     : getInitialStartupCharacters(
