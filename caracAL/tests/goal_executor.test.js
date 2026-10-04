@@ -277,6 +277,28 @@ test("Unsupported handoff kinds fail closed", () => {
   assert.equal(decision.action, null);
 });
 
+test("Coordinator and dashboard project Goal execution decisions without a dispatcher", () => {
+  const coordinator = fs.readFileSync(
+    path.join(__dirname, "..", "standalones", "CharacterCoordinator.js"),
+    "utf8",
+  );
+  const dashboard = fs.readFileSync(
+    path.join(__dirname, "..", "src", "HeadlessDashboard.js"),
+    "utf8",
+  );
+
+  assert.match(coordinator, /buildGoalExecutionDecision/);
+  assert.match(coordinator, /readGoalExecutionPolicy/);
+  assert.match(coordinator, /getGoalExecutionState:\s*goal_execution_state/);
+  assert.match(coordinator, /goal_execution_dispatch_implemented:\s*false/);
+  assert.doesNotMatch(coordinator, /function reconcile_goal_execution/);
+  assert.doesNotMatch(coordinator, /dispatch_goal_execution/);
+
+  assert.match(dashboard, /goal_execution:\s*goalExecutionState/);
+  assert.match(dashboard, /getGoalExecutionState/);
+  assert.match(dashboard, /dispatchImplemented:\s*false/);
+});
+
 test("Goal execution gate has no mutation or controller dependency", () => {
   const source = fs.readFileSync(
     path.join(__dirname, "..", "src", "GoalExecutor.js"),
