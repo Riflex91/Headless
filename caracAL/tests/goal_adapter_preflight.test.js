@@ -367,6 +367,49 @@ test("unsupported adapter kinds remain blocked", async () => {
   assert.deepEqual(setupResult.calls, []);
 });
 
+test("runtime and CharacterThread wire preflight IPC without a supervisor dispatcher", () => {
+  const kernel = fs.readFileSync(
+    path.join(
+      __dirname,
+      "..",
+      "TYPECODE",
+      "bot",
+      "core",
+      "runtime-kernel.lib.ts",
+    ),
+    "utf8",
+  );
+  const thread = fs.readFileSync(
+    path.join(__dirname, "..", "src", "CharacterThread.js"),
+    "utf8",
+  );
+  const coordinator = fs.readFileSync(
+    path.join(__dirname, "..", "standalones", "CharacterCoordinator.js"),
+    "utf8",
+  );
+
+  assert.match(kernel, /GoalAdapterPreflightRunner/);
+  assert.match(kernel, /async runGoalAdapterPreflight\(/);
+  assert.match(kernel, /goalAdapterPreflightRunning/);
+  assert.match(kernel, /craftMaterialPlan:\s*\(recipe\)\s*=>\s*this\.runCraftMaterialPlan\(recipe\)/);
+
+  const start = kernel.indexOf("async runGoalAdapterPreflight(");
+  const end = kernel.indexOf("async runMaterialGatherTask(", start);
+  assert.ok(start >= 0);
+  assert.ok(end > start);
+  const preflightBlock = kernel.slice(start, end);
+  assert.doesNotMatch(preflightBlock, /this\.runMaterialGatherTask\s*\(/);
+  assert.doesNotMatch(preflightBlock, /this\.executeCraftNext\s*\(/);
+  assert.doesNotMatch(preflightBlock, /this\.actions\./);
+  assert.doesNotMatch(preflightBlock, /this\.movement\./);
+  assert.doesNotMatch(preflightBlock, /this\.combat\./);
+
+  assert.match(thread, /case "goal_adapter_preflight"/);
+  assert.match(thread, /runGoalAdapterPreflight\(m\.request, \{ requestId \}\)/);
+  assert.match(thread, /type: "goal_adapter_preflight_result"/);
+  assert.doesNotMatch(coordinator, /goal_adapter_preflight/);
+});
+
 test("Goal adapter runtime preflight contains no gameplay or value mutation path", () => {
   const source = fs.readFileSync(
     path.join(
