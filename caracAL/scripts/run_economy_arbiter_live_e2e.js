@@ -110,18 +110,13 @@ function economyArbiterEvidence(snapshot) {
   const laneOrderMatches =
     lanes.length === LANE_ORDER.length &&
     lanes.every(
-      (lane, index) =>
-        lane.lane === LANE_ORDER[index] && lane.rank === index,
+      (lane, index) => lane.lane === LANE_ORDER[index] && lane.rank === index,
     );
   const policyOrderMatches = sameArray(policy.laneOrder, LANE_ORDER);
   const selected = lanes.find((lane) => lane.active) || null;
   const active = lanes.filter((lane) => lane.active).length;
-  const blocked = lanes.filter(
-    (lane) => lane.active && lane.blocked,
-  ).length;
-  const unknown = lanes.filter(
-    (lane) => lane.active && lane.unknown,
-  ).length;
+  const blocked = lanes.filter((lane) => lane.active && lane.blocked).length;
+  const unknown = lanes.filter((lane) => lane.active && lane.unknown).length;
   const summaryMatches =
     integer(summary.active) === active &&
     integer(summary.blocked) === blocked &&
