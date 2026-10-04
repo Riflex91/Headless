@@ -2,6 +2,7 @@
 
 const {
   ensureDashboardAvailable,
+  startManagedRuntime,
   stopManagedRuntime,
 } = require("../src/MovementLiveTestLauncher");
 const {
@@ -447,20 +448,152 @@ function normalizeCandidate(result, characterName) {
   };
 }
 
+function parseCliArgs(argv = process.argv.slice(2)) {
+  let requestedCharacter = null;
+  let verbose = false;
+  let clearScreen = true;
+
+  for (const arg of argv) {
+    if (arg === "--verbose") {
+      verbose = true;
+    } else if (arg === "--no-clear") {
+      clearScreen = false;
+    } else if (!arg.startsWith("--") && requestedCharacter === null) {
+      requestedCharacter = arg;
+    }
+  }
+
+  return {
+    requestedCharacter,
+    verbose,
+    clearScreen,
+  };
+}
+
+function statusWithReason(state, reason) {
+  const status = state || "UNKNOWN";
+  return reason ? `${status} (${reason})` : status;
+}
+
+function compactAttemptLine(attempt) {
+  const source = record(attempt);
+  const candidate = record(source.candidate);
+  const kind = candidate.kind || "UNKNOWN";
+  const name = candidate.name || "unknown";
+  const slots = array(candidate.slots).join(",");
+  const target = slots ? `${kind} ${name} [${slots}]` : `${kind} ${name}`;
+  const risk = statusWithReason(
+    source.riskPolicyState,
+    source.riskPolicyReason,
+  );
+  const prebuff = statusWithReason(source.prebuffState, source.prebuffReason);
+
+  return `  - ${target}: risk=${risk}; prebuff=${prebuff}`;
+}
+
+function formatCompactResult(result) {
+  const source = record(result);
+  const candidate = record(source.candidate);
+  const policy = record(source.verificationPolicy);
+  const attempts = array(source.verificationPolicyAttempts);
+  const scope = record(source.scope);
+  const risk = statusWithReason(
+    source.riskPolicyState,
+    source.riskPolicyReason,
+  );
+  const prebuff = statusWithReason(source.prebuffState, source.prebuffReason);
+  const lines = [
+    "Economy Prebuff Execution Preflight",
+    `Outcome: ${source.outcome || "UNKNOWN"}`,
+    `Reason: ${source.reason || "UNKNOWN"}`,
+    `Character: ${source.character || "UNKNOWN"}`,
+    `Risk Policy: ${risk}`,
+    `Prebuff: ${prebuff}`,
+    `Selected skill: ${source.selectedSkill || "none"}`,
+  ];
+
+  if (candidate.kind && candidate.name) {
+    const slots = array(candidate.slots).join(",");
+    const suffix = slots ? ` [${slots}]` : "";
+    lines.push(`Candidate: ${candidate.kind} ${candidate.name}${suffix}`);
+
+    const currentLevel = finiteNumber(candidate.currentLevel);
+    const targetLevel = finiteNumber(candidate.targetLevel);
+    if (currentLevel !== null || targetLevel !== null) {
+      lines.push(`Level: ${currentLevel ?? "?"} -> ${targetLevel ?? "?"}`);
+    }
+
+    if (finiteNumber(candidate.expectedDeltaGold) !== null) {
+      lines.push(`Expected delta gold: ${candidate.expectedDeltaGold}`);
+    }
+    if (finiteNumber(candidate.successProbability) !== null) {
+      lines.push(`Success probability: ${candidate.successProbability}`);
+    }
+  } else if (attempts.length > 0) {
+    lines.push(`Verification attempts: ${attempts.length}`);
+    for (const attempt of attempts) {
+      lines.push(compactAttemptLine(attempt));
+    }
+  }
+
+  const hasCleanupStatus =
+    policy.cleanupConfirmed === true || policy.prebuffCleanupConfirmed === true;
+  if (hasCleanupStatus) {
+    const cleanupConfirmed =
+      policy.cleanupConfirmed === true &&
+      policy.prebuffCleanupConfirmed === true;
+    const cleanupLabel = cleanupConfirmed ? "confirmed" : "incomplete";
+    lines.push(`Temporary policy cleanup: ${cleanupLabel}`);
+  }
+
+  lines.push(
+    `Read-only: ${scope.readOnly === true ? "yes" : "no"}`,
+    `Mutation dispatched: ${scope.mutationDispatched === true ? "yes" : "no"}`,
+  );
+
+  if (typeof source.command === "string" && source.command) {
+    lines.push("", "Exact guarded mutation command:", source.command);
+  }
+
+  return lines.join("\n") + "\n";
+}
+
+function clearInteractiveTerminal() {
+  if (process.stdout.isTTY) {
+    process.stdout.write("\u001b[2J\u001b[H");
+  }
+}
+
 async function main() {
-  const requestedCharacter = process.argv[2] || null;
-  const dashboard = await ensureDashboardAvailable(readState);
+  const { requestedCharacter, verbose, clearScreen } = parseCliArgs();
+  const dashboard = await ensureDashboardAvailable(
+    readState,
+    verbose
+      ? {}
+      : {
+          quiet: true,
+          startRuntime: () =>
+            startManagedRuntime({
+              stdio: ["ignore", "ignore", "ignore"],
+              windowsHide: true,
+            }),
+        },
+  );
   const managedRuntime = dashboard.runtime;
+  let result = null;
 
   try {
     const selected = await waitForGearScoringCharacter(requestedCharacter, {
       initialState: dashboard.state,
     });
-    process.stdout.write(
-      "Running read-only coupled Economy Prebuff execution preflight with " +
-        selected.name +
-        "\n",
-    );
+
+    if (verbose) {
+      process.stdout.write(
+        "Running read-only coupled Economy Prebuff execution preflight with " +
+          selected.name +
+          "\n",
+      );
+    }
 
     const payload = await runGearScoringSupervisorLiveTest(
       selected.name,
@@ -469,7 +602,7 @@ async function main() {
           1750,
       ),
     );
-    let result = normalizeCandidate(payload.result, selected.name);
+    result = normalizeCandidate(payload.result, selected.name);
 
     if (result.outcome !== "READY") {
       const candidates = verificationPolicyCandidates(payload.result);
@@ -511,19 +644,32 @@ async function main() {
         };
       }
     }
+  } finally {
+    if (managedRuntime) {
+      if (verbose) {
+        process.stdout.write("Stopping temporary caracAL runtime\n");
+      }
+      await stopManagedRuntime(managedRuntime);
+    }
+  }
 
+  if (!result) {
+    throw new Error("Economy Prebuff execution preflight returned no result");
+  }
+
+  if (verbose) {
     process.stdout.write(JSON.stringify(result, null, 2) + "\n");
-
     if (result.outcome === "READY" && result.command) {
       process.stdout.write("\nExact guarded mutation command:\n");
       process.stdout.write(result.command + "\n");
     }
-  } finally {
-    if (managedRuntime) {
-      process.stdout.write("Stopping temporary caracAL runtime\n");
-      await stopManagedRuntime(managedRuntime);
-    }
+    return;
   }
+
+  if (clearScreen) {
+    clearInteractiveTerminal();
+  }
+  process.stdout.write(formatCompactResult(result));
 }
 
 if (require.main === module) {
@@ -534,8 +680,11 @@ if (require.main === module) {
 }
 
 module.exports = {
+  compactAttemptLine,
+  formatCompactResult,
   normalizeCandidate,
   normalizeVerificationPolicyPreflight,
+  parseCliArgs,
   runReadOnlyCoupledCandidatePreflight,
   verificationPolicyCandidates,
 };
