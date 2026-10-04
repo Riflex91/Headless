@@ -324,14 +324,16 @@ test("Market Intelligence compact bootstrap output exposes correlated Ponty resp
   result.sourceProbe = {
     evidence: {
       pontySnapshotResponseReceived: true,
-      pontySnapshotItems: 0,
+      pontySnapshotItems: 208,
+      pontyNormalizedListings: 208,
     },
   };
 
   const output = formatCompactResult(result);
   assert.match(output, /Bootstrap runtime: PAUSED/);
   assert.match(output, /Ponty snapshot response: yes/);
-  assert.match(output, /Ponty snapshot items: 0/);
+  assert.match(output, /Ponty snapshot items: 208/);
+  assert.match(output, /Ponty normalized listings: 208/);
   assert.match(output, /Value mutation dispatched: no/);
 });
 
