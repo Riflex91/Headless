@@ -2094,8 +2094,7 @@ function migrate_old_storage(path, localStorage) {
       const char_block = character_manage[char_name];
       const live = char_block?.live_state;
       const has_stats =
-        live &&
-        stat_keys.some((key) => Number.isFinite(Number(live[key])));
+        live && stat_keys.some((key) => Number.isFinite(Number(live[key])));
 
       if (
         char_block?.instance &&
@@ -8006,10 +8005,7 @@ function migrate_old_storage(path, localStorage) {
     return char_block.gear_scoring_live_test;
   }
 
-  async function run_account_strategy_live_test(
-    char_name,
-    sample_ms = 1200,
-  ) {
+  async function run_account_strategy_live_test(char_name, sample_ms = 1200) {
     const char_block = character_manage[char_name];
     if (!char_block) {
       throw make_control_error(
@@ -8079,8 +8075,7 @@ function migrate_old_storage(path, localStorage) {
       Math.min(5000, Number(sample_ms) || 1200),
     );
     account_strategy_live_test_sequence += 1;
-    const request_id =
-      `account-strategy-live-${started_at}-${account_strategy_live_test_sequence}`;
+    const request_id = `account-strategy-live-${started_at}-${account_strategy_live_test_sequence}`;
 
     account_strategy_live_test_active = true;
     char_block.account_strategy_live_test = {
