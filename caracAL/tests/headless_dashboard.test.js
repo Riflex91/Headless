@@ -403,6 +403,11 @@ test("dashboard module and coordinator remain syntactically valid", () => {
     dashboard,
     /\/headless\/api\/characters\/:name\/tests\/class-skill/,
   );
+  assert.match(
+    dashboard,
+    /router\.post\(\s*"\/headless\/api\/characters\/:name\/tests\/gear-scoring",\s*express\.json\(\{ limit: "8kb" \}\)/,
+  );
+  assert.match(dashboard, /economyArbiterEnforcementProbe/);
   assert.match(dashboard, /\/headless\/api\/characters\/:name\/tests\/group/);
   assert.match(dashboard, /\/headless\/api\/characters\/:name\/tests\/upgrade/);
   assert.match(
