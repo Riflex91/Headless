@@ -225,7 +225,7 @@ import {
   MarketIntelligenceEvent,
   MarketIntelligenceObservationInput,
 } from "./market-intelligence-controller.lib";
-import { readPontyMarketObservations } from "./ponty-market-source.lib";
+import { PontyMarketSnapshotTracker } from "./ponty-market-source.lib";
 import {
   MarketTradingLiveTestOptions,
   MarketTradingLiveTestResult,
@@ -382,8 +382,8 @@ export class BotRuntimeKernel {
   private logisticsClaimRunning = false;
   private lastLogisticsExecution: LogisticsExecutionResult | null = null;
   private marketLocalHistory: MarketIntelligenceObservationInput[] = [];
-  private pontySnapshotSignature: string | null = null;
-  private pontySnapshotObservedAt: number | null = null;
+  private readonly pontyMarketSnapshotTracker =
+    new PontyMarketSnapshotTracker();
 
   constructor() {
     this.eventBus = new EventBus({
@@ -462,7 +462,10 @@ export class BotRuntimeKernel {
     });
     this.marketIntelligence = new MarketIntelligenceController(this.game, {
       server: runtimeRealm,
-      ponty: () => this.readPontyMarketProjection(),
+      ponty: () =>
+        this.pontyMarketSnapshotTracker.observations(this.game, {
+          server: runtimeRealm,
+        }),
       localHistory: () => this.marketLocalHistory,
       onEvent: (event) => this.handleMarketIntelligenceEvent(event),
     });
@@ -899,41 +902,6 @@ export class BotRuntimeKernel {
       recentActions: this.actionLedger.list(20),
       ...runtimeIdentity(),
     };
-  }
-
-  private readPontyMarketProjection(): MarketIntelligenceObservationInput[] {
-    const listings = this.game.ponty();
-    if (listings.length === 0) {
-      this.pontySnapshotSignature = null;
-      this.pontySnapshotObservedAt = null;
-      return [];
-    }
-
-    const signature = JSON.stringify(listings);
-    if (
-      signature !== this.pontySnapshotSignature ||
-      this.pontySnapshotObservedAt === null
-    ) {
-      this.pontySnapshotSignature = signature;
-      this.pontySnapshotObservedAt = Date.now();
-    }
-
-    const observedAt = this.pontySnapshotObservedAt;
-    return readPontyMarketObservations(
-      {
-        ponty: () => listings,
-      },
-      {
-        server: runtimeRealm,
-        now: () => observedAt,
-      },
-    ).map((observation) => ({
-      ...observation,
-      metadata: {
-        ...(observation.metadata || {}),
-        freshnessBasis: "FIRST_OBSERVED_RUNTIME_SNAPSHOT",
-      },
-    }));
   }
 
   setMarketLocalHistory(observations: unknown): void {
