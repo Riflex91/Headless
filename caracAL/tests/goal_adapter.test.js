@@ -294,10 +294,7 @@ test("TRAIN_CHARACTER requires explicit monster source and exact target worker",
     }),
   );
   assert.equal(missing.state, GOAL_ADAPTER_STATES.BLOCKED);
-  assert.equal(
-    missing.reason,
-    "GOAL_ADAPTER_TRAINING_RUNTIME_HINTS_REQUIRED",
-  );
+  assert.equal(missing.reason, "GOAL_ADAPTER_TRAINING_RUNTIME_HINTS_REQUIRED");
   assert.deepEqual(missing.details.missing, ["monsterType"]);
 
   const mismatch = buildGoalAdapterPlan(
