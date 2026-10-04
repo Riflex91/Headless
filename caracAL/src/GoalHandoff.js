@@ -99,8 +99,7 @@ function executionTaskForGoal(goal) {
     array(goal?.tasks).find((task) => {
       const kind = text(task?.kind);
       return (
-        kind &&
-        Object.prototype.hasOwnProperty.call(GOAL_HANDOFF_ROUTES, kind)
+        kind && Object.prototype.hasOwnProperty.call(GOAL_HANDOFF_ROUTES, kind)
       );
     }) || null
   );
@@ -112,8 +111,7 @@ function goalPlanGuard(goalPlan) {
   const tasksSafe = array(plan.goals).every((goal) =>
     array(goal?.tasks).every(
       (task) =>
-        task?.executionAllowed === false &&
-        task?.mutationDispatched === false,
+        task?.executionAllowed === false && task?.mutationDispatched === false,
     ),
   );
 
@@ -287,7 +285,9 @@ function buildGoalHandoff(
       adapter: route.adapter,
       subsystem: route.subsystem,
       mutationDomain: route.mutationDomain,
-      characterName: text(task.characterName || selected?.target?.characterName),
+      characterName: text(
+        task.characterName || selected?.target?.characterName,
+      ),
       target: record(selected.target),
       dispatchAllowed: false,
       executionEnabled: false,
