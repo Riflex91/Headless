@@ -333,6 +333,10 @@ test("Account Strategy live launcher uses GET for observation and only dedicated
     path.join(__dirname, "..", "standalones", "CharacterCoordinator.js"),
     "utf8",
   );
+  const dashboard = fs.readFileSync(
+    path.join(__dirname, "..", "src", "HeadlessDashboard.js"),
+    "utf8",
+  );
 
   assert.match(source, /\/headless\/api\/state/);
   assert.match(source, /method:\s*"GET"/);
@@ -349,6 +353,11 @@ test("Account Strategy live launcher uses GET for observation and only dedicated
   assert.match(coordinator, /const startup_chars = observer_only\s*\? \[\]/);
   assert.match(coordinator, /observer_only,/);
   assert.match(coordinator, /async function run_account_strategy_live_test/);
+  assert.match(
+    dashboard,
+    /\/headless\/api\/characters\/:name\/tests\/account-strategy/,
+  );
+  assert.match(dashboard, /runAccountStrategyLiveTest/);
   assert.match(
     coordinator,
     /desired_runtime_state = DESIRED_RUNTIME_STATES\.PAUSED/,
