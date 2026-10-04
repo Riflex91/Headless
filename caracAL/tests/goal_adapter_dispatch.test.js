@@ -308,7 +308,6 @@ test("FARM_ITEM invokes the existing material worker exactly once after prefligh
       x: 100,
       y: 200,
     },
-    purpose: "CRAFT_TEST_MATERIAL",
     timeoutMs: 30000,
     pollMs: 100,
   });
