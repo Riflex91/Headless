@@ -170,6 +170,24 @@ test("Account Strategy live E2E returns WATCH when 8/8 profiles exist but none a
   assert.equal(result.evidence.onlineProfiles, 0);
 });
 
+test("Account Strategy live E2E keeps WATCH when an online profile has no live gear slots", () => {
+  const source = snapshot({ onlineNames: ["My_Merchant"] });
+  const merchant = source.account_strategy.profiles.find(
+    (entry) => entry.name === "My_Merchant",
+  );
+  merchant.gear.equipment = {};
+  merchant.profileCompleteness.gear = false;
+
+  const result = evaluateAccountStrategy(source);
+
+  assert.equal(result.outcome, "WATCH");
+  assert.equal(result.reason, "ACCOUNT_STRATEGY_LIVE_PROFILE_COVERAGE_PENDING");
+  assert.equal(result.evidence.onlineProfiles, 1);
+  assert.equal(result.evidence.liveGearProfiles, 0);
+  assert.equal(result.evidence.liveProfilesValid, false);
+  assert.deepEqual(result.evidence.incompleteLiveProfiles, ["My_Merchant"]);
+});
+
 test("Account Strategy live E2E fails when the account roster is incomplete", () => {
   const incompleteProfiles = ROSTER.slice(0, 7).map(
     ([name, characterClass, capabilities]) =>
@@ -374,6 +392,9 @@ test("Account Strategy live launcher uses GET for observation and only dedicated
   );
   assert.match(coordinator, /gameplayMutationDispatched: false/);
   assert.match(coordinator, /valueMutationDispatched: false/);
+  assert.match(coordinator, /const has_gear =/);
+  assert.match(coordinator, /Object\.keys\(live_slots\)\.length > 0/);
+  assert.match(coordinator, /const live_gear_complete =/);
   assert.match(
     coordinator,
     /account_gear_reservation_live_test_active\s*\|\|\s*account_strategy_live_test_active/,
