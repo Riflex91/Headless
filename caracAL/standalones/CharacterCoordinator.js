@@ -772,14 +772,23 @@ function migrate_old_storage(path, localStorage) {
       return false;
     }
 
-    const observations = selectMarketLocalHistoryForRuntime(
-      persistence.listMarketHistory({ limit: 500 }),
-      {
-        server: char_block.realm || null,
-        liveSignatures: char_block.market_live_observation_signatures,
-        limit: 250,
-      },
+    const history_rows = [
+      ...persistence.listMarketHistory({ limit: 500 }),
+      ...persistence.listPontyHistory({ limit: 500 }).map((row) => ({
+        ...row,
+        seller: "Ponty",
+        source: "PONTY",
+      })),
+    ].sort(
+      (left, right) =>
+        Number(right.observed_at || 0) - Number(left.observed_at || 0),
     );
+    const observations = selectMarketLocalHistoryForRuntime(history_rows, {
+      server: char_block.realm || null,
+      liveSignatures: char_block.market_live_observation_signatures,
+      pontySignatures: char_block.market_ponty_observation_signatures,
+      limit: 250,
+    });
     const signature = marketLocalHistorySyncSignature(observations);
     if (char_block.market_local_history_sync_signature === signature) {
       return false;
