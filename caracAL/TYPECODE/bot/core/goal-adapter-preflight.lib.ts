@@ -195,6 +195,10 @@ export class GoalAdapterPreflightRunner {
       }
 
       farmOverrideCleared = false;
+      let outcome: GoalAdapterPreflightOutcome = "FAIL";
+      let reason = "GOAL_ADAPTER_PREFLIGHT_FARM_RUNTIME_ERROR";
+      let evidence: Record<string, unknown> = {};
+
       try {
         this.deps.farmIntelligence.setConfigOverride({
           farming: {
@@ -214,31 +218,31 @@ export class GoalAdapterPreflightRunner {
         );
 
         if (!exact) {
-          return finish(
-            "BLOCKED",
-            "GOAL_ADAPTER_PREFLIGHT_FARM_SOURCE_NOT_CONFIRMED",
-            {
-              itemName,
-              monsterType,
-              farmState: text(status.state),
-              farmReason: text(status.reason),
-              candidateCount: candidates.length,
-            },
-          );
+          outcome = "BLOCKED";
+          reason = "GOAL_ADAPTER_PREFLIGHT_FARM_SOURCE_NOT_CONFIRMED";
+          evidence = {
+            itemName,
+            monsterType,
+            farmState: text(status.state),
+            farmReason: text(status.reason),
+            candidateCount: candidates.length,
+          };
+        } else {
+          outcome = "PASS";
+          reason = "GOAL_ADAPTER_PREFLIGHT_FARM_CONFIRMED";
+          evidence = {
+            itemName,
+            monsterType,
+            quantity,
+            farmState: text(status.state),
+            farmReason: text(status.reason),
+            dropItems: stringList(exact.estimated?.dropItems),
+          };
         }
-
-        return finish("PASS", "GOAL_ADAPTER_PREFLIGHT_FARM_CONFIRMED", {
-          itemName,
-          monsterType,
-          quantity,
-          farmState: text(status.state),
-          farmReason: text(status.reason),
-          dropItems: stringList(exact.estimated?.dropItems),
-        });
       } catch (error) {
-        return finish("FAIL", "GOAL_ADAPTER_PREFLIGHT_FARM_RUNTIME_ERROR", {
+        evidence = {
           error: error instanceof Error ? error.message : String(error),
-        });
+        };
       } finally {
         this.deps.farmIntelligence.clearConfigOverride();
         farmOverrideCleared = true;
@@ -248,6 +252,8 @@ export class GoalAdapterPreflightRunner {
           // Cleanup state is still restored even if the refresh projection fails.
         }
       }
+
+      return finish(outcome, reason, evidence);
     }
 
     if (identity.kind === "PLAN_CRAFT") {
