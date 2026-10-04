@@ -574,6 +574,10 @@ function attachHeadlessDashboard({
         const result = await runGearScoringLiveTest(
           req.params.name,
           Number(req.body?.sampleMs) || 1200,
+          {
+            economyArbiterEnforcementProbe:
+              req.body?.economyArbiterEnforcementProbe === true,
+          },
         );
         res.json({
           ok: result?.outcome === "PASS",
