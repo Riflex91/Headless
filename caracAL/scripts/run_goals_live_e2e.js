@@ -125,12 +125,14 @@ function goalEvidence(goal) {
     nullableFiniteValid(progress.ratio);
 
   const criteriaChecks = criteria.map(criterionEvidence);
+  const criteriaCardinalityValid =
+    state === "INVALID" ? criteria.length === 0 : criteria.length > 0;
   const completionValid =
     typeof completion.met === "boolean" &&
     (completion.source === null ||
       completion.source === "PERSISTED_STATUS" ||
       completion.source === "OBSERVED_EVIDENCE") &&
-    criteria.length > 0 &&
+    criteriaCardinalityValid &&
     criteriaChecks.every((entry) => entry.valid);
 
   const tasksExpected =
