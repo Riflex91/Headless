@@ -1,12 +1,9 @@
 "use strict";
 
 const assert = require("node:assert/strict");
-const childProcess = require("node:child_process");
 const fs = require("node:fs");
-const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
-const prettier = require("prettier");
 
 const {
   GoalAdapterPreflightSupervisor,
@@ -96,11 +93,7 @@ test("runtimeReady requires an account-owned connected started runtime", () => {
 test("supervisor rejects missing, foreign and non-running targets without IPC", async () => {
   const missing = setup();
   await assert.rejects(
-    () =>
-      missing.supervisor.run(
-        "Unknown",
-        request({ characterName: null }),
-      ),
+    () => missing.supervisor.run("Unknown", request({ characterName: null })),
     (error) => error.code === "GOAL_ADAPTER_PREFLIGHT_CHARACTER_NOT_FOUND",
   );
   assert.equal(missing.sent.length, 0);
@@ -285,14 +278,8 @@ test("Coordinator and dashboard expose only the read-only Goal adapter preflight
     coordinator,
     /runGoalAdapterPreflight:\s*\(\{ characterName, request \}\)\s*=>/,
   );
-  assert.match(
-    coordinator,
-    /case "goal_adapter_preflight_result"/,
-  );
-  assert.match(
-    coordinator,
-    /goal_adapter_preflight_supervisor\.cancelAll/,
-  );
+  assert.match(coordinator, /case "goal_adapter_preflight_result"/);
+  assert.match(coordinator, /goal_adapter_preflight_supervisor\.cancelAll/);
   assert.match(
     coordinator,
     /goal_adapter_preflight_supervisor\.snapshot\(\)\.pending > 0/,
@@ -302,10 +289,7 @@ test("Coordinator and dashboard expose only the read-only Goal adapter preflight
 
   assert.match(dashboard, /"\/headless\/api\/goals\/adapter-preflight"/);
   assert.match(dashboard, /runGoalAdapterPreflight/);
-  assert.doesNotMatch(
-    dashboard,
-    /"\/headless\/api\/goals\/adapter-dispatch"/,
-  );
+  assert.doesNotMatch(dashboard, /"\/headless\/api\/goals\/adapter-dispatch"/);
 });
 
 test("supervisor client contains no lifecycle or gameplay execution dependency", () => {
@@ -321,33 +305,4 @@ test("supervisor client contains no lifecycle or gameplay execution dependency",
   assert.doesNotMatch(source, /runMaterialGatherTask/);
   assert.doesNotMatch(source, /executeCraftNext/);
   assert.doesNotMatch(source, /setInterval/);
-});
-
-test("temporary Phase 19.8 formatter probe", async () => {
-  const targets = [
-    path.join(__dirname, "..", "standalones", "CharacterCoordinator.js"),
-    path.join(__dirname, "goal_adapter_preflight_supervisor.test.js"),
-  ];
-
-  for (const target of targets) {
-    const source = fs.readFileSync(target, "utf8");
-    const formatted = await prettier.format(source, { filepath: target });
-    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "phase19-8-prettier-"));
-    const temp = path.join(tempDir, path.basename(target));
-    try {
-      fs.writeFileSync(temp, formatted);
-      let diff = "";
-      try {
-        childProcess.execFileSync("diff", ["-u", target, temp], {
-          encoding: "utf8",
-        });
-      } catch (error) {
-        diff = String(error.stdout || "");
-      }
-      console.log("PHASE19_8_PRETTIER_DIFF", path.basename(target));
-      console.log(diff || "NO_DIFF");
-    } finally {
-      fs.rmSync(tempDir, { recursive: true, force: true });
-    }
-  }
 });
