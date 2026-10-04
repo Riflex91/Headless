@@ -1,17 +1,15 @@
 "use strict";
 
 const assert = require("node:assert/strict");
-const childProcess = require("node:child_process");
 const fs = require("node:fs");
-const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
-const prettier = require("prettier");
 
 const {
   GOAL_HANDOFF_STATES,
   buildGoalHandoff,
   fullAutonomyGuard,
+  goalPlanGuard,
 } = require("../src/GoalHandoff");
 
 function plannedGoal({
@@ -92,7 +90,18 @@ function plan(goals = []) {
     reason: goals.length > 0 ? "GOAL_PLANS_READY" : "GOALS_EMPTY",
     readOnly: true,
     executionEnabled: false,
+    gameplayMutationDispatched: false,
+    valueMutationDispatched: false,
+    lifecycleMutationDispatched: false,
     goals,
+    policy: {
+      intentExecutionSeparated: true,
+      manualStopRespected: true,
+      fullAutonomyHandoffOnly: true,
+      directGameplayMutationAllowed: false,
+      directValueMutationAllowed: false,
+      directLifecycleMutationAllowed: false,
+    },
   };
 }
 
@@ -289,6 +298,21 @@ test("Full Autonomy readiness is evidence only and never dispatches", () => {
   assert.equal(result.valueMutationDispatched, false);
 });
 
+test("Goal handoff fails closed when the upstream Goal plan safety boundary is invalid", () => {
+  const unsafe = plan([plannedGoal()]);
+  unsafe.gameplayMutationDispatched = true;
+
+  const guard = goalPlanGuard(unsafe);
+  const result = buildGoalHandoff(unsafe);
+
+  assert.equal(guard.valid, false);
+  assert.equal(guard.noMutationDispatched, false);
+  assert.equal(result.state, GOAL_HANDOFF_STATES.BLOCKED);
+  assert.equal(result.reason, "GOAL_HANDOFF_GOAL_PLAN_SAFETY_INVALID");
+  assert.equal(result.handoff, null);
+  assert.equal(result.handoffDispatched, false);
+});
+
 test("Goal handoff contract has no mutation executor dependency", () => {
   const source = fs.readFileSync(
     path.join(__dirname, "..", "src", "GoalHandoff.js"),
@@ -301,28 +325,4 @@ test("Goal handoff contract has no mutation executor dependency", () => {
   assert.doesNotMatch(source, /socket\.emit/);
   assert.doesNotMatch(source, /saveGoal/);
   assert.doesNotMatch(source, /executeNext/);
-});
-
-test("temporary Goal handoff formatter probe", async () => {
-  const target = path.join(__dirname, "..", "src", "GoalHandoff.js");
-  const source = fs.readFileSync(target, "utf8");
-  const formatted = await prettier.format(source, { filepath: target });
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "goal-handoff-prettier-"));
-  const temp = path.join(tempDir, "GoalHandoff.js");
-
-  try {
-    fs.writeFileSync(temp, formatted);
-    let diff = "";
-    try {
-      childProcess.execFileSync("diff", ["-u", target, temp], {
-        encoding: "utf8",
-      });
-    } catch (error) {
-      diff = String(error.stdout || "");
-    }
-    console.log("GOAL_HANDOFF_PRETTIER_DIFF");
-    console.log(diff || "NO_DIFF");
-  } finally {
-    fs.rmSync(tempDir, { recursive: true, force: true });
-  }
 });
