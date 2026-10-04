@@ -126,6 +126,29 @@ function trainingRequest(overrides = {}) {
   };
 }
 
+function goldRequest(overrides = {}) {
+  return {
+    version: 1,
+    type: "GOAL_RUNTIME_METHOD",
+    goalId: "gold-1",
+    taskId: "gold-1:1",
+    kind: "ACCUMULATE_GOLD",
+    bridge: "CharacterGoldTaskRunner",
+    runtimeMethod: "runCharacterGoldTask",
+    characterName: "My_Rogue",
+    arguments: {
+      goalAmount: 1000000,
+      scope: "ACCOUNT",
+      monsterType: "goo",
+      timeoutMs: 60000,
+      pollMs: 200,
+    },
+    dispatchAllowed: false,
+    dispatchImplemented: false,
+    ...overrides,
+  };
+}
+
 function craftRequest(overrides = {}) {
   return {
     version: 1,
@@ -173,6 +196,12 @@ function setup({
     targetReached: false,
     levelIncreased: false,
     xpIncreased: true,
+  },
+  goldResult = {
+    outcome: "PASS",
+    reason: "CHARACTER_GOLD_PROGRESS_CONFIRMED",
+    targetReached: false,
+    goldIncreased: true,
   },
   craftActionStatus = "CONFIRMED",
   craftSelectedRecipe = "rod",
@@ -249,6 +278,37 @@ function setup({
           targetReached: trainingResult.targetReached,
           levelIncreased: trainingResult.levelIncreased,
           xpIncreased: trainingResult.xpIncreased,
+        },
+        evidence: {
+          schedulerDrivenCombat: true,
+          combatStatusObserved: true,
+          targetMonsterObserved: true,
+          navigationStatus: "CONFIRMED",
+          blindRetryUsed: false,
+        },
+        cleanup: {
+          combatOverrideCleared: true,
+        },
+      };
+    },
+    runCharacterGoldTask: async (options) => {
+      calls.push(["gold", options]);
+      return {
+        requestId: options.requestId,
+        outcome: goldResult.outcome,
+        reason: goldResult.reason,
+        startedAt: 1,
+        completedAt: 2,
+        durationMs: 1,
+        character: "My_Rogue",
+        monsterType: options.monsterType,
+        goalAmount: options.goalAmount,
+        scope: options.scope,
+        progress: {
+          startGold: 500000,
+          finalGold: goldResult.goldIncreased ? 500025 : 500000,
+          targetReached: goldResult.targetReached,
+          goldIncreased: goldResult.goldIncreased,
         },
         evidence: {
           schedulerDrivenCombat: true,
@@ -504,6 +564,91 @@ test("TRAIN_CHARACTER UNKNOWN is surfaced without retry", async () => {
   assert.match(result.reason, /CHARACTER_TRAINING_ATTACK_OUTCOME_UNKNOWN/);
   assert.equal(result.scope.blindRetryUsed, false);
   assert.equal(s.calls.filter(([name]) => name === "training").length, 1);
+});
+
+test("ACCUMULATE_GOLD invokes exactly one bounded gold pulse after preflight", async () => {
+  const s = setup({
+    preflightResult: preflight({
+      kind: "ACCUMULATE_GOLD",
+      goalId: "gold-1",
+      taskId: "gold-1:1",
+    }),
+  });
+
+  const result = await s.runner.run(goldRequest(), {
+    requestId: "dispatch-gold",
+    authorized: true,
+  });
+
+  assert.equal(result.outcome, "PASS");
+  assert.equal(result.reason, "GOAL_ADAPTER_DISPATCH_GOLD_CONFIRMED");
+  assert.equal(result.scope.mutationPathInvoked, true);
+  assert.equal(result.scope.blindRetryUsed, false);
+  assert.equal(s.calls.filter(([name]) => name === "preflight").length, 1);
+  assert.equal(s.calls.filter(([name]) => name === "gold").length, 1);
+  assert.deepEqual(s.calls.find(([name]) => name === "gold")[1], {
+    requestId: "dispatch-gold:gold",
+    goalAmount: 1000000,
+    scope: "ACCOUNT",
+    monsterType: "goo",
+    timeoutMs: 60000,
+    pollMs: 200,
+  });
+  assert.equal(result.execution.gold.progress.goldIncreased, true);
+});
+
+test("ACCUMULATE_GOLD rejects a worker PASS without observable gold progress", async () => {
+  const s = setup({
+    preflightResult: preflight({
+      kind: "ACCUMULATE_GOLD",
+      goalId: "gold-1",
+      taskId: "gold-1:1",
+    }),
+    goldResult: {
+      outcome: "PASS",
+      reason: "CHARACTER_GOLD_PROGRESS_CONFIRMED",
+      targetReached: false,
+      goldIncreased: false,
+    },
+  });
+
+  const result = await s.runner.run(goldRequest(), {
+    requestId: "dispatch-gold",
+    authorized: true,
+  });
+
+  assert.equal(result.outcome, "FAIL");
+  assert.equal(
+    result.reason,
+    "GOAL_ADAPTER_DISPATCH_GOLD_PROGRESS_NOT_CONFIRMED",
+  );
+  assert.equal(s.calls.filter(([name]) => name === "gold").length, 1);
+});
+
+test("ACCUMULATE_GOLD UNKNOWN is surfaced without retry", async () => {
+  const s = setup({
+    preflightResult: preflight({
+      kind: "ACCUMULATE_GOLD",
+      goalId: "gold-1",
+      taskId: "gold-1:1",
+    }),
+    goldResult: {
+      outcome: "UNKNOWN",
+      reason: "CHARACTER_GOLD_ATTACK_OUTCOME_UNKNOWN",
+      targetReached: false,
+      goldIncreased: false,
+    },
+  });
+
+  const result = await s.runner.run(goldRequest(), {
+    requestId: "dispatch-gold",
+    authorized: true,
+  });
+
+  assert.equal(result.outcome, "UNKNOWN");
+  assert.match(result.reason, /CHARACTER_GOLD_ATTACK_OUTCOME_UNKNOWN/);
+  assert.equal(result.scope.blindRetryUsed, false);
+  assert.equal(s.calls.filter(([name]) => name === "gold").length, 1);
 });
 
 test("ACQUIRE_GEAR invokes retained material worker exactly once after preflight", async () => {
