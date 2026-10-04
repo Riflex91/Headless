@@ -31,6 +31,24 @@ function restoreDesiredRuntimeState(charBlock, persistedLifecycle) {
   };
 }
 
+function restoreDesiredRuntimeStateSource(
+  charBlock,
+  persistedLifecycle,
+  persistedAuthority,
+  { configuredEnabled = false } = {},
+) {
+  const persistedSource = persistedAuthority?.desired_state_source;
+  if (typeof persistedSource === "string" && persistedSource) {
+    return persistedSource;
+  }
+  if (!persistedLifecycle) return "CONFIG";
+
+  if (charBlock?.desired_runtime_state === DESIRED_RUNTIME_STATES.STOPPED) {
+    return configuredEnabled ? "PERSISTED_STOP" : "CONFIG";
+  }
+  return "PERSISTED";
+}
+
 function snapshotSignature(statBeat) {
   const payload = JSON.stringify([
     Array.isArray(statBeat?.items) ? statBeat.items : [],
@@ -267,6 +285,7 @@ module.exports = {
   marketLocalHistorySyncSignature,
   marketObservationSignature,
   restoreDesiredRuntimeState,
+  restoreDesiredRuntimeStateSource,
   selectMarketLocalHistoryForRuntime,
   selectNewLiveMarketObservations,
   selectNewPontyMarketObservations,
