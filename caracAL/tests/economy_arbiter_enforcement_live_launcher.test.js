@@ -4,9 +4,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
-const {
-  LANE_ORDER,
-} = require("../scripts/run_economy_arbiter_live_e2e");
+const { LANE_ORDER } = require("../scripts/run_economy_arbiter_live_e2e");
 const {
   combineEconomyArbiterEnforcementSupervisorResult,
   enforcementProbeEvidence,
@@ -42,8 +40,8 @@ function arbiter() {
       name === "ECONOMY"
         ? "RISK_POLICY_NO_ESTIMATES"
         : name === "ECONOMY_PREBUFF"
-          ? "ECONOMY_PREBUFF_NOT_IMPLEMENTED"
-          : name + "_INACTIVE",
+        ? "ECONOMY_PREBUFF_NOT_IMPLEMENTED"
+        : name + "_INACTIVE",
     data:
       name === "ECONOMY"
         ? {
@@ -175,10 +173,7 @@ test("enforcement live verifier accepts a blocked non-dispatched probe", () => {
   assert.equal(evidence.actionNeverDispatched, true);
   assert.equal(evidence.configRestored, true);
   assert.equal(result.outcome, "PASS");
-  assert.equal(
-    result.reason,
-    "ECONOMY_ARBITER_ENFORCEMENT_LIVE_E2E_CONFIRMED",
-  );
+  assert.equal(result.reason, "ECONOMY_ARBITER_ENFORCEMENT_LIVE_E2E_CONFIRMED");
   assert.equal(result.scope.readOnly, true);
   assert.equal(result.scope.adventureLandMutationDispatched, false);
 });
@@ -282,9 +277,6 @@ test("enforcement live probe is double-guarded and uses the real runtime boundar
   assert.match(thread, /economy_arbiter_enforcement_probe_result/);
   assert.match(coordinator, /economyArbiterEnforcementProbe/);
   assert.match(launcher, /economyArbiterEnforcementProbe: true/);
-  assert.match(
-    launcher,
-    /ECONOMY_ARBITER_ENFORCEMENT_LIVE_E2E_CONFIRMED/,
-  );
+  assert.match(launcher, /ECONOMY_ARBITER_ENFORCEMENT_LIVE_E2E_CONFIRMED/);
   assert.doesNotMatch(launcher, /executeNext/);
 });
