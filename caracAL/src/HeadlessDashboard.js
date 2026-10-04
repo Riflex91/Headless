@@ -397,6 +397,7 @@ function attachHeadlessDashboard({
   runInventoryLiveTest,
   runGearScoringLiveTest,
   runAccountStrategyLiveTest,
+  runFullAutonomyLiveTest,
   runMarketIntelligenceLiveTest,
   runEconomyPrebuffExecutionLiveTest,
   runAccountGearReservationLiveTest,
@@ -547,6 +548,27 @@ function attachHeadlessDashboard({
       }
     },
   );
+
+  router.post("/headless/api/tests/full-autonomy", async (_req, res) => {
+    if (!runFullAutonomyLiveTest) {
+      res.status(503).json({ error: "FULL_AUTONOMY_LIVE_TEST_UNAVAILABLE" });
+      return;
+    }
+
+    try {
+      const result = await runFullAutonomyLiveTest();
+      res.json({
+        ok: result?.outcome === "PASS",
+        result,
+        snapshot: getSnapshot(),
+      });
+    } catch (error) {
+      res.status(Number(error.statusCode) || 500).json({
+        error: error.code || "FULL_AUTONOMY_LIVE_TEST_FAILED",
+        message: error.message,
+      });
+    }
+  });
 
   router.post(
     "/headless/api/characters/:name/tests/movement",
