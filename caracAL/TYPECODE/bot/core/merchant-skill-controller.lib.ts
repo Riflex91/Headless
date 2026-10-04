@@ -19,10 +19,26 @@ export class MerchantSkillController extends ClassSkillController {
       [
         { skill: "mcourage", targetMode: "NONE" },
         { skill: "mfrenzy", targetMode: "NONE" },
-        { skill: "massproduction", targetMode: "NONE" },
-        { skill: "massproductionpp", targetMode: "NONE" },
-        { skill: "massexchange", targetMode: "NONE" },
-        { skill: "massexchangepp", targetMode: "NONE" },
+        {
+          skill: "massproduction",
+          targetMode: "NONE",
+          executionOwner: "ECONOMY_PREBUFF",
+        },
+        {
+          skill: "massproductionpp",
+          targetMode: "NONE",
+          executionOwner: "ECONOMY_PREBUFF",
+        },
+        {
+          skill: "massexchange",
+          targetMode: "NONE",
+          executionOwner: "ECONOMY_PREBUFF",
+        },
+        {
+          skill: "massexchangepp",
+          targetMode: "NONE",
+          executionOwner: "ECONOMY_PREBUFF",
+        },
         { skill: "throw", targetMode: "CURRENT", rangeMode: "SKILL" },
       ],
       game,
