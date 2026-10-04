@@ -104,6 +104,28 @@ function gearRequest(overrides = {}) {
   };
 }
 
+function trainingRequest(overrides = {}) {
+  return {
+    version: 1,
+    type: "GOAL_RUNTIME_METHOD",
+    goalId: "train-1",
+    taskId: "train-1:1",
+    kind: "TRAIN_CHARACTER",
+    bridge: "CharacterTrainingTaskRunner",
+    runtimeMethod: "runCharacterTrainingTask",
+    characterName: "My_Mage",
+    arguments: {
+      targetLevel: 42,
+      monsterType: "goo",
+      timeoutMs: 60000,
+      pollMs: 200,
+    },
+    dispatchAllowed: false,
+    dispatchImplemented: false,
+    ...overrides,
+  };
+}
+
 function craftRequest(overrides = {}) {
   return {
     version: 1,
@@ -144,6 +166,13 @@ function setup({
   materialResult = {
     outcome: "PASS",
     reason: "MATERIAL_GATHER_AND_DELIVERY_CONFIRMED",
+  },
+  trainingResult = {
+    outcome: "PASS",
+    reason: "CHARACTER_TRAINING_PROGRESS_CONFIRMED",
+    targetReached: false,
+    levelIncreased: false,
+    xpIncreased: true,
   },
   craftActionStatus = "CONFIRMED",
   craftSelectedRecipe = "rod",
@@ -197,6 +226,39 @@ function setup({
         cleanup: {
           combatOverrideCleared: true,
           preferredTargetCleared: true,
+        },
+      };
+    },
+    runCharacterTrainingTask: async (options) => {
+      calls.push(["training", options]);
+      return {
+        requestId: options.requestId,
+        outcome: trainingResult.outcome,
+        reason: trainingResult.reason,
+        startedAt: 1,
+        completedAt: 2,
+        durationMs: 1,
+        character: "My_Mage",
+        monsterType: options.monsterType,
+        targetLevel: options.targetLevel,
+        progress: {
+          startLevel: 40,
+          startXp: 1000,
+          finalLevel: trainingResult.levelIncreased ? 41 : 40,
+          finalXp: trainingResult.xpIncreased ? 1010 : 1000,
+          targetReached: trainingResult.targetReached,
+          levelIncreased: trainingResult.levelIncreased,
+          xpIncreased: trainingResult.xpIncreased,
+        },
+        evidence: {
+          schedulerDrivenCombat: true,
+          combatStatusObserved: true,
+          targetMonsterObserved: true,
+          navigationStatus: "CONFIRMED",
+          blindRetryUsed: false,
+        },
+        cleanup: {
+          combatOverrideCleared: true,
         },
       };
     },
@@ -356,6 +418,95 @@ test("FARM_ITEM UNKNOWN is surfaced without blind retry", async () => {
   assert.match(result.reason, /MATERIAL_ATTACK_OUTCOME_UNKNOWN/);
   assert.equal(result.scope.blindRetryUsed, false);
   assert.equal(s.calls.filter(([name]) => name === "material").length, 1);
+});
+
+test("TRAIN_CHARACTER invokes exactly one bounded training pulse after preflight", async () => {
+  const s = setup({
+    preflightResult: preflight({
+      kind: "TRAIN_CHARACTER",
+      goalId: "train-1",
+      taskId: "train-1:1",
+    }),
+  });
+
+  const result = await s.runner.run(trainingRequest(), {
+    requestId: "dispatch-training",
+    authorized: true,
+  });
+
+  assert.equal(result.outcome, "PASS");
+  assert.equal(result.reason, "GOAL_ADAPTER_DISPATCH_TRAINING_CONFIRMED");
+  assert.equal(result.scope.mutationPathInvoked, true);
+  assert.equal(result.scope.blindRetryUsed, false);
+  assert.equal(s.calls.filter(([name]) => name === "preflight").length, 1);
+  assert.equal(s.calls.filter(([name]) => name === "training").length, 1);
+  assert.deepEqual(
+    s.calls.find(([name]) => name === "training")[1],
+    {
+      requestId: "dispatch-training:training",
+      targetLevel: 42,
+      monsterType: "goo",
+      timeoutMs: 60000,
+      pollMs: 200,
+    },
+  );
+  assert.equal(result.execution.training.progress.xpIncreased, true);
+});
+
+test("TRAIN_CHARACTER rejects a worker PASS without observable progress", async () => {
+  const s = setup({
+    preflightResult: preflight({
+      kind: "TRAIN_CHARACTER",
+      goalId: "train-1",
+      taskId: "train-1:1",
+    }),
+    trainingResult: {
+      outcome: "PASS",
+      reason: "CHARACTER_TRAINING_PROGRESS_CONFIRMED",
+      targetReached: false,
+      levelIncreased: false,
+      xpIncreased: false,
+    },
+  });
+
+  const result = await s.runner.run(trainingRequest(), {
+    requestId: "dispatch-training",
+    authorized: true,
+  });
+
+  assert.equal(result.outcome, "FAIL");
+  assert.equal(
+    result.reason,
+    "GOAL_ADAPTER_DISPATCH_TRAINING_PROGRESS_NOT_CONFIRMED",
+  );
+  assert.equal(s.calls.filter(([name]) => name === "training").length, 1);
+});
+
+test("TRAIN_CHARACTER UNKNOWN is surfaced without retry", async () => {
+  const s = setup({
+    preflightResult: preflight({
+      kind: "TRAIN_CHARACTER",
+      goalId: "train-1",
+      taskId: "train-1:1",
+    }),
+    trainingResult: {
+      outcome: "UNKNOWN",
+      reason: "CHARACTER_TRAINING_ATTACK_OUTCOME_UNKNOWN",
+      targetReached: false,
+      levelIncreased: false,
+      xpIncreased: false,
+    },
+  });
+
+  const result = await s.runner.run(trainingRequest(), {
+    requestId: "dispatch-training",
+    authorized: true,
+  });
+
+  assert.equal(result.outcome, "UNKNOWN");
+  assert.match(result.reason, /CHARACTER_TRAINING_ATTACK_OUTCOME_UNKNOWN/);
+  assert.equal(result.scope.blindRetryUsed, false);
+  assert.equal(s.calls.filter(([name]) => name === "training").length, 1);
 });
 
 test("ACQUIRE_GEAR invokes retained material worker exactly once after preflight", async () => {
