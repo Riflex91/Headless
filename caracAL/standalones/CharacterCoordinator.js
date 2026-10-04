@@ -8136,8 +8136,8 @@ function migrate_old_storage(path, localStorage) {
           error.code === "MARKET_INTELLIGENCE_SOURCE_PROBE_TIMEOUT"
             ? "TIMEOUT"
             : error.code === "MARKET_INTELLIGENCE_SOURCE_PROBE_UNKNOWN"
-              ? "UNKNOWN"
-              : "FAIL",
+            ? "UNKNOWN"
+            : "FAIL",
         reason:
           error.code || error.message || "MARKET_INTELLIGENCE_LIVE_TEST_FAILED",
         error: error.message || String(error),
@@ -8173,12 +8173,13 @@ function migrate_old_storage(path, localStorage) {
         },
       };
     } finally {
-      const pending_source_probe = market_intelligence_source_probe_requests.get(
-        source_probe_request_id,
-      );
+      const pending_source_probe =
+        market_intelligence_source_probe_requests.get(source_probe_request_id);
       if (pending_source_probe) {
         clearTimeout(pending_source_probe.timer);
-        market_intelligence_source_probe_requests.delete(source_probe_request_id);
+        market_intelligence_source_probe_requests.delete(
+          source_probe_request_id,
+        );
       }
 
       try {
