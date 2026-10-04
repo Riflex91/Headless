@@ -51,6 +51,7 @@ interface GoalAdapterPreflightDependencies {
     ctype: string | null;
     level?: number | null;
     xp?: number | null;
+    gold?: number | null;
   };
   craftMaterialPlan(recipe: string): unknown | Promise<unknown>;
   now?: () => number;
@@ -365,6 +366,121 @@ export class GoalAdapterPreflightRunner {
           evidence = {
             targetLevel,
             currentLevel,
+            monsterType,
+            alreadyReached: false,
+            farmState: text(status.state),
+            farmReason: text(status.reason),
+          };
+        }
+      } catch (error) {
+        evidence = {
+          error: error instanceof Error ? error.message : String(error),
+        };
+      } finally {
+        this.deps.farmIntelligence.clearConfigOverride();
+        farmOverrideCleared = true;
+        try {
+          this.deps.farmIntelligence.tick();
+        } catch (_error) {
+          // Cleanup state is restored even if the refresh projection fails.
+        }
+      }
+
+      return finish(outcome, reason, evidence);
+    }
+
+    if (identity.kind === "ACCUMULATE_GOLD") {
+      const args = record(request.arguments);
+      const goalAmount = positiveInteger(args.goalAmount);
+      const scope = text(args.scope);
+      const monsterType = text(args.monsterType);
+      const workerCharacter = text(request.characterName);
+      const currentGold =
+        typeof character.gold === "number" && Number.isFinite(character.gold)
+          ? character.gold
+          : null;
+
+      if (
+        request.type !== "GOAL_RUNTIME_METHOD" ||
+        text(request.runtimeMethod) !== "runCharacterGoldTask" ||
+        text(request.bridge) !== "CharacterGoldTaskRunner"
+      ) {
+        return finish("BLOCKED", "GOAL_ADAPTER_PREFLIGHT_GOLD_CONTRACT_INVALID");
+      }
+      if (
+        !goalAmount ||
+        !monsterType ||
+        !workerCharacter ||
+        (scope !== "ACCOUNT" && scope !== "CHARACTER")
+      ) {
+        return finish("BLOCKED", "GOAL_ADAPTER_PREFLIGHT_GOLD_ARGUMENTS_INVALID");
+      }
+      if (character.name !== workerCharacter) {
+        return finish("BLOCKED", "GOAL_ADAPTER_PREFLIGHT_GOLD_WORKER_MISMATCH", {
+          expectedCharacter: workerCharacter,
+          actualCharacter: character.name,
+          actualClass: character.ctype,
+        });
+      }
+      if (
+        currentGold === null ||
+        !Number.isInteger(currentGold) ||
+        currentGold < 0
+      ) {
+        return finish(
+          "BLOCKED",
+          "GOAL_ADAPTER_PREFLIGHT_GOLD_TELEMETRY_UNAVAILABLE",
+        );
+      }
+      if (scope === "CHARACTER" && currentGold >= goalAmount) {
+        return finish("PASS", "GOAL_ADAPTER_PREFLIGHT_GOLD_ALREADY_REACHED", {
+          goalAmount,
+          scope,
+          currentGold,
+          monsterType,
+          alreadyReached: true,
+        });
+      }
+
+      farmOverrideCleared = false;
+      let outcome: GoalAdapterPreflightOutcome = "FAIL";
+      let reason = "GOAL_ADAPTER_PREFLIGHT_GOLD_RUNTIME_ERROR";
+      let evidence: Record<string, unknown> = {};
+
+      try {
+        this.deps.farmIntelligence.setConfigOverride({
+          farming: {
+            enabled: true,
+            goalMonster: monsterType,
+          },
+        });
+        const status = this.deps.farmIntelligence.tick();
+        const candidates = Array.isArray(status.candidates)
+          ? status.candidates
+          : [];
+        const exact = candidates.find(
+          (candidate) => text(candidate?.monster) === monsterType,
+        );
+
+        if (!exact) {
+          outcome = "BLOCKED";
+          reason = "GOAL_ADAPTER_PREFLIGHT_GOLD_SOURCE_NOT_CONFIRMED";
+          evidence = {
+            goalAmount,
+            scope,
+            currentGold,
+            monsterType,
+            farmState: text(status.state),
+            farmReason: text(status.reason),
+            candidateCount: candidates.length,
+          };
+        } else {
+          outcome = "PASS";
+          reason = "GOAL_ADAPTER_PREFLIGHT_GOLD_CONFIRMED";
+          evidence = {
+            goalAmount,
+            scope,
+            currentGold,
             monsterType,
             alreadyReached: false,
             farmState: text(status.state),
