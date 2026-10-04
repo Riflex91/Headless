@@ -204,10 +204,7 @@ test("coupled live verifier accepts only complete one-mutation PASS evidence", (
 
   assert.equal(passEvidenceComplete(evidence), true);
   assert.equal(result.outcome, "PASS");
-  assert.equal(
-    result.reason,
-    "ECONOMY_PREBUFF_EXECUTION_LIVE_E2E_CONFIRMED",
-  );
+  assert.equal(result.reason, "ECONOMY_PREBUFF_EXECUTION_LIVE_E2E_CONFIRMED");
   assert.equal(result.evidence.supervisorReadOnly, false);
   assert.equal(result.evidence.supervisorMaxValueMutations, 1);
   assert.equal(result.evidence.supervisorMutationKindOnly, true);
