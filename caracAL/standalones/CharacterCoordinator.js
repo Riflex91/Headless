@@ -6912,11 +6912,10 @@ function migrate_old_storage(path, localStorage) {
 
       if (enforcement_probe_requested) {
         enforcement_probe_request_id = `${request_id}-enforcement-probe`;
-        const probe_promise =
-          wait_for_economy_arbiter_enforcement_probe_result(
-            char_name,
-            enforcement_probe_request_id,
-          );
+        const probe_promise = wait_for_economy_arbiter_enforcement_probe_result(
+          char_name,
+          enforcement_probe_request_id,
+        );
         const sent = safe_send(ready_block.instance, {
           type: "economy_arbiter_enforcement_probe",
           request_id: enforcement_probe_request_id,
