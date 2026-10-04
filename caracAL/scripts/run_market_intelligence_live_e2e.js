@@ -378,8 +378,7 @@ function formatCompactResult(result) {
           String(sourceProbeEvidence.pontyNormalizedListings ?? 0),
       );
       lines.push(
-        "Ponty probe samples: " +
-          String(sourceProbeEvidence.pontySamples ?? 0),
+        "Ponty probe samples: " + String(sourceProbeEvidence.pontySamples ?? 0),
       );
     }
   }
