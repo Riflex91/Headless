@@ -308,9 +308,63 @@ test("Expected Value stays conservative when model metadata is incomplete", () =
   assert.equal(status.summary.evaluated, 0);
 });
 
-test("Expected Value refuses to infer a missing intrinsic probability grade", () => {
+test("Expected Value derives a missing intrinsic probability grade from official item-grade rules", () => {
   const gameData = baseGameData();
   delete gameData.items.sword.igrade;
+
+  const setup = makeController({
+    inventory: [
+      { name: "sword", level: 0 },
+      null,
+      null,
+      { name: "scroll0", q: 1 },
+    ],
+    gameData,
+    upgrades: [upgradeCandidate()],
+  });
+
+  const status = setup.controller.tick();
+  const estimate = status.estimates[0];
+
+  assert.equal(status.state, "READY");
+  assert.equal(estimate.probabilityGrade, 0);
+  assert.equal(estimate.successProbability, 0.9999999);
+  assert.notEqual(estimate.expectedDeltaGold, null);
+  assert.notEqual(estimate.decision, "UNKNOWN");
+  assert.equal(status.summary.unknown, 0);
+  assert.equal(status.summary.evaluated, 1);
+});
+
+test("Expected Value derives high intrinsic probability grade exactly from grade thresholds", () => {
+  const gameData = baseGameData();
+  delete gameData.items.sword.igrade;
+  gameData.items.sword.grades = [0, 7, 10, 12];
+
+  const setup = makeController({
+    inventory: [
+      { name: "sword", level: 0 },
+      null,
+      null,
+      { name: "scroll1", q: 1 },
+    ],
+    gameData,
+    upgrades: [
+      upgradeCandidate({
+        scrollName: "scroll1",
+      }),
+    ],
+  });
+
+  const estimate = setup.controller.tick().estimates[0];
+
+  assert.equal(estimate.probabilityGrade, 1);
+  assert.equal(estimate.itemGrade, 1);
+  assert.equal(estimate.successProbability, 0.99998);
+});
+
+test("Expected Value keeps an explicitly malformed intrinsic probability grade fail-closed", () => {
+  const gameData = baseGameData();
+  gameData.items.sword.igrade = 99;
 
   const setup = makeController({
     inventory: [
