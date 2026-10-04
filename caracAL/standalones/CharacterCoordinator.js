@@ -105,6 +105,10 @@ const {
 const { buildAccountStrategy } = require("../src/AccountStrategy");
 const { buildGoalPlan } = require("../src/GoalPlanner");
 const { buildGoalHandoff } = require("../src/GoalHandoff");
+const {
+  buildGoalExecutionDecision,
+  readGoalExecutionPolicy,
+} = require("../src/GoalExecutor");
 const { GoalManagementService } = require("../src/GoalManagement");
 const {
   buildFullAutonomyPlan,
@@ -242,6 +246,7 @@ function migrate_old_storage(path, localStorage) {
   const cfg = require("../config");
   const lifecycle_policy = readLifecyclePolicy(cfg);
   const full_autonomy_policy = readFullAutonomyExecutionPolicy(cfg);
+  const goal_execution_policy = readGoalExecutionPolicy(cfg);
   const observer_only = process.env.CARACAL_OBSERVER_ONLY === "1";
   let coordinator_ready = false;
   let coordinator_shutting_down = false;
@@ -479,6 +484,7 @@ function migrate_old_storage(path, localStorage) {
         getFullAutonomyState: full_autonomy_state,
         getGoalPlanState: goal_plan_state,
         getGoalHandoffState: goal_handoff_state,
+        getGoalExecutionState: goal_execution_state,
         createGoal: (input) => goal_management.create(input),
         updateGoal: (goalId, input) => goal_management.update(goalId, input),
         getMapScene: (mapName) => dashboard_map_scenes.get(mapName) || null,
@@ -535,6 +541,17 @@ function migrate_old_storage(path, localStorage) {
   function goal_handoff_state() {
     return buildGoalHandoff(goal_plan_state(), {
       fullAutonomy: full_autonomy_state(),
+    });
+  }
+
+  function goal_execution_state() {
+    return buildGoalExecutionDecision(goal_handoff_state(), {
+      policy: goal_execution_policy,
+      observerOnly: observer_only,
+      emergencyStopActive: emergency_stop.snapshot().active,
+      coordinatorShuttingDown: coordinator_shutting_down,
+      executionInFlight: false,
+      safetyBlockReason: full_autonomy_safety_block_reason(),
     });
   }
 
@@ -16187,6 +16204,10 @@ function migrate_old_storage(path, localStorage) {
     full_autonomy_enabled: full_autonomy_policy.enabled,
     full_autonomy_reconcile_interval_ms:
       full_autonomy_policy.reconcileIntervalMs,
+    goal_execution_enabled: goal_execution_policy.enabled,
+    goal_execution_dispatch_implemented: false,
+    goal_execution_reconcile_interval_ms:
+      goal_execution_policy.reconcileIntervalMs,
   });
 
   startup_chars.forEach((char_name, index) => {
