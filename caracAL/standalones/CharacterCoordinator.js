@@ -1009,6 +1009,14 @@ function migrate_old_storage(path, localStorage) {
 
     if (
       char_block &&
+      normalized.data?.compound &&
+      typeof normalized.data.compound === "object"
+    ) {
+      char_block.compound_runtime = normalized.data.compound;
+    }
+
+    if (
+      char_block &&
       normalized.data?.merchantMerrit &&
       typeof normalized.data.merchantMerrit === "object"
     ) {
@@ -1294,6 +1302,7 @@ function migrate_old_storage(path, localStorage) {
     char_block.economy_arbiter_runtime =
       char_block.economy_arbiter_runtime || null;
     char_block.upgrade_runtime = char_block.upgrade_runtime || null;
+    char_block.compound_runtime = char_block.compound_runtime || null;
     char_block.account_gear_reservation_runtime =
       char_block.account_gear_reservation_runtime || null;
     char_block.gear_scoring_live_test =
@@ -1780,6 +1789,12 @@ function migrate_old_storage(path, localStorage) {
       ),
       futureGear: JSON.parse(
         JSON.stringify(char_block?.future_gear_runtime || null),
+      ),
+      upgrade: JSON.parse(
+        JSON.stringify(char_block?.upgrade_runtime || null),
+      ),
+      compound: JSON.parse(
+        JSON.stringify(char_block?.compound_runtime || null),
       ),
       expectedValue: JSON.parse(
         JSON.stringify(char_block?.expected_value_runtime || null),
@@ -7326,6 +7341,8 @@ function migrate_old_storage(path, localStorage) {
         MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE;
       runtime_override_applied = true;
       char_block.gear_scoring_runtime = null;
+      char_block.upgrade_runtime = null;
+      char_block.compound_runtime = null;
       emit_supervisor_event(
         "GEAR_SCORING_LIVE_TEST_RUNTIME_OVERRIDE_APPLIED",
         char_name,
