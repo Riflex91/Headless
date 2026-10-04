@@ -23,6 +23,7 @@ export interface EconomyPrebuffExecutionLiveTestOptions {
   expectedKind: EconomyPrebuffExecutionLiveKind;
   expectedName: string;
   expectedSlots: number[];
+  preflightOnly?: boolean;
   settleTimeoutMs?: number;
   settlePollMs?: number;
 }
@@ -71,8 +72,9 @@ export interface EconomyPrebuffExecutionLiveTestResult {
     blindRetryAvoided: boolean;
   };
   scope: {
-    irreversibleMutation: true;
-    prebuffMutationAllowed: true;
+    readOnly: boolean;
+    irreversibleMutation: boolean;
+    prebuffMutationAllowed: boolean;
     upgradeMutationAllowed: boolean;
     compoundMutationAllowed: boolean;
     exchangeMutationAllowed: false;
@@ -80,7 +82,9 @@ export interface EconomyPrebuffExecutionLiveTestResult {
     offeringMutationAllowed: false;
     maxValueMutations: 1;
     blindRetryAllowed: false;
-    mutationScope: "single-coupled-prebuff-economy-attempt-only";
+    mutationScope:
+      | "single-coupled-prebuff-economy-attempt-only"
+      | "read-only-coupled-preflight";
   };
   cleanup: {
     arbiterConfigOverrideCleared: boolean;
@@ -197,6 +201,7 @@ export class EconomyPrebuffExecutionLiveTestRunner {
       options.expectedKind,
       options.expectedSlots,
     );
+    const preflightOnly = options.preflightOnly === true;
     const settleTimeoutMs = Math.max(500, options.settleTimeoutMs || 3000);
     const settlePollMs = Math.max(25, options.settlePollMs || 100);
     const evidence = {
@@ -260,16 +265,21 @@ export class EconomyPrebuffExecutionLiveTestRunner {
         execution,
         evidence,
         scope: {
-          irreversibleMutation: true,
-          prebuffMutationAllowed: true,
-          upgradeMutationAllowed: options.expectedKind === "UPGRADE",
-          compoundMutationAllowed: options.expectedKind === "COMPOUND",
+          readOnly: preflightOnly,
+          irreversibleMutation: !preflightOnly,
+          prebuffMutationAllowed: !preflightOnly,
+          upgradeMutationAllowed:
+            !preflightOnly && options.expectedKind === "UPGRADE",
+          compoundMutationAllowed:
+            !preflightOnly && options.expectedKind === "COMPOUND",
           exchangeMutationAllowed: false,
           craftMutationAllowed: false,
           offeringMutationAllowed: false,
           maxValueMutations: 1,
           blindRetryAllowed: false,
-          mutationScope: "single-coupled-prebuff-economy-attempt-only",
+          mutationScope: preflightOnly
+            ? "read-only-coupled-preflight"
+            : "single-coupled-prebuff-economy-attempt-only",
         },
         cleanup: {
           arbiterConfigOverrideCleared,
@@ -309,6 +319,12 @@ export class EconomyPrebuffExecutionLiveTestRunner {
       !evidence.selectedSkillPresent
     ) {
       reason = "ECONOMY_PREBUFF_EXECUTION_LIVE_PREFLIGHT_BLOCKED";
+      return finish();
+    }
+
+    if (preflightOnly) {
+      outcome = "PASS";
+      reason = "ECONOMY_PREBUFF_EXECUTION_LIVE_PREFLIGHT_CONFIRMED";
       return finish();
     }
 
