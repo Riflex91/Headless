@@ -156,15 +156,12 @@ test("live market persistence dedupes unchanged listings but allows reappearance
   assert.deepEqual(disappeared.observations, []);
   assert.deepEqual(disappeared.signatures, []);
 
-  const reappeared = selectNewLiveMarketObservations(
-    disappeared.signatures,
-    [
-      {
-        ...observation,
-        timestamp: 3000,
-      },
-    ],
-  );
+  const reappeared = selectNewLiveMarketObservations(disappeared.signatures, [
+    {
+      ...observation,
+      timestamp: 3000,
+    },
+  ]);
   assert.equal(reappeared.observations.length, 1);
   assert.equal(
     marketObservationSignature(reappeared.observations[0]),
