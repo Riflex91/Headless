@@ -15,10 +15,12 @@ export interface MaterialGatherTaskOptions {
   requestId?: string;
   itemName: string;
   itemLevel?: number;
+  minimumItemLevel?: number;
   monsterType: string;
   quantity: number;
-  recipient: string;
-  recipientPosition: {
+  deliveryMode?: "DELIVER" | "KEEP_ON_WORKER";
+  recipient?: string;
+  recipientPosition?: {
     map: string;
     x: number;
     y: number;
@@ -41,9 +43,11 @@ export interface MaterialGatherTaskResult {
   worker: string | null;
   itemName: string;
   itemLevel: number | null;
+  minimumItemLevel: number | null;
   monsterType: string;
   quantity: number;
-  recipient: string;
+  deliveryMode: "DELIVER" | "KEEP_ON_WORKER";
+  recipient: string | null;
   inventory: {
     initialQuantity: number;
     gatheredQuantity: number;
@@ -55,6 +59,7 @@ export interface MaterialGatherTaskResult {
     lootConfirmed: boolean;
     materialObserved: boolean;
     deliveryConfirmed: boolean;
+    keptOnWorkerConfirmed: boolean;
     blindRetryUsed: false;
   };
   cleanup: {
@@ -117,15 +122,13 @@ function inventoryQuantity(
   inventory: InventorySlotSnapshot[],
   itemName: string,
   requiredLevel: number | null = null,
+  minimumLevel: number | null = null,
 ): number {
   return inventory.reduce((sum, entry) => {
     if (entry.item?.name !== itemName) return sum;
-    if (
-      requiredLevel !== null &&
-      itemLevel(entry.item) !== requiredLevel
-    ) {
-      return sum;
-    }
+    const level = itemLevel(entry.item);
+    if (requiredLevel !== null && level !== requiredLevel) return sum;
+    if (minimumLevel !== null && level < minimumLevel) return sum;
     return sum + itemQuantity(entry.item);
   }, 0);
 }
@@ -214,6 +217,19 @@ export class MaterialGatheringTaskRunner {
       options.itemLevel === undefined
         ? null
         : nonNegativeInteger(options.itemLevel);
+    const minimumLevel =
+      options.minimumItemLevel === undefined
+        ? null
+        : nonNegativeInteger(options.minimumItemLevel);
+    const deliveryMode =
+      options.deliveryMode === "KEEP_ON_WORKER" ? "KEEP_ON_WORKER" : "DELIVER";
+    const recipient = options.recipient?.trim() || null;
+    const recipientPosition =
+      options.recipientPosition?.map &&
+      Number.isFinite(options.recipientPosition.x) &&
+      Number.isFinite(options.recipientPosition.y)
+        ? options.recipientPosition
+        : null;
     const timeoutMs = Math.max(
       30000,
       Number(options.timeoutMs) || DEFAULT_TIMEOUT_MS,
@@ -224,6 +240,7 @@ export class MaterialGatheringTaskRunner {
       this.deps.game.inventory(),
       options.itemName,
       requiredLevel,
+      minimumLevel,
     );
     let outcome: MaterialGatherTaskResult["outcome"] = "FAIL";
     let reason = "MATERIAL_GATHER_NOT_COMPLETED";
@@ -250,9 +267,11 @@ export class MaterialGatheringTaskRunner {
         worker,
         itemName: options.itemName,
         itemLevel: requiredLevel,
+        minimumItemLevel: minimumLevel,
         monsterType: options.monsterType,
         quantity: quantity || 0,
-        recipient: options.recipient,
+        deliveryMode,
+        recipient,
         inventory: {
           initialQuantity,
           gatheredQuantity: Math.max(
@@ -267,7 +286,12 @@ export class MaterialGatheringTaskRunner {
           lootConfirmed,
           materialObserved:
             currentQuantity + deliveredQuantity >= (quantity || 0),
-          deliveryConfirmed: deliveredQuantity >= (quantity || 0),
+          deliveryConfirmed:
+            deliveryMode === "DELIVER" &&
+            deliveredQuantity >= (quantity || 0),
+          keptOnWorkerConfirmed:
+            deliveryMode === "KEEP_ON_WORKER" &&
+            currentQuantity >= (quantity || 0),
           blindRetryUsed: false,
         },
         cleanup: {
@@ -295,11 +319,11 @@ export class MaterialGatheringTaskRunner {
     if (
       !options.itemName?.trim() ||
       !options.monsterType?.trim() ||
-      !options.recipient?.trim() ||
       !quantity ||
-      !options.recipientPosition?.map ||
-      !Number.isFinite(options.recipientPosition.x) ||
-      !Number.isFinite(options.recipientPosition.y)
+      (options.itemLevel !== undefined && requiredLevel === null) ||
+      (options.minimumItemLevel !== undefined && minimumLevel === null) ||
+      (requiredLevel !== null && minimumLevel !== null) ||
+      (deliveryMode === "DELIVER" && (!recipient || !recipientPosition))
     ) {
       reason = "MATERIAL_GATHER_REQUEST_INVALID";
       return finish();
@@ -489,15 +513,21 @@ export class MaterialGatheringTaskRunner {
         return finishClean();
       }
 
+      if (deliveryMode === "KEEP_ON_WORKER") {
+        outcome = "PASS";
+        reason = "MATERIAL_GATHER_KEEP_ON_WORKER_CONFIRMED";
+        return finishClean();
+      }
+
       const toRecipient = await this.deps.movement.smart({
         owner: OWNER,
         module: MODULE,
         why: "MATERIAL_DELIVERY_TRAVEL",
         correlationId: requestId,
         destination: {
-          map: options.recipientPosition.map,
-          x: options.recipientPosition.x,
-          y: options.recipientPosition.y,
+          map: recipientPosition!.map,
+          x: recipientPosition!.x,
+          y: recipientPosition!.y,
         },
       });
       if (toRecipient.status === "UNKNOWN") {
@@ -518,7 +548,7 @@ export class MaterialGatheringTaskRunner {
           type: "MATERIAL_DELIVERY",
           farmer: worker || "",
           merchant: {
-            name: options.recipient,
+            name: recipient!,
             live: true,
           },
           itemName: options.itemName,
@@ -535,6 +565,7 @@ export class MaterialGatheringTaskRunner {
             authorized: true,
             monsterType: options.monsterType,
             itemLevel: requiredLevel,
+            minimumItemLevel: minimumLevel,
           },
         });
 
