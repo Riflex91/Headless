@@ -70,6 +70,26 @@ function gearRequest(overrides = {}) {
   };
 }
 
+function trainingRequest(overrides = {}) {
+  return {
+    version: 1,
+    type: "GOAL_RUNTIME_METHOD",
+    goalId: "train-mage",
+    taskId: "train-mage:1",
+    kind: "TRAIN_CHARACTER",
+    bridge: "CharacterTrainingTaskRunner",
+    runtimeMethod: "runCharacterTrainingTask",
+    characterName: "My_Mage",
+    dispatchAllowed: false,
+    dispatchImplemented: false,
+    arguments: {
+      targetLevel: 42,
+      monsterType: "goo",
+    },
+    ...overrides,
+  };
+}
+
 function craftRequest(overrides = {}) {
   return {
     version: 1,
@@ -106,7 +126,12 @@ function craftRequest(overrides = {}) {
 }
 
 function setup({
-  character = { name: "My_Ranger1", ctype: "ranger" },
+  character = {
+    name: "My_Ranger1",
+    ctype: "ranger",
+    level: 10,
+    xp: 100,
+  },
   farmStatus = null,
   farmTickError = null,
   craftPlan = null,
@@ -320,6 +345,97 @@ test("FARM_ITEM preflight always clears scoped override after runtime errors", a
     ["farm:clear"],
     ["farm:tick", 2],
   ]);
+});
+
+test("TRAIN_CHARACTER preflight confirms exact worker and explicit monster source", async () => {
+  const setupResult = setup({
+    character: { name: "My_Mage", ctype: "mage", level: 40, xp: 1234 },
+  });
+
+  const result = await setupResult.runner.run(trainingRequest());
+
+  assert.equal(result.outcome, "PASS");
+  assert.equal(result.reason, "GOAL_ADAPTER_PREFLIGHT_TRAINING_CONFIRMED");
+  assert.equal(result.goalId, "train-mage");
+  assert.equal(result.kind, "TRAIN_CHARACTER");
+  assert.equal(result.character.name, "My_Mage");
+  assert.equal(result.evidence.targetLevel, 42);
+  assert.equal(result.evidence.currentLevel, 40);
+  assert.equal(result.evidence.monsterType, "goo");
+  assert.equal(result.evidence.alreadyReached, false);
+  assert.equal(result.cleanup.farmOverrideCleared, true);
+  assert.equal(setupResult.override, null);
+  assert.deepEqual(setupResult.calls[0], [
+    "farm:set",
+    {
+      farming: {
+        enabled: true,
+        goalMonster: "goo",
+      },
+    },
+  ]);
+});
+
+test("TRAIN_CHARACTER preflight returns PASS without override when level is already reached", async () => {
+  const setupResult = setup({
+    character: { name: "My_Mage", ctype: "mage", level: 42, xp: 0 },
+  });
+
+  const result = await setupResult.runner.run(trainingRequest());
+
+  assert.equal(result.outcome, "PASS");
+  assert.equal(
+    result.reason,
+    "GOAL_ADAPTER_PREFLIGHT_TRAINING_ALREADY_REACHED",
+  );
+  assert.equal(result.evidence.alreadyReached, true);
+  assert.equal(result.evidence.currentLevel, 42);
+  assert.deepEqual(setupResult.calls, []);
+});
+
+test("TRAIN_CHARACTER preflight blocks worker mismatch, missing level and missing source", async () => {
+  const wrongWorker = setup({
+    character: { name: "My_Mage2", ctype: "mage", level: 40, xp: 100 },
+  });
+  const mismatch = await wrongWorker.runner.run(trainingRequest());
+  assert.equal(mismatch.outcome, "BLOCKED");
+  assert.equal(
+    mismatch.reason,
+    "GOAL_ADAPTER_PREFLIGHT_TRAINING_WORKER_MISMATCH",
+  );
+  assert.deepEqual(wrongWorker.calls, []);
+
+  const missingLevel = setup({
+    character: { name: "My_Mage", ctype: "mage", level: null, xp: 100 },
+  });
+  const noLevel = await missingLevel.runner.run(trainingRequest());
+  assert.equal(noLevel.outcome, "BLOCKED");
+  assert.equal(
+    noLevel.reason,
+    "GOAL_ADAPTER_PREFLIGHT_TRAINING_LEVEL_UNAVAILABLE",
+  );
+  assert.deepEqual(missingLevel.calls, []);
+
+  const missingSource = setup({
+    character: { name: "My_Mage", ctype: "mage", level: 40, xp: 100 },
+    farmStatus: {
+      state: "READY",
+      reason: "FARM_CANDIDATE_SELECTED",
+      candidates: [
+        {
+          monster: "bee",
+          estimated: { dropItems: [] },
+        },
+      ],
+    },
+  });
+  const noSource = await missingSource.runner.run(trainingRequest());
+  assert.equal(noSource.outcome, "BLOCKED");
+  assert.equal(
+    noSource.reason,
+    "GOAL_ADAPTER_PREFLIGHT_TRAINING_SOURCE_NOT_CONFIRMED",
+  );
+  assert.equal(noSource.cleanup.farmOverrideCleared, true);
 });
 
 test("ACQUIRE_GEAR preflight confirms the explicit retained gear source", async () => {
