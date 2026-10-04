@@ -416,12 +416,11 @@ function migrate_old_storage(path, localStorage) {
     diagnosticStore: diagnostic_store,
     getSnapshot: () => dashboard?.getSnapshot?.() || null,
   });
-  const goal_adapter_preflight_supervisor =
-    new GoalAdapterPreflightSupervisor({
-      getCharacter: (name) => character_manage[name] || null,
-      send: safe_send,
-      emit: emit_supervisor_event,
-    });
+  const goal_adapter_preflight_supervisor = new GoalAdapterPreflightSupervisor({
+    getCharacter: (name) => character_manage[name] || null,
+    send: safe_send,
+    emit: emit_supervisor_event,
+  });
   try {
     const web_port = (cfg.web_app && cfg.web_app.port) || 924;
     const dashboard_enabled =
