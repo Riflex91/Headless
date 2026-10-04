@@ -285,6 +285,6 @@ test(
       action: "ATTACK",
       why: "SAFE_TARGET",
     });
-      assert.equal(ungoverned.status, null);
+    assert.equal(ungoverned.status, null);
   },
 );
