@@ -291,9 +291,7 @@ function evaluateMarketIntelligence(character) {
     evidence.allSourcesObserved;
 
   const watch =
-    !complete &&
-    evidence.projectionConsistent &&
-    evidence.policyValid;
+    !complete && evidence.projectionConsistent && evidence.policyValid;
 
   return {
     outcome: complete ? "PASS" : watch ? "WATCH" : "FAIL",
@@ -415,9 +413,7 @@ async function main() {
       requestedCharacter,
     );
     if (!selected) {
-      const target = requestedCharacter
-        ? ": " + requestedCharacter
-        : "";
+      const target = requestedCharacter ? ": " + requestedCharacter : "";
       throw new Error("No account-owned character available" + target);
     }
     if (selected.account_owned !== true) {
