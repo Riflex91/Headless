@@ -135,9 +135,10 @@ function verificationPolicyCandidates(result) {
   for (const rawDecision of array(upgrade.decisions)) {
     const decision = diagnosticDecision(rawDecision);
     if (
-      !["UPGRADE_MAX_LEVEL_POLICY_MISSING", "UPGRADE_SCROLL_POLICY_MISSING"].includes(
-        decision.reason,
-      ) ||
+      ![
+        "UPGRADE_MAX_LEVEL_POLICY_MISSING",
+        "UPGRADE_SCROLL_POLICY_MISSING",
+      ].includes(decision.reason) ||
       decision.itemSlot === null ||
       !decision.name ||
       decision.protections.length > 0
