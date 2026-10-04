@@ -1042,8 +1042,6 @@ function migrate_old_storage(path, localStorage) {
       }
     }
 
-    }
-
     if (
       char_block &&
       normalized.data?.inventoryIntelligence &&
