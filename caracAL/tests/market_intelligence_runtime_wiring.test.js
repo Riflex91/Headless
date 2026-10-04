@@ -119,13 +119,8 @@ test("supervisor propagates realm and persists deduped LIVE_VISIBLE samples only
   assert.doesNotMatch(historyBlock, /buy\(/);
   assert.doesNotMatch(historyBlock, /sell\(/);
 
-  const pontyStart = coordinator.indexOf(
-    "const selected_ponty_observations",
-  );
-  const pontyEnd = coordinator.indexOf(
-    "sync_market_local_history",
-    pontyStart,
-  );
+  const pontyStart = coordinator.indexOf("const selected_ponty_observations");
+  const pontyEnd = coordinator.indexOf("sync_market_local_history", pontyStart);
   assert.ok(pontyStart >= 0);
   assert.ok(pontyEnd > pontyStart);
   const pontyBlock = coordinator.slice(pontyStart, pontyEnd);
