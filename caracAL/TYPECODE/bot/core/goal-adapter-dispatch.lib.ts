@@ -1,3 +1,7 @@
+import type {
+  CharacterTrainingTaskOptions,
+  CharacterTrainingTaskResult,
+} from "./character-training-task.lib";
 import type { GoalAdapterPreflightResult } from "./goal-adapter-preflight.lib";
 import type {
   MaterialGatherTaskOptions,
@@ -41,6 +45,9 @@ interface GoalAdapterDispatchDependencies {
   runMaterialGatherTask(
     options: MaterialGatherTaskOptions,
   ): Promise<MaterialGatherTaskResult>;
+  runCharacterTrainingTask(
+    options: CharacterTrainingTaskOptions,
+  ): Promise<CharacterTrainingTaskResult>;
   craft: {
     setConfigOverride(config: unknown): void;
     clearConfigOverride(): void;
@@ -181,6 +188,94 @@ export class GoalAdapterDispatchRunner {
 
     if (!preflightMatches(preflight, request)) {
       return finish("BLOCKED", "GOAL_ADAPTER_DISPATCH_PREFLIGHT_NOT_CONFIRMED");
+    }
+
+    if (requestIdentity.kind === "TRAIN_CHARACTER") {
+      const args = record(request.arguments);
+      const targetLevel = positiveInteger(args.targetLevel);
+      const monsterType = text(args.monsterType);
+
+      if (
+        request.type !== "GOAL_RUNTIME_METHOD" ||
+        text(request.bridge) !== "CharacterTrainingTaskRunner" ||
+        text(request.runtimeMethod) !== "runCharacterTrainingTask" ||
+        !text(request.characterName) ||
+        !targetLevel ||
+        !monsterType
+      ) {
+        return finish(
+          "BLOCKED",
+          "GOAL_ADAPTER_DISPATCH_TRAINING_CONTRACT_INVALID",
+        );
+      }
+
+      const timeoutMs =
+        args.timeoutMs === undefined
+          ? undefined
+          : positiveInteger(args.timeoutMs);
+      const pollMs =
+        args.pollMs === undefined ? undefined : positiveInteger(args.pollMs);
+      if (
+        (args.timeoutMs !== undefined && timeoutMs === null) ||
+        (args.pollMs !== undefined && pollMs === null)
+      ) {
+        return finish(
+          "BLOCKED",
+          "GOAL_ADAPTER_DISPATCH_TRAINING_TIMING_INVALID",
+        );
+      }
+
+      mutationPathInvoked = true;
+      try {
+        const result = await this.deps.runCharacterTrainingTask({
+          requestId: `${requestId}:training`,
+          targetLevel,
+          monsterType,
+          ...(timeoutMs !== undefined && timeoutMs !== null && { timeoutMs }),
+          ...(pollMs !== undefined && pollMs !== null && { pollMs }),
+        });
+
+        if (
+          result.outcome === "PASS" &&
+          result.progress.targetReached !== true &&
+          result.progress.levelIncreased !== true &&
+          result.progress.xpIncreased !== true
+        ) {
+          return finish(
+            "FAIL",
+            "GOAL_ADAPTER_DISPATCH_TRAINING_PROGRESS_NOT_CONFIRMED",
+            {
+              training: result as unknown as Record<string, unknown>,
+            },
+          );
+        }
+
+        const outcome: GoalAdapterDispatchOutcome =
+          result.outcome === "PASS"
+            ? "PASS"
+            : result.outcome === "UNKNOWN"
+              ? "UNKNOWN"
+              : result.outcome === "TIMEOUT"
+                ? "TIMEOUT"
+                : "FAIL";
+        return finish(
+          outcome,
+          outcome === "PASS"
+            ? "GOAL_ADAPTER_DISPATCH_TRAINING_CONFIRMED"
+            : `GOAL_ADAPTER_DISPATCH_TRAINING_${result.reason || outcome}`,
+          {
+            training: result as unknown as Record<string, unknown>,
+          },
+        );
+      } catch (error) {
+        return finish(
+          "FAIL",
+          "GOAL_ADAPTER_DISPATCH_TRAINING_RUNTIME_ERROR",
+          {
+            error: error instanceof Error ? error.message : String(error),
+          },
+        );
+      }
     }
 
     if (
