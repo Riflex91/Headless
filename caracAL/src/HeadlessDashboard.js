@@ -265,6 +265,7 @@ function buildSupervisorSnapshot(
   goalHandoffState = null,
   goalExecutionState = null,
   goalAdapterState = null,
+  goalDispatchState = null,
 ) {
   const characters = Object.entries(characterManage)
     .map(([name, charBlock]) => publicCharacterState(name, charBlock))
@@ -460,6 +461,19 @@ function buildSupervisorSnapshot(
         directLifecycleMutationAllowed: false,
       },
     },
+    goal_dispatch: goalDispatchState || {
+      implemented: false,
+      explicitOneShotOnly: true,
+      automaticReconcileEnabled: false,
+      retryEnabled: false,
+      preflightRequired: true,
+      currentServerPlanOnly: true,
+      staleIdentityGuardRequired: true,
+      pending: 0,
+      timeoutMs: null,
+      unknownHold: null,
+      lastResult: null,
+    },
     characters,
   };
 }
@@ -533,7 +547,9 @@ function attachHeadlessDashboard({
   getGoalHandoffState,
   getGoalExecutionState,
   getGoalAdapterState,
+  getGoalDispatchState,
   runGoalAdapterPreflight,
+  runGoalAdapterDispatch,
   createGoal,
   updateGoal,
   getMapScene,
@@ -561,6 +577,7 @@ function attachHeadlessDashboard({
       getGoalHandoffState?.(),
       getGoalExecutionState?.(),
       getGoalAdapterState?.(),
+      getGoalDispatchState?.(),
     );
 
   router.use("/headless", (req, res, next) => {
@@ -653,6 +670,38 @@ function attachHeadlessDashboard({
           error: error.code || "GOAL_ADAPTER_PREFLIGHT_FAILED",
           message: error.message,
           details: error.details || null,
+        });
+      }
+    },
+  );
+
+  router.post(
+    "/headless/api/goals/adapter-dispatch",
+    express.json({ limit: "8kb" }),
+    async (req, res) => {
+      if (!runGoalAdapterDispatch) {
+        res.status(503).json({
+          error: "GOAL_ADAPTER_DISPATCH_UNAVAILABLE",
+        });
+        return;
+      }
+
+      try {
+        const result = await runGoalAdapterDispatch({
+          expectedGoalId: req.body?.expectedGoalId,
+          expectedTaskId: req.body?.expectedTaskId,
+        });
+        res.json({
+          ok: result?.result?.outcome === "PASS",
+          result,
+          snapshot: getSnapshot(),
+        });
+      } catch (error) {
+        res.status(Number(error.statusCode) || 500).json({
+          error: error.code || "GOAL_ADAPTER_DISPATCH_FAILED",
+          message: error.message,
+          details: error.details || null,
+          snapshot: getSnapshot(),
         });
       }
     },
