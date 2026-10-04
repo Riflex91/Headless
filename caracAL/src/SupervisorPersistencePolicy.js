@@ -116,6 +116,101 @@ function selectNewLiveMarketObservations(previousSignatures, observations) {
   };
 }
 
+function marketLocalHistorySyncSignature(observations) {
+  const payload = JSON.stringify(
+    Array.isArray(observations) ? observations : [],
+  );
+  return crypto.createHash("sha256").update(payload).digest("hex");
+}
+
+function selectMarketLocalHistoryForRuntime(
+  rows,
+  { server = null, liveSignatures = [], limit = 250 } = {},
+) {
+  const normalizedServer =
+    typeof server === "string" && server.trim() ? server.trim() : null;
+  const activeLive = new Set(
+    Array.isArray(liveSignatures) ? liveSignatures : [],
+  );
+  const boundedLimit = Math.min(
+    1000,
+    Math.max(1, Math.trunc(Number(limit) || 250)),
+  );
+  const observations = [];
+
+  for (const row of Array.isArray(rows) ? rows : []) {
+    if (!row || typeof row !== "object") continue;
+
+    const itemName =
+      typeof row.itemName === "string" && row.itemName.trim()
+        ? row.itemName.trim()
+        : typeof row.item_name === "string" && row.item_name.trim()
+        ? row.item_name.trim()
+        : typeof row.item === "string" && row.item.trim()
+        ? row.item.trim()
+        : "";
+    const price = Number(row.price);
+    const quantity = Number(row.quantity);
+    const rowServer =
+      typeof row.server === "string" && row.server.trim()
+        ? row.server.trim()
+        : null;
+    if (
+      !itemName ||
+      !Number.isFinite(price) ||
+      price <= 0 ||
+      !Number.isFinite(quantity) ||
+      quantity <= 0 ||
+      (normalizedServer && rowServer !== normalizedServer)
+    ) {
+      continue;
+    }
+
+    const metadata =
+      row.metadata && typeof row.metadata === "object" ? row.metadata : {};
+    const observation = {
+      itemName,
+      level:
+        row.level !== null &&
+        row.level !== undefined &&
+        Number.isInteger(Number(row.level)) &&
+        Number(row.level) >= 0
+          ? Number(row.level)
+          : null,
+      price,
+      quantity,
+      server: rowServer,
+      seller:
+        typeof row.seller === "string" && row.seller.trim()
+          ? row.seller.trim()
+          : null,
+      observedAt:
+        Number.isFinite(Number(row.observedAt)) && Number(row.observedAt) >= 0
+          ? Number(row.observedAt)
+          : Number.isFinite(Number(row.observed_at)) &&
+            Number(row.observed_at) >= 0
+          ? Number(row.observed_at)
+          : Number.isFinite(Number(row.timestamp)) && Number(row.timestamp) >= 0
+          ? Number(row.timestamp)
+          : 0,
+      metadata: {
+        ...metadata,
+        storedSource:
+          typeof row.source === "string" && row.source.trim()
+            ? row.source.trim()
+            : null,
+      },
+    };
+
+    if (activeLive.has(marketObservationSignature(observation))) continue;
+
+    observations.push(observation);
+    if (observations.length >= boundedLimit) break;
+  }
+
+  return observations;
+}
+
 function buildCharacterProfile(
   characterName,
   charBlock,
@@ -137,8 +232,10 @@ module.exports = {
   buildCharacterProfile,
   completeSnapshotPersist,
   failSnapshotPersist,
+  marketLocalHistorySyncSignature,
   marketObservationSignature,
   restoreDesiredRuntimeState,
+  selectMarketLocalHistoryForRuntime,
   selectNewLiveMarketObservations,
   shouldPersistSnapshot,
   snapshotSignature,

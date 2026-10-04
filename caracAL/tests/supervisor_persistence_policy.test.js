@@ -11,8 +11,10 @@ const {
   buildCharacterProfile,
   completeSnapshotPersist,
   failSnapshotPersist,
+  marketLocalHistorySyncSignature,
   marketObservationSignature,
   restoreDesiredRuntimeState,
+  selectMarketLocalHistoryForRuntime,
   selectNewLiveMarketObservations,
   shouldPersistSnapshot,
   snapshotSignature,
@@ -204,6 +206,150 @@ test("live market persistence treats changed price or quantity as new evidence",
   assert.equal(changed.signatures.length, 2);
   assert.notEqual(changed.signatures[0], initial.signatures[0]);
   assert.notEqual(changed.signatures[1], initial.signatures[0]);
+});
+
+test("LOCAL_HISTORY selection stays server-bound and excludes active live listings", () => {
+  const activeLive = {
+    itemName: "gem0",
+    level: 1,
+    price: 2500,
+    quantity: 2,
+    server: "EU I",
+    seller: "Trader",
+    metadata: {
+      merchantId: "M-1",
+      slot: "trade2",
+      rid: "RID-1",
+    },
+  };
+  const history = selectMarketLocalHistoryForRuntime(
+    [
+      {
+        item_name: "gem0",
+        level: 1,
+        price: 2500,
+        quantity: 2,
+        server: "EU I",
+        seller: "Trader",
+        source: "LIVE_VISIBLE",
+        observed_at: 3000,
+        metadata: {
+          merchantId: "M-1",
+          slot: "trade2",
+          rid: "RID-1",
+        },
+      },
+      {
+        item_name: "gem0",
+        level: 1,
+        price: 2400,
+        quantity: 1,
+        server: "EU I",
+        seller: "Older",
+        source: "LIVE_VISIBLE",
+        observed_at: 2000,
+        metadata: {
+          merchantId: "M-2",
+          slot: "trade1",
+          rid: "RID-2",
+        },
+      },
+      {
+        item_name: "gem0",
+        level: 1,
+        price: 9999,
+        quantity: 1,
+        server: "US I",
+        seller: "OtherRealm",
+        source: "LIVE_VISIBLE",
+        observed_at: 1000,
+        metadata: {},
+      },
+    ],
+    {
+      server: "EU I",
+      liveSignatures: [marketObservationSignature(activeLive)],
+      limit: 250,
+    },
+  );
+
+  assert.deepEqual(history, [
+    {
+      itemName: "gem0",
+      level: 1,
+      price: 2400,
+      quantity: 1,
+      server: "EU I",
+      seller: "Older",
+      observedAt: 2000,
+      metadata: {
+        merchantId: "M-2",
+        slot: "trade1",
+        rid: "RID-2",
+        storedSource: "LIVE_VISIBLE",
+      },
+    },
+  ]);
+});
+
+test("LOCAL_HISTORY selection is bounded, normalized, and has a stable sync signature", () => {
+  const rows = [
+    {
+      item_name: "scroll0",
+      level: null,
+      price: 1000,
+      quantity: 1,
+      server: "EU I",
+      seller: null,
+      source: "LIVE_VISIBLE",
+      observed_at: 5000,
+      metadata: {},
+    },
+    {
+      item_name: "scroll0",
+      level: null,
+      price: 900,
+      quantity: 2,
+      server: "EU I",
+      seller: "Trader",
+      source: "LIVE_VISIBLE",
+      observed_at: 4000,
+      metadata: {},
+    },
+    {
+      item_name: "",
+      price: 1,
+      quantity: 1,
+      server: "EU I",
+    },
+  ];
+
+  const selected = selectMarketLocalHistoryForRuntime(rows, {
+    server: "EU I",
+    limit: 1,
+  });
+
+  assert.equal(selected.length, 1);
+  assert.deepEqual(selected[0], {
+    itemName: "scroll0",
+    level: null,
+    price: 1000,
+    quantity: 1,
+    server: "EU I",
+    seller: null,
+    observedAt: 5000,
+    metadata: {
+      storedSource: "LIVE_VISIBLE",
+    },
+  });
+  assert.equal(
+    marketLocalHistorySyncSignature(selected),
+    marketLocalHistorySyncSignature(JSON.parse(JSON.stringify(selected))),
+  );
+  assert.notEqual(
+    marketLocalHistorySyncSignature(selected),
+    marketLocalHistorySyncSignature([]),
+  );
 });
 
 test("character profile keeps only stable supervisor fields", () => {

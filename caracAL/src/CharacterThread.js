@@ -473,6 +473,28 @@ async function make_runner(upper, CODE_file, version, is_typescript) {
         }
         break;
       }
+      case "market_intelligence_history": {
+        const runtime = runner_context.__caracalBotRuntime;
+        const observations = Array.isArray(m.observations)
+          ? m.observations
+          : [];
+
+        if (!runtime?.setMarketLocalHistory) {
+          sendIpcMessage(process, {
+            type: "market_intelligence_history_rejected",
+            samples: observations.length,
+            reason: "MARKET_INTELLIGENCE_RUNTIME_NOT_READY",
+          });
+          break;
+        }
+
+        runtime.setMarketLocalHistory(observations);
+        sendIpcMessage(process, {
+          type: "market_intelligence_history_applied",
+          samples: observations.length,
+        });
+        break;
+      }
       case "account_gear_reservations": {
         const runtime = runner_context.__caracalBotRuntime;
         const slots = Array.isArray(m.slots)

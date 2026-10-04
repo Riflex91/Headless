@@ -107,7 +107,9 @@ const {
   buildCharacterProfile,
   completeSnapshotPersist,
   failSnapshotPersist,
+  marketLocalHistorySyncSignature,
   restoreDesiredRuntimeState,
+  selectMarketLocalHistoryForRuntime,
   selectNewLiveMarketObservations,
   shouldPersistSnapshot,
   snapshotSignature,
@@ -760,6 +762,38 @@ function migrate_old_storage(path, localStorage) {
     });
   }
 
+  function sync_market_local_history(char_name, char_block) {
+    if (
+      !char_block?.instance ||
+      !char_block.connected ||
+      !Number.isFinite(char_block.bot_runtime_started_at)
+    ) {
+      return false;
+    }
+
+    const observations = selectMarketLocalHistoryForRuntime(
+      persistence.listMarketHistory({ limit: 500 }),
+      {
+        server: char_block.realm || null,
+        liveSignatures: char_block.market_live_observation_signatures,
+        limit: 250,
+      },
+    );
+    const signature = marketLocalHistorySyncSignature(observations);
+    if (char_block.market_local_history_sync_signature === signature) {
+      return false;
+    }
+
+    const sent = safe_send(char_block.instance, {
+      type: "market_intelligence_history",
+      observations,
+    });
+    if (!sent) return false;
+
+    char_block.market_local_history_sync_signature = signature;
+    return true;
+  }
+
   function persist_character_runtime_state(char_name, reason) {
     const char_block = character_manage[char_name];
     if (!char_block) return;
@@ -999,6 +1033,8 @@ function migrate_old_storage(path, localStorage) {
           char_name,
         );
       });
+
+      sync_market_local_history(char_name, char_block);
     }
 
     if (
@@ -1362,6 +1398,8 @@ function migrate_old_storage(path, localStorage) {
     )
       ? char_block.market_live_observation_signatures
       : [];
+    char_block.market_local_history_sync_signature =
+      char_block.market_local_history_sync_signature || null;
     char_block.fishing_material_request =
       char_block.fishing_material_request || null;
     char_block.inventory_intelligence_runtime =

@@ -223,6 +223,7 @@ import { MarketTradingController } from "./market-trading-controller.lib";
 import {
   MarketIntelligenceController,
   MarketIntelligenceEvent,
+  MarketIntelligenceObservationInput,
 } from "./market-intelligence-controller.lib";
 import {
   MarketTradingLiveTestOptions,
@@ -379,6 +380,7 @@ export class BotRuntimeKernel {
   private economyPrebuffExecutionRunning = false;
   private logisticsClaimRunning = false;
   private lastLogisticsExecution: LogisticsExecutionResult | null = null;
+  private marketLocalHistory: MarketIntelligenceObservationInput[] = [];
 
   constructor() {
     this.eventBus = new EventBus({
@@ -457,6 +459,7 @@ export class BotRuntimeKernel {
     });
     this.marketIntelligence = new MarketIntelligenceController(this.game, {
       server: runtimeRealm,
+      localHistory: () => this.marketLocalHistory,
       onEvent: (event) => this.handleMarketIntelligenceEvent(event),
     });
     this.gearScoring = new GearScoringController(this.game, {
@@ -892,6 +895,36 @@ export class BotRuntimeKernel {
       recentActions: this.actionLedger.list(20),
       ...runtimeIdentity(),
     };
+  }
+
+  setMarketLocalHistory(observations: unknown): void {
+    const normalized = Array.isArray(observations)
+      ? observations
+          .filter(
+            (observation): observation is Record<string, unknown> =>
+              !!observation &&
+              typeof observation === "object" &&
+              !Array.isArray(observation),
+          )
+          .slice(0, 250)
+          .map(
+            (observation) =>
+              JSON.parse(
+                JSON.stringify(observation),
+              ) as MarketIntelligenceObservationInput,
+          )
+      : [];
+
+    this.marketLocalHistory = normalized;
+    this.eventBus.emit({
+      module: "MarketIntelligenceController",
+      type: "MARKET_INTELLIGENCE_LOCAL_HISTORY_APPLIED",
+      why: "SUPERVISOR_LOCAL_HISTORY_SYNC",
+      data: {
+        samples: normalized.length,
+        server: runtimeRealm(),
+      },
+    });
   }
 
   async executeEconomyPrebuffNext(): Promise<Record<string, unknown>> {
