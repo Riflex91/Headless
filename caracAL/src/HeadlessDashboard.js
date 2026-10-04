@@ -626,8 +626,7 @@ function attachHeadlessDashboard({
         });
       } catch (error) {
         res.status(Number(error.statusCode) || 500).json({
-          error:
-            error.code || "ECONOMY_PREBUFF_EXECUTION_LIVE_TEST_FAILED",
+          error: error.code || "ECONOMY_PREBUFF_EXECUTION_LIVE_TEST_FAILED",
           message: error.message,
         });
       }
