@@ -310,6 +310,7 @@ function evaluateMarketIntelligence(character) {
       movementMutationForced: false,
       combatMutationForced: false,
       valueMutationForced: false,
+      valueMutationDispatched: false,
       equipmentMutationForced: false,
       socketRequestForced: false,
       pontyBuyForced: false,
@@ -341,11 +342,18 @@ function formatCompactResult(result) {
       " | LOCAL_HISTORY=" +
       String(sources.LOCAL_HISTORY ?? 0),
     "Metrics valid: " + (evidence.metricsValid === true ? "yes" : "no"),
-    "Read-only: " +
+    "Market read-only: " +
       (scope.readOnly === true && evidence.policyValid === true ? "yes" : "no"),
     "Dashboard GET only: " + (scope.dashboardGetOnly === true ? "yes" : "no"),
-    "Mutation dispatched: " +
-      (scope.mutationDispatched === true ? "yes" : "no"),
+    "Movement probe dispatched: " +
+      (scope.movementMutationForced === true ? "yes" : "no"),
+    "Ponty read request dispatched: " +
+      (scope.socketReadRequestDispatched === true ? "yes" : "no"),
+    "Value mutation dispatched: " +
+      (scope.valueMutationDispatched === true ||
+      scope.mutationDispatched === true
+        ? "yes"
+        : "no"),
   ];
 
   if (scope.bootstrapUsed === true) {
@@ -423,7 +431,12 @@ async function main() {
       );
     }
 
-    if (selected.connected === true && hasProjection(selected)) {
+    const initialEvaluation =
+      selected.connected === true && hasProjection(selected)
+        ? evaluateMarketIntelligence(selected)
+        : null;
+
+    if (initialEvaluation?.outcome === "PASS") {
       await sleep(
         Number(process.env.CARACAL_MARKET_INTELLIGENCE_LIVE_SETTLE_MS || 5500),
       );
@@ -450,12 +463,17 @@ async function main() {
         connected: true,
         market_intelligence_runtime: projection,
       });
+      if (["UNKNOWN", "TIMEOUT", "FAIL"].includes(supervisor.outcome)) {
+        result.outcome = supervisor.outcome;
+        result.reason = supervisor.reason || result.reason;
+      }
       result.scope = {
         ...result.scope,
         ...record(supervisor.scope),
         dashboardGetOnly: false,
         bootstrapUsed: true,
       };
+      result.sourceProbe = record(supervisor.sourceProbe);
       result.cleanup = record(supervisor.cleanup);
     }
   } finally {
