@@ -146,6 +146,11 @@ import {
   FishingLiveTestRunner,
 } from "./fishing-live-test.lib";
 import {
+  CharacterTrainingTaskOptions,
+  CharacterTrainingTaskResult,
+  CharacterTrainingTaskRunner,
+} from "./character-training-task.lib";
+import {
   MaterialGatherTaskOptions,
   MaterialGatherTaskResult,
   MaterialGatheringTaskRunner,
@@ -388,6 +393,7 @@ export class BotRuntimeKernel {
   private merritLiveTestRunning = false;
   private fishingLiveTestRunning = false;
   private materialGatherTaskRunning = false;
+  private characterTrainingTaskRunning = false;
   private goalAdapterPreflightRunning = false;
   private goalAdapterDispatchRunning = false;
   private economyPrebuffExecutionRunning = false;
@@ -3139,6 +3145,7 @@ export class BotRuntimeKernel {
     }
     if (
       this.materialGatherTaskRunning ||
+      this.characterTrainingTaskRunning ||
       this.economyPrebuffExecutionRunning ||
       this.movementLiveTestRunning ||
       this.combatLiveTestRunning ||
@@ -3193,6 +3200,8 @@ export class BotRuntimeKernel {
           return {
             name: snapshot.name,
             ctype: snapshot.ctype,
+            level: snapshot.level,
+            xp: snapshot.xp,
           };
         },
         craftMaterialPlan: (recipe) => this.runCraftMaterialPlan(recipe),
@@ -3237,6 +3246,7 @@ export class BotRuntimeKernel {
     if (
       this.goalAdapterPreflightRunning ||
       this.materialGatherTaskRunning ||
+      this.characterTrainingTaskRunning ||
       this.economyPrebuffExecutionRunning ||
       this.movementLiveTestRunning ||
       this.combatLiveTestRunning ||
@@ -3296,6 +3306,8 @@ export class BotRuntimeKernel {
               return {
                 name: snapshot.name,
                 ctype: snapshot.ctype,
+                level: snapshot.level,
+                xp: snapshot.xp,
               };
             },
             craftMaterialPlan: (recipe) => this.runCraftMaterialPlan(recipe),
@@ -3304,6 +3316,8 @@ export class BotRuntimeKernel {
         },
         runMaterialGatherTask: (materialOptions) =>
           this.runMaterialGatherTask(materialOptions),
+        runCharacterTrainingTask: (trainingOptions) =>
+          this.runCharacterTrainingTask(trainingOptions),
         craft: {
           setConfigOverride: (config) => this.craft.setConfigOverride(config),
           clearConfigOverride: () => this.craft.clearConfigOverride(),
