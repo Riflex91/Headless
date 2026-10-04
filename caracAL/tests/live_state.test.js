@@ -36,6 +36,23 @@ test("stat beat exposes safe live character, inventory and equipment state", () 
       xp: 123,
       max_xp: 999,
       gold: 123456,
+      attack: 812,
+      frequency: 2.5,
+      speed: 48,
+      armor: 321,
+      resistance: 222,
+      range: 160,
+      str: 45,
+      dex: 145,
+      int: 30,
+      vit: 55,
+      crit: 17,
+      evasion: 9,
+      reflection: 3,
+      lifesteal: 2,
+      manasteal: 1,
+      apiercing: 14,
+      rpiercing: 11,
       party: "My_Ranger1",
       isize: 42,
       esize: 5,
@@ -96,6 +113,13 @@ test("stat beat exposes safe live character, inventory and equipment state", () 
   assert.equal(beat.y, 200);
   assert.equal(beat.going_x, 140);
   assert.equal(beat.going_y, 220);
+  assert.equal(beat.attack, 812);
+  assert.equal(beat.armor, 321);
+  assert.equal(beat.resistance, 222);
+  assert.equal(beat.range, 160);
+  assert.equal(beat.dex, 145);
+  assert.equal(beat.apiercing, 14);
+  assert.equal(beat.rpiercing, 11);
   assert.deepEqual(beat.items[0], {
     name: "hpot1",
     q: 123,

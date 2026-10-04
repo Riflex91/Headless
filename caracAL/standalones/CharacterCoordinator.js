@@ -102,6 +102,7 @@ const {
   reservationProjectionForCharacter,
   reservedSlotsForCharacter,
 } = require("../src/AccountGearReservation");
+const { buildAccountStrategy } = require("../src/AccountStrategy");
 const {
   beginSnapshotPersist,
   buildCharacterProfile,
@@ -434,6 +435,7 @@ function migrate_old_storage(path, localStorage) {
         getRevisionSummary: revision_summary,
         getPersistenceHealth: () => persistence.health(),
         getMerchantLogisticsState: () => merchant_logistics_board,
+        getAccountStrategyState: account_strategy_state,
         getMapScene: (mapName) => dashboard_map_scenes.get(mapName) || null,
         diagnosticStore: diagnostic_store,
         incidentRecorder: incident_recorder,
@@ -471,6 +473,10 @@ function migrate_old_storage(path, localStorage) {
   } catch (e) {
     console.error(`failed to start web services.`, e);
     console.error(`no web services will be available`);
+  }
+
+  function account_strategy_state() {
+    return buildAccountStrategy(character_manage);
   }
 
   function logistics_record(value) {
@@ -1258,14 +1264,28 @@ function migrate_old_storage(path, localStorage) {
       const farm_key =
         typeof sample.farmKey === "string" ? sample.farmKey.trim() : "";
       if (farm_key) {
+        const history_entry = {
+          farm_key,
+          sample_started_at: Number(sample.startedAt) || normalized.timestamp,
+          sample_ended_at: Number(sample.endedAt) || normalized.timestamp,
+          stats:
+            sample.stats && typeof sample.stats === "object"
+              ? JSON.parse(JSON.stringify(sample.stats))
+              : {},
+        };
+        if (char_block) {
+          char_block.account_strategy_history = [
+            history_entry,
+            ...(Array.isArray(char_block.account_strategy_history)
+              ? char_block.account_strategy_history
+              : []),
+          ].slice(0, 10);
+        }
         void observe_persistence(
           persistence.appendFarmStatistic(char_name, farm_key, {
-            startedAt: Number(sample.startedAt) || normalized.timestamp,
-            endedAt: Number(sample.endedAt) || normalized.timestamp,
-            stats:
-              sample.stats && typeof sample.stats === "object"
-                ? sample.stats
-                : {},
+            startedAt: history_entry.sample_started_at,
+            endedAt: history_entry.sample_ended_at,
+            stats: history_entry.stats,
           }),
           "farm_intelligence_sample",
           char_name,
@@ -1525,6 +1545,10 @@ function migrate_old_storage(path, localStorage) {
     char_block.movement_trail = Array.isArray(char_block.movement_trail)
       ? char_block.movement_trail
       : [];
+    char_block.account_strategy_history = persistence.listFarmStatistics(
+      char_name,
+      { limit: 10 },
+    );
 
     if (persisted_lifecycle) {
       emit_supervisor_event("PERSISTED_DESIRED_STATE_RESTORED", char_name, {
