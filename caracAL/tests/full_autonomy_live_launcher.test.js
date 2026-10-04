@@ -202,6 +202,8 @@ test("Full Autonomy live wiring uses shared production dispatch and lifecycle-on
   assert.match(coordinator, /dispatch_full_autonomy_decision/);
   assert.match(coordinator, /authority:\s*"FULL_AUTONOMY"/);
   assert.match(coordinator, /FULL_AUTONOMY_LIVE_TEST_OBSERVER_ONLY_REQUIRED/);
+  assert.match(coordinator, /FULL_AUTONOMY_LIVE_TEST_SUPERVISOR_NOT_READY/);
+  assert.match(coordinator, /coordinator_ready = true/);
   assert.match(
     coordinator,
     /lifecycle_only_probe:\s*char_block\.lifecycle_only_probe/,
