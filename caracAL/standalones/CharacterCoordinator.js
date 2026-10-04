@@ -104,6 +104,7 @@ const {
 } = require("../src/AccountGearReservation");
 const { buildAccountStrategy } = require("../src/AccountStrategy");
 const { buildGoalPlan } = require("../src/GoalPlanner");
+const { GoalManagementService } = require("../src/GoalManagement");
 const {
   buildFullAutonomyPlan,
   manualStopProtected,
@@ -305,6 +306,22 @@ function migrate_old_storage(path, localStorage) {
   let bwi_instance = {};
   let dashboard = null;
   let owned_web_server = null;
+  const goal_management = new GoalManagementService({
+    persistence,
+    getPlanningContext: () => ({
+      accountStrategy: account_strategy_state(),
+      characterManage: character_manage,
+      fullAutonomy: build_full_autonomy_plan(),
+    }),
+    onMutation: (event) => {
+      emit_supervisor_event(event.type, event.characterName || null, {
+        goal_id: event.goalId,
+        status: event.status,
+        plan_state: event.planState,
+      });
+      dashboard?.publishSnapshot();
+    },
+  });
   const dashboard_map_scenes = new Map();
   const movement_live_test_requests = new Map();
   let movement_live_test_sequence = 0;
@@ -460,6 +477,8 @@ function migrate_old_storage(path, localStorage) {
         getAccountStrategyState: account_strategy_state,
         getFullAutonomyState: full_autonomy_state,
         getGoalPlanState: goal_plan_state,
+        createGoal: (input) => goal_management.create(input),
+        updateGoal: (goalId, input) => goal_management.update(goalId, input),
         getMapScene: (mapName) => dashboard_map_scenes.get(mapName) || null,
         diagnosticStore: diagnostic_store,
         incidentRecorder: incident_recorder,

@@ -458,6 +458,8 @@ function attachHeadlessDashboard({
   getAccountStrategyState,
   getFullAutonomyState,
   getGoalPlanState,
+  createGoal,
+  updateGoal,
   getMapScene,
   diagnosticStore,
   incidentRecorder,
@@ -493,6 +495,58 @@ function attachHeadlessDashboard({
   router.get("/headless/api/state", (_req, res) => {
     res.json(getSnapshot());
   });
+
+  router.post(
+    "/headless/api/goals",
+    express.json({ limit: "16kb" }),
+    async (req, res) => {
+      if (!createGoal) {
+        res.status(503).json({ error: "GOAL_MANAGEMENT_UNAVAILABLE" });
+        return;
+      }
+
+      try {
+        const result = await createGoal(req.body || {});
+        res.status(201).json({
+          ok: true,
+          result,
+          snapshot: getSnapshot(),
+        });
+      } catch (error) {
+        res.status(Number(error.statusCode) || 500).json({
+          error: error.code || "GOAL_CREATE_FAILED",
+          message: error.message,
+          details: error.details || null,
+        });
+      }
+    },
+  );
+
+  router.patch(
+    "/headless/api/goals/:goalId",
+    express.json({ limit: "16kb" }),
+    async (req, res) => {
+      if (!updateGoal) {
+        res.status(503).json({ error: "GOAL_MANAGEMENT_UNAVAILABLE" });
+        return;
+      }
+
+      try {
+        const result = await updateGoal(req.params.goalId, req.body || {});
+        res.json({
+          ok: true,
+          result,
+          snapshot: getSnapshot(),
+        });
+      } catch (error) {
+        res.status(Number(error.statusCode) || 500).json({
+          error: error.code || "GOAL_UPDATE_FAILED",
+          message: error.message,
+          details: error.details || null,
+        });
+      }
+    },
+  );
 
   router.get("/headless/api/characters/:name/config", (req, res) => {
     const charBlock = characterManage?.[req.params.name];
