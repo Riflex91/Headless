@@ -186,6 +186,9 @@ function setup(options = {}) {
     { status: () => state.prebuff },
     { status: () => state.risk },
     {
+      tick() {
+        return null;
+      },
       authorize(lane) {
         authorizedLanes.push(lane);
         return options.authorize
