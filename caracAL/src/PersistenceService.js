@@ -862,6 +862,38 @@ class PersistenceService {
     };
   }
 
+  listGoals({ status = null, limit = 500 } = {}) {
+    const boundedLimit = Math.min(
+      500,
+      Math.max(1, Math.trunc(Number(limit) || 500)),
+    );
+    const normalizedStatus =
+      typeof status === "string" && status.trim()
+        ? status.trim()
+        : null;
+    const where = normalizedStatus ? "WHERE status = ?" : "";
+    const params = normalizedStatus
+      ? [normalizedStatus, boundedLimit]
+      : [boundedLimit];
+
+    return this.allRows(
+      `
+        SELECT goal_id, character_name, status, goal_json, updated_at
+        FROM goals
+        ${where}
+        ORDER BY updated_at DESC, goal_id ASC
+        LIMIT ?
+      `,
+      params,
+    ).map((row) => ({
+      goal_id: row.goal_id,
+      character_name: row.character_name || null,
+      status: row.status,
+      goal: decodeJson(row.goal_json),
+      updated_at: Number(row.updated_at),
+    }));
+  }
+
   async saveCooldown(ownerKey, cooldownKey, { readyAt = 0, state = {} } = {}) {
     return this.enqueueMutation(() => {
       this.db.run(
