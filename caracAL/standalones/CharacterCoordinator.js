@@ -240,6 +240,7 @@ function migrate_old_storage(path, localStorage) {
   const lifecycle_policy = readLifecyclePolicy(cfg);
   const full_autonomy_policy = readFullAutonomyExecutionPolicy(cfg);
   const observer_only = process.env.CARACAL_OBSERVER_ONLY === "1";
+  let coordinator_ready = false;
   let coordinator_shutting_down = false;
   let full_autonomy_execution_inflight = false;
   let full_autonomy_last_execution = null;
@@ -804,6 +805,17 @@ function migrate_old_storage(path, localStorage) {
   }
 
   async function run_full_autonomy_live_test() {
+    const ready_deadline = Date.now() + 10000;
+    while (!coordinator_ready && Date.now() < ready_deadline) {
+      await sleep(50);
+    }
+    if (!coordinator_ready) {
+      throw make_control_error(
+        "FULL_AUTONOMY_LIVE_TEST_SUPERVISOR_NOT_READY",
+        "Supervisor initialization did not complete before the live test",
+        503,
+      );
+    }
     if (!observer_only) {
       throw make_control_error(
         "FULL_AUTONOMY_LIVE_TEST_REQUIRES_OBSERVER_ONLY",
@@ -16067,6 +16079,7 @@ function migrate_old_storage(path, localStorage) {
   ["SIGINT", "SIGTERM", "SIGQUIT"].forEach((signal) =>
     process.on(signal, async () => {
       if (coordinator_shutting_down) return;
+      coordinator_ready = false;
       coordinator_shutting_down = true;
       clearInterval(watchdog_task);
       if (full_autonomy_task) {
@@ -16100,6 +16113,7 @@ function migrate_old_storage(path, localStorage) {
   Object.entries(character_manage).forEach(([char_name, char_block]) => {
     initialize_char_block(char_name, char_block);
   });
+  coordinator_ready = true;
 
   const requested_startup = observer_only
     ? 0
