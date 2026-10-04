@@ -20,6 +20,16 @@ const CAPABILITIES = Object.freeze([
   "LOGISTICS",
 ]);
 
+function parseCliArgs(argv = process.argv.slice(2)) {
+  return {
+    requestedCharacter:
+      argv.find(
+        (value) => typeof value === "string" && !value.startsWith("--"),
+      ) || null,
+    verbose: argv.includes("--verbose"),
+  };
+}
+
 function observerRuntimeEnv(env = process.env) {
   return {
     ...env,
@@ -186,6 +196,32 @@ function capabilityCounts(profileChecks) {
   );
 }
 
+function selectAccountStrategyProbeCharacter(snapshot, requested = null) {
+  const characters = array(snapshot?.characters)
+    .filter((character) => character?.account_owned === true)
+    .sort((left, right) =>
+      String(left?.name || "").localeCompare(String(right?.name || "")),
+    );
+
+  if (requested) {
+    const exact = characters.find((character) => character?.name === requested);
+    if (!exact) {
+      throw new Error(
+        "Unknown account-owned character in dashboard state: " + requested,
+      );
+    }
+    return exact;
+  }
+
+  return (
+    characters.find((character) => character?.name === "My_Merchant") ||
+    characters.find((character) => character?.connected === true) ||
+    characters.find((character) => character?.enabled === true) ||
+    characters[0] ||
+    null
+  );
+}
+
 function accountStrategyEvidence(snapshot) {
   const strategy = record(snapshot?.account_strategy);
   const profiles = array(strategy.profiles);
@@ -303,11 +339,28 @@ function formatCompactResult(result) {
     "Read-only: " +
       (scope.readOnly === true && evidence.readOnly === true ? "yes" : "no"),
     "Dashboard GET only: " + (scope.dashboardGetOnly === true ? "yes" : "no"),
-    "Mutation dispatched: " +
-      (scope.mutationDispatched === true ? "yes" : "no"),
+    "Lifecycle bootstrap dispatched: " +
+      (scope.lifecycleMutationDispatched === true ? "yes" : "no"),
+    "Gameplay mutation dispatched: " +
+      (scope.gameplayMutationDispatched === true ? "yes" : "no"),
+    "Value mutation dispatched: " +
+      (scope.valueMutationDispatched === true ? "yes" : "no"),
     "Observer-only bootstrap: " +
       (scope.observerOnlyBootstrap === true ? "yes" : "no"),
   ];
+
+  if (result?.profileProbeCharacter) {
+    lines.push("Profile probe character: " + result.profileProbeCharacter);
+  }
+  if (scope.profileProbeUsed === true) {
+    lines.push(
+      "Profile probe runtime: " + (scope.runtimeStateDuringTest || "UNKNOWN"),
+    );
+    lines.push(
+      "Runtime state restored: " +
+        (result?.cleanup?.runtimeStateRestored === true ? "yes" : "no"),
+    );
+  }
 
   const incomplete = array(evidence.incompleteLiveProfiles);
   if (incomplete.length > 0) {
@@ -332,8 +385,38 @@ async function readState({ fetchImpl = fetch } = {}) {
   return body;
 }
 
+async function runAccountStrategySupervisorLiveTest(
+  characterName,
+  sampleMs = Number(
+    process.env.CARACAL_ACCOUNT_STRATEGY_LIVE_SETTLE_MS || 1200,
+  ),
+  { fetchImpl = fetch } = {},
+) {
+  const response = await fetchImpl(
+    baseUrl +
+      "/headless/api/characters/" +
+      encodeURIComponent(characterName) +
+      "/tests/account-strategy",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sampleMs }),
+    },
+  );
+  const responseText = await response.text();
+  const body = responseText ? JSON.parse(responseText) : {};
+  if (!response.ok) {
+    throw new Error(
+      body?.message ||
+        body?.error ||
+        `HTTP ${response.status} from caracAL dashboard`,
+    );
+  }
+  return body;
+}
+
 async function main() {
-  const verbose = process.argv.includes("--verbose");
+  const { requestedCharacter, verbose } = parseCliArgs();
   const dashboard = await ensureDashboardAvailable(readState, {
     startRuntime: startObserverRuntime,
   });
@@ -346,11 +429,50 @@ async function main() {
       );
     }
 
-    const result = evaluateAccountStrategy(dashboard.state);
+    let result = evaluateAccountStrategy(dashboard.state);
     result.scope = {
       ...record(result.scope),
       observerOnlyBootstrap: dashboard.startedRuntime === true,
     };
+
+    if (result.outcome === "WATCH") {
+      const selected = selectAccountStrategyProbeCharacter(
+        dashboard.state,
+        requestedCharacter,
+      );
+      if (!selected) {
+        throw new Error(
+          "No account-owned character available for profile probe",
+        );
+      }
+
+      const payload = await runAccountStrategySupervisorLiveTest(selected.name);
+      const supervisor = record(payload.result);
+      if (!supervisor.strategy) {
+        throw new Error(
+          supervisor.error ||
+            supervisor.reason ||
+            "Account Strategy profile probe returned no strategy projection",
+        );
+      }
+
+      result = evaluateAccountStrategy({
+        account_strategy: supervisor.strategy,
+      });
+      if (["FAIL", "TIMEOUT", "UNKNOWN"].includes(supervisor.outcome)) {
+        result.outcome = supervisor.outcome;
+        result.reason = supervisor.reason || result.reason;
+      }
+      result.profileProbeCharacter = supervisor.character || selected.name;
+      result.scope = {
+        ...record(result.scope),
+        ...record(supervisor.scope),
+        dashboardGetOnly: false,
+        observerOnlyBootstrap: dashboard.startedRuntime === true,
+        profileProbeUsed: true,
+      };
+      result.cleanup = record(supervisor.cleanup);
+    }
 
     if (verbose) {
       process.stdout.write(JSON.stringify(result, null, 2) + "\n");
@@ -383,7 +505,10 @@ module.exports = {
   formatCompactResult,
   historyEntryValid,
   observerRuntimeEnv,
+  parseCliArgs,
   profileEvidence,
   readState,
+  runAccountStrategySupervisorLiveTest,
+  selectAccountStrategyProbeCharacter,
   startObserverRuntime,
 };

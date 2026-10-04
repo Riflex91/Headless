@@ -12,6 +12,8 @@ const {
   formatCompactResult,
   observerRuntimeEnv,
   profileEvidence,
+  runAccountStrategySupervisorLiveTest,
+  selectAccountStrategyProbeCharacter,
 } = require("../scripts/run_account_strategy_live_e2e");
 
 const ROSTER = [
@@ -225,7 +227,98 @@ test("Account Strategy compact output exposes read-only GET-only safety scope", 
   assert.match(output, /Summary valid: yes/);
   assert.match(output, /Read-only: yes/);
   assert.match(output, /Dashboard GET only: yes/);
-  assert.match(output, /Mutation dispatched: no/);
+  assert.match(output, /Lifecycle bootstrap dispatched: no/);
+  assert.match(output, /Gameplay mutation dispatched: no/);
+  assert.match(output, /Value mutation dispatched: no/);
+});
+
+test("Account Strategy profile probe prefers My_Merchant and supports explicit target", () => {
+  const dashboard = {
+    characters: ROSTER.map(([name, characterClass]) => ({
+      name,
+      account_owned: true,
+      ctype: characterClass,
+      connected: false,
+      enabled: false,
+    })),
+  };
+
+  assert.equal(
+    selectAccountStrategyProbeCharacter(dashboard).name,
+    "My_Merchant",
+  );
+  assert.equal(
+    selectAccountStrategyProbeCharacter(dashboard, "My_Ranger2").name,
+    "My_Ranger2",
+  );
+  assert.throws(
+    () => selectAccountStrategyProbeCharacter(dashboard, "Not_Owned"),
+    /Unknown account-owned character/,
+  );
+});
+
+test("Account Strategy supervisor profile probe uses only the dedicated local test POST", async () => {
+  const calls = [];
+  const payload = {
+    result: {
+      outcome: "PASS",
+      strategy: snapshot({ onlineNames: ["My_Merchant"] }).account_strategy,
+    },
+  };
+
+  const result = await runAccountStrategySupervisorLiveTest(
+    "My_Merchant",
+    900,
+    {
+      fetchImpl: async (url, options) => {
+        calls.push({ url, options });
+        return {
+          ok: true,
+          async text() {
+            return JSON.stringify(payload);
+          },
+        };
+      },
+    },
+  );
+
+  assert.deepEqual(result, payload);
+  assert.equal(calls.length, 1);
+  assert.match(
+    calls[0].url,
+    /\/characters\/My_Merchant\/tests\/account-strategy$/,
+  );
+  assert.equal(calls[0].options.method, "POST");
+  assert.deepEqual(JSON.parse(calls[0].options.body), { sampleMs: 900 });
+});
+
+test("Account Strategy compact output exposes PAUSED profile-probe lifecycle separately", () => {
+  const result = evaluateAccountStrategy(
+    snapshot({ onlineNames: ["My_Merchant"] }),
+  );
+  result.profileProbeCharacter = "My_Merchant";
+  result.scope = {
+    ...result.scope,
+    dashboardGetOnly: false,
+    observerOnlyBootstrap: true,
+    profileProbeUsed: true,
+    runtimeStateDuringTest: "PAUSED",
+    lifecycleMutationDispatched: true,
+    gameplayMutationDispatched: false,
+    valueMutationDispatched: false,
+  };
+  result.cleanup = {
+    runtimeStateRestored: true,
+  };
+
+  const output = formatCompactResult(result);
+  assert.match(output, /Dashboard GET only: no/);
+  assert.match(output, /Lifecycle bootstrap dispatched: yes/);
+  assert.match(output, /Gameplay mutation dispatched: no/);
+  assert.match(output, /Value mutation dispatched: no/);
+  assert.match(output, /Profile probe character: My_Merchant/);
+  assert.match(output, /Profile probe runtime: PAUSED/);
+  assert.match(output, /Runtime state restored: yes/);
 });
 
 test("Account Strategy observer bootstrap forces observer-only supervisor mode", () => {
@@ -238,7 +331,7 @@ test("Account Strategy observer bootstrap forces observer-only supervisor mode",
   assert.equal(env.CARACAL_OBSERVER_ONLY, "1");
 });
 
-test("Account Strategy live launcher is GET-only and observer bootstrap starts no characters", () => {
+test("Account Strategy live launcher uses GET for observation and only dedicated profile-probe POST", () => {
   const source = fs.readFileSync(
     path.join(__dirname, "..", "scripts", "run_account_strategy_live_e2e.js"),
     "utf8",
@@ -247,18 +340,43 @@ test("Account Strategy live launcher is GET-only and observer bootstrap starts n
     path.join(__dirname, "..", "standalones", "CharacterCoordinator.js"),
     "utf8",
   );
+  const dashboard = fs.readFileSync(
+    path.join(__dirname, "..", "src", "HeadlessDashboard.js"),
+    "utf8",
+  );
 
   assert.match(source, /\/headless\/api\/state/);
   assert.match(source, /method:\s*"GET"/);
   assert.match(source, /ensureDashboardAvailable/);
   assert.match(source, /CARACAL_OBSERVER_ONLY:\s*"1"/);
-  assert.doesNotMatch(source, /method:\s*"POST"/);
+  assert.match(source, /\/tests\/account-strategy/);
+  assert.match(source, /method:\s*"POST"/);
   assert.doesNotMatch(source, /controlCharacter/);
-  assert.doesNotMatch(source, /run.*LiveTest/);
+  assert.doesNotMatch(
+    source,
+    /\/tests\/(?:movement|combat|farm|inventory|market-intelligence|account-gear-reservation)/,
+  );
   assert.doesNotMatch(source, /socket\.emit/);
   assert.doesNotMatch(source, /desired_runtime_state/);
 
   assert.match(coordinator, /process\.env\.CARACAL_OBSERVER_ONLY\s*===\s*"1"/);
   assert.match(coordinator, /const startup_chars = observer_only\s*\? \[\]/);
   assert.match(coordinator, /observer_only,/);
+  assert.match(coordinator, /async function run_account_strategy_live_test/);
+  assert.match(
+    dashboard,
+    /\/headless\/api\/characters\/:name\/tests\/account-strategy/,
+  );
+  assert.match(dashboard, /runAccountStrategyLiveTest/);
+  assert.match(
+    coordinator,
+    /desired_runtime_state = DESIRED_RUNTIME_STATES\.PAUSED/,
+  );
+  assert.match(coordinator, /gameplayMutationDispatched: false/);
+  assert.match(coordinator, /valueMutationDispatched: false/);
+  assert.match(
+    coordinator,
+    /account_gear_reservation_live_test_active\s*\|\|\s*account_strategy_live_test_active/,
+  );
+  assert.match(coordinator, /runtimeStateRestored/);
 });
