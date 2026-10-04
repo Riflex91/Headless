@@ -1790,9 +1790,7 @@ function migrate_old_storage(path, localStorage) {
       futureGear: JSON.parse(
         JSON.stringify(char_block?.future_gear_runtime || null),
       ),
-      upgrade: JSON.parse(
-        JSON.stringify(char_block?.upgrade_runtime || null),
-      ),
+      upgrade: JSON.parse(JSON.stringify(char_block?.upgrade_runtime || null)),
       compound: JSON.parse(
         JSON.stringify(char_block?.compound_runtime || null),
       ),
