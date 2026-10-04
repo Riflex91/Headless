@@ -560,32 +560,26 @@ test("structured persistence domains survive a restart", async () => {
         metadata: { slot: 3 },
       },
     ]);
-    assert.deepEqual(
-      reopened.listMarketHistory({ itemName: "scroll1" })[0],
-      {
-        item_name: "scroll1",
-        level: null,
-        price: 5000,
-        quantity: 1,
-        server: "EU I",
-        seller: "Vendor",
-        source: "LIVE_VISIBLE",
-        observed_at: 6050,
-        metadata: {},
-      },
-    );
-    assert.deepEqual(
-      reopened.listPontyHistory({ itemName: "scroll0" })[0],
-      {
-        item_name: "scroll0",
-        level: null,
-        price: 12500,
-        quantity: 1,
-        server: "EU I",
-        observed_at: 6100,
-        metadata: {},
-      },
-    );
+    assert.deepEqual(reopened.listMarketHistory({ itemName: "scroll1" })[0], {
+      item_name: "scroll1",
+      level: null,
+      price: 5000,
+      quantity: 1,
+      server: "EU I",
+      seller: "Vendor",
+      source: "LIVE_VISIBLE",
+      observed_at: 6050,
+      metadata: {},
+    });
+    assert.deepEqual(reopened.listPontyHistory({ itemName: "scroll0" })[0], {
+      item_name: "scroll0",
+      level: null,
+      price: 12500,
+      quantity: 1,
+      server: "EU I",
+      observed_at: 6100,
+      metadata: {},
+    });
     assert.deepEqual(reopened.listFarmStatistics("My_Ranger1")[0], {
       farm_key: "goo",
       sample_started_at: 1000,
