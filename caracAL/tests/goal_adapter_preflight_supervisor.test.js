@@ -263,6 +263,44 @@ test("one character cannot have concurrent preflight requests", async () => {
   await first;
 });
 
+test("Coordinator and dashboard expose only the read-only Goal adapter preflight path", () => {
+  const coordinator = fs.readFileSync(
+    path.join(__dirname, "..", "standalones", "CharacterCoordinator.js"),
+    "utf8",
+  );
+  const dashboard = fs.readFileSync(
+    path.join(__dirname, "..", "src", "HeadlessDashboard.js"),
+    "utf8",
+  );
+
+  assert.match(coordinator, /GoalAdapterPreflightSupervisor/);
+  assert.match(
+    coordinator,
+    /runGoalAdapterPreflight:\s*\(\{ characterName, request \}\)\s*=>/,
+  );
+  assert.match(
+    coordinator,
+    /case "goal_adapter_preflight_result"/,
+  );
+  assert.match(
+    coordinator,
+    /goal_adapter_preflight_supervisor\.cancelAll/,
+  );
+  assert.match(
+    coordinator,
+    /goal_adapter_preflight_supervisor\.snapshot\(\)\.pending > 0/,
+  );
+  assert.doesNotMatch(coordinator, /dispatch_goal_adapter/);
+  assert.doesNotMatch(coordinator, /reconcile_goal_adapter/);
+
+  assert.match(dashboard, /"\/headless\/api\/goals\/adapter-preflight"/);
+  assert.match(dashboard, /runGoalAdapterPreflight/);
+  assert.doesNotMatch(
+    dashboard,
+    /"\/headless\/api\/goals\/adapter-dispatch"/,
+  );
+});
+
 test("supervisor client contains no lifecycle or gameplay execution dependency", () => {
   const source = fs.readFileSync(
     path.join(__dirname, "..", "src", "GoalAdapterPreflightSupervisor.js"),
