@@ -129,10 +129,7 @@ test("coupled execution verifier accepts one confirmed expected mutation", () =>
   assert.equal(evidence.oneValueMutationMaximum, true);
   assert.equal(evidence.blindRetryAvoided, true);
   assert.equal(result.outcome, "PASS");
-  assert.equal(
-    result.reason,
-    "ECONOMY_PREBUFF_EXECUTION_LIVE_E2E_CONFIRMED",
-  );
+  assert.equal(result.reason, "ECONOMY_PREBUFF_EXECUTION_LIVE_E2E_CONFIRMED");
 });
 
 test("coupled execution verifier rejects UNKNOWN and restoration drift", () => {
@@ -243,15 +240,16 @@ test("live wiring requires explicit target data and contains no retry loop", () 
   );
   assert.match(dashboard, /expectedKind: req\.body\?\.expectedKind/);
 
-  const prebuffPublish = executor.indexOf(
-    'activeLane: "ECONOMY_PREBUFF"',
-  );
+  const prebuffPublish = executor.indexOf('activeLane: "ECONOMY_PREBUFF"');
   const prebuffTick = executor.indexOf("this.arbiter.tick()", prebuffPublish);
   const prebuffAuthorize = executor.indexOf(
     'this.arbiter.authorize("ECONOMY_PREBUFF")',
     prebuffPublish,
   );
-  const economyPublish = executor.indexOf('activeLane: "ECONOMY"', prebuffAuthorize);
+  const economyPublish = executor.indexOf(
+    'activeLane: "ECONOMY"',
+    prebuffAuthorize,
+  );
   const economyTick = executor.indexOf("this.arbiter.tick()", economyPublish);
   const economyAuthorize = executor.indexOf(
     'this.arbiter.authorize("ECONOMY")',
