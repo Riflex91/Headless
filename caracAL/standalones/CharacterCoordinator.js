@@ -760,6 +760,35 @@ function migrate_old_storage(path, localStorage) {
     });
   }
 
+  function sync_market_local_history(char_name, reason) {
+    const char_block = character_manage[char_name];
+    if (
+      !char_block?.instance ||
+      !char_block.bot_runtime_started_at
+    ) {
+      return false;
+    }
+
+    const observations = persistence.listMarketHistory({
+      server: char_block.realm || undefined,
+      limit: 1000,
+    });
+    const sent = safe_send(char_block.instance, {
+      type: "market_local_history",
+      observations,
+    });
+
+    if (sent) {
+      emit_supervisor_event("MARKET_LOCAL_HISTORY_SYNCED", char_name, {
+        reason,
+        server: char_block.realm || null,
+        samples: observations.length,
+        limit: 1000,
+      });
+    }
+    return sent;
+  }
+
   function persist_character_runtime_state(char_name, reason) {
     const char_block = character_manage[char_name];
     if (!char_block) return;
@@ -891,6 +920,7 @@ function migrate_old_storage(path, localStorage) {
       normalized.type === "RUNTIME_STARTED"
     ) {
       char_block.bot_runtime_started_at = normalized.timestamp;
+      sync_market_local_history(char_name, "RUNTIME_STARTED");
     } else if (
       char_block &&
       normalized.module === "RuntimeKernel" &&
@@ -946,59 +976,72 @@ function migrate_old_storage(path, localStorage) {
       char_block.market_live_observation_signatures =
         selected_market_observations.signatures;
 
-      selected_market_observations.observations.forEach((observation) => {
-        const item_name =
-          typeof observation.itemName === "string"
-            ? observation.itemName.trim()
-            : "";
-        const price = Number(observation.price);
-        const quantity = Number(observation.quantity);
-        if (
-          !item_name ||
-          !Number.isFinite(price) ||
-          price <= 0 ||
-          !Number.isFinite(quantity) ||
-          quantity <= 0
-        ) {
-          return;
-        }
+      const market_persistence_operations =
+        selected_market_observations.observations
+          .map((observation) => {
+            const item_name =
+              typeof observation.itemName === "string"
+                ? observation.itemName.trim()
+                : "";
+            const price = Number(observation.price);
+            const quantity = Number(observation.quantity);
+            if (
+              !item_name ||
+              !Number.isFinite(price) ||
+              price <= 0 ||
+              !Number.isFinite(quantity) ||
+              quantity <= 0
+            ) {
+              return null;
+            }
 
+            return persistence.appendMarketObservation({
+              itemName: item_name,
+              level:
+                Number.isInteger(Number(observation.level)) &&
+                Number(observation.level) >= 0
+                  ? Number(observation.level)
+                  : null,
+              price,
+              quantity,
+              server:
+                typeof observation.server === "string"
+                  ? observation.server
+                  : null,
+              seller:
+                typeof observation.seller === "string"
+                  ? observation.seller
+                  : null,
+              source: "LIVE_VISIBLE",
+              observedAt:
+                Number.isFinite(Number(observation.timestamp)) &&
+                Number(observation.timestamp) >= 0
+                  ? Number(observation.timestamp)
+                  : normalized.timestamp,
+              metadata: {
+                ...(observation.metadata &&
+                typeof observation.metadata === "object"
+                  ? observation.metadata
+                  : {}),
+                observer: char_name,
+              },
+            });
+          })
+          .filter(Boolean);
+
+      if (market_persistence_operations.length > 0) {
         void observe_persistence(
-          persistence.appendMarketObservation({
-            itemName: item_name,
-            level:
-              Number.isInteger(Number(observation.level)) &&
-              Number(observation.level) >= 0
-                ? Number(observation.level)
-                : null,
-            price,
-            quantity,
-            server:
-              typeof observation.server === "string"
-                ? observation.server
-                : null,
-            seller:
-              typeof observation.seller === "string"
-                ? observation.seller
-                : null,
-            source: "LIVE_VISIBLE",
-            observedAt:
-              Number.isFinite(Number(observation.timestamp)) &&
-              Number(observation.timestamp) >= 0
-                ? Number(observation.timestamp)
-                : normalized.timestamp,
-            metadata: {
-              ...(observation.metadata &&
-              typeof observation.metadata === "object"
-                ? observation.metadata
-                : {}),
-              observer: char_name,
-            },
-          }),
-          "market_intelligence_live_visible",
+          Promise.all(market_persistence_operations),
+          "market_intelligence_live_visible_batch",
           char_name,
-        );
-      });
+        ).then((result) => {
+          if (result !== null) {
+            sync_market_local_history(char_name, "LIVE_VISIBLE_PERSISTED");
+          }
+        });
+      }
+    }
+
     }
 
     if (
