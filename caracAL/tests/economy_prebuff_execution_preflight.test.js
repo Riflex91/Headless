@@ -314,6 +314,8 @@ test("temporary verification policy emits command only after read-only coupled c
       cleanup: {
         verificationPolicyConfigOverrideCleared: true,
         verificationPolicyPlanningRestored: true,
+        prebuffVerificationConfigOverrideCleared: true,
+        prebuffVerificationPlanningRestored: true,
       },
     },
   };
@@ -328,12 +330,26 @@ test("temporary verification policy emits command only after read-only coupled c
   assert.equal(preflight.outcome, "READY");
   assert.equal(preflight.verificationPolicy.temporary, true);
   assert.equal(preflight.verificationPolicy.cleanupConfirmed, true);
+  assert.equal(preflight.verificationPolicy.temporaryPrebuffSkills, true);
+  assert.equal(preflight.verificationPolicy.prebuffCleanupConfirmed, true);
   assert.equal(
     preflight.command,
     "npm run test:live:economy-prebuff-execution -- My_Merchant UPGRADE helmet 2",
   );
 
   source.coupledExecution.cleanup.verificationPolicyPlanningRestored = false;
+  assert.equal(
+    normalizeVerificationPolicyPreflight(
+      source,
+      "My_Merchant",
+      expected,
+      diagnostics,
+    ).outcome,
+    "NO_CANDIDATE",
+  );
+
+  source.coupledExecution.cleanup.verificationPolicyPlanningRestored = true;
+  source.coupledExecution.cleanup.prebuffVerificationConfigOverrideCleared = false;
   assert.equal(
     normalizeVerificationPolicyPreflight(
       source,
