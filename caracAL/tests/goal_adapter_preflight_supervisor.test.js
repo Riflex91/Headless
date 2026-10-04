@@ -93,7 +93,11 @@ test("runtimeReady requires an account-owned connected started runtime", () => {
 test("supervisor rejects missing, foreign and non-running targets without IPC", async () => {
   const missing = setup();
   await assert.rejects(
-    () => missing.supervisor.run("Unknown", request()),
+    () =>
+      missing.supervisor.run(
+        "Unknown",
+        request({ characterName: null }),
+      ),
     (error) => error.code === "GOAL_ADAPTER_PREFLIGHT_CHARACTER_NOT_FOUND",
   );
   assert.equal(missing.sent.length, 0);
