@@ -355,6 +355,30 @@ test("Goal identifiers and status transition table fail closed", () => {
   );
 });
 
+test("Goal intent API is wired through Coordinator without Full Autonomy execution", () => {
+  const dashboard = fs.readFileSync(
+    path.join(__dirname, "..", "src", "HeadlessDashboard.js"),
+    "utf8",
+  );
+  const coordinator = fs.readFileSync(
+    path.join(__dirname, "..", "standalones", "CharacterCoordinator.js"),
+    "utf8",
+  );
+
+  assert.match(dashboard, /router\.post\(\s*"\/headless\/api\/goals"/);
+  assert.match(
+    dashboard,
+    /router\.patch\(\s*"\/headless\/api\/goals\/:goalId"/,
+  );
+  assert.match(coordinator, /new GoalManagementService/);
+  assert.match(coordinator, /createGoal:\s*\(input\) => goal_management\.create/);
+  assert.match(
+    coordinator,
+    /updateGoal:\s*\(goalId, input\) => goal_management\.update/,
+  );
+  assert.doesNotMatch(dashboard, /\/headless\/api\/goals[^\n]*delete/i);
+});
+
 test("Goal management source has no gameplay or lifecycle mutation dependency", () => {
   const source = fs.readFileSync(
     path.join(__dirname, "..", "src", "GoalManagement.js"),
