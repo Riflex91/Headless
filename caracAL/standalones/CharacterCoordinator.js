@@ -2555,6 +2555,31 @@ function migrate_old_storage(path, localStorage) {
     });
   }
 
+  function wait_for_economy_prebuff_execution_live_test_result(
+    char_name,
+    request_id,
+  ) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        economy_prebuff_execution_live_test_requests.delete(request_id);
+        reject(
+          make_control_error(
+            "ECONOMY_PREBUFF_EXECUTION_LIVE_TEST_TIMEOUT",
+            `Economy Prebuff execution live test timed out for ${char_name}`,
+            504,
+          ),
+        );
+      }, UPGRADE_LIVE_TEST_RESULT_TIMEOUT_MS);
+
+      economy_prebuff_execution_live_test_requests.set(request_id, {
+        character: char_name,
+        resolve,
+        reject,
+        timer,
+      });
+    });
+  }
+
   function wait_for_economy_arbiter_enforcement_probe_result(
     char_name,
     request_id,
