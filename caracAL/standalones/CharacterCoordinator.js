@@ -6858,6 +6858,60 @@ function migrate_old_storage(path, localStorage) {
   ) {
     const enforcement_probe_requested =
       options.economyArbiterEnforcementProbe === true;
+    const coupled_execution_requested =
+      options.economyPrebuffExecutionLiveTest === true;
+    const expected_kind =
+      options.expectedKind === "UPGRADE" || options.expectedKind === "COMPOUND"
+        ? options.expectedKind
+        : null;
+    const expected_name =
+      typeof options.expectedName === "string"
+        ? options.expectedName.trim()
+        : "";
+    const expected_slots = Array.isArray(options.expectedSlots)
+      ? options.expectedSlots
+          .map((slot) => Number(slot))
+          .filter(
+            (slot) =>
+              Number.isInteger(slot) &&
+              Number.isFinite(slot) &&
+              slot >= 0,
+          )
+          .sort((left, right) => left - right)
+      : [];
+    const expected_slot_count = expected_kind === "UPGRADE" ? 1 : 3;
+
+    if (enforcement_probe_requested && coupled_execution_requested) {
+      throw make_control_error(
+        "GEAR_SCORING_LIVE_TEST_PROBE_CONFLICT",
+        "Economy Arbiter enforcement probe and coupled Economy Prebuff execution cannot run together",
+        400,
+      );
+    }
+    if (coupled_execution_requested) {
+      if (
+        options.confirmationToken !== ECONOMY_PREBUFF_EXECUTION_CONFIRMATION
+      ) {
+        throw make_control_error(
+          "ECONOMY_PREBUFF_EXECUTION_CONFIRMATION_REQUIRED",
+          "Coupled Economy Prebuff live execution requires CONFIRM_ONE_MUTATION",
+          400,
+        );
+      }
+      if (
+        !expected_kind ||
+        !expected_name ||
+        expected_slots.length !== expected_slot_count ||
+        new Set(expected_slots).size !== expected_slot_count
+      ) {
+        throw make_control_error(
+          "ECONOMY_PREBUFF_EXECUTION_EXPECTATION_INVALID",
+          "Coupled Economy Prebuff live execution requires an exact kind, item name, and item slots",
+          400,
+        );
+      }
+    }
+
     const char_block = character_manage[char_name];
     if (!char_block) {
       throw make_control_error(
@@ -6920,6 +6974,15 @@ function migrate_old_storage(path, localStorage) {
       original_desired_state,
       sample_ms: bounded_sample_ms,
       economy_arbiter_enforcement_probe: enforcement_probe_requested,
+      economy_prebuff_execution_live_test: coupled_execution_requested,
+      ...(coupled_execution_requested && {
+        expected_kind,
+        expected_name,
+        expected_slots: [...expected_slots],
+        irreversible_mutation: true,
+        max_value_mutations: 1,
+        blind_retry_allowed: false,
+      }),
     });
     dashboard?.publishSnapshot();
 
@@ -6927,6 +6990,8 @@ function migrate_old_storage(path, localStorage) {
     let runtime_state_restored = false;
     let enforcement_probe_result = null;
     let enforcement_probe_request_id = null;
+    let coupled_execution_result = null;
+    let coupled_execution_request_id = null;
     let result = null;
 
     try {
@@ -6965,6 +7030,49 @@ function migrate_old_storage(path, localStorage) {
       const ready_block = await wait_for_gear_scoring_live_runtime(char_name);
       const baseline_signature = gear_scoring_equipment_signature(ready_block);
       const before = gear_scoring_live_snapshot(ready_block);
+
+      if (coupled_execution_requested) {
+        coupled_execution_request_id = `${request_id}-coupled-execution`;
+        const execution_promise =
+          wait_for_economy_prebuff_execution_live_test_result(
+            char_name,
+            coupled_execution_request_id,
+          );
+        const sent = safe_send(ready_block.instance, {
+          type: "economy_prebuff_execution_live_test",
+          request_id: coupled_execution_request_id,
+          expected_kind,
+          expected_name,
+          expected_slots: [...expected_slots],
+        });
+        if (!sent) {
+          const pending = economy_prebuff_execution_live_test_requests.get(
+            coupled_execution_request_id,
+          );
+          if (pending) {
+            clearTimeout(pending.timer);
+            economy_prebuff_execution_live_test_requests.delete(
+              coupled_execution_request_id,
+            );
+          }
+          throw make_control_error(
+            "ECONOMY_PREBUFF_EXECUTION_LIVE_TEST_DISPATCH_FAILED",
+            `Could not dispatch coupled Economy Prebuff execution to ${char_name}`,
+            503,
+          );
+        }
+
+        const child_response = await execution_promise;
+        if (child_response.error || !child_response.result) {
+          throw make_control_error(
+            "ECONOMY_PREBUFF_EXECUTION_LIVE_TEST_RUNTIME_FAILED",
+            child_response.error ||
+              "Coupled Economy Prebuff execution returned no result",
+            500,
+          );
+        }
+        coupled_execution_result = child_response.result;
+      }
 
       if (enforcement_probe_requested) {
         enforcement_probe_request_id = `${request_id}-enforcement-probe`;
@@ -7025,12 +7133,28 @@ function migrate_old_storage(path, localStorage) {
       const equipment_baseline_restored =
         gear_scoring_equipment_signature(final_block) === baseline_signature;
 
+      const coupled_outcome = coupled_execution_result?.outcome || null;
+      const supervisor_outcome = !equipment_baseline_restored
+        ? "FAIL"
+        : coupled_execution_requested && coupled_outcome !== "PASS"
+          ? coupled_outcome || "FAIL"
+          : "PASS";
+      const supervisor_reason = !equipment_baseline_restored
+        ? "GEAR_SCORING_LIVE_EQUIPMENT_CHANGED"
+        : coupled_execution_requested && coupled_outcome !== "PASS"
+          ? coupled_execution_result?.reason ||
+            "ECONOMY_PREBUFF_EXECUTION_LIVE_TEST_FAILED"
+          : "GEAR_SCORING_LIVE_RUNTIME_E2E_CONFIRMED";
+      const coupled_prebuff_attempted =
+        coupled_execution_result?.execution?.prebuffAction != null;
+      const coupled_value_mutation_attempted =
+        coupled_execution_result?.execution?.economyAction != null;
+      const coupled_kind = coupled_execution_result?.execution?.kind || null;
+
       result = {
         request_id,
-        outcome: equipment_baseline_restored ? "PASS" : "FAIL",
-        reason: equipment_baseline_restored
-          ? "GEAR_SCORING_LIVE_RUNTIME_E2E_CONFIRMED"
-          : "GEAR_SCORING_LIVE_EQUIPMENT_CHANGED",
+        outcome: supervisor_outcome,
+        reason: supervisor_reason,
         character: char_name,
         started_at,
         completed_at: Date.now(),
@@ -7038,13 +7162,24 @@ function migrate_old_storage(path, localStorage) {
         before,
         after,
         enforcementProbe: enforcement_probe_result,
+        coupledExecution: coupled_execution_result,
         scope: {
-          readOnly: true,
+          readOnly: !coupled_execution_requested,
           movementMutationForced: false,
           combatMutationForced: false,
-          valueMutationForced: false,
+          valueMutationForced: coupled_value_mutation_attempted,
+          prebuffMutationForced: coupled_prebuff_attempted,
           equipmentMutationForced: false,
+          upgradeMutationForced:
+            coupled_value_mutation_attempted && coupled_kind === "UPGRADE",
+          compoundMutationForced:
+            coupled_value_mutation_attempted && coupled_kind === "COMPOUND",
+          exchangeMutationForced: false,
+          craftMutationForced: false,
+          logisticsMutationForced: false,
           runtimeOverrideApplied: true,
+          maxValueMutations: coupled_execution_requested ? 1 : 0,
+          blindRetryAllowed: false,
         },
         cleanup: {
           equipmentBaselineRestored: equipment_baseline_restored,
@@ -7067,13 +7202,28 @@ function migrate_old_storage(path, localStorage) {
         before: null,
         after: null,
         enforcementProbe: enforcement_probe_result,
+        coupledExecution: coupled_execution_result,
         scope: {
-          readOnly: true,
+          readOnly: !coupled_execution_requested,
           movementMutationForced: false,
           combatMutationForced: false,
-          valueMutationForced: false,
+          valueMutationForced:
+            coupled_execution_result?.execution?.economyAction != null,
+          prebuffMutationForced:
+            coupled_execution_result?.execution?.prebuffAction != null,
           equipmentMutationForced: false,
+          upgradeMutationForced:
+            coupled_execution_result?.execution?.economyAction != null &&
+            coupled_execution_result?.execution?.kind === "UPGRADE",
+          compoundMutationForced:
+            coupled_execution_result?.execution?.economyAction != null &&
+            coupled_execution_result?.execution?.kind === "COMPOUND",
+          exchangeMutationForced: false,
+          craftMutationForced: false,
+          logisticsMutationForced: false,
           runtimeOverrideApplied: runtime_override_applied,
+          maxValueMutations: coupled_execution_requested ? 1 : 0,
+          blindRetryAllowed: false,
         },
         cleanup: {
           equipmentBaselineRestored: false,
@@ -7081,6 +7231,18 @@ function migrate_old_storage(path, localStorage) {
         },
       };
     } finally {
+      if (coupled_execution_request_id) {
+        const pending = economy_prebuff_execution_live_test_requests.get(
+          coupled_execution_request_id,
+        );
+        if (pending) {
+          clearTimeout(pending.timer);
+          economy_prebuff_execution_live_test_requests.delete(
+            coupled_execution_request_id,
+          );
+        }
+      }
+
       if (enforcement_probe_request_id) {
         const pending = economy_arbiter_enforcement_probe_requests.get(
           enforcement_probe_request_id,
