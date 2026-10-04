@@ -30,6 +30,8 @@ function farmRequest(overrides = {}) {
     bridge: "MaterialGatheringTaskRunner",
     runtimeMethod: "runMaterialGatherTask",
     characterName: "My_Ranger1",
+    dispatchAllowed: false,
+    dispatchImplemented: false,
     arguments: {
       itemName: "gem0",
       quantity: 4,
@@ -53,12 +55,28 @@ function craftRequest(overrides = {}) {
     taskId: "craft-rod:2",
     kind: "PLAN_CRAFT",
     bridge: "CraftController",
+    dispatchAllowed: false,
+    dispatchImplemented: false,
     preflight: {
       runtimeMethod: "runCraftMaterialPlan",
       arguments: {
         recipe: "rod",
       },
       readOnly: true,
+    },
+    scopedConfigOverride: {
+      craft: {
+        enabled: true,
+        allowedRecipes: ["rod"],
+      },
+    },
+    execution: {
+      runtimeMethod: "executeCraftNext",
+      maxInvocations: 1,
+    },
+    cleanup: {
+      clearConfigOverride: true,
+      refreshPlanning: true,
     },
     ...overrides,
   };
@@ -152,6 +170,30 @@ test("Goal adapter preflight rejects unsupported request versions", async () => 
   assert.equal(result.scope.gameplayMutationDispatched, false);
   assert.equal(result.scope.valueMutationDispatched, false);
   assert.equal(result.scope.lifecycleMutationDispatched, false);
+  assert.deepEqual(setupResult.calls, []);
+});
+
+test("Goal adapter preflight rejects dispatch-enabled request contracts", async () => {
+  const setupResult = setup();
+
+  const allowed = await setupResult.runner.run(
+    farmRequest({ dispatchAllowed: true }),
+  );
+  assert.equal(allowed.outcome, "BLOCKED");
+  assert.equal(
+    allowed.reason,
+    "GOAL_ADAPTER_PREFLIGHT_DISPATCH_BOUNDARY_INVALID",
+  );
+  assert.deepEqual(setupResult.calls, []);
+
+  const implemented = await setupResult.runner.run(
+    farmRequest({ dispatchImplemented: true }),
+  );
+  assert.equal(implemented.outcome, "BLOCKED");
+  assert.equal(
+    implemented.reason,
+    "GOAL_ADAPTER_PREFLIGHT_DISPATCH_BOUNDARY_INVALID",
+  );
   assert.deepEqual(setupResult.calls, []);
 });
 
@@ -261,6 +303,36 @@ test("FARM_ITEM preflight always clears scoped override after runtime errors", a
   ]);
 });
 
+test("PLAN_CRAFT preflight requires the guarded one-shot and cleanup contract", async () => {
+  const setupResult = setup({
+    character: { name: "My_Merchant", ctype: "merchant" },
+  });
+
+  const cases = [
+    craftRequest({
+      scopedConfigOverride: {
+        craft: { enabled: true, allowedRecipes: ["other"] },
+      },
+    }),
+    craftRequest({
+      execution: { runtimeMethod: "executeCraftNext", maxInvocations: 2 },
+    }),
+    craftRequest({
+      cleanup: { clearConfigOverride: false, refreshPlanning: true },
+    }),
+  ];
+
+  for (const request of cases) {
+    const result = await setupResult.runner.run(request);
+    assert.equal(result.outcome, "BLOCKED");
+    assert.equal(
+      result.reason,
+      "GOAL_ADAPTER_PREFLIGHT_CRAFT_CONTRACT_INVALID",
+    );
+  }
+  assert.deepEqual(setupResult.calls, []);
+});
+
 test("PLAN_CRAFT preflight passes when recipe is already ready", async () => {
   const setupResult = setup({
     character: { name: "My_Merchant", ctype: "merchant" },
@@ -360,6 +432,8 @@ test("unsupported adapter kinds remain blocked", async () => {
     goalId: "gold",
     taskId: "gold:2",
     kind: "ACCUMULATE_GOLD",
+    dispatchAllowed: false,
+    dispatchImplemented: false,
   });
 
   assert.equal(result.outcome, "BLOCKED");
