@@ -1,9 +1,12 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const childProcess = require("node:child_process");
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
+const prettier = require("prettier");
 
 const {
   GOAL_ADAPTER_CAPABILITIES,
@@ -328,4 +331,28 @@ test("Goal adapter contract contains no dispatch or mutation implementation", ()
   assert.doesNotMatch(source, /\.executeNext\s*\(/);
   assert.doesNotMatch(source, /\.runMaterialGatherTask\s*\(/);
   assert.doesNotMatch(source, /\.runCraftMaterialPlan\s*\(/);
+});
+
+test("temporary Goal adapter formatter probe", async () => {
+  const target = path.join(__dirname, "..", "src", "GoalAdapter.js");
+  const source = fs.readFileSync(target, "utf8");
+  const formatted = await prettier.format(source, { filepath: target });
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "goal-adapter-prettier-"));
+  const temp = path.join(tempDir, "GoalAdapter.js");
+
+  try {
+    fs.writeFileSync(temp, formatted);
+    let diff = "";
+    try {
+      childProcess.execFileSync("diff", ["-u", target, temp], {
+        encoding: "utf8",
+      });
+    } catch (error) {
+      diff = String(error.stdout || "");
+    }
+    console.log("GOAL_ADAPTER_PRETTIER_DIFF");
+    console.log(diff || "NO_DIFF");
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
 });
