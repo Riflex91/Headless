@@ -102,6 +102,23 @@ function build_stat_beat(g_con) {
     "party",
     "isize",
     "esize",
+    "attack",
+    "frequency",
+    "speed",
+    "armor",
+    "resistance",
+    "range",
+    "str",
+    "dex",
+    "int",
+    "vit",
+    "crit",
+    "evasion",
+    "reflection",
+    "lifesteal",
+    "manasteal",
+    "apiercing",
+    "rpiercing",
   ].forEach((key) => (result[key] = character[key]));
 
   result.name = character.name || null;
