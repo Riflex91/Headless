@@ -257,6 +257,13 @@ async function runGearScoringSupervisorLiveTest(
           ...(options.economyArbiterEnforcementProbe === true && {
             economyArbiterEnforcementProbe: true,
           }),
+          ...(options.economyPrebuffExecutionLiveTest === true && {
+            economyPrebuffExecutionLiveTest: true,
+            expectedKind: options.expectedKind,
+            expectedName: options.expectedName,
+            expectedSlots: options.expectedSlots,
+            confirmationToken: options.confirmationToken,
+          }),
         }),
       },
     ),
