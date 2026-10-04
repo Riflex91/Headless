@@ -470,26 +470,28 @@ function parseCliArgs(argv = process.argv.slice(2)) {
   };
 }
 
+function statusWithReason(state, reason) {
+  const status = state || "UNKNOWN";
+  return reason ? `${status} (${reason})` : status;
+}
+
 function compactAttemptLine(attempt) {
   const source = record(attempt);
   const candidate = record(source.candidate);
+  const kind = candidate.kind || "UNKNOWN";
+  const name = candidate.name || "unknown";
   const slots = array(candidate.slots).join(",");
-  const target = [
-    candidate.kind || "UNKNOWN",
-    candidate.name || "unknown",
-    slots ? "[" + slots + "]" : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
+  const target = slots ? `${kind} ${name} [${slots}]` : `${kind} ${name}`;
+  const risk = statusWithReason(
+    source.riskPolicyState,
+    source.riskPolicyReason,
+  );
+  const prebuff = statusWithReason(
+    source.prebuffState,
+    source.prebuffReason,
+  );
 
-  const risk =
-    (source.riskPolicyState || "UNKNOWN") +
-    (source.riskPolicyReason ? " (" + source.riskPolicyReason + ")" : "");
-  const prebuff =
-    (source.prebuffState || "UNKNOWN") +
-    (source.prebuffReason ? " (" + source.prebuffReason + ")" : "");
-
-  return "  - " + target + ": risk=" + risk + "; prebuff=" + prebuff;
+  return `  - ${target}: risk=${risk}; prebuff=${prebuff}`;
 }
 
 function formatCompactResult(result) {
@@ -498,74 +500,65 @@ function formatCompactResult(result) {
   const policy = record(source.verificationPolicy);
   const attempts = array(source.verificationPolicyAttempts);
   const scope = record(source.scope);
+  const risk = statusWithReason(
+    source.riskPolicyState,
+    source.riskPolicyReason,
+  );
+  const prebuff = statusWithReason(
+    source.prebuffState,
+    source.prebuffReason,
+  );
   const lines = [
     "Economy Prebuff Execution Preflight",
-    "Outcome: " + (source.outcome || "UNKNOWN"),
-    "Reason: " + (source.reason || "UNKNOWN"),
-    "Character: " + (source.character || "UNKNOWN"),
-    "Risk Policy: " +
-      (source.riskPolicyState || "UNKNOWN") +
-      (source.riskPolicyReason
-        ? " (" + source.riskPolicyReason + ")"
-        : ""),
-    "Prebuff: " +
-      (source.prebuffState || "UNKNOWN") +
-      (source.prebuffReason ? " (" + source.prebuffReason + ")" : ""),
-    "Selected skill: " + (source.selectedSkill || "none"),
+    `Outcome: ${source.outcome || "UNKNOWN"}`,
+    `Reason: ${source.reason || "UNKNOWN"}`,
+    `Character: ${source.character || "UNKNOWN"}`,
+    `Risk Policy: ${risk}`,
+    `Prebuff: ${prebuff}`,
+    `Selected skill: ${source.selectedSkill || "none"}`,
   ];
 
   if (candidate.kind && candidate.name) {
     const slots = array(candidate.slots).join(",");
-    lines.push(
-      "Candidate: " +
-        candidate.kind +
-        " " +
-        candidate.name +
-        (slots ? " [" + slots + "]" : ""),
-    );
-    if (
-      finiteNumber(candidate.currentLevel) !== null ||
-      finiteNumber(candidate.targetLevel) !== null
-    ) {
-      lines.push(
-        "Level: " +
-          String(finiteNumber(candidate.currentLevel) ?? "?") +
-          " -> " +
-          String(finiteNumber(candidate.targetLevel) ?? "?"),
-      );
+    const suffix = slots ? ` [${slots}]` : "";
+    lines.push(`Candidate: ${candidate.kind} ${candidate.name}${suffix}`);
+
+    const currentLevel = finiteNumber(candidate.currentLevel);
+    const targetLevel = finiteNumber(candidate.targetLevel);
+    if (currentLevel !== null || targetLevel !== null) {
+      lines.push(`Level: ${currentLevel ?? "?"} -> ${targetLevel ?? "?"}`);
     }
+
     if (finiteNumber(candidate.expectedDeltaGold) !== null) {
-      lines.push("Expected delta gold: " + String(candidate.expectedDeltaGold));
+      lines.push(`Expected delta gold: ${candidate.expectedDeltaGold}`);
     }
     if (finiteNumber(candidate.successProbability) !== null) {
       lines.push(
-        "Success probability: " + String(candidate.successProbability),
+        `Success probability: ${candidate.successProbability}`,
       );
     }
   } else if (attempts.length > 0) {
-    lines.push("Verification attempts: " + attempts.length);
+    lines.push(`Verification attempts: ${attempts.length}`);
     for (const attempt of attempts) {
       lines.push(compactAttemptLine(attempt));
     }
   }
 
-  if (
+  const hasCleanupStatus =
     policy.cleanupConfirmed === true ||
-    policy.prebuffCleanupConfirmed === true
-  ) {
+    policy.prebuffCleanupConfirmed === true;
+  if (hasCleanupStatus) {
+    const cleanupConfirmed =
+      policy.cleanupConfirmed === true &&
+      policy.prebuffCleanupConfirmed === true;
     lines.push(
-      "Temporary policy cleanup: " +
-        (policy.cleanupConfirmed === true &&
-        policy.prebuffCleanupConfirmed === true
-          ? "confirmed"
-          : "incomplete"),
+      `Temporary policy cleanup: ${cleanupConfirmed ? "confirmed" : "incomplete"}`,
     );
   }
 
   lines.push(
-    "Read-only: " + (scope.readOnly === true ? "yes" : "no"),
-    "Mutation dispatched: " +
-      (scope.mutationDispatched === true ? "yes" : "no"),
+    `Read-only: ${scope.readOnly === true ? "yes" : "no"}`,
+    `Mutation dispatched: ${scope.mutationDispatched === true ? "yes" : "no"}`,
   );
 
   if (typeof source.command === "string" && source.command) {
