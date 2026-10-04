@@ -965,6 +965,7 @@ export class BotRuntimeKernel {
     let projection = this.marketIntelligence.tick();
     let movementAction: ActionRecord | null = null;
     let snapshotAction: ActionRecord | null = null;
+    let pontyNormalizedListings = this.game.ponty().length;
 
     const complete = (
       outcome: "PASS" | "WATCH" | "UNKNOWN",
@@ -980,6 +981,7 @@ export class BotRuntimeKernel {
           pontySnapshotResponseReceived:
             snapshotAction?.evidence?.responseReceived === true,
           pontySnapshotItems: Number(snapshotAction?.evidence?.itemCount ?? 0),
+          pontyNormalizedListings,
           observations: projection.summary.observations,
           aggregates: projection.summary.aggregates,
         },
@@ -1086,6 +1088,7 @@ export class BotRuntimeKernel {
       }
 
       const pontySnapshotItems = Number(snapshotAction.evidence?.itemCount ?? 0);
+      pontyNormalizedListings = this.game.ponty().length;
       if (
         snapshotAction.status === "CONFIRMED" &&
         snapshotAction.evidence?.responseReceived === true &&
