@@ -295,6 +295,7 @@ function migrate_old_storage(path, localStorage) {
   const inventory_live_test_requests = new Map();
   let inventory_live_test_sequence = 0;
   let gear_scoring_live_test_sequence = 0;
+  const economy_arbiter_enforcement_probe_requests = new Map();
   let account_gear_reservation_live_test_sequence = 0;
   let account_gear_reservation_live_test_active = false;
   const logistics_live_test_requests = new Map();
@@ -2515,6 +2516,31 @@ function migrate_old_storage(path, localStorage) {
       }, UPGRADE_LIVE_TEST_RESULT_TIMEOUT_MS);
 
       exchange_live_test_requests.set(request_id, {
+        character: char_name,
+        resolve,
+        reject,
+        timer,
+      });
+    });
+  }
+
+  function wait_for_economy_arbiter_enforcement_probe_result(
+    char_name,
+    request_id,
+  ) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        economy_arbiter_enforcement_probe_requests.delete(request_id);
+        reject(
+          make_control_error(
+            "ECONOMY_ARBITER_ENFORCEMENT_PROBE_TIMEOUT",
+            `Economy Arbiter enforcement probe timed out for ${char_name}`,
+            504,
+          ),
+        );
+      }, UPGRADE_LIVE_TEST_RESULT_TIMEOUT_MS);
+
+      economy_arbiter_enforcement_probe_requests.set(request_id, {
         character: char_name,
         resolve,
         reject,
@@ -6769,7 +6795,13 @@ function migrate_old_storage(path, localStorage) {
     }
   }
 
-  async function run_gear_scoring_live_test(char_name, sample_ms = 1200) {
+  async function run_gear_scoring_live_test(
+    char_name,
+    sample_ms = 1200,
+    options = {},
+  ) {
+    const enforcement_probe_requested =
+      options.economyArbiterEnforcementProbe === true;
     const char_block = character_manage[char_name];
     if (!char_block) {
       throw make_control_error(
@@ -6831,11 +6863,14 @@ function migrate_old_storage(path, localStorage) {
       request_id,
       original_desired_state,
       sample_ms: bounded_sample_ms,
+      economy_arbiter_enforcement_probe: enforcement_probe_requested,
     });
     dashboard?.publishSnapshot();
 
     let runtime_override_applied = false;
     let runtime_state_restored = false;
+    let enforcement_probe_result = null;
+    let enforcement_probe_request_id = null;
     let result = null;
 
     try {
@@ -6875,6 +6910,46 @@ function migrate_old_storage(path, localStorage) {
       const baseline_signature = gear_scoring_equipment_signature(ready_block);
       const before = gear_scoring_live_snapshot(ready_block);
 
+      if (enforcement_probe_requested) {
+        enforcement_probe_request_id = `${request_id}-enforcement-probe`;
+        const probe_promise =
+          wait_for_economy_arbiter_enforcement_probe_result(
+            char_name,
+            enforcement_probe_request_id,
+          );
+        const sent = safe_send(ready_block.instance, {
+          type: "economy_arbiter_enforcement_probe",
+          request_id: enforcement_probe_request_id,
+        });
+        if (!sent) {
+          const pending = economy_arbiter_enforcement_probe_requests.get(
+            enforcement_probe_request_id,
+          );
+          if (pending) {
+            clearTimeout(pending.timer);
+            economy_arbiter_enforcement_probe_requests.delete(
+              enforcement_probe_request_id,
+            );
+          }
+          throw make_control_error(
+            "ECONOMY_ARBITER_ENFORCEMENT_PROBE_DISPATCH_FAILED",
+            `Could not dispatch Economy Arbiter enforcement probe to ${char_name}`,
+            503,
+          );
+        }
+
+        const child_response = await probe_promise;
+        if (child_response.error || !child_response.result) {
+          throw make_control_error(
+            "ECONOMY_ARBITER_ENFORCEMENT_PROBE_RUNTIME_FAILED",
+            child_response.error ||
+              "Economy Arbiter enforcement probe returned no result",
+            500,
+          );
+        }
+        enforcement_probe_result = child_response.result;
+      }
+
       ready_block.gear_scoring_live_test = {
         ...ready_block.gear_scoring_live_test,
         status: "RUNNING",
@@ -6907,6 +6982,7 @@ function migrate_old_storage(path, localStorage) {
         durationMs: Date.now() - started_at,
         before,
         after,
+        enforcementProbe: enforcement_probe_result,
         scope: {
           readOnly: true,
           movementMutationForced: false,
@@ -6935,6 +7011,7 @@ function migrate_old_storage(path, localStorage) {
         durationMs: Date.now() - started_at,
         before: null,
         after: null,
+        enforcementProbe: enforcement_probe_result,
         scope: {
           readOnly: true,
           movementMutationForced: false,
@@ -6949,6 +7026,18 @@ function migrate_old_storage(path, localStorage) {
         },
       };
     } finally {
+      if (enforcement_probe_request_id) {
+        const pending = economy_arbiter_enforcement_probe_requests.get(
+          enforcement_probe_request_id,
+        );
+        if (pending) {
+          clearTimeout(pending.timer);
+          economy_arbiter_enforcement_probe_requests.delete(
+            enforcement_probe_request_id,
+          );
+        }
+      }
+
       try {
         if (runtime_override_applied) {
           await restore_movement_live_test_execution_source(
@@ -13173,6 +13262,39 @@ function migrate_old_storage(path, localStorage) {
           });
           emit_supervisor_event(
             "BANK_TRAVEL_LIVE_TEST_RESULT_RECEIVED",
+            char_name,
+            {
+              request_id: m.request_id,
+              outcome: m.result?.outcome || null,
+              error: m.error || null,
+            },
+          );
+          break;
+        }
+        case "economy_arbiter_enforcement_probe_result": {
+          const pending = economy_arbiter_enforcement_probe_requests.get(
+            m.request_id,
+          );
+          if (!pending || pending.character !== char_name) {
+            emit_supervisor_event(
+              "ECONOMY_ARBITER_ENFORCEMENT_PROBE_RESULT_IGNORED",
+              char_name,
+              {
+                why: "UNKNOWN_OR_STALE_REQUEST",
+                request_id: m.request_id || null,
+              },
+            );
+            break;
+          }
+
+          clearTimeout(pending.timer);
+          economy_arbiter_enforcement_probe_requests.delete(m.request_id);
+          pending.resolve({
+            result: m.result || null,
+            error: m.error || null,
+          });
+          emit_supervisor_event(
+            "ECONOMY_ARBITER_ENFORCEMENT_PROBE_RESULT_RECEIVED",
             char_name,
             {
               request_id: m.request_id,

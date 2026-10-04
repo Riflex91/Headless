@@ -250,6 +250,7 @@ export class EconomyArbiterController {
     Record<EconomyArbiterLane, EconomyArbiterSignal>
   >;
   private readonly onEvent?: (event: EconomyArbiterEvent) => void;
+  private configOverride: unknown | null = null;
   private lastEventSignature: string | null = null;
   private lastStatus: EconomyArbiterStatus;
 
@@ -268,6 +269,14 @@ export class EconomyArbiterController {
 
   status(): EconomyArbiterStatus {
     return this.lastStatus;
+  }
+
+  setConfigOverride(value: unknown): void {
+    this.configOverride = value;
+  }
+
+  clearConfigOverride(): void {
+    this.configOverride = null;
   }
 
   authorize(lane: EconomyArbiterLane): EconomyArbiterAuthorization {
@@ -335,7 +344,9 @@ export class EconomyArbiterController {
 
   tick(): EconomyArbiterStatus {
     const timestamp = this.now();
-    const config = normalizeConfig(this.configSource());
+    const config = normalizeConfig(
+      this.configOverride === null ? this.configSource() : this.configOverride,
+    );
 
     if (!config.enabled) {
       return this.publish(

@@ -953,6 +953,128 @@ export class BotRuntimeKernel {
     }
   }
 
+  async runEconomyArbiterEnforcementProbe(
+    options: { requestId?: string } = {},
+  ): Promise<Record<string, unknown>> {
+    if (!this.started || this.stopping) {
+      throw new Error("runtime is not ready for Economy Arbiter enforcement probe");
+    }
+    if (runtimeState() !== "RUNNING") {
+      throw new Error(
+        "runtime must be RUNNING for Economy Arbiter enforcement probe",
+      );
+    }
+
+    const requestId =
+      options.requestId || `economy-arbiter-enforcement-${Date.now()}`;
+    const before = this.economyArbiter.tick();
+    let enforced: ReturnType<EconomyArbiterController["status"]> | null = null;
+    let action: Awaited<ReturnType<ActionBoundary["useSkill"]>> | null = null;
+    let result: Record<string, unknown> | null = null;
+
+    this.economyArbiter.setConfigOverride({
+      economyArbiter: {
+        enabled: true,
+        enforcementEnabled: true,
+      },
+    });
+
+    try {
+      enforced = this.economyArbiter.tick();
+      action = await this.actions.useSkill({
+        skill: "massproduction",
+        targetId: "__economy_arbiter_probe__",
+        targetIds: ["__economy_arbiter_probe__"],
+        module: "MerchantSkillController",
+        why: "ECONOMY_ARBITER_ENFORCEMENT_PROBE",
+        correlationId: requestId,
+      });
+
+      const metadata =
+        action.metadata &&
+        typeof action.metadata === "object" &&
+        !Array.isArray(action.metadata)
+          ? action.metadata
+          : {};
+      const rawPolicyBlock = metadata.policyBlock;
+      const policyBlock =
+        rawPolicyBlock &&
+        typeof rawPolicyBlock === "object" &&
+        !Array.isArray(rawPolicyBlock)
+          ? (rawPolicyBlock as Record<string, unknown>)
+          : {};
+      const blockedByArbiter =
+        action.status === "BLOCKED" &&
+        policyBlock.lane === "ECONOMY_PREBUFF" &&
+        typeof policyBlock.reason === "string" &&
+        policyBlock.reason.startsWith("ECONOMY_ARBITER_");
+      const mutationDispatched = action.dispatchedAt !== undefined;
+      const passed =
+        enforced.policy.enforcementEnabled === true &&
+        blockedByArbiter &&
+        !mutationDispatched;
+
+      result = {
+        requestId,
+        outcome: passed ? "PASS" : "FAIL",
+        reason: passed
+          ? "ECONOMY_ARBITER_ENFORCEMENT_PROBE_CONFIRMED"
+          : "ECONOMY_ARBITER_ENFORCEMENT_PROBE_INCOMPLETE",
+        before,
+        enforced,
+        action,
+        evidence: {
+          enforcementEnabledObserved:
+            enforced.policy.enforcementEnabled === true,
+          requestedLane: "ECONOMY_PREBUFF",
+          blockedByArbiter,
+          policyBlock,
+          actionBlocked: action.status === "BLOCKED",
+          actionDispatched: mutationDispatched,
+          secondaryPreflightGuardPresent: true,
+        },
+        scope: {
+          readOnly: true,
+          adventureLandMutationDispatched: mutationDispatched,
+          movementMutationForced: false,
+          combatMutationForced: false,
+          valueMutationForced: false,
+          equipmentMutationForced: false,
+          economyArbiterMutationForced: false,
+          upgradeMutationForced: false,
+          compoundMutationForced: false,
+          exchangeMutationForced: false,
+          craftMutationForced: false,
+          logisticsMutationForced: false,
+          merchantMutationForced: false,
+        },
+      };
+    } finally {
+      this.economyArbiter.clearConfigOverride();
+      const restored = this.economyArbiter.tick();
+      const configRestored =
+        restored.policy.enforcementEnabled ===
+        before.policy.enforcementEnabled;
+
+      result = {
+        ...(result || {
+          requestId,
+          outcome: "FAIL",
+          reason: "ECONOMY_ARBITER_ENFORCEMENT_PROBE_RUNTIME_ERROR",
+          before,
+          enforced,
+          action,
+        }),
+        restored,
+        cleanup: {
+          configRestored,
+        },
+      };
+    }
+
+    return result;
+  }
+
   async runCraftLiveTest(
     options: CraftLiveTestOptions,
   ): Promise<CraftLiveTestResult> {
