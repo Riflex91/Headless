@@ -625,9 +625,11 @@ function migrate_old_storage(path, localStorage) {
       executionInFlight:
         !allowGoalDispatchInFlight &&
         (dispatch.active === true || dispatch.pending > 0),
-      safetyBlockReason: full_autonomy_safety_block_reason({
-        allowGoalDispatchInFlight,
-      }),
+      safetyBlockReason: full_autonomy_execution_inflight
+        ? "FULL_AUTONOMY_EXECUTION_IN_FLIGHT"
+        : full_autonomy_safety_block_reason({
+            allowGoalDispatchInFlight,
+          }),
     });
   }
 
@@ -16276,6 +16278,10 @@ function migrate_old_storage(path, localStorage) {
       if (coordinator_shutting_down) return;
       coordinator_ready = false;
       coordinator_shutting_down = true;
+      if (goal_execution_task) {
+        clearInterval(goal_execution_task);
+        goal_execution_task = null;
+      }
       goal_adapter_preflight_supervisor.cancelAll(
         "GOAL_ADAPTER_PREFLIGHT_COORDINATOR_SHUTDOWN",
       );
@@ -16353,7 +16359,8 @@ function migrate_old_storage(path, localStorage) {
       full_autonomy_policy.reconcileIntervalMs,
     goal_execution_enabled: goal_execution_policy.enabled,
     goal_execution_dispatch_implemented: true,
-    goal_execution_automatic_reconcile_enabled: false,
+    goal_execution_automatic_reconcile_enabled:
+      goal_reconciler.snapshot().enabled,
     goal_execution_unknown_hold_active:
       goal_adapter_dispatch_supervisor.snapshot().unknownHold !== null,
     goal_execution_reconcile_interval_ms:
@@ -16370,6 +16377,21 @@ function migrate_old_storage(path, localStorage) {
       void reconcile_full_autonomy("INTERVAL");
     }, full_autonomy_policy.reconcileIntervalMs);
     full_autonomy_task.unref?.();
+  }
+
+  if (goal_execution_policy.enabled && !observer_only) {
+    goal_execution_task = setInterval(() => {
+      void goal_reconciler
+        .run("INTERVAL")
+        .then(() => dashboard?.publishSnapshot())
+        .catch((error) => {
+          emit_supervisor_event("GOAL_RECONCILE_CYCLE_FAILED", null, {
+            error: error instanceof Error ? error.message : String(error),
+          });
+          dashboard?.publishSnapshot();
+        });
+    }, goal_execution_policy.reconcileIntervalMs);
+    goal_execution_task.unref?.();
   }
 
   my_acc.add_listener(update_siblings_and_acc);
