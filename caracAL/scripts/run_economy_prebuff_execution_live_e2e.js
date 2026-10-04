@@ -134,6 +134,10 @@ function coupledExecutionEvidence(result) {
     arbiterOverrideCleared: childCleanup.arbiterConfigOverrideCleared === true,
     arbiterEnforcementRestored:
       childCleanup.arbiterEnforcementRestored === true,
+    verificationPolicyOverrideCleared:
+      childCleanup.verificationPolicyConfigOverrideCleared === true,
+    verificationPolicyPlanningRestored:
+      childCleanup.verificationPolicyPlanningRestored === true,
     equipmentBaselineRestored:
       supervisorCleanup.equipmentBaselineRestored === true,
     runtimeStateRestored: supervisorCleanup.runtimeStateRestored === true,

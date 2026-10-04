@@ -73,6 +73,8 @@ function child(overrides = {}) {
     cleanup: {
       arbiterConfigOverrideCleared: true,
       arbiterEnforcementRestored: true,
+      verificationPolicyConfigOverrideCleared: true,
+      verificationPolicyPlanningRestored: true,
     },
     ...overrides,
   };
@@ -128,6 +130,8 @@ test("coupled execution verifier accepts one confirmed expected mutation", () =>
   assert.equal(evidence.inventoryMutationObserved, true);
   assert.equal(evidence.oneValueMutationMaximum, true);
   assert.equal(evidence.blindRetryAvoided, true);
+  assert.equal(evidence.verificationPolicyOverrideCleared, true);
+  assert.equal(evidence.verificationPolicyPlanningRestored, true);
   assert.equal(result.outcome, "PASS");
   assert.equal(result.reason, "ECONOMY_PREBUFF_EXECUTION_LIVE_E2E_CONFIRMED");
 });
@@ -226,11 +230,13 @@ test("live wiring requires explicit target data and contains no retry loop", () 
   assert.match(thread, /expectedKind:/);
   assert.match(thread, /expectedName:/);
   assert.match(thread, /expectedSlots:/);
+  assert.match(thread, /preflightOnly: m\.preflight_only === true/);
 
   assert.match(coordinator, /economy_prebuff_execution_live_test_requests/);
   assert.match(coordinator, /expected_kind/);
   assert.match(coordinator, /expected_name/);
   assert.match(coordinator, /expected_slots/);
+  assert.match(coordinator, /preflight_only/);
   assert.match(coordinator, /maxValueMutations: 1/);
   assert.match(coordinator, /blindRetryAllowed: false/);
 
@@ -239,6 +245,7 @@ test("live wiring requires explicit target data and contains no retry loop", () 
     /\/headless\/api\/characters\/:name\/tests\/economy-prebuff-execution/,
   );
   assert.match(dashboard, /expectedKind: req\.body\?\.expectedKind/);
+  assert.match(dashboard, /preflightOnly: req\.body\?\.preflightOnly === true/);
 
   const prebuffPublish = executor.indexOf('activeLane: "ECONOMY_PREBUFF"');
   const prebuffTick = executor.indexOf("this.arbiter.tick()", prebuffPublish);

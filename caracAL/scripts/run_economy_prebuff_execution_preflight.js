@@ -10,6 +10,10 @@ const {
   waitForGearScoringCharacter,
 } = require("./run_gear_scoring_live_e2e");
 
+const baseUrl = String(
+  process.env.CARACAL_HEADLESS_URL || "http://127.0.0.1:924",
+).replace(/\/$/, "");
+
 function record(value) {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value
@@ -118,6 +122,212 @@ function diagnosticsFor(after) {
       reason: economyPrebuff.reason || null,
       selectedSkill: economyPrebuff.selectedSkill || null,
       demand: record(economyPrebuff.demand),
+    },
+  };
+}
+
+function verificationPolicyCandidates(result) {
+  const after = record(record(result).after);
+  const upgrade = record(after.upgrade);
+  const compound = record(after.compound);
+  const candidates = [];
+
+  for (const rawDecision of array(upgrade.decisions)) {
+    const decision = diagnosticDecision(rawDecision);
+    if (
+      ![
+        "UPGRADE_MAX_LEVEL_POLICY_MISSING",
+        "UPGRADE_SCROLL_POLICY_MISSING",
+      ].includes(decision.reason) ||
+      decision.itemSlot === null ||
+      !decision.name ||
+      decision.protections.length > 0
+    ) {
+      continue;
+    }
+
+    candidates.push({
+      kind: "UPGRADE",
+      name: decision.name,
+      slots: [decision.itemSlot],
+    });
+  }
+
+  for (const rawDecision of array(compound.decisions)) {
+    const decision = diagnosticDecision(rawDecision);
+    if (
+      ![
+        "COMPOUND_MAX_LEVEL_POLICY_MISSING",
+        "COMPOUND_SCROLL_POLICY_MISSING",
+      ].includes(decision.reason) ||
+      decision.itemSlots.length !== 3 ||
+      new Set(decision.itemSlots).size !== 3 ||
+      !decision.name ||
+      decision.protections.length > 0
+    ) {
+      continue;
+    }
+
+    candidates.push({
+      kind: "COMPOUND",
+      name: decision.name,
+      slots: [...decision.itemSlots].sort((left, right) => left - right),
+    });
+  }
+
+  return candidates.sort(
+    (left, right) =>
+      left.kind.localeCompare(right.kind) ||
+      left.slots[0] - right.slots[0] ||
+      left.name.localeCompare(right.name),
+  );
+}
+
+async function readJson(responsePromise) {
+  const response = await responsePromise;
+  const bodyText = await response.text();
+  const body = bodyText ? JSON.parse(bodyText) : {};
+  if (!response.ok) {
+    throw new Error(
+      body?.message ||
+        body?.error ||
+        "HTTP " + response.status + " from caracAL dashboard",
+    );
+  }
+  return body;
+}
+
+async function runReadOnlyCoupledCandidatePreflight(character, candidate) {
+  return readJson(
+    fetch(
+      baseUrl +
+        "/headless/api/characters/" +
+        encodeURIComponent(character) +
+        "/tests/economy-prebuff-execution",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          expectedKind: candidate.kind,
+          expectedName: candidate.name,
+          expectedSlots: candidate.slots,
+          preflightOnly: true,
+        }),
+      },
+    ),
+  );
+}
+
+function normalizeVerificationPolicyPreflight(
+  result,
+  characterName,
+  expected,
+  diagnostics,
+) {
+  const source = record(result);
+  const child = record(source.coupledExecution);
+  const before = record(child.before);
+  const risk = record(before.riskPolicy);
+  const summary = record(risk.summary);
+  const selected = record(risk.selected);
+  const prebuff = record(before.economyPrebuff);
+  const demand = record(prebuff.demand);
+  const childScope = record(child.scope);
+  const childCleanup = record(child.cleanup);
+  const supervisorScope = record(source.scope);
+  const supervisorCleanup = record(source.cleanup);
+  const slots = array(selected.itemSlots)
+    .map((slot) => Number(slot))
+    .filter((slot) => Number.isInteger(slot) && slot >= 0)
+    .sort((left, right) => left - right);
+  const expectedSlots = [...expected.slots].sort((left, right) => left - right);
+  const candidateMatched =
+    selected.decision === "ALLOW" &&
+    selected.kind === expected.kind &&
+    selected.name === expected.name &&
+    JSON.stringify(slots) === JSON.stringify(expectedSlots);
+  const preflightConfirmed =
+    source.outcome === "PASS" &&
+    child.outcome === "PASS" &&
+    child.reason === "ECONOMY_PREBUFF_EXECUTION_LIVE_PREFLIGHT_CONFIRMED" &&
+    child.execution == null &&
+    childScope.readOnly === true &&
+    supervisorScope.readOnly === true &&
+    supervisorScope.prebuffMutationForced === false &&
+    supervisorScope.valueMutationForced === false &&
+    risk.state === "READY" &&
+    Number(summary.unknown) === 0 &&
+    candidateMatched &&
+    prebuff.state === "READY" &&
+    demand.kind === expected.kind &&
+    demand.name === expected.name &&
+    Number(demand.unknown) === 0 &&
+    typeof prebuff.selectedSkill === "string" &&
+    prebuff.selectedSkill.length > 0 &&
+    childCleanup.verificationPolicyConfigOverrideCleared === true &&
+    childCleanup.verificationPolicyPlanningRestored === true &&
+    supervisorCleanup.equipmentBaselineRestored === true &&
+    supervisorCleanup.runtimeStateRestored === true;
+
+  if (!preflightConfirmed) {
+    return {
+      outcome: "NO_CANDIDATE",
+      reason: "ECONOMY_PREBUFF_EXECUTION_VERIFICATION_POLICY_NOT_READY",
+      character: characterName,
+      expected,
+      riskPolicyState: risk.state || null,
+      riskPolicyReason: risk.reason || null,
+      prebuffState: prebuff.state || null,
+      prebuffReason: prebuff.reason || null,
+      selectedSkill: prebuff.selectedSkill || null,
+      diagnostics,
+      candidate: null,
+      command: null,
+      scope: {
+        readOnly: true,
+        mutationDispatched: false,
+      },
+    };
+  }
+
+  const slotArgument = slots.join(",");
+  return {
+    outcome: "READY",
+    reason: "ECONOMY_PREBUFF_EXECUTION_PREFLIGHT_READY",
+    character: characterName,
+    riskPolicyState: risk.state,
+    riskPolicyReason: risk.reason || null,
+    prebuffState: prebuff.state,
+    prebuffReason: prebuff.reason || null,
+    selectedSkill: prebuff.selectedSkill,
+    diagnostics,
+    verificationPolicy: {
+      temporary: true,
+      exactTarget: true,
+      cleanupConfirmed: true,
+    },
+    candidate: {
+      kind: selected.kind,
+      name: selected.name,
+      slots,
+      currentLevel: finiteNumber(selected.currentLevel),
+      targetLevel: finiteNumber(selected.targetLevel),
+      expectedDeltaGold: finiteNumber(selected.expectedDeltaGold),
+      successProbability: finiteNumber(selected.successProbability),
+      failureLossGold: finiteNumber(selected.failureLossGold),
+    },
+    command:
+      "npm run test:live:economy-prebuff-execution -- " +
+      characterName +
+      " " +
+      selected.kind +
+      " " +
+      selected.name +
+      " " +
+      slotArgument,
+    scope: {
+      readOnly: true,
+      mutationDispatched: false,
     },
   };
 }
@@ -255,7 +465,49 @@ async function main() {
           1750,
       ),
     );
-    const result = normalizeCandidate(payload.result, selected.name);
+    let result = normalizeCandidate(payload.result, selected.name);
+
+    if (result.outcome !== "READY") {
+      const candidates = verificationPolicyCandidates(payload.result);
+      const attempts = [];
+
+      for (const candidate of candidates) {
+        const probePayload = await runReadOnlyCoupledCandidatePreflight(
+          selected.name,
+          candidate,
+        );
+        const probe = normalizeVerificationPolicyPreflight(
+          probePayload.result,
+          selected.name,
+          candidate,
+          result.diagnostics,
+        );
+        attempts.push({
+          candidate,
+          outcome: probe.outcome,
+          reason: probe.reason,
+          riskPolicyState: probe.riskPolicyState,
+          riskPolicyReason: probe.riskPolicyReason,
+          prebuffState: probe.prebuffState,
+          prebuffReason: probe.prebuffReason,
+        });
+        if (probe.outcome === "READY") {
+          result = {
+            ...probe,
+            verificationPolicyAttempts: attempts,
+          };
+          break;
+        }
+      }
+
+      if (result.outcome !== "READY" && attempts.length > 0) {
+        result = {
+          ...result,
+          verificationPolicyAttempts: attempts,
+        };
+      }
+    }
+
     process.stdout.write(JSON.stringify(result, null, 2) + "\n");
 
     if (result.outcome === "READY" && result.command) {
@@ -279,4 +531,7 @@ if (require.main === module) {
 
 module.exports = {
   normalizeCandidate,
+  normalizeVerificationPolicyPreflight,
+  runReadOnlyCoupledCandidatePreflight,
+  verificationPolicyCandidates,
 };

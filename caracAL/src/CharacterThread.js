@@ -227,6 +227,7 @@ async function make_runner(upper, CODE_file, version, is_typescript) {
             expectedSlots: Array.isArray(m.expected_slots)
               ? m.expected_slots.map((slot) => Number(slot))
               : [],
+            preflightOnly: m.preflight_only === true,
           })
           .then((result) => {
             sendIpcMessage(process, {

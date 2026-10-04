@@ -268,6 +268,37 @@ test("coupled live runner confirms expected upgrade and one observed mutation", 
   assert.equal(s.counts().executeCalls, 1);
 });
 
+test("coupled live runner confirms read-only preflight without arbiter or mutation", async () => {
+  const s = setup();
+
+  const result = await s.runner.run({
+    requestId: "preflight-1",
+    expectedKind: "UPGRADE",
+    expectedName: "helmet",
+    expectedSlots: [2],
+    preflightOnly: true,
+  });
+
+  assert.equal(result.outcome, "PASS");
+  assert.equal(
+    result.reason,
+    "ECONOMY_PREBUFF_EXECUTION_LIVE_PREFLIGHT_CONFIRMED",
+  );
+  assert.equal(result.scope.readOnly, true);
+  assert.equal(result.scope.irreversibleMutation, false);
+  assert.equal(result.scope.prebuffMutationAllowed, false);
+  assert.equal(result.scope.upgradeMutationAllowed, false);
+  assert.equal(result.scope.compoundMutationAllowed, false);
+  assert.equal(result.scope.mutationScope, "read-only-coupled-preflight");
+  assert.equal(result.execution, null);
+  assert.equal(result.evidence.riskPolicyReady, true);
+  assert.equal(result.evidence.expectedCandidateMatched, true);
+  assert.equal(result.evidence.prebuffReady, true);
+  assert.equal(result.evidence.arbiterEnforcementObserved, false);
+  assert.equal(result.evidence.inventoryMutationObserved, false);
+  assert.equal(s.counts().executeCalls, 0);
+});
+
 test("coupled live runner rejects an unexpected risk candidate before execution", async () => {
   const s = setup();
 
