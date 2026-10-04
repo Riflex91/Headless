@@ -1,12 +1,9 @@
 "use strict";
 
 const assert = require("node:assert/strict");
-const childProcess = require("node:child_process");
 const fs = require("node:fs");
-const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
-const prettier = require("prettier");
 
 const {
   GOAL_TYPES,
@@ -360,26 +357,3 @@ test("Goals live launcher has no POST, control or gameplay mutation path", () =>
   assert.doesNotMatch(source, /socket\.emit/);
 });
 
-test("temporary Goals live formatter probe", async () => {
-  const target = path.join(__dirname, "..", "scripts", "run_goals_live_e2e.js");
-  const source = fs.readFileSync(target, "utf8");
-  const formatted = await prettier.format(source, { filepath: target });
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "goals-live-prettier-"));
-  const temp = path.join(tempDir, "run_goals_live_e2e.js");
-
-  try {
-    fs.writeFileSync(temp, formatted);
-    let diff = "";
-    try {
-      childProcess.execFileSync("diff", ["-u", target, temp], {
-        encoding: "utf8",
-      });
-    } catch (error) {
-      diff = String(error.stdout || "");
-    }
-    console.log("GOALS_LIVE_PRETTIER_DIFF");
-    console.log(diff || "NO_DIFF");
-  } finally {
-    fs.rmSync(tempDir, { recursive: true, force: true });
-  }
-});
