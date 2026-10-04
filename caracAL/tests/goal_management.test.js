@@ -1,12 +1,9 @@
 "use strict";
 
 const assert = require("node:assert/strict");
-const childProcess = require("node:child_process");
 const fs = require("node:fs");
-const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
-const prettier = require("prettier");
 
 const {
   GOAL_MUTATIONS,
@@ -39,10 +36,7 @@ class FakePersistence {
   }
 }
 
-function planningContext({
-  manualStopped = false,
-  level = 79,
-} = {}) {
+function planningContext({ manualStopped = false, level = 79 } = {}) {
   return {
     accountStrategy: {
       state: "READY",
@@ -69,9 +63,7 @@ function planningContext({
       My_Ranger1: {
         account_owned: true,
         desired_runtime_state: manualStopped ? "STOPPED" : "RUNNING",
-        desired_runtime_state_source: manualStopped
-          ? "MANUAL_STOP"
-          : "CONFIG",
+        desired_runtime_state_source: manualStopped ? "MANUAL_STOP" : "CONFIG",
         live_state: {
           items: [{ name: "gem0", q: 2 }],
         },
@@ -371,7 +363,10 @@ test("Goal intent API is wired through Coordinator without Full Autonomy executi
     /router\.patch\(\s*"\/headless\/api\/goals\/:goalId"/,
   );
   assert.match(coordinator, /new GoalManagementService/);
-  assert.match(coordinator, /createGoal:\s*\(input\) => goal_management\.create/);
+  assert.match(
+    coordinator,
+    /createGoal:\s*\(input\) => goal_management\.create/,
+  );
   assert.match(
     coordinator,
     /updateGoal:\s*\(goalId, input\) => goal_management\.update/,
@@ -391,36 +386,4 @@ test("Goal management source has no gameplay or lifecycle mutation dependency", 
   assert.doesNotMatch(source, /socket\.emit/);
   assert.doesNotMatch(source, /pontyBuy/);
   assert.doesNotMatch(source, /tradeList/);
-});
-
-test("temporary Phase 19.2 formatter probe", async () => {
-  const targets = [
-    path.join(__dirname, "..", "src", "GoalManagement.js"),
-    __filename,
-  ];
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "phase19-2-prettier-"));
-
-  try {
-    for (const target of targets) {
-      const source = fs.readFileSync(target, "utf8");
-      const formatted = await prettier.format(source, { filepath: target });
-      const temp = path.join(tempDir, path.basename(target));
-      fs.writeFileSync(temp, formatted);
-      let diff = "";
-      try {
-        childProcess.execFileSync("diff", ["-u", target, temp], {
-          encoding: "utf8",
-        });
-      } catch (error) {
-        diff = String(error.stdout || "");
-      }
-      console.log(
-        "PHASE19_2_PRETTIER_DIFF",
-        path.relative(path.join(__dirname, ".."), target),
-      );
-      console.log(diff || "NO_DIFF");
-    }
-  } finally {
-    fs.rmSync(tempDir, { recursive: true, force: true });
-  }
 });
