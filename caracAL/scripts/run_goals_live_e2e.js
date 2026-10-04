@@ -193,18 +193,19 @@ function goalsEvidence(snapshot) {
   const summary = record(projection.summary);
   const policy = record(projection.policy);
   const expectedTypeCounts = expectedByType(goalChecks);
-  const expectedState =
-    goals.length === 0
-      ? "EMPTY"
-      : goalChecks.some((goal) => goal.state === "INVALID")
-        ? "PARTIAL"
-        : "READY";
-  const expectedReason =
-    expectedState === "EMPTY"
-      ? "GOALS_EMPTY"
-      : expectedState === "PARTIAL"
-        ? "GOALS_PARTIAL_INVALID"
-        : "GOAL_PLANS_READY";
+  let expectedState = "READY";
+  if (goals.length === 0) {
+    expectedState = "EMPTY";
+  } else if (goalChecks.some((goal) => goal.state === "INVALID")) {
+    expectedState = "PARTIAL";
+  }
+
+  let expectedReason = "GOAL_PLANS_READY";
+  if (expectedState === "EMPTY") {
+    expectedReason = "GOALS_EMPTY";
+  } else if (expectedState === "PARTIAL") {
+    expectedReason = "GOALS_PARTIAL_INVALID";
+  }
 
   const byType = record(summary.byType);
   const byTypeValid = GOAL_TYPES.every(
@@ -257,7 +258,7 @@ function goalsEvidence(snapshot) {
     active: nonNegativeInteger(summary.active) ?? 0,
     planned: nonNegativeInteger(summary.planned) ?? 0,
     blocked: nonNegativeInteger(summary.blocked) ?? 0,
-    complete: nonNegativeInteger(summary.complete) ?? 0,
+    completedGoals: nonNegativeInteger(summary.complete) ?? 0,
     paused: nonNegativeInteger(summary.paused) ?? 0,
     cancelled: nonNegativeInteger(summary.cancelled) ?? 0,
     invalid: nonNegativeInteger(summary.invalid) ?? 0,
@@ -303,7 +304,7 @@ function formatCompactResult(result) {
     "Active: " + String(evidence.active ?? 0),
     "Planned: " + String(evidence.planned ?? 0),
     "Blocked: " + String(evidence.blocked ?? 0),
-    "Complete: " + String(evidence.complete ?? 0),
+    "Complete: " + String(evidence.completedGoals ?? 0),
     "Invalid: " + String(evidence.invalid ?? 0),
     "Goal structure valid: " +
       (evidence.goalStructureValid === true ? "yes" : "no"),
