@@ -1,6 +1,7 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
 
@@ -286,4 +287,79 @@ test("training rejects incomplete telemetry before mutation", async () => {
     s.calls.some(([name]) => name === "combatOverride"),
     false,
   );
+});
+
+test("training worker and runtime retain the normal Combat scheduler without a second tick loop", () => {
+  const worker = fs.readFileSync(
+    path.join(
+      __dirname,
+      "..",
+      "TYPECODE",
+      "bot",
+      "core",
+      "character-training-task.lib.ts",
+    ),
+    "utf8",
+  );
+  const kernel = fs.readFileSync(
+    path.join(
+      __dirname,
+      "..",
+      "TYPECODE",
+      "bot",
+      "core",
+      "runtime-kernel.lib.ts",
+    ),
+    "utf8",
+  );
+
+  assert.doesNotMatch(worker, /combat\.tick\s*\(/);
+  assert.doesNotMatch(worker, /setInterval\s*\(/);
+  assert.doesNotMatch(worker, /while\s*\([^)]*retry/i);
+  assert.match(worker, /targetMonsterTypes:\s*\[monsterType\]/);
+  assert.match(worker, /schedulerDrivenCombat:\s*true/);
+  assert.match(worker, /blindRetryUsed:\s*false/);
+
+  const start = kernel.indexOf("async runCharacterTrainingTask(");
+  const end = kernel.indexOf("async runMaterialGatherTask(", start);
+  assert.ok(start >= 0);
+  assert.ok(end > start);
+  const trainingBlock = kernel.slice(start, end);
+
+  assert.match(trainingBlock, /scheduler\.has\(COMBAT_JOB_ID\)/);
+  assert.match(
+    trainingBlock,
+    /scheduler\.unregister\(GROUP_COMBAT_JOB_ID\)/,
+  );
+  assert.match(
+    trainingBlock,
+    /scheduler\.unregister\(CLASS_SKILL_JOB_ID\)/,
+  );
+  assert.doesNotMatch(
+    trainingBlock,
+    /scheduler\.unregister\(COMBAT_JOB_ID\)/,
+  );
+  assert.match(trainingBlock, /combatSchedulerRetained:\s*true/);
+  assert.match(trainingBlock, /new CharacterTrainingTaskRunner/);
+
+  const dispatchStart = kernel.indexOf("async runGoalAdapterDispatch(");
+  const dispatchEnd = kernel.indexOf(
+    "async runCharacterTrainingTask(",
+    dispatchStart,
+  );
+  const dispatchBlock = kernel.slice(dispatchStart, dispatchEnd);
+  assert.match(
+    dispatchBlock,
+    /runCharacterTrainingTask:\s*\(trainingOptions\)\s*=>/,
+  );
+  assert.match(dispatchBlock, /this\.runCharacterTrainingTask\(trainingOptions\)/);
+
+  const preflightStart = kernel.indexOf("async runGoalAdapterPreflight(");
+  const preflightEnd = kernel.indexOf(
+    "async runGoalAdapterDispatch(",
+    preflightStart,
+  );
+  const preflightBlock = kernel.slice(preflightStart, preflightEnd);
+  assert.match(preflightBlock, /level:\s*snapshot\.level/);
+  assert.match(preflightBlock, /xp:\s*snapshot\.xp/);
 });
