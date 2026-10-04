@@ -210,7 +210,10 @@ test("Phase 17 account strategy is wired into supervisor state and persisted his
   );
 
   assert.match(coordinator, /buildAccountStrategy/);
-  assert.match(coordinator, /getAccountStrategyState:\s*account_strategy_state/);
+  assert.match(
+    coordinator,
+    /getAccountStrategyState:\s*account_strategy_state/,
+  );
   assert.match(coordinator, /persistence\.listFarmStatistics\(/);
   assert.match(coordinator, /account_strategy_history/);
   assert.match(dashboard, /account_strategy:\s*accountStrategyState/);
