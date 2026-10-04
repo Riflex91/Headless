@@ -134,6 +134,58 @@ test("GameAdapter returns read-only snapshots instead of live references", () =>
   assert.equal(state.G.items.hpot1.name, "Health Potion");
 });
 
+test("GameAdapter Ponty pricing uses runtime multipliers and keeps correlated listings", () => {
+  const { GameAdapter } = coreModule("game-adapter.lib.ts");
+  const adapter = new GameAdapter({
+    character: () => ({ items: [], slots: {} }),
+    entities: () => ({}),
+    party: () => ({}),
+    gameData: () => ({
+      items: {
+        sword: {},
+        cashitem: { cash: true },
+      },
+      multipliers: {
+        secondhands_mult: 2.5,
+        secondhands_cash_mult: 3.5,
+      },
+    }),
+    nextSkill: () => ({}),
+    bankPacks: () => ({}),
+    secondhands: () => [
+      { name: "sword", level: 2, q: 3, rid: "RID-SWORD" },
+      { name: "cashitem", q: 1, rid: "RID-CASH" },
+    ],
+    calculateItemValue: (item) => (item.name === "sword" ? 1000 : 2000),
+    now: () => 1000,
+  });
+
+  assert.deepEqual(adapter.ponty(), [
+    {
+      item: {
+        name: "cashitem",
+        level: null,
+        quantity: 1,
+        rid: "RID-CASH",
+      },
+      unitPrice: 7000,
+      totalPrice: 7000,
+      cashMultiplier: true,
+    },
+    {
+      item: {
+        name: "sword",
+        level: 2,
+        quantity: 3,
+        rid: "RID-SWORD",
+      },
+      unitPrice: 2500,
+      totalPrice: 7500,
+      cashMultiplier: false,
+    },
+  ]);
+});
+
 test("ActionBoundary blocks move before dispatch during emergency stop", () => {
   const { ActionBoundary } = coreModule("action-boundary.lib.ts");
   const { ActionLedger } = coreModule("action-ledger.lib.ts");
