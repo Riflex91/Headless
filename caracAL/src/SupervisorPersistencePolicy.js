@@ -88,7 +88,11 @@ function marketObservationSignature(observation) {
   ]);
 }
 
-function selectNewLiveMarketObservations(previousSignatures, observations) {
+function selectNewMarketObservationsBySource(
+  previousSignatures,
+  observations,
+  source,
+) {
   const previous = new Set(
     Array.isArray(previousSignatures) ? previousSignatures : [],
   );
@@ -99,7 +103,7 @@ function selectNewLiveMarketObservations(previousSignatures, observations) {
     if (
       !observation ||
       typeof observation !== "object" ||
-      observation.source !== "LIVE_VISIBLE"
+      observation.source !== source
     ) {
       continue;
     }
@@ -114,6 +118,22 @@ function selectNewLiveMarketObservations(previousSignatures, observations) {
     observations: selected,
     signatures: [...current].sort(),
   };
+}
+
+function selectNewLiveMarketObservations(previousSignatures, observations) {
+  return selectNewMarketObservationsBySource(
+    previousSignatures,
+    observations,
+    "LIVE_VISIBLE",
+  );
+}
+
+function selectNewPontyMarketObservations(previousSignatures, observations) {
+  return selectNewMarketObservationsBySource(
+    previousSignatures,
+    observations,
+    "PONTY",
+  );
 }
 
 function marketLocalHistorySyncSignature(observations) {
@@ -237,6 +257,7 @@ module.exports = {
   restoreDesiredRuntimeState,
   selectMarketLocalHistoryForRuntime,
   selectNewLiveMarketObservations,
+  selectNewPontyMarketObservations,
   shouldPersistSnapshot,
   snapshotSignature,
 };
