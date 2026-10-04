@@ -377,7 +377,15 @@ function formatCompactResult(result) {
         "Ponty normalized listings: " +
           String(sourceProbeEvidence.pontyNormalizedListings ?? 0),
       );
+      lines.push(
+        "Ponty probe samples: " +
+          String(sourceProbeEvidence.pontySamples ?? 0),
+      );
     }
+  }
+
+  if (result?.projectionSource) {
+    lines.push("Projection source: " + result.projectionSource);
   }
 
   if (missingSources.length > 0) {
@@ -492,6 +500,7 @@ async function main() {
         bootstrapUsed: true,
       };
       result.sourceProbe = record(supervisor.sourceProbe);
+      result.projectionSource = supervisor.projectionSource || null;
       result.cleanup = record(supervisor.cleanup);
     }
   } finally {
