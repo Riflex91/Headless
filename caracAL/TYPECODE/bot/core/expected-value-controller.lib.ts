@@ -285,10 +285,20 @@ function itemGrade(
 function intrinsicProbabilityGrade(
   definition: Record<string, unknown>,
 ): number | null {
+  const hasConfigured = Object.prototype.hasOwnProperty.call(
+    definition,
+    "igrade",
+  );
   const configured = integer(definition.igrade);
-  return configured !== null && configured >= 0 && configured <= 2
-    ? configured
-    : null;
+
+  if (hasConfigured) {
+    return configured !== null && configured >= 0 && configured <= 2
+      ? configured
+      : null;
+  }
+
+  const derived = itemGrade(definition, 0);
+  return derived >= 0 && derived <= 2 ? derived : null;
 }
 
 function catalogGold(definition: Record<string, unknown> | null): number | null {
