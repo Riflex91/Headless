@@ -247,7 +247,10 @@ test("Economy Prebuff supports a temporary Merchant Skill override and restores 
     config: merchantConfig({}),
   });
 
-  assert.equal(setup.controller.tick().reason, "ECONOMY_PREBUFF_NO_CONFIGURED_SKILL");
+  assert.equal(
+    setup.controller.tick().reason,
+    "ECONOMY_PREBUFF_NO_CONFIGURED_SKILL",
+  );
 
   setup.controller.setConfigOverride(
     merchantConfig({
