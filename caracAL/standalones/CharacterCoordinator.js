@@ -969,6 +969,14 @@ function migrate_old_storage(path, localStorage) {
 
     if (
       char_block &&
+      normalized.data?.economyArbiter &&
+      typeof normalized.data.economyArbiter === "object"
+    ) {
+      char_block.economy_arbiter_runtime = normalized.data.economyArbiter;
+    }
+
+    if (
+      char_block &&
       normalized.data?.upgrade &&
       typeof normalized.data.upgrade === "object"
     ) {
@@ -1251,6 +1259,8 @@ function migrate_old_storage(path, localStorage) {
     char_block.expected_value_runtime =
       char_block.expected_value_runtime || null;
     char_block.risk_policy_runtime = char_block.risk_policy_runtime || null;
+    char_block.economy_arbiter_runtime =
+      char_block.economy_arbiter_runtime || null;
     char_block.upgrade_runtime = char_block.upgrade_runtime || null;
     char_block.account_gear_reservation_runtime =
       char_block.account_gear_reservation_runtime || null;
@@ -1744,6 +1754,9 @@ function migrate_old_storage(path, localStorage) {
       ),
       riskPolicy: JSON.parse(
         JSON.stringify(char_block?.risk_policy_runtime || null),
+      ),
+      economyArbiter: JSON.parse(
+        JSON.stringify(char_block?.economy_arbiter_runtime || null),
       ),
       inventoryIntelligence: JSON.parse(
         JSON.stringify(char_block?.inventory_intelligence_runtime || null),
