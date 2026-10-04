@@ -280,9 +280,11 @@ test("Market Intelligence compact output shows source coverage and no mutation",
   assert.match(output, /Outcome: PASS/);
   assert.match(output, /LIVE_VISIBLE=1 \| PONTY=1 \| LOCAL_HISTORY=1/);
   assert.match(output, /Metrics valid: yes/);
-  assert.match(output, /Read-only: yes/);
+  assert.match(output, /Market read-only: yes/);
   assert.match(output, /Dashboard GET only: yes/);
-  assert.match(output, /Mutation dispatched: no/);
+  assert.match(output, /Movement probe dispatched: no/);
+  assert.match(output, /Ponty read request dispatched: no/);
+  assert.match(output, /Value mutation dispatched: no/);
   assert.doesNotMatch(output, /Exact guarded mutation command/);
 });
 
@@ -299,7 +301,7 @@ test("Market Intelligence compact WATCH output names missing sources", () => {
 
   assert.match(output, /Outcome: WATCH/);
   assert.match(output, /WATCH sources: PONTY/);
-  assert.match(output, /Mutation dispatched: no/);
+  assert.match(output, /Value mutation dispatched: no/);
 });
 
 test("Market Intelligence CLI defaults to compact output", () => {
@@ -431,6 +433,32 @@ test("Market Intelligence live launcher bootstraps only through paused read-only
     path.join(__dirname, "..", "standalones", "CharacterCoordinator.js"),
     "utf8",
   );
+  const thread = fs.readFileSync(
+    path.join(__dirname, "..", "src", "CharacterThread.js"),
+    "utf8",
+  );
+  const kernel = fs.readFileSync(
+    path.join(
+      __dirname,
+      "..",
+      "TYPECODE",
+      "bot",
+      "core",
+      "runtime-kernel.lib.ts",
+    ),
+    "utf8",
+  );
+  const boundary = fs.readFileSync(
+    path.join(
+      __dirname,
+      "..",
+      "TYPECODE",
+      "bot",
+      "core",
+      "action-boundary.lib.ts",
+    ),
+    "utf8",
+  );
 
   assert.match(
     dashboard,
@@ -450,6 +478,44 @@ test("Market Intelligence live launcher bootstraps only through paused read-only
     coordinator,
     /runtimeStateDuringTest:\s*DESIRED_RUNTIME_STATES\.PAUSED/,
   );
+  assert.match(coordinator, /market_intelligence_source_probe/);
+  assert.match(thread, /case "market_intelligence_source_probe"/);
+
+  const probeStart = kernel.indexOf("async runMarketIntelligenceSourceProbe(");
+  const probeEnd = kernel.indexOf(
+    "async executeEconomyPrebuffNext(",
+    probeStart,
+  );
+  assert.ok(probeStart >= 0);
+  assert.ok(probeEnd > probeStart);
+  const probeBlock = kernel.slice(probeStart, probeEnd);
+
+  assert.match(probeBlock, /runtimeState\(\) !== "PAUSED"/);
+  assert.match(probeBlock, /destination: "secondhands"/);
+  assert.match(probeBlock, /requestPontySnapshot/);
+  assert.match(probeBlock, /valueMutationAllowed: false/);
+  assert.match(probeBlock, /pontyBuyAllowed: false/);
+  assert.match(probeBlock, /tradeMutationAllowed: false/);
+  assert.match(probeBlock, /bankMutationAllowed: false/);
+  assert.match(probeBlock, /blindRetryAllowed: false/);
+  assert.doesNotMatch(probeBlock, /\.pontyBuy\s*\(/);
+  assert.doesNotMatch(probeBlock, /tradeList/);
+  assert.doesNotMatch(probeBlock, /tradeUnlist/);
+  assert.doesNotMatch(probeBlock, /"sbuy"/);
+
+  const snapshotStart = boundary.indexOf(
+    "requestPontySnapshot(request: BoundaryRequest)",
+  );
+  const snapshotEnd = boundary.indexOf("pontyBuy(request:", snapshotStart);
+  assert.ok(snapshotStart >= 0);
+  assert.ok(snapshotEnd > snapshotStart);
+  const snapshotBlock = boundary.slice(snapshotStart, snapshotEnd);
+
+  assert.match(snapshotBlock, /PONTY_SNAPSHOT_REQUEST/);
+  assert.match(snapshotBlock, /valueMutation: false/);
+  assert.match(snapshotBlock, /readOnly: true/);
+  assert.doesNotMatch(snapshotBlock, /sbuy/);
+
   assert.doesNotMatch(launcher, /ActionBoundary/);
   assert.doesNotMatch(launcher, /socket\.emit/);
   assert.doesNotMatch(launcher, /pontyBuy\s*\(/);

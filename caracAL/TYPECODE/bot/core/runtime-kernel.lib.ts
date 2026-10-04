@@ -3,6 +3,7 @@ import {
   ActionAuthorizationDecision,
   ActionIntent,
   ActionLedger,
+  ActionRecord,
 } from "./action-ledger.lib";
 import { EventBus, RuntimeEvent } from "./event-bus.lib";
 import {
@@ -375,6 +376,7 @@ export class BotRuntimeKernel {
   private bankGoldLiveTestRunning = false;
   private npcTradingLiveTestRunning = false;
   private marketTradingLiveTestRunning = false;
+  private marketIntelligenceSourceProbeRunning = false;
   private merritLiveTestRunning = false;
   private fishingLiveTestRunning = false;
   private materialGatherTaskRunning = false;
@@ -932,6 +934,188 @@ export class BotRuntimeKernel {
         server: runtimeRealm(),
       },
     });
+  }
+
+  async runMarketIntelligenceSourceProbe(
+    options: { requestId?: string; timeoutMs?: number } = {},
+  ): Promise<Record<string, unknown>> {
+    if (this.marketIntelligenceSourceProbeRunning) {
+      throw new Error("Market Intelligence source probe already running");
+    }
+    if (!this.started || this.stopping) {
+      throw new Error("runtime is not ready for Market Intelligence source probe");
+    }
+    if (runtimeState() !== "PAUSED") {
+      throw new Error(
+        "runtime must be PAUSED for Market Intelligence source probe",
+      );
+    }
+
+    const requestId =
+      options.requestId || `market-intelligence-source-probe-${Date.now()}`;
+    const requestedTimeoutMs = Number(options.timeoutMs);
+    const timeoutMs = Math.max(
+      1000,
+      Math.min(
+        30000,
+        Number.isFinite(requestedTimeoutMs) ? requestedTimeoutMs : 10000,
+      ),
+    );
+    const module = "MarketIntelligenceLiveProbe";
+    let projection = this.marketIntelligence.tick();
+    let movementAction: ActionRecord | null = null;
+    let snapshotAction: ActionRecord | null = null;
+
+    const complete = (
+      outcome: "PASS" | "WATCH" | "UNKNOWN",
+      reason: string,
+    ): Record<string, unknown> => {
+      const result = {
+        requestId,
+        outcome,
+        reason,
+        projection,
+        evidence: {
+          pontySamples: projection.summary.ponty,
+          observations: projection.summary.observations,
+          aggregates: projection.summary.aggregates,
+        },
+        actions: {
+          movement: movementAction,
+          pontySnapshotRequest: snapshotAction,
+        },
+        scope: {
+          readOnlyMarketProbe: true,
+          runtimeState: runtimeState(),
+          movementMutationAllowed: true,
+          movementMutationDispatched: movementAction?.dispatchedAt !== undefined,
+          socketReadRequestAllowed: true,
+          socketReadRequestDispatched:
+            snapshotAction?.dispatchedAt !== undefined,
+          valueMutationAllowed: false,
+          valueMutationDispatched: false,
+          pontyBuyAllowed: false,
+          tradeMutationAllowed: false,
+          bankMutationAllowed: false,
+          blindRetryAllowed: false,
+        },
+      };
+
+      this.eventBus.emit({
+        module,
+        type: "MARKET_INTELLIGENCE_SOURCE_PROBE_COMPLETED",
+        why: reason,
+        correlationId: requestId,
+        data: {
+          result,
+          marketIntelligence: projection,
+        },
+      });
+      return result;
+    };
+
+    this.marketIntelligenceSourceProbeRunning = true;
+    this.eventBus.emit({
+      module,
+      type: "MARKET_INTELLIGENCE_SOURCE_PROBE_STARTED",
+      why: "PHASE16_SOURCE_COVERAGE",
+      correlationId: requestId,
+      data: {
+        requestId,
+        timeoutMs,
+        marketIntelligence: projection,
+        ...runtimeIdentity(),
+      },
+    });
+
+    try {
+      if (projection.summary.ponty > 0) {
+        return complete(
+          "PASS",
+          "MARKET_INTELLIGENCE_PONTY_SOURCE_ALREADY_VISIBLE",
+        );
+      }
+
+      movementAction = await this.movement.smart({
+        owner: module,
+        module,
+        why: "PHASE16_PONTY_READ_PROBE",
+        destination: "secondhands",
+        correlationId: requestId,
+      });
+
+      if (movementAction.status === "UNKNOWN") {
+        return complete(
+          "UNKNOWN",
+          "MARKET_INTELLIGENCE_PONTY_MOVEMENT_UNKNOWN",
+        );
+      }
+      if (
+        movementAction.status === "BLOCKED" ||
+        movementAction.status === "REJECTED"
+      ) {
+        return complete(
+          "WATCH",
+          "MARKET_INTELLIGENCE_PONTY_MOVEMENT_UNAVAILABLE",
+        );
+      }
+
+      snapshotAction = this.actions.requestPontySnapshot({
+        module,
+        why: "PHASE16_PONTY_READ_REQUEST",
+        correlationId: requestId,
+      });
+
+      if (snapshotAction.status === "UNKNOWN") {
+        return complete(
+          "UNKNOWN",
+          "MARKET_INTELLIGENCE_PONTY_READ_REQUEST_UNKNOWN",
+        );
+      }
+      if (
+        snapshotAction.status === "BLOCKED" ||
+        snapshotAction.status === "REJECTED"
+      ) {
+        return complete(
+          "WATCH",
+          "MARKET_INTELLIGENCE_PONTY_READ_REQUEST_UNAVAILABLE",
+        );
+      }
+
+      const deadline = Date.now() + timeoutMs;
+      do {
+        projection = this.marketIntelligence.tick();
+        if (projection.summary.ponty > 0) {
+          return complete(
+            "PASS",
+            "MARKET_INTELLIGENCE_PONTY_SOURCE_OBSERVED",
+          );
+        }
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      } while (Date.now() < deadline);
+
+      projection = this.marketIntelligence.tick();
+      return complete(
+        "WATCH",
+        "MARKET_INTELLIGENCE_PONTY_SOURCE_PENDING",
+      );
+    } catch (error) {
+      this.eventBus.emit({
+        module,
+        type: "MARKET_INTELLIGENCE_SOURCE_PROBE_FAILED",
+        why: "MARKET_INTELLIGENCE_SOURCE_PROBE_RUNTIME_ERROR",
+        correlationId: requestId,
+        data: {
+          error: error instanceof Error ? error.message : String(error),
+          movementAction,
+          snapshotAction,
+          marketIntelligence: projection,
+        },
+      });
+      throw error;
+    } finally {
+      this.marketIntelligenceSourceProbeRunning = false;
+    }
   }
 
   async executeEconomyPrebuffNext(): Promise<Record<string, unknown>> {

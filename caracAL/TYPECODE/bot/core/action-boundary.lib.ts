@@ -267,6 +267,7 @@ export interface MutationDriver {
   ): Promise<unknown> | unknown;
   tradeUnlist(slot: string): Promise<unknown> | unknown;
   requestMerritStatus(): unknown;
+  requestPontySnapshot(): unknown;
   wishlist(
     slot: string | number,
     itemName: string,
@@ -294,7 +295,7 @@ function runtimeFunction(name: string): (...args: unknown[]) => unknown {
   return fn as (...args: unknown[]) => unknown;
 }
 
-function runtimeSocketEmit(event: string, payload: unknown): unknown {
+function runtimeSocketEmit(event: string, payload?: unknown): unknown {
   const local = globalThis as unknown as Record<string, unknown>;
   const parentScope =
     typeof parent === "undefined"
@@ -305,6 +306,10 @@ function runtimeSocketEmit(event: string, payload: unknown): unknown {
 
   if (typeof emit !== "function") {
     throw new Error("Adventure Land socket unavailable");
+  }
+
+  if (payload === undefined) {
+    return (emit as (event: string) => unknown).call(socket, event);
   }
 
   return (emit as (event: string, payload: unknown) => unknown).call(
@@ -397,6 +402,7 @@ export function createRuntimeMutationDriver(): MutationDriver {
     tradeUnlist: (slot) => runtimeFunction("unequip")(slot),
     requestMerritStatus: () =>
       runtimeSocketEmit("interaction", { type: "merrit_info" }),
+    requestPontySnapshot: () => runtimeSocketEmit("secondhands"),
     wishlist: (slot, itemName, price, level, quantity) =>
       runtimeFunction("wishlist")(slot, itemName, price, level, quantity),
     pontyBuy: (rid) => runtimeSocketEmit("sbuy", { rid }),
@@ -696,6 +702,7 @@ export const ACTION_BOUNDARY_MUTATION_CAPABILITIES = [
   "TRADE_LIST",
   "TRADE_UNLIST",
   "MERRIT_STATUS_REQUEST",
+  "PONTY_SNAPSHOT_REQUEST",
   "WISHLIST",
   "PONTY_BUY",
   "PARTY_INVITE",
@@ -3628,6 +3635,41 @@ export class ActionBoundary {
     }
   }
 
+
+  requestPontySnapshot(request: BoundaryRequest): ActionRecord {
+    const transaction = this.ledger.create({
+      module: request.module,
+      action: "PONTY_SNAPSHOT_REQUEST",
+      why: request.why,
+      correlationId: request.correlationId,
+      expectedEffect: {
+        secondhandsSnapshotRequested: true,
+        valueMutation: false,
+      },
+    });
+
+    if (transaction.status === "BLOCKED") return transaction;
+    this.ledger.dispatch(transaction.id, {
+      mutation: "secondhands",
+      readOnly: true,
+    });
+
+    try {
+      this.driver.requestPontySnapshot();
+      return this.ledger.confirm(transaction.id, {
+        why: "PONTY_SNAPSHOT_REQUEST_DISPATCHED",
+        evidence: {
+          requestDispatched: true,
+          readOnly: true,
+        },
+      });
+    } catch (error) {
+      return this.ledger.unknown(transaction.id, {
+        why: "PONTY_SNAPSHOT_REQUEST_UNCERTAIN",
+        error: errorMessage(error),
+      });
+    }
+  }
 
   pontyBuy(request: PontyBuyRequest): ActionRecord {
     const rid = request.rid?.trim();

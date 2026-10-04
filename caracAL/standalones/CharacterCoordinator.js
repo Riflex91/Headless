@@ -147,6 +147,7 @@ const BANK_GOLD_LIVE_TEST_RESULT_TIMEOUT_MS = 240000;
 const UPGRADE_LIVE_TEST_RESULT_TIMEOUT_MS = 120000;
 const NPC_TRADING_LIVE_TEST_RESULT_TIMEOUT_MS = 240000;
 const MARKET_TRADING_LIVE_TEST_RESULT_TIMEOUT_MS = 240000;
+const MARKET_INTELLIGENCE_SOURCE_PROBE_RESULT_TIMEOUT_MS = 120000;
 const FISHING_LIVE_TEST_RESULT_TIMEOUT_MS = 20 * 60 * 1000;
 const MATERIAL_GATHER_TASK_RESULT_TIMEOUT_MS = 6 * 60 * 1000;
 const COMPOUND_GATHER_PLAN_TIMEOUT_MS = 30000;
@@ -300,6 +301,7 @@ function migrate_old_storage(path, localStorage) {
   let inventory_live_test_sequence = 0;
   let gear_scoring_live_test_sequence = 0;
   let market_intelligence_live_test_sequence = 0;
+  const market_intelligence_source_probe_requests = new Map();
   const economy_arbiter_enforcement_probe_requests = new Map();
   const economy_prebuff_execution_live_test_requests = new Map();
   let economy_prebuff_execution_live_test_sequence = 0;
@@ -2061,6 +2063,31 @@ function migrate_old_storage(path, localStorage) {
       `Market Intelligence runtime did not become ready for ${char_name}`,
       504,
     );
+  }
+
+  function wait_for_market_intelligence_source_probe_result(
+    char_name,
+    request_id,
+  ) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        market_intelligence_source_probe_requests.delete(request_id);
+        reject(
+          make_control_error(
+            "MARKET_INTELLIGENCE_SOURCE_PROBE_TIMEOUT",
+            `Market Intelligence source probe timed out for ${char_name}`,
+            504,
+          ),
+        );
+      }, MARKET_INTELLIGENCE_SOURCE_PROBE_RESULT_TIMEOUT_MS);
+
+      market_intelligence_source_probe_requests.set(request_id, {
+        character: char_name,
+        resolve,
+        reject,
+        timer,
+      });
+    });
   }
 
   function account_gear_reservation_live_snapshot() {
@@ -7927,6 +7954,8 @@ function migrate_old_storage(path, localStorage) {
     let runtime_override_applied = false;
     let runtime_state_restored = false;
     let result = null;
+    let source_probe_result = null;
+    const source_probe_request_id = `${request_id}-ponty-source-probe`;
 
     try {
       const bundle_path = path.join(
@@ -7968,6 +7997,63 @@ function migrate_old_storage(path, localStorage) {
         status: "RUNNING",
       };
       dashboard?.publishSnapshot();
+
+      const initial_ponty_samples = Array.isArray(
+        ready_block.market_intelligence_runtime?.observations,
+      )
+        ? ready_block.market_intelligence_runtime.observations.filter(
+            (observation) => observation?.source === "PONTY",
+          ).length
+        : 0;
+
+      if (initial_ponty_samples <= 0) {
+        const source_probe_promise =
+          wait_for_market_intelligence_source_probe_result(
+            char_name,
+            source_probe_request_id,
+          );
+        const source_probe_sent = safe_send(ready_block.instance, {
+          type: "market_intelligence_source_probe",
+          request_id: source_probe_request_id,
+          timeout_ms: 10000,
+        });
+        if (!source_probe_sent) {
+          const pending = market_intelligence_source_probe_requests.get(
+            source_probe_request_id,
+          );
+          if (pending) {
+            clearTimeout(pending.timer);
+            market_intelligence_source_probe_requests.delete(
+              source_probe_request_id,
+            );
+          }
+          throw make_control_error(
+            "MARKET_INTELLIGENCE_SOURCE_PROBE_DISPATCH_FAILED",
+            `Could not dispatch Market Intelligence source probe to ${char_name}`,
+            503,
+          );
+        }
+
+        const source_probe_response = await source_probe_promise;
+        if (source_probe_response.error || !source_probe_response.result) {
+          throw make_control_error(
+            "MARKET_INTELLIGENCE_SOURCE_PROBE_RUNTIME_FAILED",
+            source_probe_response.error ||
+              "Market Intelligence source probe returned no result",
+            500,
+          );
+        }
+        source_probe_result = source_probe_response.result;
+
+        if (source_probe_result.outcome === "UNKNOWN") {
+          throw make_control_error(
+            "MARKET_INTELLIGENCE_SOURCE_PROBE_UNKNOWN",
+            source_probe_result.reason ||
+              "Market Intelligence source probe outcome is UNKNOWN",
+            500,
+          );
+        }
+      }
 
       await sleep(bounded_sample_ms);
 
@@ -8017,14 +8103,22 @@ function migrate_old_storage(path, localStorage) {
         projection: JSON.parse(JSON.stringify(projection)),
         observedSources: observed_sources,
         missingSources: missing_sources,
+        sourceProbe: source_probe_result
+          ? JSON.parse(JSON.stringify(source_probe_result))
+          : null,
         scope: {
           readOnly: true,
           runtimeStateDuringTest: DESIRED_RUNTIME_STATES.PAUSED,
-          movementMutationForced: false,
+          movementMutationForced:
+            source_probe_result?.scope?.movementMutationDispatched === true,
           combatMutationForced: false,
           valueMutationForced: false,
+          valueMutationDispatched: false,
           equipmentMutationForced: false,
-          socketRequestForced: false,
+          socketRequestForced:
+            source_probe_result?.scope?.socketReadRequestDispatched === true,
+          socketReadRequestDispatched:
+            source_probe_result?.scope?.socketReadRequestDispatched === true,
           pontyBuyForced: false,
           tradeMutationForced: false,
           mutationDispatched: false,
@@ -8038,8 +8132,11 @@ function migrate_old_storage(path, localStorage) {
       result = {
         request_id,
         outcome:
-          error.code === "MARKET_INTELLIGENCE_LIVE_TEST_RUNTIME_TIMEOUT"
+          error.code === "MARKET_INTELLIGENCE_LIVE_TEST_RUNTIME_TIMEOUT" ||
+          error.code === "MARKET_INTELLIGENCE_SOURCE_PROBE_TIMEOUT"
             ? "TIMEOUT"
+            : error.code === "MARKET_INTELLIGENCE_SOURCE_PROBE_UNKNOWN"
+            ? "UNKNOWN"
             : "FAIL",
         reason:
           error.code || error.message || "MARKET_INTELLIGENCE_LIVE_TEST_FAILED",
@@ -8050,14 +8147,22 @@ function migrate_old_storage(path, localStorage) {
         completed_at: Date.now(),
         durationMs: Date.now() - started_at,
         projection: null,
+        sourceProbe: source_probe_result
+          ? JSON.parse(JSON.stringify(source_probe_result))
+          : null,
         scope: {
           readOnly: true,
           runtimeStateDuringTest: DESIRED_RUNTIME_STATES.PAUSED,
-          movementMutationForced: false,
+          movementMutationForced:
+            source_probe_result?.scope?.movementMutationDispatched === true,
           combatMutationForced: false,
           valueMutationForced: false,
+          valueMutationDispatched: false,
           equipmentMutationForced: false,
-          socketRequestForced: false,
+          socketRequestForced:
+            source_probe_result?.scope?.socketReadRequestDispatched === true,
+          socketReadRequestDispatched:
+            source_probe_result?.scope?.socketReadRequestDispatched === true,
           pontyBuyForced: false,
           tradeMutationForced: false,
           mutationDispatched: false,
@@ -8068,6 +8173,15 @@ function migrate_old_storage(path, localStorage) {
         },
       };
     } finally {
+      const pending_source_probe =
+        market_intelligence_source_probe_requests.get(source_probe_request_id);
+      if (pending_source_probe) {
+        clearTimeout(pending_source_probe.timer);
+        market_intelligence_source_probe_requests.delete(
+          source_probe_request_id,
+        );
+      }
+
       try {
         if (runtime_override_applied) {
           await restore_market_intelligence_live_test_execution_source(
@@ -13955,6 +14069,40 @@ function migrate_old_storage(path, localStorage) {
             {
               request_id: m.request_id,
               outcome: m.result?.outcome || null,
+              error: m.error || null,
+            },
+          );
+          break;
+        }
+        case "market_intelligence_source_probe_result": {
+          const pending = market_intelligence_source_probe_requests.get(
+            m.request_id,
+          );
+          if (!pending || pending.character !== char_name) {
+            emit_supervisor_event(
+              "MARKET_INTELLIGENCE_SOURCE_PROBE_RESULT_IGNORED",
+              char_name,
+              {
+                why: "UNKNOWN_OR_STALE_REQUEST",
+                request_id: m.request_id || null,
+              },
+            );
+            break;
+          }
+
+          clearTimeout(pending.timer);
+          market_intelligence_source_probe_requests.delete(m.request_id);
+          pending.resolve({
+            result: m.result || null,
+            error: m.error || null,
+          });
+          emit_supervisor_event(
+            "MARKET_INTELLIGENCE_SOURCE_PROBE_RESULT_RECEIVED",
+            char_name,
+            {
+              request_id: m.request_id,
+              outcome: m.result?.outcome || null,
+              reason: m.result?.reason || null,
               error: m.error || null,
             },
           );
