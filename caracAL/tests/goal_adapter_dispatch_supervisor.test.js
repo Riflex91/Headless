@@ -210,8 +210,7 @@ async function start(supervisor, input = {}) {
     expectedTaskId: "goal-1:3",
     ...input,
   });
-  await Promise.resolve();
-  await Promise.resolve();
+  await new Promise((resolve) => setImmediate(resolve));
   return { pending };
 }
 
