@@ -122,6 +122,7 @@ function buildFullAutonomyExecutionDecision(
     emergencyStopActive = false,
     coordinatorShuttingDown = false,
     executionInFlight = false,
+    safetyBlockReason = null,
   } = {},
 ) {
   const normalizedPolicy = {
@@ -162,6 +163,13 @@ function buildFullAutonomyExecutionDecision(
   }
   if (executionInFlight) {
     return { ...base, reason: "FULL_AUTONOMY_EXECUTION_IN_FLIGHT" };
+  }
+  if (typeof safetyBlockReason === "string" && safetyBlockReason) {
+    return {
+      ...base,
+      reason: "FULL_AUTONOMY_SAFETY_BLOCK_ACTIVE",
+      safetyBlockReason,
+    };
   }
   if (plan?.state !== "READY") {
     return { ...base, reason: "FULL_AUTONOMY_PLAN_NOT_READY" };
