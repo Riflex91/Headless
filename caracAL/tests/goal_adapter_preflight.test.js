@@ -467,7 +467,12 @@ test("runtime and CharacterThread keep Goal adapter preflight read-only with sup
   );
 
   const start = kernel.indexOf("async runGoalAdapterPreflight(");
-  const end = kernel.indexOf("async runMaterialGatherTask(", start);
+  const dispatchStart = kernel.indexOf("async runGoalAdapterDispatch(", start);
+  const materialStart = kernel.indexOf("async runMaterialGatherTask(", start);
+  const end =
+    dispatchStart > start
+      ? dispatchStart
+      : materialStart;
   assert.ok(start >= 0);
   assert.ok(end > start);
   const preflightBlock = kernel.slice(start, end);
