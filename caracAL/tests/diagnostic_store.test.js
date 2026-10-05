@@ -62,6 +62,23 @@ test("diagnostic event store respects time filters", () => {
   );
 });
 
+test("diagnostic event store keeps the newest bounded window with amortized compaction", () => {
+  const store = new DiagnosticEventStore({ maxEvents: 100 });
+
+  for (let index = 0; index < 350; index += 1) {
+    store.append({
+      timestamp: index,
+      event: `EVENT_${index}`,
+    });
+  }
+
+  const events = store.getEvents();
+  assert.equal(events.length, 100);
+  assert.equal(events[0].event, "EVENT_250");
+  assert.equal(events.at(-1).event, "EVENT_349");
+  assert.equal(store.events.length <= 200, true);
+});
+
 test("character diagnostic contains state and sanitized events", () => {
   const snapshot = {
     characters: [

@@ -1847,10 +1847,12 @@ function attachHeadlessDashboard({
   router.use("/headless", express.static(staticDir));
 
   function publishSnapshot() {
-    if (snapshotPublishTimer) return;
+    if (clients.size === 0 || snapshotPublishTimer) return;
 
     snapshotPublishTimer = setTimeout(() => {
       snapshotPublishTimer = null;
+      if (clients.size === 0) return;
+
       const snapshot = getSnapshot();
       for (const client of clients) {
         client.write(encodeSseEvent("snapshot", snapshot));

@@ -162,6 +162,27 @@ test("runtime kernel emits periodic health without gameplay work", () => {
   assert.match(kernel, /MOVEMENT_SETTLEMENT_JOB_ID/);
 });
 
+test("runtime kernel suppresses successful scheduler lifecycle telemetry", () => {
+  const kernel = fs.readFileSync(
+    path.join(
+      __dirname,
+      "..",
+      "TYPECODE",
+      "bot",
+      "core",
+      "runtime-kernel.lib.ts",
+    ),
+    "utf8",
+  );
+
+  assert.match(
+    kernel,
+    /event\.type === "JOB_STARTED" \|\| event\.type === "JOB_COMPLETED"/,
+  );
+  assert.match(kernel, /private handleSchedulerEvent/);
+  assert.match(kernel, /module: "Scheduler"/);
+});
+
 test("CharacterThread exposes supervisor-assigned revisions", () => {
   const thread = fs.readFileSync(
     path.join(__dirname, "..", "src", "CharacterThread.js"),
