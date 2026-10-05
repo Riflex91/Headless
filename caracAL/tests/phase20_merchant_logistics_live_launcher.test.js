@@ -155,41 +155,37 @@ function passingPayload() {
   };
 }
 
-test(
-  "Phase 20.0c evaluator accepts complete parallel autonomy and logistics evidence",
-  () => {
-    const result = evaluatePhase20MerchantLogisticsResult(passingPayload());
+test("Phase 20.0c evaluator accepts complete parallel autonomy and logistics evidence", () => {
+  const result = evaluatePhase20MerchantLogisticsResult(passingPayload());
 
-    assert.equal(result.outcome, "PASS");
-    assert.equal(result.identityValid, true);
-    assert.equal(result.runtimeValid, true);
-    assert.equal(result.groupValid, true);
-    assert.equal(result.merchantValid, true);
-    assert.equal(result.logisticsValid, true);
-    assert.equal(result.scopeValid, true);
-    assert.equal(result.cleanupValid, true);
-  },
-);
-test(
-  "Phase 20.0c evaluator rejects UNKNOWN logistics even without a retry",
-  () => {
-    const payload = passingPayload();
-    payload.result.outcome = "FAIL";
-    payload.result.reason = "PHASE20_MERCHANT_LOGISTICS_OUTCOME_UNKNOWN_NO_RETRY";
-    payload.result.evidence.logistics.confirmed = false;
-    payload.result.evidence.logistics.observation.result = {
-      outcome: "UNKNOWN",
-      reason: "SEND_GOLD_OUTCOME_UNVERIFIED",
-      fulfilled: false,
-      amount: 1,
-      actionId: "A-GOLD-1",
-    };
+  assert.equal(result.outcome, "PASS");
+  assert.equal(result.identityValid, true);
+  assert.equal(result.runtimeValid, true);
+  assert.equal(result.groupValid, true);
+  assert.equal(result.merchantValid, true);
+  assert.equal(result.logisticsValid, true);
+  assert.equal(result.scopeValid, true);
+  assert.equal(result.cleanupValid, true);
+});
 
-    const result = evaluatePhase20MerchantLogisticsResult(payload);
-    assert.equal(result.outcome, "FAIL");
-    assert.equal(result.logisticsValid, false);
-  },
-);
+test("Phase 20.0c evaluator rejects UNKNOWN logistics even without a retry", () => {
+  const payload = passingPayload();
+  payload.result.outcome = "FAIL";
+  payload.result.reason = "PHASE20_MERCHANT_LOGISTICS_OUTCOME_UNKNOWN_NO_RETRY";
+  payload.result.evidence.logistics.confirmed = false;
+  payload.result.evidence.logistics.observation.result = {
+    outcome: "UNKNOWN",
+    reason: "SEND_GOLD_OUTCOME_UNVERIFIED",
+    fulfilled: false,
+    amount: 1,
+    actionId: "A-GOLD-1",
+  };
+
+  const result = evaluatePhase20MerchantLogisticsResult(payload);
+  assert.equal(result.outcome, "FAIL");
+  assert.equal(result.logisticsValid, false);
+});
+
 test("Phase 20.0c evaluator rejects missing completion suppression", () => {
   const payload = passingPayload();
   payload.result.evidence.logistics.completionSuppressed = false;
@@ -201,107 +197,96 @@ test("Phase 20.0c evaluator rejects missing completion suppression", () => {
   assert.equal(result.logisticsValid, false);
 });
 
-test(
-  "Phase 20.0c evaluator requires merchant to resume independent work",
-  () => {
-    const payload = passingPayload();
-    payload.result.evidence.merchantParallel.autonomousAfterValid = false;
-    payload.result.evidence.merchantParallel.autonomousAfter =
-      payload.result.evidence.merchantParallel.autonomousBefore;
+test("Phase 20.0c evaluator requires merchant to resume independent work", () => {
+  const payload = passingPayload();
+  payload.result.evidence.merchantParallel.autonomousAfterValid = false;
+  payload.result.evidence.merchantParallel.autonomousAfter =
+    payload.result.evidence.merchantParallel.autonomousBefore;
 
-    const result = evaluatePhase20MerchantLogisticsResult(payload);
-    assert.equal(result.outcome, "FAIL");
-    assert.equal(result.merchantValid, false);
-  },
-);
-test(
-  "Phase 20.0c evaluator rejects Merchant party membership or stalled farmers",
-  () => {
-    const payload = passingPayload();
-    payload.result.evidence.groupCombat.merchantNotInParty = false;
-    payload.result.evidence.groupCombatParallel.attackCounts.My_Mage = 0;
+  const result = evaluatePhase20MerchantLogisticsResult(payload);
+  assert.equal(result.outcome, "FAIL");
+  assert.equal(result.merchantValid, false);
+});
 
-    const result = evaluatePhase20MerchantLogisticsResult(payload);
-    assert.equal(result.outcome, "FAIL");
-    assert.equal(result.groupValid, false);
-  },
-);
-test(
-  "Phase 20.0c compact output surfaces autonomy, logistics and cleanup gates",
-  () => {
-    const output = formatCompactResult(
-      evaluatePhase20MerchantLogisticsResult(passingPayload()),
-    );
+test("Phase 20.0c evaluator rejects Merchant party membership or stalled farmers", () => {
+  const payload = passingPayload();
+  payload.result.evidence.groupCombat.merchantNotInParty = false;
+  payload.result.evidence.groupCombatParallel.attackCounts.My_Mage = 0;
 
-    assert.match(output, /Phase 20\.0c Merchant Parallel Autonomy \+ Logistics/);
-    assert.match(output, /Outcome: PASS/);
-    assert.match(output, /Merchant autonomous before: yes/);
-    assert.match(output, /Logistics dispatch count: 1/);
-    assert.match(output, /Logistics confirmed: yes/);
-    assert.match(output, /Completion suppression: yes/);
-    assert.match(output, /Ping-pong guard valid: yes/);
-    assert.match(output, /Merchant autonomous after: yes/);
-    assert.match(output, /Runtime state restored: yes/);
-  },
-);
-test(
-  "Phase 20.0c source reuses production controllers and a single logistics dispatch",
-  () => {
-    const coordinator = fs.readFileSync(
-      path.join(__dirname, "..", "standalones", "CharacterCoordinator.js"),
-      "utf8",
-    );
-    const thread = fs.readFileSync(
-      path.join(__dirname, "..", "src", "CharacterThread.js"),
-      "utf8",
-    );
-    const kernel = fs.readFileSync(
-      path.join(
-        __dirname,
-        "..",
-        "TYPECODE",
-        "bot",
-        "core",
-        "runtime-kernel.lib.ts",
-      ),
-      "utf8",
-    );
+  const result = evaluatePhase20MerchantLogisticsResult(payload);
+  assert.equal(result.outcome, "FAIL");
+  assert.equal(result.groupValid, false);
+});
 
-    assert.match(coordinator, /stage === "20\.0c"/);
-    assert.match(coordinator, /phase20_apply_logistics_overrides/);
-    assert.match(coordinator, /dispatch_merchant_logistics_claim\(\)/);
-    assert.match(coordinator, /LOGISTICS_CLAIM_RESULT_TIMEOUT_MS \+ 5000/);
-    assert.match(
-      coordinator,
-      /PHASE20_MERCHANT_LOGISTICS_OUTCOME_UNKNOWN_NO_RETRY/,
-    );
-    assert.match(coordinator, /phase20_restore_runtime_config_overrides/);
-    assert.match(thread, /case "phase20_merchant_probe"/);
-    assert.match(thread, /runPhase20MerchantProbe/);
-    assert.match(kernel, /this\.bankTravel\.tick\(\)/);
-    assert.match(kernel, /this\.movement\.smart\(\{/);
-    assert.match(kernel, /clearPhase20MerchantProbe/);
-    assert.doesNotMatch(coordinator, /send_gold\s*\(/);
-    assert.doesNotMatch(coordinator, /send_item\s*\(/);
-    assert.doesNotMatch(coordinator, /smart_move\s*\(/);
-  },
-);
-test(
-  "Phase 20.0c source keeps dispatch suppressed outside the controlled window",
-  () => {
-    const coordinator = fs.readFileSync(
-      path.join(__dirname, "..", "standalones", "CharacterCoordinator.js"),
-      "utf8",
-    );
+test("Phase 20.0c compact output surfaces autonomy, logistics and cleanup gates", () => {
+  const output = formatCompactResult(
+    evaluatePhase20MerchantLogisticsResult(passingPayload()),
+  );
 
-    assert.match(coordinator, /phase20_integration_logistics_dispatch_enabled/);
-    assert.match(
-      coordinator,
-      /phase20_integration_live_test_active &&\s*!phase20_integration_logistics_dispatch_enabled/,
-    );
-    assert.match(
-      coordinator,
-      /phase20_integration_logistics_dispatch_enabled = false/,
-    );
-  },
-);
+  assert.match(output, /Phase 20\.0c Merchant Parallel Autonomy \+ Logistics/);
+  assert.match(output, /Outcome: PASS/);
+  assert.match(output, /Merchant autonomous before: yes/);
+  assert.match(output, /Logistics dispatch count: 1/);
+  assert.match(output, /Logistics confirmed: yes/);
+  assert.match(output, /Completion suppression: yes/);
+  assert.match(output, /Ping-pong guard valid: yes/);
+  assert.match(output, /Merchant autonomous after: yes/);
+  assert.match(output, /Runtime state restored: yes/);
+});
+
+test("Phase 20.0c source reuses production controllers and a single logistics dispatch", () => {
+  const coordinator = fs.readFileSync(
+    path.join(__dirname, "..", "standalones", "CharacterCoordinator.js"),
+    "utf8",
+  );
+  const thread = fs.readFileSync(
+    path.join(__dirname, "..", "src", "CharacterThread.js"),
+    "utf8",
+  );
+  const kernel = fs.readFileSync(
+    path.join(
+      __dirname,
+      "..",
+      "TYPECODE",
+      "bot",
+      "core",
+      "runtime-kernel.lib.ts",
+    ),
+    "utf8",
+  );
+
+  assert.match(coordinator, /stage === "20\.0c"/);
+  assert.match(coordinator, /phase20_apply_logistics_overrides/);
+  assert.match(coordinator, /dispatch_merchant_logistics_claim\(\)/);
+  assert.match(coordinator, /LOGISTICS_CLAIM_RESULT_TIMEOUT_MS \+ 5000/);
+  assert.match(
+    coordinator,
+    /PHASE20_MERCHANT_LOGISTICS_OUTCOME_UNKNOWN_NO_RETRY/,
+  );
+  assert.match(coordinator, /phase20_restore_runtime_config_overrides/);
+  assert.match(thread, /case "phase20_merchant_probe"/);
+  assert.match(thread, /runPhase20MerchantProbe/);
+  assert.match(kernel, /this\.bankTravel\.tick\(\)/);
+  assert.match(kernel, /this\.movement\.smart\(\{/);
+  assert.match(kernel, /clearPhase20MerchantProbe/);
+  assert.doesNotMatch(coordinator, /send_gold\s*\(/);
+  assert.doesNotMatch(coordinator, /send_item\s*\(/);
+  assert.doesNotMatch(coordinator, /smart_move\s*\(/);
+});
+
+test("Phase 20.0c source keeps dispatch suppressed outside the controlled window", () => {
+  const coordinator = fs.readFileSync(
+    path.join(__dirname, "..", "standalones", "CharacterCoordinator.js"),
+    "utf8",
+  );
+
+  assert.match(coordinator, /phase20_integration_logistics_dispatch_enabled/);
+  assert.match(
+    coordinator,
+    /phase20_integration_live_test_active &&\s*!phase20_integration_logistics_dispatch_enabled/,
+  );
+  assert.match(
+    coordinator,
+    /phase20_integration_logistics_dispatch_enabled = false/,
+  );
+});
