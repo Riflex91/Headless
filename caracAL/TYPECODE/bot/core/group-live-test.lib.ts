@@ -318,11 +318,7 @@ export class GroupLiveTestRunner {
             result.reason = "GROUP_LIVE_E2E_PARTY_OUTCOME_UNKNOWN";
             return true;
           }
-          return pairFormed(
-            this.deps.party(),
-            options.leader,
-            options.peer,
-          );
+          return groupFormed(this.deps.party(), expectedMembers);
         },
         timeoutMs,
         pollIntervalMs,
