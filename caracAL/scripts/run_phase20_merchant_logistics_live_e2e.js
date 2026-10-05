@@ -44,9 +44,7 @@ function evaluatePhase20MerchantLogisticsResult(payload, options = {}) {
   const parallelAttackContinuity = record(
     parallelGroup.attackContinuityObserved,
   );
-  const parallelFocusContinuity = record(
-    parallelGroup.focusContinuityObserved,
-  );
+  const parallelFocusContinuity = record(parallelGroup.focusContinuityObserved);
 
   const identityValid =
     typeof evidence.merchant === "string" &&
@@ -81,9 +79,7 @@ function evaluatePhase20MerchantLogisticsResult(payload, options = {}) {
     (Number(parallelGroup.confirmedAttackCount) >= 3 &&
       farmers.every((name) => Number(parallelAttackCounts[name]) >= 1)) ||
     farmers.every((name) => parallelAttackContinuity[name] === true);
-  const followerNames = farmers.filter(
-    (name) => name !== parallelGroup.leader,
-  );
+  const followerNames = farmers.filter((name) => name !== parallelGroup.leader);
   const parallelFocusValid =
     Object.values(parallelFocusObserved).every((value) => value === true) ||
     followerNames.every((name) => parallelFocusContinuity[name] === true);
