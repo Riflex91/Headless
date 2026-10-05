@@ -234,3 +234,33 @@ test("Phase 20.0b source reuses existing runtime controllers and ActionBoundary"
   assert.match(coordinator, /merchantOnlineDuringCombat/);
   assert.match(coordinator, /PHASE20_INTEGRATION_GROUP_COMBAT_CONFIRMED/);
 });
+
+
+test("temporary Phase 20.0b Prettier probe", async () => {
+  const childProcess = require("node:child_process");
+  const os = require("node:os");
+  const prettier = require("prettier");
+
+  for (const relative of [
+    "scripts/run_phase20_group_combat_live_e2e.js",
+    "standalones/CharacterCoordinator.js",
+  ]) {
+    const absolute = path.join(__dirname, "..", relative);
+    const source = fs.readFileSync(absolute, "utf8");
+    const formatted = await prettier.format(source, { filepath: absolute });
+    if (source === formatted) continue;
+
+    const temp = path.join(
+      os.tmpdir(),
+      "phase20-prettier-" + relative.replaceAll("/", "-"),
+    );
+    fs.writeFileSync(temp, formatted);
+    const diff = childProcess.spawnSync("diff", ["-u", absolute, temp], {
+      encoding: "utf8",
+    });
+    console.log("PHASE20_PRETTIER_DIFF_START " + relative);
+    console.log(diff.stdout);
+    console.log("PHASE20_PRETTIER_DIFF_END " + relative);
+    assert.equal(source, formatted);
+  }
+});
