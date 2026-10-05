@@ -43,13 +43,14 @@ async function readState({ fetchImpl = fetch } = {}) {
 
 async function runPhase20IntegrationSupervisorLiveTest({
   fetchImpl = fetch,
+  stage,
 } = {}) {
   const response = await fetchImpl(
     baseUrl + "/headless/api/tests/phase20-integration",
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
+      body: JSON.stringify(stage ? { stage } : {}),
     },
   );
   const responseText = await response.text();
