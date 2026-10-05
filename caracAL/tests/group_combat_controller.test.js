@@ -279,197 +279,188 @@ test("follower adopts visible leader target as group focus", async () => {
   assert.equal(setup.preferred.at(-1), "monster-1");
 });
 
-test(
-  "follower retains a live focus through a transient leader target gap",
-  async () => {
-    const setup = makeSetup({
-      config: {
-        groupCombat: {
-          enabled: true,
-          role: "follower",
-          leader: "Leader",
-          party: { enabled: false },
-        },
+test("follower retains a live focus through a transient leader target gap", async () => {
+  const setup = makeSetup({
+    config: {
+      groupCombat: {
+        enabled: true,
+        role: "follower",
+        leader: "Leader",
+        party: { enabled: false },
       },
-      party: {
-        Leader: { name: "Leader" },
-        Follower: { name: "Follower" },
+    },
+    party: {
+      Leader: { name: "Leader" },
+      Follower: { name: "Follower" },
+    },
+    entities: [
+      {
+        id: "leader-id",
+        type: "character",
+        name: "Leader",
+        map: "main",
+        x: 50,
+        y: 0,
+        hp: 1000,
+        maxHp: 1000,
+        target: "monster-1",
+        dead: false,
+        rip: false,
       },
-      entities: [
-        {
-          id: "leader-id",
-          type: "character",
-          name: "Leader",
-          map: "main",
-          x: 50,
-          y: 0,
-          hp: 1000,
-          maxHp: 1000,
-          target: "monster-1",
-          dead: false,
-          rip: false,
-        },
-        {
-          id: "monster-1",
-          type: "monster",
-          name: null,
-          mtype: "goo",
-          map: "main",
-          x: 80,
-          y: 0,
-          hp: 100,
-          maxHp: 100,
-          target: "Follower",
-          dead: false,
-          rip: false,
-        },
-      ],
-    });
-
-    let status = await setup.controller.tick();
-    assert.equal(status.focusTargetId, "monster-1");
-
-    setup.state.entities.find((entity) => entity.id === "leader-id").target =
-      null;
-    status = await setup.controller.tick();
-
-    assert.equal(status.focusTargetId, "monster-1");
-    assert.equal(setup.preferred.at(-1), "monster-1");
-  },
-);
-
-test(
-  "follower reacquires a live monster attacking the leader when leader target is missing",
-  async () => {
-    const setup = makeSetup({
-      config: {
-        groupCombat: {
-          enabled: true,
-          role: "follower",
-          leader: "Leader",
-          party: { enabled: false },
-        },
+      {
+        id: "monster-1",
+        type: "monster",
+        name: null,
+        mtype: "goo",
+        map: "main",
+        x: 80,
+        y: 0,
+        hp: 100,
+        maxHp: 100,
+        target: "Follower",
+        dead: false,
+        rip: false,
       },
-      party: {
-        Leader: { name: "Leader" },
-        Follower: { name: "Follower" },
+    ],
+  });
+
+  let status = await setup.controller.tick();
+  assert.equal(status.focusTargetId, "monster-1");
+
+  setup.state.entities.find((entity) => entity.id === "leader-id").target =
+    null;
+  status = await setup.controller.tick();
+
+  assert.equal(status.focusTargetId, "monster-1");
+  assert.equal(setup.preferred.at(-1), "monster-1");
+});
+
+test("follower reacquires a live monster attacking the leader when leader target is missing", async () => {
+  const setup = makeSetup({
+    config: {
+      groupCombat: {
+        enabled: true,
+        role: "follower",
+        leader: "Leader",
+        party: { enabled: false },
       },
-      entities: [
-        {
-          id: "leader-id",
-          type: "character",
-          name: "Leader",
-          map: "main",
-          x: 50,
-          y: 0,
-          hp: 1000,
-          maxHp: 1000,
-          target: null,
-          dead: false,
-          rip: false,
-        },
-        {
-          id: "monster-2",
-          type: "monster",
-          name: null,
-          mtype: "goo",
-          map: "main",
-          x: 100,
-          y: 0,
-          hp: 100,
-          maxHp: 100,
-          target: "Leader",
-          dead: false,
-          rip: false,
-        },
-        {
-          id: "monster-1",
-          type: "monster",
-          name: null,
-          mtype: "goo",
-          map: "main",
-          x: 70,
-          y: 0,
-          hp: 100,
-          maxHp: 100,
-          target: "Leader",
-          dead: false,
-          rip: false,
-        },
-      ],
-    });
-
-    const status = await setup.controller.tick();
-
-    assert.equal(status.focusTargetId, "monster-1");
-    assert.equal(setup.preferred.at(-1), "monster-1");
-  },
-);
-
-test(
-  "follower drops a retained focus once the target is dead and no leader target exists",
-  async () => {
-    const setup = makeSetup({
-      config: {
-        groupCombat: {
-          enabled: true,
-          role: "follower",
-          leader: "Leader",
-          party: { enabled: false },
-        },
+    },
+    party: {
+      Leader: { name: "Leader" },
+      Follower: { name: "Follower" },
+    },
+    entities: [
+      {
+        id: "leader-id",
+        type: "character",
+        name: "Leader",
+        map: "main",
+        x: 50,
+        y: 0,
+        hp: 1000,
+        maxHp: 1000,
+        target: null,
+        dead: false,
+        rip: false,
       },
-      party: {
-        Leader: { name: "Leader" },
-        Follower: { name: "Follower" },
+      {
+        id: "monster-2",
+        type: "monster",
+        name: null,
+        mtype: "goo",
+        map: "main",
+        x: 100,
+        y: 0,
+        hp: 100,
+        maxHp: 100,
+        target: "Leader",
+        dead: false,
+        rip: false,
       },
-      entities: [
-        {
-          id: "leader-id",
-          type: "character",
-          name: "Leader",
-          map: "main",
-          x: 50,
-          y: 0,
-          hp: 1000,
-          maxHp: 1000,
-          target: "monster-1",
-          dead: false,
-          rip: false,
-        },
-        {
-          id: "monster-1",
-          type: "monster",
-          name: null,
-          mtype: "goo",
-          map: "main",
-          x: 80,
-          y: 0,
-          hp: 100,
-          maxHp: 100,
-          target: "Follower",
-          dead: false,
-          rip: false,
-        },
-      ],
-    });
+      {
+        id: "monster-1",
+        type: "monster",
+        name: null,
+        mtype: "goo",
+        map: "main",
+        x: 70,
+        y: 0,
+        hp: 100,
+        maxHp: 100,
+        target: "Leader",
+        dead: false,
+        rip: false,
+      },
+    ],
+  });
 
-    let status = await setup.controller.tick();
-    assert.equal(status.focusTargetId, "monster-1");
+  const status = await setup.controller.tick();
 
-    setup.state.entities.find((entity) => entity.id === "leader-id").target =
-      null;
-    const monster = setup.state.entities.find(
-      (entity) => entity.id === "monster-1",
-    );
-    monster.dead = true;
-    monster.hp = 0;
+  assert.equal(status.focusTargetId, "monster-1");
+  assert.equal(setup.preferred.at(-1), "monster-1");
+});
 
-    status = await setup.controller.tick();
+test("follower drops a retained focus once the target is dead and no leader target exists", async () => {
+  const setup = makeSetup({
+    config: {
+      groupCombat: {
+        enabled: true,
+        role: "follower",
+        leader: "Leader",
+        party: { enabled: false },
+      },
+    },
+    party: {
+      Leader: { name: "Leader" },
+      Follower: { name: "Follower" },
+    },
+    entities: [
+      {
+        id: "leader-id",
+        type: "character",
+        name: "Leader",
+        map: "main",
+        x: 50,
+        y: 0,
+        hp: 1000,
+        maxHp: 1000,
+        target: "monster-1",
+        dead: false,
+        rip: false,
+      },
+      {
+        id: "monster-1",
+        type: "monster",
+        name: null,
+        mtype: "goo",
+        map: "main",
+        x: 80,
+        y: 0,
+        hp: 100,
+        maxHp: 100,
+        target: "Follower",
+        dead: false,
+        rip: false,
+      },
+    ],
+  });
 
-    assert.equal(status.focusTargetId, null);
-    assert.equal(setup.preferred.at(-1), null);
-  },
-);
+  let status = await setup.controller.tick();
+  assert.equal(status.focusTargetId, "monster-1");
+
+  setup.state.entities.find((entity) => entity.id === "leader-id").target =
+    null;
+  const monster = setup.state.entities.find(
+    (entity) => entity.id === "monster-1",
+  );
+  monster.dead = true;
+  monster.hp = 0;
+
+  status = await setup.controller.tick();
+
+  assert.equal(status.focusTargetId, null);
+  assert.equal(setup.preferred.at(-1), null);
+});
 
 test("hard tether preempts movement and regroups to leader", async () => {
   const movement = {
