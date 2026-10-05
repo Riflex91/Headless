@@ -19,7 +19,13 @@ function array(value) {
   return Array.isArray(value) ? value : [];
 }
 
-function evaluatePhase20MerchantLogisticsResult(payload) {
+function evaluatePhase20MerchantLogisticsResult(payload, options = {}) {
+  const expectedPhase =
+    typeof options.phase === "string" ? options.phase : "20.0c";
+  const expectedReason =
+    typeof options.reason === "string"
+      ? options.reason
+      : "PHASE20_INTEGRATION_MERCHANT_LOGISTICS_CONFIRMED";
   const supervisor = record(payload?.result);
   const evidence = record(supervisor.evidence);
   const group = record(evidence.groupCombat);
@@ -129,7 +135,7 @@ function evaluatePhase20MerchantLogisticsResult(payload) {
     logisticsResult.actionId.length > 0;
 
   const scopeValid =
-    supervisor.phase === "20.0c" &&
+    supervisor.phase === expectedPhase &&
     scope.normalRuntime === true &&
     scope.lifecycleOnlyProbe === false &&
     scope.lifecycleMutationDispatched === true &&
@@ -151,7 +157,7 @@ function evaluatePhase20MerchantLogisticsResult(payload) {
 
   const pass =
     supervisor.outcome === "PASS" &&
-    supervisor.reason === "PHASE20_INTEGRATION_MERCHANT_LOGISTICS_CONFIRMED" &&
+    supervisor.reason === expectedReason &&
     identityValid &&
     runtimeValid &&
     groupValid &&
@@ -164,7 +170,7 @@ function evaluatePhase20MerchantLogisticsResult(payload) {
     ...supervisor,
     outcome: pass ? "PASS" : "FAIL",
     reason: pass
-      ? "PHASE20_INTEGRATION_MERCHANT_LOGISTICS_CONFIRMED"
+      ? expectedReason
       : supervisor.reason ||
         "PHASE20_INTEGRATION_MERCHANT_LOGISTICS_EVIDENCE_INCOMPLETE",
     evidence,
@@ -180,7 +186,11 @@ function evaluatePhase20MerchantLogisticsResult(payload) {
   };
 }
 
-function formatCompactResult(result) {
+function formatCompactResult(result, options = {}) {
+  const title =
+    typeof options.title === "string"
+      ? options.title
+      : "Phase 20.0c Merchant Parallel Autonomy + Logistics Live E2E";
   const evidence = record(result?.evidence);
   const group = record(evidence.groupCombatParallel);
   const merchant = record(evidence.merchantParallel);
@@ -188,7 +198,7 @@ function formatCompactResult(result) {
   const cleanup = record(result?.cleanup);
   return (
     [
-      "Phase 20.0c Merchant Parallel Autonomy + Logistics Live E2E",
+      title,
       "Outcome: " + (result?.outcome || "UNKNOWN"),
       "Reason: " + (result?.reason || "UNKNOWN"),
       "Merchant: " + (evidence.merchant || "NONE"),
