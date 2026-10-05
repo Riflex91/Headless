@@ -262,6 +262,8 @@ function migrate_old_storage(path, localStorage) {
   let full_autonomy_task = null;
   let full_autonomy_live_test_active = false;
   let full_autonomy_live_test_sequence = 0;
+  let phase20_integration_live_test_active = false;
+  let phase20_integration_live_test_sequence = 0;
   if (cfg.cull_versions) {
     await game_files.cull_versions([version]);
   }
@@ -488,6 +490,7 @@ function migrate_old_storage(path, localStorage) {
         runInventoryLiveTest: run_inventory_live_test,
         runGearScoringLiveTest: run_gear_scoring_live_test,
         runAccountStrategyLiveTest: run_account_strategy_live_test,
+        runPhase20IntegrationLiveTest: run_phase20_integration_live_test,
         runFullAutonomyLiveTest: run_full_autonomy_live_test,
         runMarketIntelligenceLiveTest: run_market_intelligence_live_test,
         runEconomyPrebuffExecutionLiveTest:
@@ -640,6 +643,7 @@ function migrate_old_storage(path, localStorage) {
       goal_adapter_preflight_supervisor.snapshot().pending > 0 ||
       goal_adapter_dispatch_supervisor.snapshot().pending > 0 ||
       logistics_claim_requests.size > 0 ||
+      phase20_integration_live_test_active ||
       full_autonomy_live_test_active ||
       account_strategy_live_test_active ||
       economy_prebuff_execution_live_test_active ||
@@ -909,6 +913,525 @@ function migrate_old_storage(path, localStorage) {
           original.lifecycleOnlyProbe
       );
     });
+  }
+
+  function phase20_integration_live_test_snapshot(char_block) {
+    return {
+      enabled: char_block.enabled === true,
+      desiredRuntimeState:
+        char_block.desired_runtime_state || DESIRED_RUNTIME_STATES.STOPPED,
+      desiredRuntimeStateSource:
+        char_block.desired_runtime_state_source || "UNKNOWN",
+      lifecycleState:
+        char_block.lifecycle_state || LIFECYCLE_STATES.STOPPED,
+      runtimeReady:
+        !!char_block.instance &&
+        char_block.connected === true &&
+        Number.isFinite(char_block.bot_runtime_started_at),
+      runtimeOverride:
+        typeof char_block.movement_live_test_typescript_override === "string"
+          ? char_block.movement_live_test_typescript_override
+          : null,
+      lifecycleOnlyProbe:
+        char_block.full_autonomy_live_test_lifecycle_only === true,
+      rotationSource: char_block.rotation_source || null,
+      rotationReplacement: char_block.rotation_replacement || null,
+    };
+  }
+
+  function phase20_integration_runtime_ready(char_block) {
+    return (
+      !!char_block?.instance &&
+      char_block.connected === true &&
+      Number.isFinite(char_block.bot_runtime_started_at) &&
+      [LIFECYCLE_STATES.ONLINE, LIFECYCLE_STATES.PAUSED].includes(
+        char_block.lifecycle_state,
+      )
+    );
+  }
+
+  function phase20_integration_runtime_stable(char_block) {
+    if (!char_block) return false;
+    if (char_block.instance) return phase20_integration_runtime_ready(char_block);
+    return (
+      char_block.connected !== true &&
+      char_block.lifecycle_state === LIFECYCLE_STATES.STOPPED
+    );
+  }
+
+  async function wait_for_phase20_integration_live_test(
+    predicate,
+    timeout_ms = 90000,
+  ) {
+    const started_at = Date.now();
+    while (Date.now() - started_at < timeout_ms) {
+      if (predicate()) return true;
+      await sleep(100);
+    }
+    return false;
+  }
+
+  async function restore_phase20_integration_live_test_state(
+    character_names,
+    originals,
+  ) {
+    for (const char_name of character_names) {
+      const char_block = character_manage[char_name];
+      if (!char_block) continue;
+      char_block.enabled = false;
+      char_block.desired_runtime_state = DESIRED_RUNTIME_STATES.STOPPED;
+      char_block.desired_runtime_state_source =
+        "PHASE20_INTEGRATION_LIVE_TEST_CLEANUP";
+      clear_restart_timer(char_block);
+      clear_stable_timer(char_block);
+      persist_character_runtime_state(
+        char_name,
+        "phase20_integration_live_test_cleanup",
+      );
+    }
+
+    await Promise.all(
+      character_names.map(async (char_name) => {
+        const char_block = character_manage[char_name];
+        if (char_block?.instance) {
+          await softkill_block(char_block);
+        }
+      }),
+    );
+
+    const stopped = await wait_for_phase20_integration_live_test(
+      () =>
+        character_names.every((char_name) => {
+          const block = character_manage[char_name];
+          return !block?.instance && block?.connected !== true;
+        }),
+      15000,
+    );
+
+    for (const char_name of character_names) {
+      const char_block = character_manage[char_name];
+      const original = originals[char_name];
+      if (!char_block || !original) continue;
+
+      clear_restart_timer(char_block);
+      clear_stable_timer(char_block);
+      char_block.enabled = original.enabled;
+      char_block.desired_runtime_state = original.desiredRuntimeState;
+      char_block.desired_runtime_state_source =
+        original.desiredRuntimeStateSource;
+      char_block.movement_live_test_typescript_override =
+        original.runtimeOverride;
+      char_block.full_autonomy_live_test_lifecycle_only =
+        original.lifecycleOnlyProbe;
+      char_block.rotation_source = original.rotationSource;
+      char_block.rotation_replacement = original.rotationReplacement;
+      char_block.connected = false;
+      char_block.lifecycle_state = LIFECYCLE_STATES.STOPPED;
+      persist_character_runtime_state(
+        char_name,
+        "phase20_integration_live_test_restore",
+      );
+    }
+
+    const originally_running = character_names.filter(
+      (char_name) => originals[char_name]?.runtimeReady === true,
+    );
+
+    let restart_ok = true;
+    for (const char_name of originally_running) {
+      const char_block = character_manage[char_name];
+      if (!char_block?.enabled) {
+        restart_ok = false;
+        continue;
+      }
+      if (!start_char(char_name)) {
+        restart_ok = false;
+        continue;
+      }
+      if (lifecycle_policy.startupStaggerMs > 0) {
+        await sleep(lifecycle_policy.startupStaggerMs);
+      }
+    }
+
+    const ready = await wait_for_phase20_integration_live_test(
+      () =>
+        originally_running.every((char_name) =>
+          phase20_integration_runtime_ready(character_manage[char_name]),
+        ),
+      90000,
+    );
+
+    const originally_stopped = character_names.filter(
+      (char_name) => originals[char_name]?.runtimeReady !== true,
+    );
+    for (const char_name of originally_stopped) {
+      const char_block = character_manage[char_name];
+      const original = originals[char_name];
+      if (!char_block || !original || char_block.instance) continue;
+      char_block.lifecycle_state = original.lifecycleState;
+    }
+
+    refresh_merchant_logistics("PHASE20_INTEGRATION_LIVE_TEST_RESTORE");
+    refresh_account_gear_reservations(
+      "PHASE20_INTEGRATION_LIVE_TEST_RESTORE",
+    );
+
+    const metadata_restored = character_names.every((char_name) => {
+      const char_block = character_manage[char_name];
+      const original = originals[char_name];
+      return (
+        !!char_block &&
+        !!original &&
+        char_block.enabled === original.enabled &&
+        char_block.desired_runtime_state === original.desiredRuntimeState &&
+        char_block.desired_runtime_state_source ===
+          original.desiredRuntimeStateSource &&
+        (char_block.movement_live_test_typescript_override || null) ===
+          original.runtimeOverride &&
+        char_block.full_autonomy_live_test_lifecycle_only ===
+          original.lifecycleOnlyProbe
+      );
+    });
+
+    const restored_active = character_names.filter((char_name) =>
+      phase20_integration_runtime_ready(character_manage[char_name]),
+    );
+
+    return {
+      restored:
+        stopped === true &&
+        restart_ok === true &&
+        ready === true &&
+        metadata_restored === true &&
+        restored_active.length === originally_running.length,
+      originallyRunning: originally_running,
+      restoredRunning: restored_active,
+    };
+  }
+
+  async function run_phase20_integration_live_test() {
+    const ready_deadline = Date.now() + 10000;
+    while (!coordinator_ready && Date.now() < ready_deadline) {
+      await sleep(50);
+    }
+    if (!coordinator_ready) {
+      throw make_control_error(
+        "PHASE20_INTEGRATION_SUPERVISOR_NOT_READY",
+        "Supervisor initialization did not complete before Phase 20.0 integration bootstrap",
+        503,
+      );
+    }
+    if (observer_only) {
+      throw make_control_error(
+        "PHASE20_INTEGRATION_REQUIRES_NORMAL_SUPERVISOR",
+        "Phase 20.0 integration bootstrap requires the normal bot runtime",
+        409,
+      );
+    }
+    if (phase20_integration_live_test_active) {
+      throw make_control_error(
+        "PHASE20_INTEGRATION_ALREADY_ACTIVE",
+        "A Phase 20.0 integration bootstrap is already active",
+        409,
+      );
+    }
+    if (emergency_stop.snapshot().active) {
+      throw make_control_error(
+        "PHASE20_INTEGRATION_EMERGENCY_STOP_ACTIVE",
+        "Emergency stop must be clear before Phase 20.0 integration bootstrap",
+        409,
+      );
+    }
+    const safety_block = full_autonomy_safety_block_reason();
+    if (safety_block) {
+      throw make_control_error(
+        "PHASE20_INTEGRATION_CONTROLLED_OPERATION_ACTIVE",
+        "Another controlled operation is active",
+        409,
+      );
+    }
+
+    const account_names = Object.keys(character_manage)
+      .filter((name) => character_manage[name]?.account_owned === true)
+      .sort();
+
+    const stable = await wait_for_phase20_integration_live_test(
+      () =>
+        account_names.every((name) =>
+          phase20_integration_runtime_stable(character_manage[name]),
+        ),
+      10000,
+    );
+    if (!stable) {
+      throw make_control_error(
+        "PHASE20_INTEGRATION_RUNTIME_NOT_STABLE",
+        "Account runtime did not settle before Phase 20.0 integration bootstrap",
+        409,
+      );
+    }
+
+    const originals = Object.fromEntries(
+      account_names.map((name) => [
+        name,
+        phase20_integration_live_test_snapshot(character_manage[name]),
+      ]),
+    );
+
+    const merchant_candidates = account_names.filter((name) => {
+      const block = character_manage[name];
+      return (
+        String(block?.account_character_type || block?.live_state?.ctype || "")
+          .toLowerCase() === "merchant"
+      );
+    });
+    const merchant_name =
+      merchant_candidates.find((name) => name === "My_Merchant") ||
+      merchant_candidates[0] ||
+      null;
+
+    if (!merchant_name) {
+      throw make_control_error(
+        "PHASE20_INTEGRATION_MERCHANT_MISSING",
+        "Phase 20.0 integration bootstrap requires an account-owned Merchant",
+        409,
+      );
+    }
+
+    const combat_names = account_names
+      .filter((name) => name !== merchant_name)
+      .filter((name) => {
+        const block = character_manage[name];
+        return (
+          String(
+            block?.account_character_type || block?.live_state?.ctype || "",
+          ).toLowerCase() !== "merchant"
+        );
+      })
+      .sort((left, right) => {
+        const active_delta =
+          Number(originals[right]?.runtimeReady === true) -
+          Number(originals[left]?.runtimeReady === true);
+        return active_delta || left.localeCompare(right);
+      })
+      .slice(0, 3);
+
+    if (combat_names.length !== 3) {
+      throw make_control_error(
+        "PHASE20_INTEGRATION_COMBAT_CANDIDATES_INSUFFICIENT",
+        "Phase 20.0 integration bootstrap requires three account-owned Combat characters",
+        409,
+      );
+    }
+
+    const selected_names = [...combat_names, merchant_name];
+    phase20_integration_live_test_sequence += 1;
+    const test_id =
+      "phase20-integration-live-" +
+      Date.now() +
+      "-" +
+      phase20_integration_live_test_sequence;
+    let result = {
+      testId: test_id,
+      phase: "20.0a",
+      outcome: "FAIL",
+      reason: "PHASE20_INTEGRATION_BOOTSTRAP_INCOMPLETE",
+      evidence: {
+        merchant: merchant_name,
+        farmers: combat_names,
+        selectedCharacters: selected_names,
+      },
+      scope: {
+        normalRuntime: true,
+        lifecycleOnlyProbe: false,
+        lifecycleMutationDispatched: false,
+        gameplayMutationForced: false,
+        valueMutationForced: false,
+        automaticLogisticsDispatchSuppressed: true,
+        combatEvidenceRequired: false,
+        logisticsEvidenceRequired: false,
+      },
+      cleanup: {
+        runtimeStateRestored: false,
+        originallyRunning: account_names.filter(
+          (name) => originals[name]?.runtimeReady === true,
+        ),
+        restoredRunning: [],
+      },
+    };
+
+    phase20_integration_live_test_active = true;
+    try {
+      for (const char_name of account_names) {
+        const char_block = character_manage[char_name];
+        char_block.enabled = false;
+        char_block.desired_runtime_state = DESIRED_RUNTIME_STATES.STOPPED;
+        char_block.desired_runtime_state_source =
+          "PHASE20_INTEGRATION_LIVE_TEST_SETUP";
+        clear_restart_timer(char_block);
+        clear_stable_timer(char_block);
+        persist_character_runtime_state(
+          char_name,
+          "phase20_integration_live_test_setup",
+        );
+      }
+      result.scope.lifecycleMutationDispatched = account_names.some(
+        (name) => originals[name]?.runtimeReady === true,
+      );
+
+      await Promise.all(
+        account_names.map(async (char_name) => {
+          const char_block = character_manage[char_name];
+          if (char_block?.instance) {
+            await softkill_block(char_block);
+          }
+        }),
+      );
+
+      const all_stopped = await wait_for_phase20_integration_live_test(
+        () =>
+          account_names.every((name) => {
+            const block = character_manage[name];
+            return !block?.instance && block?.connected !== true;
+          }),
+        15000,
+      );
+      if (!all_stopped) {
+        result.reason = "PHASE20_INTEGRATION_SETUP_STOP_TIMEOUT";
+      } else {
+        let start_failed = null;
+        for (const char_name of selected_names) {
+          const char_block = character_manage[char_name];
+          char_block.movement_live_test_typescript_override =
+            MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE;
+          char_block.full_autonomy_live_test_lifecycle_only = false;
+          char_block.rotation_source = null;
+          char_block.rotation_replacement = null;
+          char_block.enabled = true;
+          char_block.desired_runtime_state = DESIRED_RUNTIME_STATES.RUNNING;
+          char_block.desired_runtime_state_source =
+            "PHASE20_INTEGRATION_LIVE_TEST";
+          persist_character_runtime_state(
+            char_name,
+            "phase20_integration_live_test_start",
+          );
+
+          if (!start_char(char_name)) {
+            start_failed = char_name;
+            break;
+          }
+          result.scope.lifecycleMutationDispatched = true;
+          if (lifecycle_policy.startupStaggerMs > 0) {
+            await sleep(lifecycle_policy.startupStaggerMs);
+          }
+        }
+
+        if (start_failed) {
+          result.reason = "PHASE20_INTEGRATION_CHARACTER_START_FAILED";
+          result.evidence.startFailedCharacter = start_failed;
+        } else {
+          const all_online = await wait_for_phase20_integration_live_test(
+            () =>
+              selected_names.every((name) => {
+                const block = character_manage[name];
+                return (
+                  phase20_integration_runtime_ready(block) &&
+                  block.desired_runtime_state ===
+                    DESIRED_RUNTIME_STATES.RUNNING &&
+                  block.lifecycle_state === LIFECYCLE_STATES.ONLINE
+                );
+              }),
+            90000,
+          );
+
+          const runtime_sources = selected_names.map((name) => {
+            const block = character_manage[name];
+            const source = resolveCharacterExecutionSource(
+              block,
+              !!cfg.enable_TYPECODE,
+            );
+            return {
+              name,
+              ctype:
+                block.account_character_type || block.live_state?.ctype || null,
+              pid: block.instance?.pid || null,
+              connected: block.connected === true,
+              lifecycleState: block.lifecycle_state || null,
+              desiredRuntimeState: block.desired_runtime_state || null,
+              typescriptFile: source.typescriptFile || null,
+              scriptFile: source.scriptFile || null,
+              lifecycleOnlyProbe:
+                block.full_autonomy_live_test_lifecycle_only === true,
+              normalRuntime:
+                source.typescriptFile === MOVEMENT_LIVE_TEST_TYPESCRIPT_FILE &&
+                block.full_autonomy_live_test_lifecycle_only !== true,
+            };
+          });
+          const active_count = countActiveCharacters(character_manage);
+          const normal_runtime_all = runtime_sources.every(
+            (entry) => entry.normalRuntime === true,
+          );
+          const running_all = runtime_sources.every(
+            (entry) =>
+              entry.connected === true &&
+              entry.lifecycleState === LIFECYCLE_STATES.ONLINE &&
+              entry.desiredRuntimeState === DESIRED_RUNTIME_STATES.RUNNING,
+          );
+          const slot_limit_valid =
+            active_count === 4 &&
+            active_count <= lifecycle_policy.maxOnlineCharacters;
+
+          result.evidence = {
+            ...result.evidence,
+            allOnline: all_online,
+            allRunning: running_all,
+            normalRuntimeAll: normal_runtime_all,
+            runtimeSources: runtime_sources,
+            activeCharacters: active_count,
+            maxOnlineCharacters: lifecycle_policy.maxOnlineCharacters,
+            slotLimitValid: slot_limit_valid,
+          };
+
+          const pass =
+            all_online &&
+            running_all &&
+            normal_runtime_all &&
+            slot_limit_valid &&
+            selected_names.length === 4;
+
+          result.outcome = pass ? "PASS" : "FAIL";
+          result.reason = pass
+            ? "PHASE20_INTEGRATION_BOOTSTRAP_CONFIRMED"
+            : "PHASE20_INTEGRATION_BOOTSTRAP_EVIDENCE_INCOMPLETE";
+        }
+      }
+    } catch (error) {
+      result.outcome = "FAIL";
+      result.reason =
+        error?.code || "PHASE20_INTEGRATION_BOOTSTRAP_EXECUTION_FAILED";
+      result.error = error instanceof Error ? error.message : String(error);
+    } finally {
+      const cleanup = await restore_phase20_integration_live_test_state(
+        account_names,
+        originals,
+      );
+      result.cleanup.runtimeStateRestored = cleanup.restored === true;
+      result.cleanup.originallyRunning = cleanup.originallyRunning;
+      result.cleanup.restoredRunning = cleanup.restoredRunning;
+
+      if (
+        result.outcome === "PASS" &&
+        result.cleanup.runtimeStateRestored !== true
+      ) {
+        result.outcome = "FAIL";
+        result.reason = "PHASE20_INTEGRATION_STATE_RESTORE_FAILED";
+      }
+
+      phase20_integration_live_test_active = false;
+      schedule_merchant_logistics_dispatch();
+      dashboard?.publishSnapshot();
+    }
+
+    return result;
   }
 
   async function run_full_autonomy_live_test() {
@@ -1311,6 +1834,7 @@ function migrate_old_storage(path, localStorage) {
       market_trading_live_test_active ||
       account_gear_reservation_live_test_active ||
       account_strategy_live_test_active ||
+      phase20_integration_live_test_active ||
       fishing_live_test_active ||
       material_worker_active_count > 0
     )
