@@ -750,6 +750,22 @@ test("dashboard visible character views include connected characters only", () =
   );
 });
 
+test("dashboard avoids background snapshot work without SSE clients", () => {
+  const dashboard = fs.readFileSync(
+    path.join(__dirname, "..", "src", "HeadlessDashboard.js"),
+    "utf8",
+  );
+
+  assert.match(
+    dashboard,
+    /if \(clients\.size === 0 \|\| snapshotPublishTimer\) return;/,
+  );
+  assert.match(
+    dashboard,
+    /snapshotPublishTimer = null;\s*if \(clients\.size === 0\) return;/,
+  );
+});
+
 test("dashboard module and coordinator remain syntactically valid", () => {
   const dashboard = fs.readFileSync(
     path.join(__dirname, "..", "src", "HeadlessDashboard.js"),
