@@ -1525,7 +1525,8 @@ Wishlist
 17 Account Strategy
 18 Full Autonomy
 19 Goals
-20 Boss/Event/Quest
+20.0 3 Farmer + Merchant Integrated Live Gate
+20.1 Boss/Event/Quest
 21 Recovery
 22 Dashboard V2 → Wishlist → Giveaways → Ponty → Fishing → Mining
 23 Production Hardening
