@@ -696,6 +696,7 @@ async function make_runner(upper, CODE_file, version, is_typescript) {
               : [],
             rendezvous:
               typeof m.rendezvous === "string" ? m.rendezvous : undefined,
+            potionRecovery: m.potion_recovery === true,
           })
           .then((result) => {
             sendIpcMessage(process, {
