@@ -115,9 +115,12 @@ function passingPayload() {
           settled: true,
           dispatchCount: 1,
           confirmed: true,
+          completionSuppressed: true,
+          pingPongValid: true,
           noBlindRetry: true,
           observation: {
             requestId: "logistics-claim-1",
+            completionSuppressed: true,
             result: {
               outcome: "CONFIRMED",
               reason: "SEND_GOLD_STATE_CONFIRMED",
@@ -183,6 +186,17 @@ test("Phase 20.0c evaluator rejects UNKNOWN logistics even without a retry", () 
   assert.equal(result.logisticsValid, false);
 });
 
+test("Phase 20.0c evaluator rejects missing completion suppression", () => {
+  const payload = passingPayload();
+  payload.result.evidence.logistics.completionSuppressed = false;
+  payload.result.evidence.logistics.pingPongValid = false;
+  payload.result.evidence.logistics.observation.completionSuppressed = false;
+
+  const result = evaluatePhase20MerchantLogisticsResult(payload);
+  assert.equal(result.outcome, "FAIL");
+  assert.equal(result.logisticsValid, false);
+});
+
 test("Phase 20.0c evaluator requires merchant to resume independent work", () => {
   const payload = passingPayload();
   payload.result.evidence.merchantParallel.autonomousAfterValid = false;
@@ -214,6 +228,8 @@ test("Phase 20.0c compact output surfaces autonomy, logistics and cleanup gates"
   assert.match(output, /Merchant autonomous before: yes/);
   assert.match(output, /Logistics dispatch count: 1/);
   assert.match(output, /Logistics confirmed: yes/);
+  assert.match(output, /Completion suppression: yes/);
+  assert.match(output, /Ping-pong guard valid: yes/);
   assert.match(output, /Merchant autonomous after: yes/);
   assert.match(output, /Runtime state restored: yes/);
 });
