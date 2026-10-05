@@ -109,12 +109,14 @@ function evaluatePhase20MerchantLogisticsResult(payload) {
     logistics.settled === true &&
     Number(logistics.dispatchCount) === 1 &&
     logistics.confirmed === true &&
+    logistics.claimReasonMatched === true &&
     logistics.completionSuppressed === true &&
     logistics.pingPongValid === true &&
     logistics.noBlindRetry === true &&
     logisticsObservation.completionSuppressed === true &&
     logisticsResult.outcome === "CONFIRMED" &&
-    logisticsResult.reason === "SEND_GOLD_STATE_CONFIRMED" &&
+    typeof logisticsObservation.claim?.reason === "string" &&
+    logisticsResult.reason === logisticsObservation.claim.reason &&
     logisticsResult.fulfilled === true &&
     Number(logisticsResult.amount) === 1 &&
     typeof logisticsResult.actionId === "string" &&
