@@ -2768,6 +2768,243 @@ export class BotRuntimeKernel {
     }
   }
 
+  async runPhase20GroupProbe(options: {
+    requestId?: string;
+    role: "leader" | "follower";
+    leader: string;
+    members: string[];
+    rendezvous?: string;
+  }): Promise<Record<string, unknown>> {
+    if (!this.started || this.stopping) {
+      throw new Error("runtime is not ready for Phase 20.0 group probe");
+    }
+    if (runtimeState() !== "RUNNING") {
+      throw new Error("runtime must be RUNNING for Phase 20.0 group probe");
+    }
+
+    const character = this.game.character();
+    const requestId =
+      options.requestId || `phase20-group-probe-${Date.now()}`;
+    const members = [...new Set(options.members.filter(Boolean))].sort(
+      (left, right) => left.localeCompare(right),
+    );
+    if (
+      !character.name ||
+      !character.ctype ||
+      !options.leader ||
+      members.length !== 3 ||
+      !members.includes(character.name) ||
+      !members.includes(options.leader) ||
+      !["leader", "follower"].includes(options.role)
+    ) {
+      throw new Error("PHASE20_GROUP_PROBE_IDENTITY_INVALID");
+    }
+
+    const disabledCombat = {
+      combat: { enabled: false },
+      potionUsage: { enabled: false },
+      safety: { autoRespawn: false },
+    };
+    const disabledGroup = { groupCombat: { enabled: false } };
+    const disabledClassSkills = {
+      classSkills: {
+        [character.ctype]: {
+          enabled: false,
+          skills: {},
+        },
+      },
+    };
+
+    this.groupCombat.setConfigOverride(disabledGroup);
+    this.combat.setConfigOverride(disabledCombat);
+    this.classSkills?.setConfigOverride(disabledClassSkills);
+    await this.groupCombat.tick();
+    await this.combat.tick();
+
+    const movementBefore = this.movement.status();
+    let cancelStatus: string | null = null;
+    if (movementBefore.owner || movementBefore.active) {
+      const cancelled = await this.movement.cancel({
+        owner: "Phase20IntegrationProbe",
+        module: "Phase20IntegrationProbe",
+        why: "PHASE20_GROUP_RENDEZVOUS_PREEMPT",
+        force: true,
+      });
+      cancelStatus = cancelled.status;
+      if (cancelled.status === "UNKNOWN") {
+        throw new Error("PHASE20_GROUP_PROBE_MOVEMENT_CANCEL_UNKNOWN");
+      }
+    }
+
+    const rendezvous = options.rendezvous?.trim() || "goo";
+    const move = await this.movement.smart({
+      owner: "Phase20IntegrationProbe",
+      module: "Phase20IntegrationProbe",
+      why: "PHASE20_GROUP_RENDEZVOUS",
+      destination: rendezvous,
+    });
+    if (move.status === "UNKNOWN") {
+      throw new Error("PHASE20_GROUP_PROBE_RENDEZVOUS_UNKNOWN");
+    }
+    if (move.status === "BLOCKED" || move.status === "REJECTED") {
+      throw new Error("PHASE20_GROUP_PROBE_RENDEZVOUS_FAILED");
+    }
+
+    this.combat.setConfigOverride({
+      combat: {
+        enabled: true,
+        autoTarget: true,
+        avoidKillSteal: true,
+        targetMaxDistance: 900,
+        targetMonsterTypes: [
+          "goo",
+          "bee",
+          "crab",
+          "snake",
+          "squig",
+          "cgoo",
+          "rgoo",
+          "spider",
+        ],
+        retreat: false,
+      },
+      potionUsage: { enabled: false },
+      safety: { autoRespawn: false },
+    });
+    this.groupCombat.setConfigOverride({
+      groupCombat: {
+        enabled: true,
+        role: options.role,
+        leader: options.leader,
+        members,
+        party: {
+          enabled: true,
+          reconcileMs: 750,
+          retryMs: 500,
+        },
+        focus: true,
+        healing: { enabled: false },
+        support: { enabled: false },
+        aoe: { enabled: false },
+        tether: {
+          enabled: true,
+          soft: 180,
+          hard: 420,
+        },
+        warriorAnchor: { enabled: false },
+        rangerKiting: { enabled: false },
+      },
+    });
+
+    const groupCombat = await this.groupCombat.tick();
+    const combat = await this.combat.tick();
+    const result = {
+      requestId,
+      character: character.name,
+      role: options.role,
+      leader: options.leader,
+      members,
+      rendezvous,
+      rendezvousAction: {
+        id: move.id,
+        status: move.status,
+      },
+      initialMovementCancelStatus: cancelStatus,
+      groupCombat,
+      combat,
+      movement: this.movement.status(),
+    };
+
+    this.eventBus.emit({
+      module: "Phase20IntegrationProbe",
+      type: "PHASE20_GROUP_PROBE_APPLIED",
+      why: "PHASE20_GROUP_COMBAT_RUNTIME_OVERRIDE",
+      correlationId: requestId,
+      data: result,
+    });
+
+    return result;
+  }
+
+  async clearPhase20GroupProbe(options: {
+    requestId?: string;
+    leaveParty?: boolean;
+  } = {}): Promise<Record<string, unknown>> {
+    const requestId =
+      options.requestId || `phase20-group-probe-clear-${Date.now()}`;
+    const character = this.game.character();
+
+    this.groupCombat.setConfigOverride({ groupCombat: { enabled: false } });
+    this.combat.setConfigOverride({
+      combat: { enabled: false },
+      potionUsage: { enabled: false },
+      safety: { autoRespawn: false },
+    });
+    if (character.ctype) {
+      this.classSkills?.setConfigOverride({
+        classSkills: {
+          [character.ctype]: {
+            enabled: false,
+            skills: {},
+          },
+        },
+      });
+    }
+    await this.groupCombat.tick();
+    await this.combat.tick();
+
+    let movementCancelStatus: string | null = null;
+    const movement = this.movement.status();
+    if (movement.owner || movement.active) {
+      const cancelled = await this.movement.cancel({
+        owner: "Phase20IntegrationProbe",
+        module: "Phase20IntegrationProbe",
+        why: "PHASE20_GROUP_PROBE_CLEANUP",
+        force: true,
+      });
+      movementCancelStatus = cancelled.status;
+    }
+
+    let partyLeaveStatus: string | null = null;
+    if (
+      options.leaveParty !== false &&
+      Object.keys(this.game.party()).length > 1
+    ) {
+      const leave = this.actions.partyLeave({
+        module: "Phase20IntegrationProbe",
+        why: "PHASE20_GROUP_PROBE_CLEANUP",
+        correlationId: requestId,
+      });
+      partyLeaveStatus = leave.status;
+    }
+
+    this.groupCombat.clearConfigOverride();
+    this.combat.clearConfigOverride();
+    this.classSkills?.clearConfigOverride();
+    await this.groupCombat.tick();
+    await this.combat.tick();
+
+    const result = {
+      requestId,
+      character: character.name,
+      movementCancelStatus,
+      partyLeaveStatus,
+      groupCombat: this.groupCombat.status(),
+      combat: this.combat.status(),
+      movement: this.movement.status(),
+    };
+
+    this.eventBus.emit({
+      module: "Phase20IntegrationProbe",
+      type: "PHASE20_GROUP_PROBE_CLEARED",
+      why: "PHASE20_GROUP_COMBAT_RUNTIME_OVERRIDE_CLEARED",
+      correlationId: requestId,
+      data: result,
+    });
+
+    return result;
+  }
+
   async runGroupLiveTest(
     options: GroupLiveTestOptions,
   ): Promise<GroupLiveTestResult> {
