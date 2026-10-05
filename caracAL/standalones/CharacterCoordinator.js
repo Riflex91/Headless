@@ -1444,19 +1444,17 @@ function migrate_old_storage(path, localStorage) {
         ];
       }),
     );
-    const all_runtime_snapshots_formed = character_names.every(
-      (char_name) => {
-        const status = current[char_name]?.groupCombat;
-        const members = Array.isArray(status?.partyMembers)
-          ? status.partyMembers
-          : [];
-        return (
-          character_names.every((name) => members.includes(name)) &&
-          (!Array.isArray(status?.missingMembers) ||
-            status.missingMembers.length === 0)
-        );
-      },
-    );
+    const all_runtime_snapshots_formed = character_names.every((char_name) => {
+      const status = current[char_name]?.groupCombat;
+      const members = Array.isArray(status?.partyMembers)
+        ? status.partyMembers
+        : [];
+      return (
+        character_names.every((name) => members.includes(name)) &&
+        (!Array.isArray(status?.missingMembers) ||
+          status.missingMembers.length === 0)
+      );
+    });
     const leader_status = current[leader]?.groupCombat;
     const leader_members = Array.isArray(leader_status?.partyMembers)
       ? leader_status.partyMembers
