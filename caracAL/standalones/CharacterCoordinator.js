@@ -2000,6 +2000,19 @@ function migrate_old_storage(path, localStorage) {
                         ),
                       )
                     : null;
+                const completed_claim_id =
+                  logistics_observation?.claim?.id || null;
+                const completion_suppressed =
+                  typeof completed_claim_id === "string" &&
+                  merchant_logistics_board.suppressed.some(
+                    (claim) =>
+                      claim?.id === completed_claim_id &&
+                      claim?.suppressionReason === "RECENTLY_COMPLETED",
+                  );
+                if (logistics_observation) {
+                  logistics_observation.completionSuppressed =
+                    completion_suppressed;
+                }
                 result.cleanup.logisticsOverridesRestored =
                   phase20_restore_runtime_config_overrides(
                     account_names,
@@ -2017,7 +2030,8 @@ function migrate_old_storage(path, localStorage) {
                 logistics_result?.fulfilled === true &&
                 Number(logistics_result?.amount) === 1 &&
                 typeof logistics_result?.actionId === "string" &&
-                logistics_result.actionId.length > 0;
+                logistics_result.actionId.length > 0 &&
+                logistics_observation?.completionSuppressed === true;
 
               const autonomous_after = logistics_valid
                 ? await phase20_run_merchant_probe(
@@ -2116,6 +2130,11 @@ function migrate_old_storage(path, localStorage) {
                 dispatchCount: logistics_dispatches.length,
                 observation: logistics_observation,
                 confirmed: logistics_valid,
+                completionSuppressed:
+                  logistics_observation?.completionSuppressed === true,
+                pingPongValid:
+                  logistics_dispatches.length === 1 &&
+                  logistics_observation?.completionSuppressed === true,
                 noBlindRetry:
                   logistics_result?.outcome !== "UNKNOWN" ||
                   logistics_dispatches.length === 1,
@@ -2134,6 +2153,7 @@ function migrate_old_storage(path, localStorage) {
                 process_exits.length === 0 &&
                 reconnects.length === 0 &&
                 logistics_dispatches.length === 1 &&
+                logistics_observation?.completionSuppressed === true &&
                 result.cleanup.logisticsOverridesRestored === true;
 
               result.outcome = pass ? "PASS" : "FAIL";
