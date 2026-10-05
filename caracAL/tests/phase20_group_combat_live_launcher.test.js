@@ -61,6 +61,7 @@ function passingPayload(overrides = {}) {
             My_Ranger3: 2,
           },
           unknownAttackCount: 0,
+          unknownMovementCount: 0,
           focusObserved: {
             My_Ranger2: true,
             My_Ranger3: true,
@@ -121,6 +122,13 @@ test("Phase 20.0b rejects missing attack evidence and UNKNOWN attack outcome", (
   result = evaluatePhase20GroupCombatResult(unknown);
   assert.equal(result.outcome, "FAIL");
   assert.equal(result.groupValid, false);
+
+  const movementUnknown = passingPayload();
+  movementUnknown.result.evidence.groupCombat.unknownMovementCount = 1;
+
+  result = evaluatePhase20GroupCombatResult(movementUnknown);
+  assert.equal(result.outcome, "FAIL");
+  assert.equal(result.groupValid, false);
 });
 
 test("Phase 20.0b requires party, focus, movement ownership and Merchant continuity", () => {
@@ -161,6 +169,7 @@ test("Phase 20.0b compact output exposes party/combat safety evidence", () => {
   assert.match(output, /Party formed: yes/);
   assert.match(output, /Confirmed attacks: 6/);
   assert.match(output, /Unknown attacks: 0/);
+  assert.match(output, /Unknown movement outcomes: 0/);
   assert.match(output, /Movement ownership valid: yes/);
   assert.match(output, /Merchant stayed online: yes/);
   assert.match(output, /Group probe cleared: yes/);
