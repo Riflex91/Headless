@@ -222,12 +222,18 @@ test("Phase 20.0b source reuses existing runtime controllers and ActionBoundary"
   assert.match(kernel, /this\.movement\.smart/);
   assert.match(kernel, /this\.groupCombat\.setConfigOverride/);
   assert.match(kernel, /this\.combat\.setConfigOverride/);
+  assert.match(kernel, /options\.potionRecovery === true/);
+  assert.match(kernel, /: \{ enabled: false \}/);
   assert.match(kernel, /this\.actions\.partyLeave/);
 
   assert.match(thread, /phase20_group_probe_apply/);
   assert.match(thread, /phase20_group_probe_clear/);
 
   assert.match(coordinator, /phase20_group_combat_evidence/);
+  assert.match(
+    coordinator,
+    /phase20_apply_group_probe\([\s\S]*stage === "20\.0c"/,
+  );
   assert.match(coordinator, /ACTION_CONFIRMED/);
   assert.match(coordinator, /ACTION_UNKNOWN/);
   assert.match(coordinator, /confirmedAttackCount/);
