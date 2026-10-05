@@ -7723,16 +7723,28 @@ function migrate_old_storage(path, localStorage) {
         400,
       );
     }
+    const group_members = [
+      ...new Set(
+        [
+          options.leader,
+          options.peer,
+          ...(Array.isArray(options.members) ? options.members : []),
+        ].filter((name) => typeof name === "string" && name.trim()),
+      ),
+    ];
     if (
       !["leader", "follower"].includes(options.role) ||
       typeof options.leader !== "string" ||
       typeof options.peer !== "string" ||
       options.leader === options.peer ||
-      ![options.leader, options.peer].includes(char_name)
+      group_members.length < 2 ||
+      !group_members.includes(options.leader) ||
+      !group_members.includes(options.peer) ||
+      !group_members.includes(char_name)
     ) {
       throw make_control_error(
         "GROUP_LIVE_TEST_PAIR_INVALID",
-        "Invalid group live test pair for " + char_name,
+        "Invalid group live test member set for " + char_name,
         400,
       );
     }
@@ -7811,6 +7823,7 @@ function migrate_old_storage(path, localStorage) {
       role: options.role,
       leader: options.leader,
       peer: options.peer,
+      members: group_members,
       baseline_pair_formed:
         typeof options.baselinePairFormed === "boolean"
           ? options.baselinePairFormed
@@ -7883,6 +7896,7 @@ function migrate_old_storage(path, localStorage) {
         role: options.role,
         leader: options.leader,
         peer: options.peer,
+        members: group_members,
         baselinePairFormed:
           typeof options.baselinePairFormed === "boolean"
             ? options.baselinePairFormed
