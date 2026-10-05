@@ -1911,7 +1911,7 @@ function migrate_old_storage(path, localStorage) {
               combat_names,
               leader,
               group_started_at,
-              stage === "20.0c",
+              merchant_logistics_stage,
             );
             const merchant_online_during_combat =
               phase20_integration_runtime_ready(
