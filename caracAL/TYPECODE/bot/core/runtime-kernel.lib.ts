@@ -2970,7 +2970,7 @@ export class BotRuntimeKernel {
       options.leaveParty !== false &&
       Object.keys(this.game.party()).length > 1
     ) {
-      const leave = this.actions.partyLeave({
+      const leave = await this.actions.partyLeave({
         module: "Phase20IntegrationProbe",
         why: "PHASE20_GROUP_PROBE_CLEANUP",
         correlationId: requestId,
