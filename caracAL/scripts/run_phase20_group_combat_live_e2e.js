@@ -117,26 +117,28 @@ function formatCompactResult(result) {
   const evidence = record(result?.evidence);
   const group = record(evidence.groupCombat);
   const cleanup = record(result?.cleanup);
-  return [
-    "Phase 20.0b 3-Farmer Group Combat Live E2E",
-    "Outcome: " + (result?.outcome || "UNKNOWN"),
-    "Reason: " + (result?.reason || "UNKNOWN"),
-    "Merchant: " + (evidence.merchant || "NONE"),
-    "Farmers: " + array(evidence.farmers).join(", "),
-    "Party formed: " + (group.partyFormed === true ? "yes" : "no"),
-    "Confirmed attacks: " + String(group.confirmedAttackCount ?? "UNKNOWN"),
-    "Unknown attacks: " + String(group.unknownAttackCount ?? "UNKNOWN"),
-    "Unknown movement outcomes: " +
-      String(group.unknownMovementCount ?? "UNKNOWN"),
-    "Movement ownership valid: " +
-      (group.movementOwnerValid === true ? "yes" : "no"),
-    "Merchant stayed online: " +
-      (group.merchantOnlineDuringCombat === true ? "yes" : "no"),
-    "Group probe cleared: " +
-      (cleanup.groupProbeCleared === true ? "yes" : "no"),
-    "Runtime state restored: " +
-      (cleanup.runtimeStateRestored === true ? "yes" : "no"),
-  ].join("\n") + "\n";
+  return (
+    [
+      "Phase 20.0b 3-Farmer Group Combat Live E2E",
+      "Outcome: " + (result?.outcome || "UNKNOWN"),
+      "Reason: " + (result?.reason || "UNKNOWN"),
+      "Merchant: " + (evidence.merchant || "NONE"),
+      "Farmers: " + array(evidence.farmers).join(", "),
+      "Party formed: " + (group.partyFormed === true ? "yes" : "no"),
+      "Confirmed attacks: " + String(group.confirmedAttackCount ?? "UNKNOWN"),
+      "Unknown attacks: " + String(group.unknownAttackCount ?? "UNKNOWN"),
+      "Unknown movement outcomes: " +
+        String(group.unknownMovementCount ?? "UNKNOWN"),
+      "Movement ownership valid: " +
+        (group.movementOwnerValid === true ? "yes" : "no"),
+      "Merchant stayed online: " +
+        (group.merchantOnlineDuringCombat === true ? "yes" : "no"),
+      "Group probe cleared: " +
+        (cleanup.groupProbeCleared === true ? "yes" : "no"),
+      "Runtime state restored: " +
+        (cleanup.runtimeStateRestored === true ? "yes" : "no"),
+    ].join("\n") + "\n"
+  );
 }
 
 async function main() {
