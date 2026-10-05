@@ -2,6 +2,8 @@
 
 ## Scope
 
+All references to gold, bank travel, pickup, and transfer in this document refer exclusively to Adventure Land in-game state and in-game currency; no real-world financial asset or transaction is involved.
+
 Final live verification of the Phase 20.0c combined 3-Farmer + Merchant gate on the real Windows caracAL runtime.
 
 This evidence is append-only. It records the successful live result on the merged Phase 20.0c implementation after the evidence-gate correction in PR #206 and the repeatability/readiness correction in PR #207.
