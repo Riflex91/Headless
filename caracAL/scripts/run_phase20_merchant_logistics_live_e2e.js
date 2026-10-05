@@ -109,7 +109,10 @@ function evaluatePhase20MerchantLogisticsResult(payload) {
     logistics.settled === true &&
     Number(logistics.dispatchCount) === 1 &&
     logistics.confirmed === true &&
+    logistics.completionSuppressed === true &&
+    logistics.pingPongValid === true &&
     logistics.noBlindRetry === true &&
+    logisticsObservation.completionSuppressed === true &&
     logisticsResult.outcome === "CONFIRMED" &&
     logisticsResult.reason === "SEND_GOLD_STATE_CONFIRMED" &&
     logisticsResult.fulfilled === true &&
@@ -194,6 +197,10 @@ function formatCompactResult(result) {
         String(logistics.dispatchCount ?? "UNKNOWN"),
       "Logistics confirmed: " +
         (logistics.confirmed === true ? "yes" : "no"),
+      "Completion suppression: " +
+        (logistics.completionSuppressed === true ? "yes" : "no"),
+      "Ping-pong guard valid: " +
+        (logistics.pingPongValid === true ? "yes" : "no"),
       "Merchant autonomous after: " +
         (merchant.autonomousAfterValid === true ? "yes" : "no"),
       "Merchant not in party: " +
