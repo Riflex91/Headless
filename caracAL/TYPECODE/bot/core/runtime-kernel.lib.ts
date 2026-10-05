@@ -5374,6 +5374,10 @@ export class BotRuntimeKernel {
   }
 
   private handleSchedulerEvent(event: SchedulerEvent): void {
+    if (event.type === "JOB_STARTED" || event.type === "JOB_COMPLETED") {
+      return;
+    }
+
     this.eventBus.emit({
       module: "Scheduler",
       type: event.type,
