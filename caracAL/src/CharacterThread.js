@@ -691,6 +691,7 @@ async function make_runner(upper, CODE_file, version, is_typescript) {
             role: m.role,
             leader: m.leader,
             peer: m.peer,
+            members: Array.isArray(m.members) ? m.members : undefined,
             baselinePairFormed:
               typeof m.baselinePairFormed === "boolean"
                 ? m.baselinePairFormed
