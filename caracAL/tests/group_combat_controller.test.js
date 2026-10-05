@@ -276,10 +276,13 @@ test("follower adopts visible leader target as group focus", async () => {
 
   const status = await setup.controller.tick();
   assert.equal(status.focusTargetId, "monster-1");
-  assert.equal(setup.preferred.at(-1), "monster-1");
-});
+    assert.equal(setup.preferred.at(-1), "monster-1");
+  },
+);
 
-test("follower retains a live focus through a transient leader target gap", async () => {
+test(
+  "follower retains a live focus through a transient leader target gap",
+  async () => {
   const setup = makeSetup({
     config: {
       groupCombat: {
@@ -327,14 +330,17 @@ test("follower retains a live focus through a transient leader target gap", asyn
   let status = await setup.controller.tick();
   assert.equal(status.focusTargetId, "monster-1");
 
-  setup.state.entities.find((entity) => entity.id === "leader-id").target = null;
+    setup.state.entities.find((entity) => entity.id === "leader-id").target =
+      null;
   status = await setup.controller.tick();
 
   assert.equal(status.focusTargetId, "monster-1");
   assert.equal(setup.preferred.at(-1), "monster-1");
 });
 
-test("follower reacquires a live monster attacking the leader when leader target is missing", async () => {
+test(
+  "follower reacquires a live monster attacking the leader when leader target is missing",
+  async () => {
   const setup = makeSetup({
     config: {
       groupCombat: {
@@ -393,13 +399,16 @@ test("follower reacquires a live monster attacking the leader when leader target
     ],
   });
 
-  const status = await setup.controller.tick();
+    const status = await setup.controller.tick();
 
-  assert.equal(status.focusTargetId, "monster-1");
-  assert.equal(setup.preferred.at(-1), "monster-1");
-});
+    assert.equal(status.focusTargetId, "monster-1");
+    assert.equal(setup.preferred.at(-1), "monster-1");
+  },
+);
 
-test("follower drops a retained focus once the target is dead and no leader target exists", async () => {
+test(
+  "follower drops a retained focus once the target is dead and no leader target exists",
+  async () => {
   const setup = makeSetup({
     config: {
       groupCombat: {
@@ -447,7 +456,8 @@ test("follower drops a retained focus once the target is dead and no leader targ
   let status = await setup.controller.tick();
   assert.equal(status.focusTargetId, "monster-1");
 
-  setup.state.entities.find((entity) => entity.id === "leader-id").target = null;
+    setup.state.entities.find((entity) => entity.id === "leader-id").target =
+      null;
   const monster = setup.state.entities.find(
     (entity) => entity.id === "monster-1",
   );
@@ -456,9 +466,10 @@ test("follower drops a retained focus once the target is dead and no leader targ
 
   status = await setup.controller.tick();
 
-  assert.equal(status.focusTargetId, null);
-  assert.equal(setup.preferred.at(-1), null);
-});
+    assert.equal(status.focusTargetId, null);
+    assert.equal(setup.preferred.at(-1), null);
+  },
+);
 
 test("hard tether preempts movement and regroups to leader", async () => {
   const movement = {
