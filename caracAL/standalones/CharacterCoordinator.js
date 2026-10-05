@@ -16389,6 +16389,29 @@ function migrate_old_storage(path, localStorage) {
           });
           break;
         }
+        case "phase20_group_probe_result": {
+          char_block.phase20_group_probe_result = {
+            request_id: m.request_id || null,
+            operation: m.operation || null,
+            result:
+              m.result && typeof m.result === "object" ? m.result : null,
+            error: m.error || null,
+            received_at: Date.now(),
+          };
+          emit_supervisor_event(
+            m.error
+              ? "PHASE20_GROUP_PROBE_RESULT_FAILED"
+              : "PHASE20_GROUP_PROBE_RESULT_RECEIVED",
+            char_name,
+            {
+              request_id: m.request_id || null,
+              operation: m.operation || null,
+              error: m.error || null,
+            },
+          );
+          dashboard?.publishSnapshot();
+          break;
+        }
         case "group_live_test_result": {
           const pending = group_live_test_requests.get(m.request_id);
           if (!pending || pending.character !== char_name) {
