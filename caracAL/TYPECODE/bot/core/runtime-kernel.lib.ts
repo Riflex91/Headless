@@ -2854,7 +2854,7 @@ export class BotRuntimeKernel {
       combat: {
         enabled: true,
         autoTarget: true,
-        avoidKillSteal: true,
+        avoidKillSteal: false,
         targetMaxDistance: 900,
         targetMonsterTypes: [
           "goo",
