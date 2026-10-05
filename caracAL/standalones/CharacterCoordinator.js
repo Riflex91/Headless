@@ -922,8 +922,7 @@ function migrate_old_storage(path, localStorage) {
         char_block.desired_runtime_state || DESIRED_RUNTIME_STATES.STOPPED,
       desiredRuntimeStateSource:
         char_block.desired_runtime_state_source || "UNKNOWN",
-      lifecycleState:
-        char_block.lifecycle_state || LIFECYCLE_STATES.STOPPED,
+      lifecycleState: char_block.lifecycle_state || LIFECYCLE_STATES.STOPPED,
       runtimeReady:
         !!char_block.instance &&
         char_block.connected === true &&
@@ -952,7 +951,8 @@ function migrate_old_storage(path, localStorage) {
 
   function phase20_integration_runtime_stable(char_block) {
     if (!char_block) return false;
-    if (char_block.instance) return phase20_integration_runtime_ready(char_block);
+    if (char_block.instance)
+      return phase20_integration_runtime_ready(char_block);
     return (
       char_block.connected !== true &&
       char_block.lifecycle_state === LIFECYCLE_STATES.STOPPED
@@ -1072,9 +1072,7 @@ function migrate_old_storage(path, localStorage) {
     }
 
     refresh_merchant_logistics("PHASE20_INTEGRATION_LIVE_TEST_RESTORE");
-    refresh_account_gear_reservations(
-      "PHASE20_INTEGRATION_LIVE_TEST_RESTORE",
-    );
+    refresh_account_gear_reservations("PHASE20_INTEGRATION_LIVE_TEST_RESTORE");
 
     const metadata_restored = character_names.every((char_name) => {
       const char_block = character_manage[char_name];
@@ -1180,8 +1178,9 @@ function migrate_old_storage(path, localStorage) {
     const merchant_candidates = account_names.filter((name) => {
       const block = character_manage[name];
       return (
-        String(block?.account_character_type || block?.live_state?.ctype || "")
-          .toLowerCase() === "merchant"
+        String(
+          block?.account_character_type || block?.live_state?.ctype || "",
+        ).toLowerCase() === "merchant"
       );
     });
     const merchant_name =
