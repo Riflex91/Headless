@@ -69,6 +69,9 @@ function evaluatePhase20MerchantLogisticsResult(payload) {
     group.apply?.ok === true &&
     group.observed === true &&
     group.partyFormed === true &&
+    group.partyEvidenceMode === "LEADER_AUTHORITATIVE" &&
+    group.leaderPartyFormed === true &&
+    group.resourceRecoveryUnknown === false &&
     group.merchantOnlineDuringCombat === true &&
     group.merchantNotInParty === true &&
     Number(group.unknownAttackCount) === 0 &&
@@ -76,6 +79,9 @@ function evaluatePhase20MerchantLogisticsResult(payload) {
     group.movementOwnerValid === true &&
     parallelGroup.observed === true &&
     parallelGroup.partyFormed === true &&
+    parallelGroup.partyEvidenceMode === "LEADER_AUTHORITATIVE" &&
+    parallelGroup.leaderPartyFormed === true &&
+    parallelGroup.resourceRecoveryUnknown === false &&
     Number(parallelGroup.confirmedAttackCount) >= 3 &&
     Number(parallelGroup.unknownAttackCount) === 0 &&
     Number(parallelGroup.unknownMovementCount) === 0 &&
@@ -189,6 +195,9 @@ function formatCompactResult(result) {
       "Farmers: " + array(evidence.farmers).join(", "),
       "Parallel confirmed attacks: " +
         String(group.confirmedAttackCount ?? "UNKNOWN"),
+      "Party evidence mode: " + (group.partyEvidenceMode || "UNKNOWN"),
+      "Resource recovery unknown: " +
+        (group.resourceRecoveryUnknown === true ? "yes" : "no"),
       "Merchant autonomous before: " +
         (merchant.autonomousBeforeValid === true ? "yes" : "no"),
       "Logistics rendezvous: " +
