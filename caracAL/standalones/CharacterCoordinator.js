@@ -1907,6 +1907,42 @@ function migrate_old_storage(path, localStorage) {
 
             if (stage === "20.0c" && pass) {
               const parallel_started_at = Date.now();
+              let parallel_group_checkpoint = phase20_group_combat_evidence(
+                combat_names,
+                leader,
+                parallel_started_at,
+              );
+              let parallel_unknown_attack_count =
+                parallel_group_checkpoint.unknownAttackCount;
+              let parallel_unknown_movement_count =
+                parallel_group_checkpoint.unknownMovementCount;
+              const capture_parallel_group_evidence = () => {
+                const evidence = phase20_group_combat_evidence(
+                  combat_names,
+                  leader,
+                  parallel_started_at,
+                );
+                parallel_unknown_attack_count = Math.max(
+                  parallel_unknown_attack_count,
+                  evidence.unknownAttackCount,
+                );
+                parallel_unknown_movement_count = Math.max(
+                  parallel_unknown_movement_count,
+                  evidence.unknownMovementCount,
+                );
+                if (
+                  evidence.pass &&
+                  !parallel_group_checkpoint.pass &&
+                  parallel_unknown_attack_count === 0 &&
+                  parallel_unknown_movement_count === 0
+                ) {
+                  parallel_group_checkpoint = JSON.parse(
+                    JSON.stringify(evidence),
+                  );
+                }
+                return evidence;
+              };
+              let controlled_dispatch_count = 0;
               merchant_probe_started = true;
 
               const initial_rendezvous = await phase20_run_merchant_probe(
@@ -1927,6 +1963,7 @@ function migrate_old_storage(path, localStorage) {
                 autonomous_before.ok === true &&
                 autonomous_before.result?.bankTravel?.state === "READY" &&
                 before_action?.status === "CONFIRMED";
+              capture_parallel_group_evidence();
 
               const logistics_rendezvous = autonomous_before_valid
                 ? await phase20_run_merchant_probe(
@@ -1939,6 +1976,7 @@ function migrate_old_storage(path, localStorage) {
                 logistics_rendezvous.ok === true &&
                 logistics_rendezvous.result?.rendezvousAction?.status ===
                   "CONFIRMED";
+              capture_parallel_group_evidence();
 
               const logistics_candidates = combat_names
                 .map((name) => ({
@@ -1985,6 +2023,9 @@ function migrate_old_storage(path, localStorage) {
                   phase20_integration_logistics_dispatch_enabled = true;
                   dispatch_started = dispatch_merchant_logistics_claim();
                   phase20_integration_logistics_dispatch_enabled = false;
+                  if (dispatch_started) {
+                    controlled_dispatch_count += 1;
+                  }
 
                   if (dispatch_started) {
                     logistics_settled =
@@ -2026,12 +2067,18 @@ function migrate_old_storage(path, localStorage) {
                 logistics_overrides_applied = false;
               }
 
+              capture_parallel_group_evidence();
               const logistics_result = logistics_observation?.result || null;
+              const logistics_reason_matches_claim =
+                typeof logistics_observation?.claim?.reason === "string" &&
+                logistics_result?.reason ===
+                  logistics_observation.claim.reason;
               const logistics_valid =
                 dispatch_started === true &&
+                controlled_dispatch_count === 1 &&
                 logistics_settled === true &&
                 logistics_result?.outcome === "CONFIRMED" &&
-                logistics_result?.reason === "SEND_GOLD_STATE_CONFIRMED" &&
+                logistics_reason_matches_claim &&
                 logistics_result?.fulfilled === true &&
                 Number(logistics_result?.amount) === 1 &&
                 typeof logistics_result?.actionId === "string" &&
@@ -2054,25 +2101,46 @@ function migrate_old_storage(path, localStorage) {
                 typeof after_action?.id === "string" &&
                 after_action.id.length > 0 &&
                 after_action.id !== before_action?.id;
+              let final_group_evidence = capture_parallel_group_evidence();
 
-              const parallel_observed =
+              if (
+                !parallel_group_checkpoint.pass &&
+                parallel_unknown_attack_count === 0 &&
+                parallel_unknown_movement_count === 0
+              ) {
                 await wait_for_phase20_integration_live_test(() => {
-                  const evidence = phase20_group_combat_evidence(
-                    combat_names,
-                    leader,
-                    parallel_started_at,
-                  );
+                  const evidence = capture_parallel_group_evidence();
                   return (
                     evidence.pass ||
-                    evidence.unknownAttackCount > 0 ||
-                    evidence.unknownMovementCount > 0
+                    parallel_unknown_attack_count > 0 ||
+                    parallel_unknown_movement_count > 0
                   );
-                }, 120000);
-              group_evidence = phase20_group_combat_evidence(
-                combat_names,
-                leader,
-                parallel_started_at,
-              );
+                }, 15000);
+                final_group_evidence = capture_parallel_group_evidence();
+              }
+
+              const parallel_observed = parallel_group_checkpoint.pass === true;
+              const final_focus_valid = Object.values(
+                final_group_evidence.focusObserved || {},
+              ).every((observed) => observed === true);
+              const parallel_group_valid =
+                parallel_observed &&
+                final_group_evidence.partyFormed === true &&
+                final_group_evidence.movementOwnerValid === true &&
+                final_focus_valid &&
+                parallel_unknown_attack_count === 0 &&
+                parallel_unknown_movement_count === 0;
+              group_evidence = {
+                ...parallel_group_checkpoint,
+                current: final_group_evidence.current,
+                partyFormed: final_group_evidence.partyFormed,
+                focusObserved: final_group_evidence.focusObserved,
+                movementOwners: final_group_evidence.movementOwners,
+                movementOwnerValid: final_group_evidence.movementOwnerValid,
+                unknownAttackCount: parallel_unknown_attack_count,
+                unknownMovementCount: parallel_unknown_movement_count,
+                pass: parallel_group_valid,
+              };
 
               const parallel_events = diagnostic_store
                 .getEvents({ since: parallel_started_at })
@@ -2132,17 +2200,19 @@ function migrate_old_storage(path, localStorage) {
                 boardSummary: logistics_board?.summary || null,
                 dispatchStarted: dispatch_started,
                 settled: logistics_settled,
-                dispatchCount: logistics_dispatches.length,
+                dispatchCount: controlled_dispatch_count,
+                diagnosticDispatchCount: logistics_dispatches.length,
                 observation: logistics_observation,
                 confirmed: logistics_valid,
+                claimReasonMatched: logistics_reason_matches_claim,
                 completionSuppressed:
                   logistics_observation?.completionSuppressed === true,
                 pingPongValid:
-                  logistics_dispatches.length === 1 &&
+                  controlled_dispatch_count === 1 &&
                   logistics_observation?.completionSuppressed === true,
                 noBlindRetry:
                   logistics_result?.outcome !== "UNKNOWN" ||
-                  logistics_dispatches.length === 1,
+                  controlled_dispatch_count === 1,
               };
 
               pass =
@@ -2157,7 +2227,7 @@ function migrate_old_storage(path, localStorage) {
                 merchant_unknown_movement.length === 0 &&
                 process_exits.length === 0 &&
                 reconnects.length === 0 &&
-                logistics_dispatches.length === 1 &&
+                controlled_dispatch_count === 1 &&
                 logistics_observation?.completionSuppressed === true &&
                 result.cleanup.logisticsOverridesRestored === true;
 
