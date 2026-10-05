@@ -2071,8 +2071,7 @@ function migrate_old_storage(path, localStorage) {
               const logistics_result = logistics_observation?.result || null;
               const logistics_reason_matches_claim =
                 typeof logistics_observation?.claim?.reason === "string" &&
-                logistics_result?.reason ===
-                  logistics_observation.claim.reason;
+                logistics_result?.reason === logistics_observation.claim.reason;
               const logistics_valid =
                 dispatch_started === true &&
                 controlled_dispatch_count === 1 &&
