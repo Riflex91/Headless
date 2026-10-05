@@ -240,6 +240,7 @@ test("temporary Phase 20.0b Prettier probe", async () => {
   const childProcess = require("node:child_process");
   const os = require("node:os");
   const prettier = require("prettier");
+  const dirty = [];
 
   for (const relative of [
     "scripts/run_phase20_group_combat_live_e2e.js",
@@ -250,6 +251,7 @@ test("temporary Phase 20.0b Prettier probe", async () => {
     const formatted = await prettier.format(source, { filepath: absolute });
     if (source === formatted) continue;
 
+    dirty.push(relative);
     const temp = path.join(
       os.tmpdir(),
       "phase20-prettier-" + relative.replaceAll("/", "-"),
@@ -261,6 +263,7 @@ test("temporary Phase 20.0b Prettier probe", async () => {
     console.log("PHASE20_PRETTIER_DIFF_START " + relative);
     console.log(diff.stdout);
     console.log("PHASE20_PRETTIER_DIFF_END " + relative);
-    assert.equal(source, formatted);
   }
+
+  assert.deepEqual(dirty, []);
 });
