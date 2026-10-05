@@ -670,6 +670,90 @@ async function make_runner(upper, CODE_file, version, is_typescript) {
           });
         break;
       }
+      case "phase20_group_probe_apply": {
+        const requestId =
+          typeof m.request_id === "string" && m.request_id
+            ? m.request_id
+            : "phase20-group-probe-" + Date.now();
+        const runtime = runner_context.__caracalBotRuntime;
+        if (!runtime?.runPhase20GroupProbe) {
+          sendIpcMessage(process, {
+            type: "phase20_group_probe_result",
+            request_id: requestId,
+            operation: "apply",
+            error: "PHASE20_GROUP_PROBE_RUNTIME_NOT_READY",
+          });
+          break;
+        }
+
+        void runtime
+          .runPhase20GroupProbe({
+            requestId,
+            role: m.role === "leader" ? "leader" : "follower",
+            leader: typeof m.leader === "string" ? m.leader : "",
+            members: Array.isArray(m.members)
+              ? m.members.filter((name) => typeof name === "string")
+              : [],
+            rendezvous:
+              typeof m.rendezvous === "string" ? m.rendezvous : undefined,
+          })
+          .then((result) => {
+            sendIpcMessage(process, {
+              type: "phase20_group_probe_result",
+              request_id: requestId,
+              operation: "apply",
+              result,
+            });
+          })
+          .catch((error) => {
+            sendIpcMessage(process, {
+              type: "phase20_group_probe_result",
+              request_id: requestId,
+              operation: "apply",
+              error: error instanceof Error ? error.message : String(error),
+            });
+          });
+        break;
+      }
+      case "phase20_group_probe_clear": {
+        const requestId =
+          typeof m.request_id === "string" && m.request_id
+            ? m.request_id
+            : "phase20-group-probe-clear-" + Date.now();
+        const runtime = runner_context.__caracalBotRuntime;
+        if (!runtime?.clearPhase20GroupProbe) {
+          sendIpcMessage(process, {
+            type: "phase20_group_probe_result",
+            request_id: requestId,
+            operation: "clear",
+            error: "PHASE20_GROUP_PROBE_RUNTIME_NOT_READY",
+          });
+          break;
+        }
+
+        void runtime
+          .clearPhase20GroupProbe({
+            requestId,
+            leaveParty: m.leave_party !== false,
+          })
+          .then((result) => {
+            sendIpcMessage(process, {
+              type: "phase20_group_probe_result",
+              request_id: requestId,
+              operation: "clear",
+              result,
+            });
+          })
+          .catch((error) => {
+            sendIpcMessage(process, {
+              type: "phase20_group_probe_result",
+              request_id: requestId,
+              operation: "clear",
+              error: error instanceof Error ? error.message : String(error),
+            });
+          });
+        break;
+      }
       case "group_live_test": {
         const requestId =
           typeof m.request_id === "string" && m.request_id

@@ -240,6 +240,6 @@ test("Phase 20.0a source uses normal bot runtime with guarded setup and cleanup"
   );
   assert.match(coordinator, /restore_phase20_integration_live_test_state/);
   assert.match(coordinator, /automaticLogisticsDispatchSuppressed:\s*true/);
-  assert.match(coordinator, /combatEvidenceRequired:\s*false/);
+  assert.match(coordinator, /combatEvidenceRequired:\s*stage === "20\.0b"/);
   assert.match(coordinator, /logisticsEvidenceRequired:\s*false/);
 });
