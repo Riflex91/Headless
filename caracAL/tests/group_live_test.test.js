@@ -59,13 +59,19 @@ function makeRunner({
     },
     async tick() {
       if (groupConfig?.groupCombat?.enabled) {
+        const configuredMembers = Array.isArray(
+          groupConfig.groupCombat.members,
+        )
+          ? groupConfig.groupCombat.members
+          : ["Leader", "Follower"];
         const current = new Set(Object.keys(state.party));
-        const alreadyFormed = current.has("Leader") && current.has("Follower");
+        const alreadyFormed = configuredMembers.every((name) =>
+          current.has(name),
+        );
         if (!alreadyFormed) {
-          state.party = {
-            Leader: { name: "Leader" },
-            Follower: { name: "Follower" },
-          };
+          state.party = Object.fromEntries(
+            configuredMembers.map((name) => [name, { name }]),
+          );
           lastAction = {
             id: "party-action-1",
             status: "DISPATCHED",
@@ -124,6 +130,29 @@ test("group live runner forms and cleans an autonomous pair", async () => {
   assert.equal(result.cleanup.initialPartyRestored, true);
   assert.equal(result.scope.combatMutationForced, false);
   assert.equal(result.scope.aoeMutationForced, false);
+});
+
+test("group live runner forms and validates a configured three-member party", async () => {
+  const runner = makeRunner({ role: "leader" });
+  const result = await runner.run({
+    role: "leader",
+    leader: "Leader",
+    peer: "Follower",
+    members: ["Leader", "Follower", "Third"],
+    holdMs: 1000,
+    pollIntervalMs: 50,
+  });
+
+  assert.equal(result.outcome, "PASS");
+  assert.deepEqual(result.members.sort(), ["Follower", "Leader", "Third"]);
+  assert.deepEqual(result.party.configuredMembers.sort(), [
+    "Follower",
+    "Leader",
+    "Third",
+  ]);
+  assert.deepEqual(result.party.members.sort(), ["Follower", "Leader", "Third"]);
+  assert.equal(result.party.formed, true);
+  assert.equal(result.cleanup.initialPartyRestored, true);
 });
 
 test("group live runner restores a pair that existed before the test", async () => {
