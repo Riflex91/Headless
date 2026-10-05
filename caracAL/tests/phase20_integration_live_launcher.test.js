@@ -244,8 +244,5 @@ test("Phase 20.0a source uses normal bot runtime with guarded setup and cleanup"
     coordinator,
     /combatEvidenceRequired:\s*\["20\.0b", "20\.0c"\]\.includes\(stage\)/,
   );
-  assert.match(
-    coordinator,
-    /logisticsEvidenceRequired:\s*stage === "20\.0c"/,
-  );
+  assert.match(coordinator, /logisticsEvidenceRequired:\s*stage === "20\.0c"/);
 });
