@@ -1231,10 +1231,17 @@ function migrate_old_storage(path, localStorage) {
           : null,
       }),
     }));
+    const unknown_cleanup = results.some(
+      (entry) =>
+        entry.result?.movementCancelStatus === "UNKNOWN" ||
+        entry.result?.partyLeaveStatus === "UNKNOWN",
+    );
     return {
       ok:
         acknowledged &&
+        !unknown_cleanup &&
         results.every((entry) => !entry.error),
+      unknownCleanup: unknown_cleanup,
       results,
     };
   }
