@@ -41,6 +41,12 @@ function evaluatePhase20MerchantLogisticsResult(payload, options = {}) {
   const runtimeSources = array(evidence.runtimeSources);
   const parallelAttackCounts = record(parallelGroup.attackCounts);
   const parallelFocusObserved = record(parallelGroup.focusObserved);
+  const parallelAttackContinuity = record(
+    parallelGroup.attackContinuityObserved,
+  );
+  const parallelFocusContinuity = record(
+    parallelGroup.focusContinuityObserved,
+  );
 
   const identityValid =
     typeof evidence.merchant === "string" &&
@@ -71,6 +77,17 @@ function evaluatePhase20MerchantLogisticsResult(payload, options = {}) {
         entry?.normalRuntime === true,
     );
 
+  const parallelAttacksValid =
+    (Number(parallelGroup.confirmedAttackCount) >= 3 &&
+      farmers.every((name) => Number(parallelAttackCounts[name]) >= 1)) ||
+    farmers.every((name) => parallelAttackContinuity[name] === true);
+  const followerNames = farmers.filter(
+    (name) => name !== parallelGroup.leader,
+  );
+  const parallelFocusValid =
+    Object.values(parallelFocusObserved).every((value) => value === true) ||
+    followerNames.every((name) => parallelFocusContinuity[name] === true);
+
   const groupValid =
     group.apply?.ok === true &&
     group.observed === true &&
@@ -88,12 +105,11 @@ function evaluatePhase20MerchantLogisticsResult(payload, options = {}) {
     parallelGroup.partyEvidenceMode === "LEADER_AUTHORITATIVE" &&
     parallelGroup.leaderPartyFormed === true &&
     parallelGroup.resourceRecoveryUnknown === false &&
-    Number(parallelGroup.confirmedAttackCount) >= 3 &&
+    parallelAttacksValid &&
+    parallelFocusValid &&
     Number(parallelGroup.unknownAttackCount) === 0 &&
     Number(parallelGroup.unknownMovementCount) === 0 &&
-    parallelGroup.movementOwnerValid === true &&
-    farmers.every((name) => Number(parallelAttackCounts[name]) >= 1) &&
-    Object.values(parallelFocusObserved).every((value) => value === true);
+    parallelGroup.movementOwnerValid === true;
 
   const merchantValid =
     merchant.autonomousBeforeValid === true &&
