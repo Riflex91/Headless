@@ -235,8 +235,7 @@ test("Phase 20.0c evaluator requires merchant to resume independent work", () =>
 test("Phase 20.0c accepts leader-authoritative party evidence with a stale follower snapshot", () => {
   const payload = passingPayload();
   payload.result.evidence.groupCombat.allRuntimeSnapshotsPartyFormed = false;
-  payload.result.evidence.groupCombatParallel.allRuntimeSnapshotsPartyFormed =
-    false;
+  payload.result.evidence.groupCombatParallel.allRuntimeSnapshotsPartyFormed = false;
 
   const result = evaluatePhase20MerchantLogisticsResult(payload);
   assert.equal(result.outcome, "PASS");
