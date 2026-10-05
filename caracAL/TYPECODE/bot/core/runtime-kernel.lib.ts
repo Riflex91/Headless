@@ -2808,6 +2808,7 @@ export class BotRuntimeKernel {
         role: options.role,
         leader: options.leader,
         peer: options.peer,
+        members: Array.isArray(options.members) ? [...options.members] : null,
         groupCombat: this.groupCombat.status(),
         ...runtimeIdentity(),
       },
