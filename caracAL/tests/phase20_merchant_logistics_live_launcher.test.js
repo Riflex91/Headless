@@ -114,16 +114,22 @@ function passingPayload() {
           dispatchStarted: true,
           settled: true,
           dispatchCount: 1,
+          diagnosticDispatchCount: 0,
           confirmed: true,
+          claimReasonMatched: true,
           completionSuppressed: true,
           pingPongValid: true,
           noBlindRetry: true,
           observation: {
             requestId: "logistics-claim-1",
+            claim: {
+              id: "GOLD_PICKUP:My_Ranger1:My_Merchant::",
+              reason: "GOLD_ABOVE_RESERVE",
+            },
             completionSuppressed: true,
             result: {
               outcome: "CONFIRMED",
-              reason: "SEND_GOLD_STATE_CONFIRMED",
+              reason: "GOLD_ABOVE_RESERVE",
               fulfilled: true,
               amount: 1,
               actionId: "A-GOLD-1",
@@ -180,6 +186,16 @@ test("Phase 20.0c evaluator rejects UNKNOWN logistics even without a retry", () 
     amount: 1,
     actionId: "A-GOLD-1",
   };
+
+  const result = evaluatePhase20MerchantLogisticsResult(payload);
+  assert.equal(result.outcome, "FAIL");
+  assert.equal(result.logisticsValid, false);
+});
+
+test("Phase 20.0c evaluator rejects a confirmed result with mismatched claim reason", () => {
+  const payload = passingPayload();
+  payload.result.evidence.logistics.observation.result.reason =
+    "UNEXPECTED_REASON";
 
   const result = evaluatePhase20MerchantLogisticsResult(payload);
   assert.equal(result.outcome, "FAIL");
@@ -258,6 +274,9 @@ test("Phase 20.0c source reuses production controllers and a single logistics di
   assert.match(coordinator, /stage === "20\.0c"/);
   assert.match(coordinator, /phase20_apply_logistics_overrides/);
   assert.match(coordinator, /dispatch_merchant_logistics_claim\(\)/);
+  assert.match(coordinator, /controlled_dispatch_count \+= 1/);
+  assert.match(coordinator, /logistics_reason_matches_claim/);
+  assert.match(coordinator, /parallel_group_checkpoint/);
   assert.match(coordinator, /LOGISTICS_CLAIM_RESULT_TIMEOUT_MS \+ 5000/);
   assert.match(
     coordinator,
