@@ -804,6 +804,8 @@ test("dashboard module and coordinator remain syntactically valid", () => {
   assert.match(dashboard, /SENSITIVE_CONFIG_KEY_NOT_ALLOWED/);
   assert.match(dashboard, /\/headless\/api\/tests\/full-autonomy/);
   assert.match(dashboard, /runFullAutonomyLiveTest/);
+  assert.match(dashboard, /\/headless\/api\/tests\/phase20-integration/);
+  assert.match(dashboard, /runPhase20IntegrationLiveTest/);
   assert.match(
     dashboard,
     /\/headless\/api\/characters\/:name\/tests\/movement/,
@@ -845,6 +847,8 @@ test("dashboard module and coordinator remain syntactically valid", () => {
   assert.match(coordinator, /FULL_AUTONOMY_ACTION_FAILED/);
   assert.match(coordinator, /run_full_autonomy_live_test/);
   assert.match(coordinator, /FULL_AUTONOMY_LIVE_E2E_CONFIRMED/);
+  assert.match(coordinator, /run_phase20_integration_live_test/);
+  assert.match(coordinator, /PHASE20_INTEGRATION_BOOTSTRAP_CONFIRMED/);
   assert.match(coordinator, /full_autonomy_live_test_lifecycle_only/);
   assert.match(characterThread, /lifecycle_only_probe/);
   assert.match(characterThread, /extensions\.lifecycle_only_probe/);
