@@ -1128,6 +1128,7 @@ function migrate_old_storage(path, localStorage) {
     character_names,
     leader,
     request_id,
+    potion_recovery = false,
   ) {
     for (const char_name of character_names) {
       const char_block = character_manage[char_name];
@@ -1147,6 +1148,7 @@ function migrate_old_storage(path, localStorage) {
         leader,
         members: character_names,
         rendezvous: "goo",
+        potion_recovery: potion_recovery === true,
       });
       if (!sent) {
         return {
@@ -1424,7 +1426,12 @@ function migrate_old_storage(path, localStorage) {
     );
   }
 
-  function phase20_group_combat_evidence(character_names, leader, since) {
+  function phase20_group_combat_evidence(
+    character_names,
+    leader,
+    since,
+    leader_authoritative_party = false,
+  ) {
     const current = Object.fromEntries(
       character_names.map((char_name) => {
         const block = character_manage[char_name];
@@ -1437,7 +1444,7 @@ function migrate_old_storage(path, localStorage) {
         ];
       }),
     );
-    const party_formed = character_names.every((char_name) => {
+    const all_runtime_snapshots_formed = character_names.every((char_name) => {
       const status = current[char_name]?.groupCombat;
       const members = Array.isArray(status?.partyMembers)
         ? status.partyMembers
@@ -1448,6 +1455,18 @@ function migrate_old_storage(path, localStorage) {
           status.missingMembers.length === 0)
       );
     });
+    const leader_status = current[leader]?.groupCombat;
+    const leader_members = Array.isArray(leader_status?.partyMembers)
+      ? leader_status.partyMembers
+      : [];
+    const leader_party_formed =
+      character_names.every((name) => leader_members.includes(name)) &&
+      (!Array.isArray(leader_status?.missingMembers) ||
+        leader_status.missingMembers.length === 0);
+    const party_formed =
+      leader_authoritative_party === true
+        ? leader_party_formed
+        : all_runtime_snapshots_formed;
 
     const events = diagnostic_store
       .getEvents({ since })
@@ -1513,9 +1532,18 @@ function migrate_old_storage(path, localStorage) {
     const attacks_valid =
       confirmed_attacks.length >= 3 &&
       character_names.every((char_name) => attack_counts[char_name] >= 1);
+    const resource_recovery_unknown = Object.values(current).some(
+      (entry) => entry?.combat?.reason === "POTION_OUTCOME_UNKNOWN",
+    );
 
     return {
       partyFormed: party_formed,
+      partyEvidenceMode:
+        leader_authoritative_party === true
+          ? "LEADER_AUTHORITATIVE"
+          : "ALL_RUNTIME_SNAPSHOTS",
+      leaderPartyFormed: leader_party_formed,
+      allRuntimeSnapshotsPartyFormed: all_runtime_snapshots_formed,
       leader,
       current,
       confirmedAttackCount: confirmed_attacks.length,
@@ -1525,11 +1553,13 @@ function migrate_old_storage(path, localStorage) {
       focusObserved: focus_observed,
       movementOwners: movement_owners,
       movementOwnerValid: movement_owner_valid,
+      resourceRecoveryUnknown: resource_recovery_unknown,
       pass:
         party_formed &&
         attacks_valid &&
         focus_valid &&
         movement_owner_valid &&
+        resource_recovery_unknown === false &&
         unknown_attacks.length === 0 &&
         unknown_movement.length === 0,
     };
@@ -1694,8 +1724,8 @@ function migrate_old_storage(path, localStorage) {
         ),
         restoredRunning: [],
         groupProbeCleared: !["20.0b", "20.0c"].includes(stage),
-        merchantProbeCleared: stage !== "20.0c",
-        logisticsOverridesRestored: stage !== "20.0c",
+        merchantProbeCleared: true,
+        logisticsOverridesRestored: true,
       },
     };
     let group_probe_started = false;
@@ -1852,6 +1882,7 @@ function migrate_old_storage(path, localStorage) {
               combat_names,
               leader,
               probe_request_id,
+              stage === "20.0c",
             );
 
             let observed = false;
@@ -1861,11 +1892,13 @@ function migrate_old_storage(path, localStorage) {
                   combat_names,
                   leader,
                   group_started_at,
+                  stage === "20.0c",
                 );
                 return (
                   evidence.pass ||
                   evidence.unknownAttackCount > 0 ||
-                  evidence.unknownMovementCount > 0
+                  evidence.unknownMovementCount > 0 ||
+                  evidence.resourceRecoveryUnknown === true
                 );
               }, 120000);
             }
@@ -1874,6 +1907,7 @@ function migrate_old_storage(path, localStorage) {
               combat_names,
               leader,
               group_started_at,
+              stage === "20.0c",
             );
             const merchant_online_during_combat =
               phase20_integration_runtime_ready(
@@ -1911,6 +1945,7 @@ function migrate_old_storage(path, localStorage) {
                 combat_names,
                 leader,
                 parallel_started_at,
+                true,
               );
               let parallel_unknown_attack_count =
                 parallel_group_checkpoint.unknownAttackCount;
@@ -1921,6 +1956,7 @@ function migrate_old_storage(path, localStorage) {
                   combat_names,
                   leader,
                   parallel_started_at,
+                  true,
                 );
                 parallel_unknown_attack_count = Math.max(
                   parallel_unknown_attack_count,
@@ -1944,6 +1980,7 @@ function migrate_old_storage(path, localStorage) {
               };
               let controlled_dispatch_count = 0;
               merchant_probe_started = true;
+              result.cleanup.merchantProbeCleared = false;
 
               const initial_rendezvous = await phase20_run_merchant_probe(
                 merchant_name,
@@ -2005,6 +2042,7 @@ function migrate_old_storage(path, localStorage) {
                   logistics_source.gold,
                 );
                 logistics_overrides_applied = true;
+                result.cleanup.logisticsOverridesRestored = false;
 
                 const matching_claims = logistics_board.claims.filter(
                   (claim) =>

@@ -2775,6 +2775,7 @@ export class BotRuntimeKernel {
     leader: string;
     members: string[];
     rendezvous?: string;
+    potionRecovery?: boolean;
   }): Promise<Record<string, unknown>> {
     if (!this.started || this.stopping) {
       throw new Error("runtime is not ready for Phase 20.0 group probe");
@@ -2869,7 +2870,14 @@ export class BotRuntimeKernel {
         ],
         retreat: false,
       },
-      potionUsage: { enabled: false },
+      potionUsage:
+        options.potionRecovery === true
+          ? {
+              enabled: true,
+              hpBelowPercent: 0,
+              mpBelowPercent: 20,
+            }
+          : { enabled: false },
       safety: { autoRespawn: false },
     });
     this.groupCombat.setConfigOverride({
@@ -2911,6 +2919,7 @@ export class BotRuntimeKernel {
         status: move.status,
       },
       initialMovementCancelStatus: cancelStatus,
+      potionRecoveryEnabled: options.potionRecovery === true,
       groupCombat,
       combat,
       movement: this.movement.status(),

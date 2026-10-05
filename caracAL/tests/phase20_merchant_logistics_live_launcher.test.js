@@ -75,6 +75,10 @@ function passingPayload() {
           apply: { ok: true },
           observed: true,
           partyFormed: true,
+          partyEvidenceMode: "LEADER_AUTHORITATIVE",
+          leaderPartyFormed: true,
+          allRuntimeSnapshotsPartyFormed: false,
+          resourceRecoveryUnknown: false,
           confirmedAttackCount: 12,
           attackCounts,
           unknownAttackCount: 0,
@@ -87,6 +91,10 @@ function passingPayload() {
         groupCombatParallel: {
           observed: true,
           partyFormed: true,
+          partyEvidenceMode: "LEADER_AUTHORITATIVE",
+          leaderPartyFormed: true,
+          allRuntimeSnapshotsPartyFormed: false,
+          resourceRecoveryUnknown: false,
           confirmedAttackCount: 12,
           attackCounts,
           unknownAttackCount: 0,
@@ -224,6 +232,25 @@ test("Phase 20.0c evaluator requires merchant to resume independent work", () =>
   assert.equal(result.merchantValid, false);
 });
 
+test("Phase 20.0c accepts leader-authoritative party evidence with a stale follower snapshot", () => {
+  const payload = passingPayload();
+  payload.result.evidence.groupCombat.allRuntimeSnapshotsPartyFormed = false;
+  payload.result.evidence.groupCombatParallel.allRuntimeSnapshotsPartyFormed = false;
+
+  const result = evaluatePhase20MerchantLogisticsResult(payload);
+  assert.equal(result.outcome, "PASS");
+  assert.equal(result.groupValid, true);
+});
+
+test("Phase 20.0c rejects unknown MP recovery outcome", () => {
+  const payload = passingPayload();
+  payload.result.evidence.groupCombat.resourceRecoveryUnknown = true;
+
+  const result = evaluatePhase20MerchantLogisticsResult(payload);
+  assert.equal(result.outcome, "FAIL");
+  assert.equal(result.groupValid, false);
+});
+
 test("Phase 20.0c evaluator rejects Merchant party membership or stalled farmers", () => {
   const payload = passingPayload();
   payload.result.evidence.groupCombat.merchantNotInParty = false;
@@ -272,6 +299,13 @@ test("Phase 20.0c source reuses production controllers and a single logistics di
   );
 
   assert.match(coordinator, /stage === "20\.0c"/);
+  assert.match(coordinator, /stage === "20\.0c"/);
+  assert.match(coordinator, /phase20_apply_group_probe/);
+  assert.match(coordinator, /stage === "20\.0c"/);
+  assert.match(coordinator, /LEADER_AUTHORITATIVE/);
+  assert.match(thread, /potionRecovery: m\.potion_recovery === true/);
+  assert.match(kernel, /options\.potionRecovery === true/);
+  assert.match(kernel, /mpBelowPercent: 20/);
   assert.match(coordinator, /phase20_apply_logistics_overrides/);
   assert.match(coordinator, /dispatch_merchant_logistics_claim\(\)/);
   assert.match(coordinator, /controlled_dispatch_count \+= 1/);
