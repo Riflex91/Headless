@@ -60,8 +60,7 @@ async function runPhase20IntegrationSupervisorLiveTest({
         body?.error ||
         `HTTP ${response.status} from caracAL dashboard`,
     );
-    error.code =
-      body?.error || "PHASE20_INTEGRATION_LIVE_TEST_REQUEST_FAILED";
+    error.code = body?.error || "PHASE20_INTEGRATION_LIVE_TEST_REQUEST_FAILED";
     error.statusCode = response.status;
     throw error;
   }
@@ -136,7 +135,8 @@ function evaluatePhase20IntegrationSupervisorResult(payload) {
     outcome: pass ? "PASS" : "FAIL",
     reason: pass
       ? "PHASE20_INTEGRATION_BOOTSTRAP_CONFIRMED"
-      : supervisor.reason || "PHASE20_INTEGRATION_BOOTSTRAP_EVIDENCE_INCOMPLETE",
+      : supervisor.reason ||
+        "PHASE20_INTEGRATION_BOOTSTRAP_EVIDENCE_INCOMPLETE",
     evidence,
     scope,
     cleanup,
@@ -160,13 +160,11 @@ function formatCompactResult(result) {
     "Selected characters: " + array(evidence.selectedCharacters).join(", "),
     "All online: " + (evidence.allOnline === true ? "yes" : "no"),
     "All RUNNING: " + (evidence.allRunning === true ? "yes" : "no"),
-    "All bot/main.js: " +
-      (evidence.normalRuntimeAll === true ? "yes" : "no"),
+    "All bot/main.js: " + (evidence.normalRuntimeAll === true ? "yes" : "no"),
     "Active characters: " + String(evidence.activeCharacters ?? "UNKNOWN"),
     "Max online characters: " +
       String(evidence.maxOnlineCharacters ?? "UNKNOWN"),
-    "Slot limit valid: " +
-      (evidence.slotLimitValid === true ? "yes" : "no"),
+    "Slot limit valid: " + (evidence.slotLimitValid === true ? "yes" : "no"),
     "Normal runtime: " + (scope.normalRuntime === true ? "yes" : "no"),
     "Lifecycle-only probe: " +
       (scope.lifecycleOnlyProbe === true ? "yes" : "no"),
