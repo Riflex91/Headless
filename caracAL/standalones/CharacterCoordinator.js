@@ -2226,8 +2226,7 @@ function migrate_old_storage(path, localStorage) {
                 clearInterval(parallel_capture_timer);
                 parallel_capture_timer = null;
               }
-              const attack_continuity_observed =
-                parallel_attack_continuity();
+              const attack_continuity_observed = parallel_attack_continuity();
               const attack_continuity_action_ids = Object.fromEntries(
                 combat_names.map((name) => [
                   name,
