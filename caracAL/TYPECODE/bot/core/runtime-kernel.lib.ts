@@ -390,6 +390,7 @@ export class BotRuntimeKernel {
   private craftLiveTestRunning = false;
   private logisticsLiveTestRunning = false;
   private merchantLiveTestRunning = false;
+  private phase20MerchantProbeActive = false;
   private bankTravelLiveTestRunning = false;
   private bankGoldLiveTestRunning = false;
   private npcTradingLiveTestRunning = false;
@@ -3005,6 +3006,150 @@ export class BotRuntimeKernel {
     return result;
   }
 
+  async runPhase20MerchantProbe(options: {
+    requestId?: string;
+    operation: "rendezvous" | "autonomy";
+    rendezvous?: string;
+  }): Promise<Record<string, unknown>> {
+    if (!this.started || this.stopping) {
+      throw new Error("runtime is not ready for Phase 20.0 merchant probe");
+    }
+    if (runtimeState() !== "RUNNING") {
+      throw new Error("runtime must be RUNNING for Phase 20.0 merchant probe");
+    }
+
+    const character = this.game.character();
+    if (character.ctype !== "merchant" || !character.name) {
+      throw new Error("PHASE20_MERCHANT_PROBE_MERCHANT_REQUIRED");
+    }
+    if (!["rendezvous", "autonomy"].includes(options.operation)) {
+      throw new Error("PHASE20_MERCHANT_PROBE_OPERATION_INVALID");
+    }
+
+    const requestId =
+      options.requestId || `phase20-merchant-probe-${Date.now()}`;
+    this.phase20MerchantProbeActive = true;
+    const merchantAutonomy = this.merchantAutonomy.tick();
+
+    if (options.operation === "autonomy") {
+      this.bankTravel.setConfigOverride({ bank: { enabled: true } });
+      const bankTravel = await this.bankTravel.tick();
+      const result = {
+        requestId,
+        operation: options.operation,
+        character: character.name,
+        merchantAutonomy,
+        bankTravel,
+        movement: this.movement.status(),
+      };
+
+      this.eventBus.emit({
+        module: "Phase20IntegrationProbe",
+        type: "PHASE20_MERCHANT_AUTONOMY_OBSERVED",
+        why: bankTravel.reason,
+        correlationId: requestId,
+        data: result,
+      });
+      return result;
+    }
+
+    this.bankTravel.setConfigOverride({ bank: { enabled: false } });
+    const bankTravel = await this.bankTravel.tick();
+    const movementBefore = this.movement.status();
+    let movementCancelStatus: string | null = null;
+    if (movementBefore.owner || movementBefore.active) {
+      const cancelled = await this.movement.cancel({
+        owner: "Phase20IntegrationProbe",
+        module: "Phase20IntegrationProbe",
+        why: "PHASE20_MERCHANT_RENDEZVOUS_PREEMPT",
+        force: true,
+      });
+      movementCancelStatus = cancelled.status;
+      if (cancelled.status === "UNKNOWN") {
+        throw new Error("PHASE20_MERCHANT_RENDEZVOUS_CANCEL_UNKNOWN");
+      }
+    }
+
+    const rendezvous = options.rendezvous?.trim() || "goo";
+    const move = await this.movement.smart({
+      owner: "Phase20IntegrationProbe",
+      module: "Phase20IntegrationProbe",
+      why: "PHASE20_MERCHANT_LOGISTICS_RENDEZVOUS",
+      destination: rendezvous,
+    });
+    if (move.status === "UNKNOWN") {
+      throw new Error("PHASE20_MERCHANT_RENDEZVOUS_UNKNOWN");
+    }
+    if (move.status === "BLOCKED" || move.status === "REJECTED") {
+      throw new Error("PHASE20_MERCHANT_RENDEZVOUS_FAILED");
+    }
+
+    const result = {
+      requestId,
+      operation: options.operation,
+      character: character.name,
+      rendezvous,
+      rendezvousAction: {
+        id: move.id,
+        status: move.status,
+      },
+      movementCancelStatus,
+      merchantAutonomy,
+      bankTravel,
+      movement: this.movement.status(),
+    };
+    this.eventBus.emit({
+      module: "Phase20IntegrationProbe",
+      type: "PHASE20_MERCHANT_RENDEZVOUS_CONFIRMED",
+      why: "PHASE20_MERCHANT_LOGISTICS_RENDEZVOUS",
+      correlationId: requestId,
+      data: result,
+    });
+    return result;
+  }
+
+  async clearPhase20MerchantProbe(options: {
+    requestId?: string;
+  } = {}): Promise<Record<string, unknown>> {
+    const requestId =
+      options.requestId || `phase20-merchant-probe-clear-${Date.now()}`;
+    const character = this.game.character();
+
+    this.bankTravel.setConfigOverride({ bank: { enabled: false } });
+    await this.bankTravel.tick();
+
+    let movementCancelStatus: string | null = null;
+    const movement = this.movement.status();
+    if (movement.owner || movement.active) {
+      const cancelled = await this.movement.cancel({
+        owner: "Phase20IntegrationProbe",
+        module: "Phase20IntegrationProbe",
+        why: "PHASE20_MERCHANT_PROBE_CLEANUP",
+        force: true,
+      });
+      movementCancelStatus = cancelled.status;
+    }
+
+    this.bankTravel.clearConfigOverride();
+    this.phase20MerchantProbeActive = false;
+    const result = {
+      requestId,
+      character: character.name,
+      movementCancelStatus,
+      bankTravel: this.bankTravel.status(),
+      movement: this.movement.status(),
+    };
+
+    this.eventBus.emit({
+      module: "Phase20IntegrationProbe",
+      type: "PHASE20_MERCHANT_PROBE_CLEARED",
+      why: "PHASE20_MERCHANT_RUNTIME_OVERRIDE_CLEARED",
+      correlationId: requestId,
+      data: result,
+    });
+    return result;
+  }
+
   async runGroupLiveTest(
     options: GroupLiveTestOptions,
   ): Promise<GroupLiveTestResult> {
@@ -4686,6 +4831,7 @@ export class BotRuntimeKernel {
       intervalMs: BANK_TRAVEL_INTERVAL_MS,
       priority: 76,
       tick: async () => {
+        if (this.phase20MerchantProbeActive) return;
         await this.bankTravel.tick();
       },
     });
@@ -4698,6 +4844,7 @@ export class BotRuntimeKernel {
       intervalMs: FISHING_AUTONOMY_INTERVAL_MS,
       priority: 73,
       tick: async () => {
+        if (this.phase20MerchantProbeActive) return;
         await this.merchantFishing.tick();
       },
     });
@@ -4759,6 +4906,7 @@ export class BotRuntimeKernel {
       intervalMs: MERRIT_AUTONOMY_INTERVAL_MS,
       priority: 74,
       tick: async () => {
+        if (this.phase20MerchantProbeActive) return;
         await this.merchantMerrit.tick();
       },
     });
