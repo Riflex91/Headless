@@ -1249,11 +1249,7 @@ function migrate_old_storage(path, localStorage) {
     return result;
   }
 
-  async function phase20_run_merchant_probe(
-    char_name,
-    request_id,
-    operation,
-  ) {
+  async function phase20_run_merchant_probe(char_name, request_id, operation) {
     const char_block = character_manage[char_name];
     if (!char_block?.instance) {
       return {
@@ -1286,13 +1282,16 @@ function migrate_old_storage(path, localStorage) {
         null,
       240000,
     );
-    const received =
-      phase20_merchant_probe_result(char_name, request_id, operation) || {
-        request_id,
-        operation,
-        result: null,
-        error: "PHASE20_MERCHANT_PROBE_ACK_TIMEOUT",
-      };
+    const received = phase20_merchant_probe_result(
+      char_name,
+      request_id,
+      operation,
+    ) || {
+      request_id,
+      operation,
+      result: null,
+      error: "PHASE20_MERCHANT_PROBE_ACK_TIMEOUT",
+    };
     return {
       ok: acknowledged && !received.error && !!received.result,
       reason: acknowledged
@@ -1332,15 +1331,17 @@ function migrate_old_storage(path, localStorage) {
         phase20_merchant_probe_result(char_name, request_id, "clear") !== null,
       60000,
     );
-    const received =
-      phase20_merchant_probe_result(char_name, request_id, "clear") || {
-        request_id,
-        operation: "clear",
-        result: null,
-        error: "PHASE20_MERCHANT_PROBE_CLEAR_TIMEOUT",
-      };
-    const unknown_cleanup =
-      received.result?.movementCancelStatus === "UNKNOWN";
+    const received = phase20_merchant_probe_result(
+      char_name,
+      request_id,
+      "clear",
+    ) || {
+      request_id,
+      operation: "clear",
+      result: null,
+      error: "PHASE20_MERCHANT_PROBE_CLEAR_TIMEOUT",
+    };
+    const unknown_cleanup = received.result?.movementCancelStatus === "UNKNOWN";
     return {
       ok: acknowledged && !received.error && !unknown_cleanup,
       unknownCleanup: unknown_cleanup,
@@ -1405,7 +1406,10 @@ function migrate_old_storage(path, localStorage) {
     return refresh_merchant_logistics("PHASE20_INTEGRATION_LOGISTICS_OVERRIDE");
   }
 
-  function phase20_restore_runtime_config_overrides(character_names, originals) {
+  function phase20_restore_runtime_config_overrides(
+    character_names,
+    originals,
+  ) {
     for (const char_name of character_names) {
       const char_block = character_manage[char_name];
       const original = originals[char_name];
@@ -1664,8 +1668,8 @@ function migrate_old_storage(path, localStorage) {
         stage === "20.0c"
           ? "PHASE20_INTEGRATION_MERCHANT_LOGISTICS_INCOMPLETE"
           : stage === "20.0b"
-            ? "PHASE20_INTEGRATION_GROUP_COMBAT_INCOMPLETE"
-            : "PHASE20_INTEGRATION_BOOTSTRAP_INCOMPLETE",
+          ? "PHASE20_INTEGRATION_GROUP_COMBAT_INCOMPLETE"
+          : "PHASE20_INTEGRATION_BOOTSTRAP_INCOMPLETE",
       evidence: {
         merchant: merchant_name,
         farmers: combat_names,
@@ -1946,7 +1950,8 @@ function migrate_old_storage(path, localStorage) {
                 )
                 .sort(
                   (left, right) =>
-                    right.gold - left.gold || left.name.localeCompare(right.name),
+                    right.gold - left.gold ||
+                    left.name.localeCompare(right.name),
                 );
               const logistics_source = logistics_candidates[0] || null;
               let logistics_board = null;
@@ -2161,35 +2166,34 @@ function migrate_old_storage(path, localStorage) {
                 logistics_result?.outcome === "UNKNOWN"
                   ? "PHASE20_MERCHANT_LOGISTICS_OUTCOME_UNKNOWN_NO_RETRY"
                   : !logistics_source
-                    ? "PHASE20_MERCHANT_LOGISTICS_GOLD_SOURCE_UNAVAILABLE"
-                    : !autonomous_before_valid
-                      ? "PHASE20_MERCHANT_AUTONOMY_BEFORE_INCOMPLETE"
-                      : !logistics_rendezvous_valid
-                        ? "PHASE20_MERCHANT_LOGISTICS_RENDEZVOUS_INCOMPLETE"
-                        : !logistics_valid
-                          ? "PHASE20_MERCHANT_LOGISTICS_VALUE_MUTATION_INCOMPLETE"
-                          : !autonomous_after_valid
-                            ? "PHASE20_MERCHANT_AUTONOMY_RESUME_INCOMPLETE"
-                            : !group_evidence.pass
-                              ? "PHASE20_GROUP_COMBAT_PARALLEL_EVIDENCE_INCOMPLETE"
-                              : merchant_unknown_movement.length > 0
-                                ? "PHASE20_MERCHANT_MOVEMENT_OUTCOME_UNKNOWN"
-                                : process_exits.length > 0 ||
-                                    reconnects.length > 0
-                                  ? "PHASE20_RUNTIME_STABILITY_VIOLATION"
-                                  : pass
-                                    ? "PHASE20_INTEGRATION_MERCHANT_LOGISTICS_CONFIRMED"
-                                    : "PHASE20_INTEGRATION_MERCHANT_LOGISTICS_EVIDENCE_INCOMPLETE";
+                  ? "PHASE20_MERCHANT_LOGISTICS_GOLD_SOURCE_UNAVAILABLE"
+                  : !autonomous_before_valid
+                  ? "PHASE20_MERCHANT_AUTONOMY_BEFORE_INCOMPLETE"
+                  : !logistics_rendezvous_valid
+                  ? "PHASE20_MERCHANT_LOGISTICS_RENDEZVOUS_INCOMPLETE"
+                  : !logistics_valid
+                  ? "PHASE20_MERCHANT_LOGISTICS_VALUE_MUTATION_INCOMPLETE"
+                  : !autonomous_after_valid
+                  ? "PHASE20_MERCHANT_AUTONOMY_RESUME_INCOMPLETE"
+                  : !group_evidence.pass
+                  ? "PHASE20_GROUP_COMBAT_PARALLEL_EVIDENCE_INCOMPLETE"
+                  : merchant_unknown_movement.length > 0
+                  ? "PHASE20_MERCHANT_MOVEMENT_OUTCOME_UNKNOWN"
+                  : process_exits.length > 0 || reconnects.length > 0
+                  ? "PHASE20_RUNTIME_STABILITY_VIOLATION"
+                  : pass
+                  ? "PHASE20_INTEGRATION_MERCHANT_LOGISTICS_CONFIRMED"
+                  : "PHASE20_INTEGRATION_MERCHANT_LOGISTICS_EVIDENCE_INCOMPLETE";
             } else {
               result.outcome = pass ? "PASS" : "FAIL";
               result.reason =
                 group_evidence.unknownAttackCount > 0
                   ? "PHASE20_GROUP_COMBAT_ATTACK_OUTCOME_UNKNOWN"
                   : group_evidence.unknownMovementCount > 0
-                    ? "PHASE20_GROUP_COMBAT_MOVEMENT_OUTCOME_UNKNOWN"
-                    : pass
-                      ? "PHASE20_INTEGRATION_GROUP_COMBAT_CONFIRMED"
-                      : "PHASE20_INTEGRATION_GROUP_COMBAT_EVIDENCE_INCOMPLETE";
+                  ? "PHASE20_GROUP_COMBAT_MOVEMENT_OUTCOME_UNKNOWN"
+                  : pass
+                  ? "PHASE20_INTEGRATION_GROUP_COMBAT_CONFIRMED"
+                  : "PHASE20_INTEGRATION_GROUP_COMBAT_EVIDENCE_INCOMPLETE";
             }
           } else {
             result.outcome = pass ? "PASS" : "FAIL";
@@ -2716,9 +2720,7 @@ function migrate_old_storage(path, localStorage) {
         fulfilled: false,
       };
       merchant_logistics_planner.recordClaimOutcome(claim, timeout_result);
-      if (
-        phase20_integration_logistics_observation?.requestId === request_id
-      ) {
+      if (phase20_integration_logistics_observation?.requestId === request_id) {
         phase20_integration_logistics_observation.result = timeout_result;
         phase20_integration_logistics_observation.completedAt = Date.now();
       }
@@ -2761,9 +2763,7 @@ function migrate_old_storage(path, localStorage) {
         fulfilled: false,
       };
       merchant_logistics_planner.recordClaimOutcome(claim, blocked_result);
-      if (
-        phase20_integration_logistics_observation?.requestId === request_id
-      ) {
+      if (phase20_integration_logistics_observation?.requestId === request_id) {
         phase20_integration_logistics_observation.result = blocked_result;
         phase20_integration_logistics_observation.completedAt = Date.now();
       }
@@ -16413,8 +16413,9 @@ function migrate_old_storage(path, localStorage) {
             phase20_integration_logistics_observation?.requestId ===
             m.request_id
           ) {
-            phase20_integration_logistics_observation.result =
-              JSON.parse(JSON.stringify(execution_result));
+            phase20_integration_logistics_observation.result = JSON.parse(
+              JSON.stringify(execution_result),
+            );
             phase20_integration_logistics_observation.completedAt = Date.now();
           }
           emit_supervisor_event("LOGISTICS_CLAIM_RESULT_RECEIVED", char_name, {
