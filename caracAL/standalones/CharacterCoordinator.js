@@ -1107,7 +1107,8 @@ function migrate_old_storage(path, localStorage) {
     };
   }
 
-  async function run_phase20_integration_live_test() {
+  async function run_phase20_integration_live_test(options = {}) {
+    const require_group_formation = options.groupFormation === true;
     const ready_deadline = Date.now() + 10000;
     while (!coordinator_ready && Date.now() < ready_deadline) {
       await sleep(50);
@@ -1231,9 +1232,11 @@ function migrate_old_storage(path, localStorage) {
       phase20_integration_live_test_sequence;
     let result = {
       testId: test_id,
-      phase: "20.0a",
+      phase: require_group_formation ? "20.0b1" : "20.0a",
       outcome: "FAIL",
-      reason: "PHASE20_INTEGRATION_BOOTSTRAP_INCOMPLETE",
+      reason: require_group_formation
+        ? "PHASE20_GROUP_TRIO_INCOMPLETE"
+        : "PHASE20_INTEGRATION_BOOTSTRAP_INCOMPLETE",
       evidence: {
         merchant: merchant_name,
         farmers: combat_names,
@@ -1246,6 +1249,7 @@ function migrate_old_storage(path, localStorage) {
         gameplayMutationForced: false,
         valueMutationForced: false,
         automaticLogisticsDispatchSuppressed: true,
+        groupFormationRequired: require_group_formation,
         combatEvidenceRequired: false,
         logisticsEvidenceRequired: false,
       },
@@ -1390,17 +1394,118 @@ function migrate_old_storage(path, localStorage) {
             slotLimitValid: slot_limit_valid,
           };
 
-          const pass =
+          const bootstrap_pass =
             all_online &&
             running_all &&
             normal_runtime_all &&
             slot_limit_valid &&
             selected_names.length === 4;
 
-          result.outcome = pass ? "PASS" : "FAIL";
-          result.reason = pass
-            ? "PHASE20_INTEGRATION_BOOTSTRAP_CONFIRMED"
-            : "PHASE20_INTEGRATION_BOOTSTRAP_EVIDENCE_INCOMPLETE";
+          if (!bootstrap_pass) {
+            result.outcome = "FAIL";
+            result.reason = "PHASE20_INTEGRATION_BOOTSTRAP_EVIDENCE_INCOMPLETE";
+          } else if (!require_group_formation) {
+            result.outcome = "PASS";
+            result.reason = "PHASE20_INTEGRATION_BOOTSTRAP_CONFIRMED";
+          } else {
+            const leader = combat_names[0];
+            const followers = combat_names.slice(1);
+            const baseline_group_formed = combat_names.some((name) => {
+              const party_members =
+                character_manage[name]?.group_combat_runtime?.partyMembers;
+              return (
+                Array.isArray(party_members) &&
+                combat_names.every((member) => party_members.includes(member))
+              );
+            });
+            const shared_options = {
+              leader,
+              members: combat_names,
+              baselinePairFormed: baseline_group_formed,
+              coordinatedPair: true,
+            };
+
+            const leader_promise = run_group_live_test(leader, {
+              ...shared_options,
+              role: "leader",
+              peer: followers[0],
+            });
+            leader_promise.catch(() => {});
+
+            const leader_running =
+              await wait_for_phase20_integration_live_test(
+                () =>
+                  character_manage[leader]?.group_live_test?.status ===
+                  "RUNNING",
+                60000,
+              );
+
+            if (!leader_running) {
+              result.outcome = "FAIL";
+              result.reason = "PHASE20_GROUP_TRIO_LEADER_BOOTSTRAP_TIMEOUT";
+              result.evidence.group = {
+                leader,
+                followers,
+                members: combat_names,
+                baselineGroupFormed: baseline_group_formed,
+                leaderRunning: false,
+                results: [],
+              };
+              await leader_promise;
+            } else {
+              const follower_promises = followers.map((follower, index) =>
+                run_group_live_test(follower, {
+                  ...shared_options,
+                  role: "follower",
+                  peer: followers[(index + 1) % followers.length],
+                }),
+              );
+              const group_results = await Promise.all([
+                leader_promise,
+                ...follower_promises,
+              ]);
+              const configured_set_valid = group_results.every((entry) => {
+                const configured = entry?.party?.configuredMembers;
+                const observed = entry?.party?.members;
+                return (
+                  entry?.outcome === "PASS" &&
+                  entry?.party?.formed === true &&
+                  Array.isArray(configured) &&
+                  configured.length === 3 &&
+                  combat_names.every((name) => configured.includes(name)) &&
+                  Array.isArray(observed) &&
+                  combat_names.every((name) => observed.includes(name))
+                );
+              });
+
+              result.evidence.group = {
+                leader,
+                followers,
+                members: combat_names,
+                baselineGroupFormed: baseline_group_formed,
+                leaderRunning: true,
+                results: group_results.map((entry) => ({
+                  character: entry?.character || null,
+                  role: entry?.role || null,
+                  outcome: entry?.outcome || "FAIL",
+                  reason: entry?.reason || null,
+                  configuredMembers:
+                    entry?.party?.configuredMembers || [],
+                  observedMembers: entry?.party?.members || [],
+                  roleProjected: entry?.party?.roleProjected === true,
+                  leaderProjected: entry?.party?.leaderProjected === true,
+                  initialPartyRestored:
+                    entry?.cleanup?.initialPartyRestored === true,
+                })),
+                trioFormed: configured_set_valid,
+              };
+
+              result.outcome = configured_set_valid ? "PASS" : "FAIL";
+              result.reason = configured_set_valid
+                ? "PHASE20_GROUP_TRIO_CONFIRMED"
+                : "PHASE20_GROUP_TRIO_EVIDENCE_INCOMPLETE";
+            }
+          }
         }
       }
     } catch (error) {
