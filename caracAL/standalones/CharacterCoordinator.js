@@ -1566,9 +1566,11 @@ function migrate_old_storage(path, localStorage) {
   }
 
   async function run_phase20_integration_live_test(options = {}) {
-    const stage = ["20.0b", "20.0c"].includes(options.stage)
+    const stage = ["20.0b", "20.0c", "20.0d"].includes(options.stage)
       ? options.stage
       : "20.0a";
+    const group_combat_stage = ["20.0b", "20.0c", "20.0d"].includes(stage);
+    const merchant_logistics_stage = ["20.0c", "20.0d"].includes(stage);
     const ready_deadline = Date.now() + 10000;
     while (!coordinator_ready && Date.now() < ready_deadline) {
       await sleep(50);
@@ -1695,7 +1697,9 @@ function migrate_old_storage(path, localStorage) {
       phase: stage,
       outcome: "FAIL",
       reason:
-        stage === "20.0c"
+        stage === "20.0d"
+          ? "PHASE20_INTEGRATION_COMBINED_INCOMPLETE"
+          : stage === "20.0c"
           ? "PHASE20_INTEGRATION_MERCHANT_LOGISTICS_INCOMPLETE"
           : stage === "20.0b"
           ? "PHASE20_INTEGRATION_GROUP_COMBAT_INCOMPLETE"
@@ -1709,13 +1713,13 @@ function migrate_old_storage(path, localStorage) {
         normalRuntime: true,
         lifecycleOnlyProbe: false,
         lifecycleMutationDispatched: false,
-        gameplayMutationForced: ["20.0b", "20.0c"].includes(stage),
-        valueMutationForced: stage === "20.0c",
+        gameplayMutationForced: group_combat_stage,
+        valueMutationForced: merchant_logistics_stage,
         automaticLogisticsDispatchSuppressed: true,
-        controlledLogisticsDispatchEnabled: stage === "20.0c",
-        combatEvidenceRequired: ["20.0b", "20.0c"].includes(stage),
-        logisticsEvidenceRequired: stage === "20.0c",
-        merchantAutonomyEvidenceRequired: stage === "20.0c",
+        controlledLogisticsDispatchEnabled: merchant_logistics_stage,
+        combatEvidenceRequired: group_combat_stage,
+        logisticsEvidenceRequired: merchant_logistics_stage,
+        merchantAutonomyEvidenceRequired: merchant_logistics_stage,
       },
       cleanup: {
         runtimeStateRestored: false,
@@ -1723,7 +1727,7 @@ function migrate_old_storage(path, localStorage) {
           (name) => originals[name]?.runtimeReady === true,
         ),
         restoredRunning: [],
-        groupProbeCleared: !["20.0b", "20.0c"].includes(stage),
+        groupProbeCleared: !group_combat_stage,
         merchantProbeCleared: true,
         logisticsOverridesRestored: true,
       },
@@ -1873,7 +1877,7 @@ function migrate_old_storage(path, localStorage) {
             slot_limit_valid &&
             selected_names.length === 4;
 
-          if (pass && ["20.0b", "20.0c"].includes(stage)) {
+          if (pass && group_combat_stage) {
             const group_started_at = Date.now();
             const leader = combat_names[0];
             const probe_request_id = test_id + ":group";
@@ -1882,7 +1886,7 @@ function migrate_old_storage(path, localStorage) {
               combat_names,
               leader,
               probe_request_id,
-              stage === "20.0c",
+              merchant_logistics_stage,
             );
 
             let observed = false;
@@ -1892,7 +1896,7 @@ function migrate_old_storage(path, localStorage) {
                   combat_names,
                   leader,
                   group_started_at,
-                  stage === "20.0c",
+                  merchant_logistics_stage,
                 );
                 return (
                   evidence.pass ||
@@ -1939,7 +1943,7 @@ function migrate_old_storage(path, localStorage) {
               merchant_online_during_combat &&
               merchant_not_in_party;
 
-            if (stage === "20.0c" && pass) {
+            if (merchant_logistics_stage && pass) {
               const parallel_started_at = Date.now();
               let parallel_group_checkpoint = phase20_group_combat_evidence(
                 combat_names,
@@ -2289,7 +2293,9 @@ function migrate_old_storage(path, localStorage) {
                   : process_exits.length > 0 || reconnects.length > 0
                   ? "PHASE20_RUNTIME_STABILITY_VIOLATION"
                   : pass
-                  ? "PHASE20_INTEGRATION_MERCHANT_LOGISTICS_CONFIRMED"
+                  ? stage === "20.0d"
+                    ? "PHASE20_INTEGRATION_COMBINED_CONFIRMED"
+                    : "PHASE20_INTEGRATION_MERCHANT_LOGISTICS_CONFIRMED"
                   : "PHASE20_INTEGRATION_MERCHANT_LOGISTICS_EVIDENCE_INCOMPLETE";
             } else {
               result.outcome = pass ? "PASS" : "FAIL";
@@ -2324,7 +2330,7 @@ function migrate_old_storage(path, localStorage) {
         logistics_overrides_applied = false;
       }
 
-      if (stage === "20.0c" && merchant_probe_started) {
+      if (merchant_logistics_stage && merchant_probe_started) {
         const merchant_cleared = await phase20_clear_merchant_probe(
           merchant_name,
           test_id + ":merchant:clear",
@@ -2337,7 +2343,7 @@ function migrate_old_storage(path, localStorage) {
         }
       }
 
-      if (["20.0b", "20.0c"].includes(stage) && group_probe_started) {
+      if (group_combat_stage && group_probe_started) {
         const cleared = await phase20_clear_group_probe(
           combat_names,
           test_id + ":group",
