@@ -74,6 +74,35 @@ test("structured logger keeps account events out of character files", async () =
   }
 });
 
+test("structured logger reuses ensured output directories", async () => {
+  const rootDir = await fs.mkdtemp(
+    path.join(os.tmpdir(), "caracal-structured-log-cache-"),
+  );
+  const logger = new StructuredLogger({
+    rootDir,
+    now: () => Date.parse("2026-10-02T05:00:00.000Z"),
+  });
+
+  try {
+    logger.write({ event: "FIRST", character: "My_Ranger1" });
+    logger.write({ event: "SECOND", character: "My_Ranger1" });
+    logger.write({ event: "ACCOUNT", character: null });
+    await logger.flush();
+
+    assert.equal(logger.readyDirectories.size, 2);
+    assert.equal(
+      logger.readyDirectories.has(path.join(rootDir, "runtime")),
+      true,
+    );
+    assert.equal(
+      logger.readyDirectories.has(path.join(rootDir, "characters")),
+      true,
+    );
+  } finally {
+    await fs.rm(rootDir, { recursive: true, force: true });
+  }
+});
+
 test("structured logger path helpers are deterministic and safe", () => {
   assert.equal(
     utcDateKey(Date.parse("2026-10-02T23:59:59.000Z")),
