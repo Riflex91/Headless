@@ -53,6 +53,11 @@ class DiagnosticEventStore {
   constructor({ maxEvents = 20000 } = {}) {
     this.maxEvents = Math.max(100, Number(maxEvents) || 20000);
     this.events = [];
+    this.startIndex = 0;
+    this.compactThreshold = Math.max(
+      100,
+      Math.min(2000, Math.ceil(this.maxEvents * 0.05)),
+    );
   }
 
   append(event) {
@@ -62,15 +67,20 @@ class DiagnosticEventStore {
     });
     this.events.push(sanitized);
 
-    if (this.events.length > this.maxEvents) {
-      this.events.splice(0, this.events.length - this.maxEvents);
+    const liveCount = this.events.length - this.startIndex;
+    if (liveCount > this.maxEvents) {
+      this.startIndex += liveCount - this.maxEvents;
+    }
+    if (this.startIndex >= this.compactThreshold) {
+      this.events.splice(0, this.startIndex);
+      this.startIndex = 0;
     }
 
     return sanitized;
   }
 
   getEvents({ character, since } = {}) {
-    return this.events.filter((event) => {
+    return this.events.slice(this.startIndex).filter((event) => {
       if (Number.isFinite(since) && event.timestamp < since) return false;
       if (character && !eventMatchesCharacter(event, character)) return false;
       return true;
