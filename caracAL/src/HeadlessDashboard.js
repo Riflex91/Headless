@@ -514,6 +514,7 @@ function attachHeadlessDashboard({
   runInventoryLiveTest,
   runGearScoringLiveTest,
   runAccountStrategyLiveTest,
+  runPhase20IntegrationLiveTest,
   runFullAutonomyLiveTest,
   runMarketIntelligenceLiveTest,
   runEconomyPrebuffExecutionLiveTest,
@@ -789,6 +790,32 @@ function attachHeadlessDashboard({
       } catch (error) {
         res.status(Number(error.statusCode) || 500).json({
           error: error.code || "ROTATION_FAILED",
+          message: error.message,
+        });
+      }
+    },
+  );
+
+  router.post(
+    "/headless/api/tests/phase20-integration",
+    async (_req, res) => {
+      if (!runPhase20IntegrationLiveTest) {
+        res.status(503).json({
+          error: "PHASE20_INTEGRATION_LIVE_TEST_UNAVAILABLE",
+        });
+        return;
+      }
+
+      try {
+        const result = await runPhase20IntegrationLiveTest();
+        res.json({
+          ok: result?.outcome === "PASS",
+          result,
+          snapshot: getSnapshot(),
+        });
+      } catch (error) {
+        res.status(Number(error.statusCode) || 500).json({
+          error: error.code || "PHASE20_INTEGRATION_LIVE_TEST_FAILED",
           message: error.message,
         });
       }
