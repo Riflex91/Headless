@@ -25,6 +25,7 @@ class StructuredLogger {
     this.now = now || (() => Date.now());
     this.queue = Promise.resolve();
     this.lastError = null;
+    this.readyDirectories = new Set();
   }
 
   write(event) {
@@ -51,13 +52,19 @@ class StructuredLogger {
     }
   }
 
+  async ensureDirectory(directory) {
+    if (this.readyDirectories.has(directory)) return;
+    await fs.mkdir(directory, { recursive: true });
+    this.readyDirectories.add(directory);
+  }
+
   async writeSanitized(event) {
     const dateKey = utcDateKey(event.timestamp);
     const runtimeDir = path.join(this.rootDir, "runtime");
     const characterDir = path.join(this.rootDir, "characters");
     const line = `${JSON.stringify(event)}\n`;
 
-    await fs.mkdir(runtimeDir, { recursive: true });
+    await this.ensureDirectory(runtimeDir);
     await fs.appendFile(
       path.join(runtimeDir, `${dateKey}.jsonl`),
       line,
@@ -65,7 +72,7 @@ class StructuredLogger {
     );
 
     if (event.character) {
-      await fs.mkdir(characterDir, { recursive: true });
+      await this.ensureDirectory(characterDir);
       const characterName = safeFilePart(event.character);
       await fs.appendFile(
         path.join(characterDir, `${characterName}-${dateKey}.jsonl`),
