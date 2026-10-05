@@ -1735,6 +1735,7 @@ function migrate_old_storage(path, localStorage) {
     let group_probe_started = false;
     let merchant_probe_started = false;
     let logistics_overrides_applied = false;
+    let parallel_capture_timer = null;
 
     phase20_integration_logistics_dispatch_enabled = false;
     phase20_integration_logistics_observation = null;
@@ -1955,6 +1956,29 @@ function migrate_old_storage(path, localStorage) {
                 parallel_group_checkpoint.unknownAttackCount;
               let parallel_unknown_movement_count =
                 parallel_group_checkpoint.unknownMovementCount;
+              const parallel_attack_action_ids = Object.fromEntries(
+                combat_names.map((name) => [name, new Set()]),
+              );
+              const parallel_focus_continuity = Object.fromEntries(
+                combat_names
+                  .filter((name) => name !== leader)
+                  .map((name) => [name, false]),
+              );
+              const parallel_attack_continuity = () =>
+                Object.fromEntries(
+                  combat_names.map((name) => [
+                    name,
+                    parallel_attack_action_ids[name].size > 0,
+                  ]),
+                );
+              const parallel_focus_continuity_valid = () =>
+                Object.values(parallel_focus_continuity).every(
+                  (observed) => observed === true,
+                );
+              const parallel_attack_continuity_valid = () =>
+                Object.values(parallel_attack_continuity()).every(
+                  (observed) => observed === true,
+                );
               const capture_parallel_group_evidence = () => {
                 const evidence = phase20_group_combat_evidence(
                   combat_names,
@@ -1970,18 +1994,56 @@ function migrate_old_storage(path, localStorage) {
                   parallel_unknown_movement_count,
                   evidence.unknownMovementCount,
                 );
+                for (const char_name of combat_names) {
+                  const combat = evidence.current?.[char_name]?.combat;
+                  const action = combat?.lastAction;
+                  if (
+                    Number(combat?.timestamp) >= parallel_started_at &&
+                    action?.kind === "ATTACK" &&
+                    action?.status === "CONFIRMED" &&
+                    typeof action?.id === "string" &&
+                    action.id.length > 0
+                  ) {
+                    parallel_attack_action_ids[char_name].add(action.id);
+                  }
+                }
+                for (const char_name of Object.keys(
+                  parallel_focus_continuity,
+                )) {
+                  if (evidence.focusObserved?.[char_name] === true) {
+                    parallel_focus_continuity[char_name] = true;
+                  }
+                }
+                const continuity_pass =
+                  evidence.partyFormed === true &&
+                  evidence.movementOwnerValid === true &&
+                  evidence.resourceRecoveryUnknown === false &&
+                  parallel_attack_continuity_valid() &&
+                  parallel_focus_continuity_valid() &&
+                  parallel_unknown_attack_count === 0 &&
+                  parallel_unknown_movement_count === 0;
                 if (
-                  evidence.pass &&
+                  (evidence.pass || continuity_pass) &&
                   !parallel_group_checkpoint.pass &&
                   parallel_unknown_attack_count === 0 &&
                   parallel_unknown_movement_count === 0
                 ) {
-                  parallel_group_checkpoint = JSON.parse(
-                    JSON.stringify(evidence),
-                  );
+                  parallel_group_checkpoint = {
+                    ...JSON.parse(JSON.stringify(evidence)),
+                    pass: true,
+                  };
                 }
                 return evidence;
               };
+              capture_parallel_group_evidence();
+              parallel_capture_timer = setInterval(() => {
+                try {
+                  capture_parallel_group_evidence();
+                } catch {
+                  // Best-effort read-only evidence sampling only.
+                }
+              }, 500);
+              parallel_capture_timer.unref?.();
               let controlled_dispatch_count = 0;
               merchant_probe_started = true;
               result.cleanup.merchantProbeCleared = false;
@@ -2160,15 +2222,40 @@ function migrate_old_storage(path, localStorage) {
                 final_group_evidence = capture_parallel_group_evidence();
               }
 
-              const parallel_observed = parallel_group_checkpoint.pass === true;
-              const final_focus_valid = Object.values(
-                final_group_evidence.focusObserved || {},
-              ).every((observed) => observed === true);
+              if (parallel_capture_timer) {
+                clearInterval(parallel_capture_timer);
+                parallel_capture_timer = null;
+              }
+              const attack_continuity_observed = parallel_attack_continuity();
+              const attack_continuity_action_ids = Object.fromEntries(
+                combat_names.map((name) => [
+                  name,
+                  [...parallel_attack_action_ids[name]],
+                ]),
+              );
+              const parallel_observed =
+                parallel_group_checkpoint.pass === true ||
+                (parallel_attack_continuity_valid() &&
+                  parallel_focus_continuity_valid());
+              const final_focus_valid =
+                parallel_focus_continuity_valid() ||
+                Object.values(final_group_evidence.focusObserved || {}).every(
+                  (observed) => observed === true,
+                );
+              const final_attack_valid =
+                parallel_attack_continuity_valid() ||
+                (final_group_evidence.confirmedAttackCount >= 3 &&
+                  combat_names.every(
+                    (name) =>
+                      Number(final_group_evidence.attackCounts?.[name]) >= 1,
+                  ));
               const parallel_group_valid =
                 parallel_observed &&
                 final_group_evidence.partyFormed === true &&
                 final_group_evidence.movementOwnerValid === true &&
+                final_group_evidence.resourceRecoveryUnknown === false &&
                 final_focus_valid &&
+                final_attack_valid &&
                 parallel_unknown_attack_count === 0 &&
                 parallel_unknown_movement_count === 0;
               group_evidence = {
@@ -2178,6 +2265,13 @@ function migrate_old_storage(path, localStorage) {
                 focusObserved: final_group_evidence.focusObserved,
                 movementOwners: final_group_evidence.movementOwners,
                 movementOwnerValid: final_group_evidence.movementOwnerValid,
+                resourceRecoveryUnknown:
+                  final_group_evidence.resourceRecoveryUnknown,
+                attackContinuityObserved: attack_continuity_observed,
+                attackContinuityActionIds: attack_continuity_action_ids,
+                focusContinuityObserved: {
+                  ...parallel_focus_continuity,
+                },
                 unknownAttackCount: parallel_unknown_attack_count,
                 unknownMovementCount: parallel_unknown_movement_count,
                 pass: parallel_group_valid,
@@ -2323,6 +2417,10 @@ function migrate_old_storage(path, localStorage) {
       result.error = error instanceof Error ? error.message : String(error);
     } finally {
       phase20_integration_logistics_dispatch_enabled = false;
+      if (parallel_capture_timer) {
+        clearInterval(parallel_capture_timer);
+        parallel_capture_timer = null;
+      }
 
       if (logistics_overrides_applied) {
         result.cleanup.logisticsOverridesRestored =

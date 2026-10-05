@@ -90,6 +90,7 @@ function passingPayload() {
         },
         groupCombatParallel: {
           observed: true,
+          leader: "My_Ranger1",
           partyFormed: true,
           partyEvidenceMode: "LEADER_AUTHORITATIVE",
           leaderPartyFormed: true,
@@ -277,6 +278,72 @@ test("Phase 20.0c rejects unknown MP recovery outcome", () => {
   assert.equal(result.groupValid, false);
 });
 
+test("Phase 20.0d accepts continuity evidence when late diagnostic attack counts are evicted", () => {
+  const payload = passingPayload();
+  payload.result.phase = "20.0d";
+  payload.result.reason = "PHASE20_INTEGRATION_COMBINED_CONFIRMED";
+  payload.result.evidence.groupCombatParallel.confirmedAttackCount = 0;
+  payload.result.evidence.groupCombatParallel.attackCounts = {
+    My_Ranger1: 0,
+    My_Mage: 0,
+    My_Priest: 0,
+  };
+  payload.result.evidence.groupCombatParallel.focusObserved = {
+    My_Mage: true,
+    My_Priest: false,
+  };
+  payload.result.evidence.groupCombatParallel.attackContinuityObserved = {
+    My_Ranger1: true,
+    My_Mage: true,
+    My_Priest: true,
+  };
+  payload.result.evidence.groupCombatParallel.focusContinuityObserved = {
+    My_Mage: true,
+    My_Priest: true,
+  };
+
+  const result = evaluatePhase20MerchantLogisticsResult(payload, {
+    phase: "20.0d",
+    reason: "PHASE20_INTEGRATION_COMBINED_CONFIRMED",
+  });
+
+  assert.equal(result.outcome, "PASS");
+  assert.equal(result.groupValid, true);
+});
+
+test("Phase 20.0d rejects incomplete continuity evidence when diagnostics are absent", () => {
+  const payload = passingPayload();
+  payload.result.phase = "20.0d";
+  payload.result.reason = "PHASE20_INTEGRATION_COMBINED_CONFIRMED";
+  payload.result.evidence.groupCombatParallel.confirmedAttackCount = 0;
+  payload.result.evidence.groupCombatParallel.attackCounts = {
+    My_Ranger1: 0,
+    My_Mage: 0,
+    My_Priest: 0,
+  };
+  payload.result.evidence.groupCombatParallel.focusObserved = {
+    My_Mage: true,
+    My_Priest: false,
+  };
+  payload.result.evidence.groupCombatParallel.attackContinuityObserved = {
+    My_Ranger1: true,
+    My_Mage: true,
+    My_Priest: false,
+  };
+  payload.result.evidence.groupCombatParallel.focusContinuityObserved = {
+    My_Mage: true,
+    My_Priest: false,
+  };
+
+  const result = evaluatePhase20MerchantLogisticsResult(payload, {
+    phase: "20.0d",
+    reason: "PHASE20_INTEGRATION_COMBINED_CONFIRMED",
+  });
+
+  assert.equal(result.outcome, "FAIL");
+  assert.equal(result.groupValid, false);
+});
+
 test("Phase 20.0c evaluator rejects Merchant party membership or stalled farmers", () => {
   const payload = passingPayload();
   payload.result.evidence.groupCombat.merchantNotInParty = false;
@@ -343,6 +410,11 @@ test("Phase 20.0c source reuses production controllers and a single logistics di
   assert.match(coordinator, /controlled_dispatch_count \+= 1/);
   assert.match(coordinator, /logistics_reason_matches_claim/);
   assert.match(coordinator, /parallel_group_checkpoint/);
+  assert.match(coordinator, /parallel_attack_action_ids/);
+  assert.match(coordinator, /attackContinuityObserved/);
+  assert.match(coordinator, /focusContinuityObserved/);
+  assert.match(coordinator, /setInterval/);
+  assert.match(coordinator, /clearInterval/);
   assert.match(coordinator, /LOGISTICS_CLAIM_RESULT_TIMEOUT_MS \+ 5000/);
   assert.match(
     coordinator,
