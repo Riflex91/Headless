@@ -171,6 +171,12 @@ interface UnknownSkill {
   beforeTargetHp: number | null;
 }
 
+interface LeaderFocusHint {
+  leader: string;
+  targetId: string | null;
+  timestamp: number;
+}
+
 function objectValue(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -371,6 +377,7 @@ export class GroupCombatController {
   private kitingActive = false;
   private kiteTargetDistance: number | null = null;
   private warriorAnchor: { map: string; x: number; y: number } | null = null;
+  private leaderFocusHint: LeaderFocusHint | null = null;
   private busy = false;
 
   constructor(
@@ -391,6 +398,30 @@ export class GroupCombatController {
 
   clearConfigOverride(): void {
     this.configOverride = undefined;
+  }
+
+  setLeaderFocusHint(
+    leader: string,
+    targetId: string | null,
+    timestamp = this.now(),
+  ): boolean {
+    const normalizedLeader = stringValue(leader);
+    if (
+      !normalizedLeader ||
+      !Number.isFinite(timestamp) ||
+      timestamp <= 0 ||
+      (this.leaderFocusHint !== null &&
+        timestamp < this.leaderFocusHint.timestamp)
+    ) {
+      return false;
+    }
+
+    this.leaderFocusHint = {
+      leader: normalizedLeader,
+      targetId: stringValue(targetId),
+      timestamp,
+    };
+    return true;
   }
 
   status(): GroupCombatStatus {
@@ -723,42 +754,48 @@ export class GroupCombatController {
           !target.dead &&
           !target.rip &&
           (target.hp === null || target.hp > 0);
-
-        if (leader) {
-          const leaderTarget = leader.target || null;
-          const directTarget = leaderTarget
-            ? this.game.entity(leaderTarget)
+        const leaderTarget = leader?.target || null;
+        const directTarget = leaderTarget
+          ? this.game.entity(leaderTarget)
+          : null;
+        const relayedTargetId =
+          this.leaderFocusHint?.leader === config.leader
+            ? this.leaderFocusHint.targetId
             : null;
+        const relayedTarget = relayedTargetId
+          ? this.game.entity(relayedTargetId)
+          : null;
 
-          if (validMonster(directTarget)) {
-            next = directTarget?.id || null;
+        if (validMonster(directTarget)) {
+          next = directTarget?.id || null;
+        } else if (validMonster(relayedTarget)) {
+          next = relayedTarget?.id || null;
+        } else {
+          const assistingTarget =
+            entities
+              .filter(
+                (entity) =>
+                  validMonster(entity) && entity.target === config.leader,
+              )
+              .map((entity) => ({
+                entity,
+                distance: entityDistance(character, entity),
+              }))
+              .filter((entry) => entry.distance !== null)
+              .sort(
+                (left, right) =>
+                  (left.distance as number) - (right.distance as number) ||
+                  left.entity.id.localeCompare(right.entity.id),
+              )[0]?.entity || null;
+
+          if (assistingTarget) {
+            next = assistingTarget.id;
           } else {
-            const assistingTarget =
-              entities
-                .filter(
-                  (entity) =>
-                    validMonster(entity) && entity.target === config.leader,
-                )
-                .map((entity) => ({
-                  entity,
-                  distance: entityDistance(character, entity),
-                }))
-                .filter((entry) => entry.distance !== null)
-                .sort(
-                  (left, right) =>
-                    (left.distance as number) - (right.distance as number) ||
-                    left.entity.id.localeCompare(right.entity.id),
-                )[0]?.entity || null;
-
-            if (assistingTarget) {
-              next = assistingTarget.id;
-            } else {
-              const previousTarget = this.focusTargetId
-                ? this.game.entity(this.focusTargetId)
-                : null;
-              if (validMonster(previousTarget)) {
-                next = previousTarget?.id || null;
-              }
+            const previousTarget = this.focusTargetId
+              ? this.game.entity(this.focusTargetId)
+              : null;
+            if (validMonster(previousTarget)) {
+              next = previousTarget?.id || null;
             }
           }
         }
