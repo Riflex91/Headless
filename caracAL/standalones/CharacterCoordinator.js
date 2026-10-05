@@ -1107,11 +1107,7 @@ function migrate_old_storage(path, localStorage) {
     };
   }
 
-  function phase20_group_probe_result(
-    char_name,
-    request_id,
-    operation,
-  ) {
+  function phase20_group_probe_result(char_name, request_id, operation) {
     const result = character_manage[char_name]?.phase20_group_probe_result;
     if (
       !result ||
@@ -1161,11 +1157,7 @@ function migrate_old_storage(path, localStorage) {
       () =>
         character_names.every(
           (char_name) =>
-            phase20_group_probe_result(
-              char_name,
-              request_id,
-              "apply",
-            ) !== null,
+            phase20_group_probe_result(char_name, request_id, "apply") !== null,
         ),
       120000,
     );
@@ -1180,15 +1172,13 @@ function migrate_old_storage(path, localStorage) {
     }));
     return {
       ok:
-        acknowledged &&
-        results.every((entry) => !entry.error && entry.result),
+        acknowledged && results.every((entry) => !entry.error && entry.result),
       reason: acknowledged
         ? results.some((entry) => entry.error)
           ? "PHASE20_GROUP_PROBE_APPLY_FAILED"
           : "PHASE20_GROUP_PROBE_APPLIED"
         : "PHASE20_GROUP_PROBE_APPLY_TIMEOUT",
-      character:
-        results.find((entry) => entry.error)?.character || null,
+      character: results.find((entry) => entry.error)?.character || null,
       results,
     };
   }
@@ -1211,11 +1201,7 @@ function migrate_old_storage(path, localStorage) {
           const block = character_manage[char_name];
           if (!block?.instance) return true;
           return (
-            phase20_group_probe_result(
-              char_name,
-              request_id,
-              "clear",
-            ) !== null
+            phase20_group_probe_result(char_name, request_id, "clear") !== null
           );
         }),
       30000,
@@ -1246,11 +1232,7 @@ function migrate_old_storage(path, localStorage) {
     };
   }
 
-  function phase20_group_combat_evidence(
-    character_names,
-    leader,
-    since,
-  ) {
+  function phase20_group_combat_evidence(character_names, leader, since) {
     const current = Object.fromEntries(
       character_names.map((char_name) => {
         const block = character_manage[char_name];
@@ -1298,9 +1280,8 @@ function migrate_old_storage(path, localStorage) {
     const attack_counts = Object.fromEntries(
       character_names.map((char_name) => [
         char_name,
-        confirmed_attacks.filter(
-          (event) => event.character === char_name,
-        ).length,
+        confirmed_attacks.filter((event) => event.character === char_name)
+          .length,
       ]),
     );
     const focus_observed = Object.fromEntries(
@@ -1331,8 +1312,8 @@ function migrate_old_storage(path, localStorage) {
       "GroupCombatController",
       "Phase20IntegrationProbe",
     ]);
-    const movement_owner_valid = Object.values(movement_owners).every(
-      (owner) => allowed_owners.has(owner),
+    const movement_owner_valid = Object.values(movement_owners).every((owner) =>
+      allowed_owners.has(owner),
     );
     const focus_valid = Object.values(focus_observed).every(
       (observed) => observed === true,
@@ -1671,21 +1652,18 @@ function migrate_old_storage(path, localStorage) {
 
             let observed = false;
             if (applied.ok) {
-              observed = await wait_for_phase20_integration_live_test(
-                () => {
-                  const evidence = phase20_group_combat_evidence(
-                    combat_names,
-                    leader,
-                    group_started_at,
-                  );
-                  return (
-                    evidence.pass ||
-                    evidence.unknownAttackCount > 0 ||
-                    evidence.unknownMovementCount > 0
-                  );
-                },
-                120000,
-              );
+              observed = await wait_for_phase20_integration_live_test(() => {
+                const evidence = phase20_group_combat_evidence(
+                  combat_names,
+                  leader,
+                  group_started_at,
+                );
+                return (
+                  evidence.pass ||
+                  evidence.unknownAttackCount > 0 ||
+                  evidence.unknownMovementCount > 0
+                );
+              }, 120000);
             }
 
             const group_evidence = phase20_group_combat_evidence(
@@ -1718,10 +1696,10 @@ function migrate_old_storage(path, localStorage) {
               group_evidence.unknownAttackCount > 0
                 ? "PHASE20_GROUP_COMBAT_ATTACK_OUTCOME_UNKNOWN"
                 : group_evidence.unknownMovementCount > 0
-                  ? "PHASE20_GROUP_COMBAT_MOVEMENT_OUTCOME_UNKNOWN"
-                  : pass
-                  ? "PHASE20_INTEGRATION_GROUP_COMBAT_CONFIRMED"
-                  : "PHASE20_INTEGRATION_GROUP_COMBAT_EVIDENCE_INCOMPLETE";
+                ? "PHASE20_GROUP_COMBAT_MOVEMENT_OUTCOME_UNKNOWN"
+                : pass
+                ? "PHASE20_INTEGRATION_GROUP_COMBAT_CONFIRMED"
+                : "PHASE20_INTEGRATION_GROUP_COMBAT_EVIDENCE_INCOMPLETE";
           } else {
             result.outcome = pass ? "PASS" : "FAIL";
             result.reason = pass
@@ -16733,8 +16711,7 @@ function migrate_old_storage(path, localStorage) {
           char_block.phase20_group_probe_result = {
             request_id: m.request_id || null,
             operation: m.operation || null,
-            result:
-              m.result && typeof m.result === "object" ? m.result : null,
+            result: m.result && typeof m.result === "object" ? m.result : null,
             error: m.error || null,
             received_at: Date.now(),
           };
