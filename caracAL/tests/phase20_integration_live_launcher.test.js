@@ -194,6 +194,44 @@ test("Phase 20.0a launcher uses only the dedicated local test POST", async () =>
   assert.deepEqual(JSON.parse(calls[0].options.body), {});
 });
 
+test("temporary Phase 20.0a Prettier probe", async () => {
+  const childProcess = require("node:child_process");
+  const os = require("node:os");
+  const prettier = require("prettier");
+  const targets = [
+    "scripts/run_phase20_integration_live_e2e.js",
+    "src/HeadlessDashboard.js",
+    "standalones/CharacterCoordinator.js",
+    "tests/phase20_integration_live_launcher.test.js",
+  ];
+
+  for (const relative of targets) {
+    const sourcePath = path.join(__dirname, "..", relative);
+    const source = fs.readFileSync(sourcePath, "utf8");
+    const formatted = await prettier.format(source, { filepath: sourcePath });
+    if (source === formatted) continue;
+
+    const tempPath = path.join(
+      os.tmpdir(),
+      "phase20-prettier-" + relative.replace(/[\\/]/g, "-"),
+    );
+    fs.writeFileSync(tempPath, formatted, "utf8");
+
+    let diff = "";
+    try {
+      childProcess.execFileSync("diff", ["-u", sourcePath, tempPath], {
+        encoding: "utf8",
+      });
+    } catch (error) {
+      diff = String(error.stdout || "");
+    }
+
+    console.log("PHASE20_PRETTIER_DIFF_START " + relative);
+    console.log(diff);
+    console.log("PHASE20_PRETTIER_DIFF_END " + relative);
+  }
+});
+
 test("Phase 20.0a source uses normal bot runtime with guarded setup and cleanup", () => {
   const launcher = fs.readFileSync(
     path.join(__dirname, "..", "scripts", "run_phase20_integration_live_e2e.js"),
