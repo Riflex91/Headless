@@ -754,6 +754,83 @@ async function make_runner(upper, CODE_file, version, is_typescript) {
           });
         break;
       }
+      case "phase20_merchant_probe": {
+        const requestId =
+          typeof m.request_id === "string" && m.request_id
+            ? m.request_id
+            : "phase20-merchant-probe-" + Date.now();
+        const runtime = runner_context.__caracalBotRuntime;
+        if (!runtime?.runPhase20MerchantProbe) {
+          sendIpcMessage(process, {
+            type: "phase20_merchant_probe_result",
+            request_id: requestId,
+            operation: m.operation || null,
+            error: "PHASE20_MERCHANT_PROBE_RUNTIME_NOT_READY",
+          });
+          break;
+        }
+
+        void runtime
+          .runPhase20MerchantProbe({
+            requestId,
+            operation: m.operation,
+            rendezvous:
+              typeof m.rendezvous === "string" ? m.rendezvous : undefined,
+          })
+          .then((result) => {
+            sendIpcMessage(process, {
+              type: "phase20_merchant_probe_result",
+              request_id: requestId,
+              operation: m.operation || null,
+              result,
+            });
+          })
+          .catch((error) => {
+            sendIpcMessage(process, {
+              type: "phase20_merchant_probe_result",
+              request_id: requestId,
+              operation: m.operation || null,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          });
+        break;
+      }
+      case "phase20_merchant_probe_clear": {
+        const requestId =
+          typeof m.request_id === "string" && m.request_id
+            ? m.request_id
+            : "phase20-merchant-probe-clear-" + Date.now();
+        const runtime = runner_context.__caracalBotRuntime;
+        if (!runtime?.clearPhase20MerchantProbe) {
+          sendIpcMessage(process, {
+            type: "phase20_merchant_probe_result",
+            request_id: requestId,
+            operation: "clear",
+            error: "PHASE20_MERCHANT_PROBE_RUNTIME_NOT_READY",
+          });
+          break;
+        }
+
+        void runtime
+          .clearPhase20MerchantProbe({ requestId })
+          .then((result) => {
+            sendIpcMessage(process, {
+              type: "phase20_merchant_probe_result",
+              request_id: requestId,
+              operation: "clear",
+              result,
+            });
+          })
+          .catch((error) => {
+            sendIpcMessage(process, {
+              type: "phase20_merchant_probe_result",
+              request_id: requestId,
+              operation: "clear",
+              error: error instanceof Error ? error.message : String(error),
+            });
+          });
+        break;
+      }
       case "group_live_test": {
         const requestId =
           typeof m.request_id === "string" && m.request_id
