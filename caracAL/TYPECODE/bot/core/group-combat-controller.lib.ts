@@ -410,7 +410,7 @@ export class GroupCombatController {
       !normalizedLeader ||
       !Number.isFinite(timestamp) ||
       timestamp <= 0 ||
-      (this.leaderFocusHint !== null &&
+      (this.leaderFocusHint?.leader === normalizedLeader &&
         timestamp < this.leaderFocusHint.timestamp)
     ) {
       return false;
