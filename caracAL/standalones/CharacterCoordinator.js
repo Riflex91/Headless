@@ -1290,6 +1290,11 @@ function migrate_old_storage(path, localStorage) {
         event.type === "ACTION_UNKNOWN" &&
         event.data?.action === "ATTACK",
     );
+    const unknown_movement = events.filter(
+      (event) =>
+        event.module === "MovementController" &&
+        event.type === "MOVEMENT_COMMAND_UNKNOWN",
+    );
     const attack_counts = Object.fromEntries(
       character_names.map((char_name) => [
         char_name,
@@ -1343,6 +1348,7 @@ function migrate_old_storage(path, localStorage) {
       confirmedAttackCount: confirmed_attacks.length,
       attackCounts: attack_counts,
       unknownAttackCount: unknown_attacks.length,
+      unknownMovementCount: unknown_movement.length,
       focusObserved: focus_observed,
       movementOwners: movement_owners,
       movementOwnerValid: movement_owner_valid,
@@ -1351,7 +1357,8 @@ function migrate_old_storage(path, localStorage) {
         attacks_valid &&
         focus_valid &&
         movement_owner_valid &&
-        unknown_attacks.length === 0,
+        unknown_attacks.length === 0 &&
+        unknown_movement.length === 0,
     };
   }
 
@@ -1671,7 +1678,11 @@ function migrate_old_storage(path, localStorage) {
                     leader,
                     group_started_at,
                   );
-                  return evidence.pass || evidence.unknownAttackCount > 0;
+                  return (
+                    evidence.pass ||
+                    evidence.unknownAttackCount > 0 ||
+                    evidence.unknownMovementCount > 0
+                  );
                 },
                 120000,
               );
@@ -1706,7 +1717,9 @@ function migrate_old_storage(path, localStorage) {
             result.reason =
               group_evidence.unknownAttackCount > 0
                 ? "PHASE20_GROUP_COMBAT_ATTACK_OUTCOME_UNKNOWN"
-                : pass
+                : group_evidence.unknownMovementCount > 0
+                  ? "PHASE20_GROUP_COMBAT_MOVEMENT_OUTCOME_UNKNOWN"
+                  : pass
                   ? "PHASE20_INTEGRATION_GROUP_COMBAT_CONFIRMED"
                   : "PHASE20_INTEGRATION_GROUP_COMBAT_EVIDENCE_INCOMPLETE";
           } else {
