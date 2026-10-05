@@ -143,8 +143,7 @@ function evaluatePhase20MerchantLogisticsResult(payload) {
 
   const pass =
     supervisor.outcome === "PASS" &&
-    supervisor.reason ===
-      "PHASE20_INTEGRATION_MERCHANT_LOGISTICS_CONFIRMED" &&
+    supervisor.reason === "PHASE20_INTEGRATION_MERCHANT_LOGISTICS_CONFIRMED" &&
     identityValid &&
     runtimeValid &&
     groupValid &&
@@ -195,8 +194,7 @@ function formatCompactResult(result) {
       "Logistics source: " + (logistics.sourceFarmer || "NONE"),
       "Logistics dispatch count: " +
         String(logistics.dispatchCount ?? "UNKNOWN"),
-      "Logistics confirmed: " +
-        (logistics.confirmed === true ? "yes" : "no"),
+      "Logistics confirmed: " + (logistics.confirmed === true ? "yes" : "no"),
       "Completion suppression: " +
         (logistics.completionSuppressed === true ? "yes" : "no"),
       "Ping-pong guard valid: " +
