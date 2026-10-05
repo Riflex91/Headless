@@ -182,6 +182,32 @@ test("Phase 20.0c evaluator accepts complete parallel autonomy and logistics evi
   assert.equal(result.cleanupValid, true);
 });
 
+test("reusable merchant evaluator accepts explicit Phase 20.0d combined contract", () => {
+  const payload = passingPayload();
+  payload.result.phase = "20.0d";
+  payload.result.reason = "PHASE20_INTEGRATION_COMBINED_CONFIRMED";
+
+  const result = evaluatePhase20MerchantLogisticsResult(payload, {
+    phase: "20.0d",
+    reason: "PHASE20_INTEGRATION_COMBINED_CONFIRMED",
+  });
+
+  assert.equal(result.outcome, "PASS");
+  assert.equal(result.scopeValid, true);
+  assert.equal(result.reason, "PHASE20_INTEGRATION_COMBINED_CONFIRMED");
+});
+
+test("default merchant evaluator keeps the Phase 20.0c contract", () => {
+  const payload = passingPayload();
+  payload.result.phase = "20.0d";
+  payload.result.reason = "PHASE20_INTEGRATION_COMBINED_CONFIRMED";
+
+  const result = evaluatePhase20MerchantLogisticsResult(payload);
+
+  assert.equal(result.outcome, "FAIL");
+  assert.equal(result.scopeValid, false);
+});
+
 test("Phase 20.0c evaluator rejects UNKNOWN logistics even without a retry", () => {
   const payload = passingPayload();
   payload.result.outcome = "FAIL";
@@ -298,10 +324,16 @@ test("Phase 20.0c source reuses production controllers and a single logistics di
     "utf8",
   );
 
-  assert.match(coordinator, /stage === "20\.0c"/);
-  assert.match(coordinator, /stage === "20\.0c"/);
+  assert.match(
+    coordinator,
+    /const merchant_logistics_stage = \["20\.0c", "20\.0d"\]\.includes\(stage\)/,
+  );
+  assert.match(
+    coordinator,
+    /controlledLogisticsDispatchEnabled: merchant_logistics_stage/,
+  );
   assert.match(coordinator, /phase20_apply_group_probe/);
-  assert.match(coordinator, /stage === "20\.0c"/);
+  assert.match(coordinator, /merchant_logistics_stage/);
   assert.match(coordinator, /LEADER_AUTHORITATIVE/);
   assert.match(thread, /potionRecovery: m\.potion_recovery === true/);
   assert.match(kernel, /options\.potionRecovery === true/);

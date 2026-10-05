@@ -232,7 +232,7 @@ test("Phase 20.0b source reuses existing runtime controllers and ActionBoundary"
   assert.match(coordinator, /phase20_group_combat_evidence/);
   assert.match(
     coordinator,
-    /phase20_apply_group_probe\([\s\S]*stage === "20\.0c"/,
+    /phase20_apply_group_probe\([\s\S]*merchant_logistics_stage/,
   );
   assert.match(coordinator, /ACTION_CONFIRMED/);
   assert.match(coordinator, /ACTION_UNKNOWN/);
