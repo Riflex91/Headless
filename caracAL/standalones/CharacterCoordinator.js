@@ -264,6 +264,8 @@ function migrate_old_storage(path, localStorage) {
   let full_autonomy_live_test_sequence = 0;
   let phase20_integration_live_test_active = false;
   let phase20_integration_live_test_sequence = 0;
+  let phase20_integration_logistics_dispatch_enabled = false;
+  let phase20_integration_logistics_observation = null;
   if (cfg.cull_versions) {
     await game_files.cull_versions([version]);
   }
@@ -824,6 +826,7 @@ function migrate_old_storage(path, localStorage) {
         char_block.full_autonomy_live_test_lifecycle_only === true,
       rotationSource: char_block.rotation_source || null,
       rotationReplacement: char_block.rotation_replacement || null,
+      runtimeConfig: char_block.runtime_config,
     };
   }
 
@@ -886,6 +889,7 @@ function migrate_old_storage(path, localStorage) {
         original.lifecycleOnlyProbe;
       char_block.rotation_source = original.rotationSource;
       char_block.rotation_replacement = original.rotationReplacement;
+      char_block.runtime_config = original.runtimeConfig;
       char_block.connected = false;
       char_block.lifecycle_state = LIFECYCLE_STATES.STOPPED;
       persist_character_runtime_state(
@@ -1087,7 +1091,8 @@ function migrate_old_storage(path, localStorage) {
         (char_block.movement_live_test_typescript_override || null) ===
           original.runtimeOverride &&
         char_block.full_autonomy_live_test_lifecycle_only ===
-          original.lifecycleOnlyProbe
+          original.lifecycleOnlyProbe &&
+        char_block.runtime_config === original.runtimeConfig
       );
     });
 
@@ -1230,6 +1235,189 @@ function migrate_old_storage(path, localStorage) {
       unknownCleanup: unknown_cleanup,
       results,
     };
+  }
+
+  function phase20_merchant_probe_result(char_name, request_id, operation) {
+    const result = character_manage[char_name]?.phase20_merchant_probe_result;
+    if (
+      !result ||
+      result.request_id !== request_id ||
+      result.operation !== operation
+    ) {
+      return null;
+    }
+    return result;
+  }
+
+  async function phase20_run_merchant_probe(
+    char_name,
+    request_id,
+    operation,
+  ) {
+    const char_block = character_manage[char_name];
+    if (!char_block?.instance) {
+      return {
+        ok: false,
+        reason: "PHASE20_MERCHANT_PROBE_RUNTIME_MISSING",
+        result: null,
+        error: "PHASE20_MERCHANT_PROBE_RUNTIME_MISSING",
+      };
+    }
+
+    char_block.phase20_merchant_probe_result = null;
+    const sent = safe_send(char_block.instance, {
+      type: "phase20_merchant_probe",
+      request_id,
+      operation,
+      rendezvous: "goo",
+    });
+    if (!sent) {
+      return {
+        ok: false,
+        reason: "PHASE20_MERCHANT_PROBE_IPC_UNAVAILABLE",
+        result: null,
+        error: "PHASE20_MERCHANT_PROBE_IPC_UNAVAILABLE",
+      };
+    }
+
+    const acknowledged = await wait_for_phase20_integration_live_test(
+      () =>
+        phase20_merchant_probe_result(char_name, request_id, operation) !==
+        null,
+      240000,
+    );
+    const received =
+      phase20_merchant_probe_result(char_name, request_id, operation) || {
+        request_id,
+        operation,
+        result: null,
+        error: "PHASE20_MERCHANT_PROBE_ACK_TIMEOUT",
+      };
+    return {
+      ok: acknowledged && !received.error && !!received.result,
+      reason: acknowledged
+        ? received.error
+          ? "PHASE20_MERCHANT_PROBE_FAILED"
+          : "PHASE20_MERCHANT_PROBE_CONFIRMED"
+        : "PHASE20_MERCHANT_PROBE_TIMEOUT",
+      ...received,
+    };
+  }
+
+  async function phase20_clear_merchant_probe(char_name, request_id) {
+    const char_block = character_manage[char_name];
+    if (!char_block?.instance) {
+      return {
+        ok: true,
+        result: null,
+        error: null,
+      };
+    }
+
+    char_block.phase20_merchant_probe_result = null;
+    const sent = safe_send(char_block.instance, {
+      type: "phase20_merchant_probe_clear",
+      request_id,
+    });
+    if (!sent) {
+      return {
+        ok: false,
+        result: null,
+        error: "PHASE20_MERCHANT_PROBE_CLEAR_IPC_UNAVAILABLE",
+      };
+    }
+
+    const acknowledged = await wait_for_phase20_integration_live_test(
+      () =>
+        phase20_merchant_probe_result(char_name, request_id, "clear") !== null,
+      60000,
+    );
+    const received =
+      phase20_merchant_probe_result(char_name, request_id, "clear") || {
+        request_id,
+        operation: "clear",
+        result: null,
+        error: "PHASE20_MERCHANT_PROBE_CLEAR_TIMEOUT",
+      };
+    const unknown_cleanup =
+      received.result?.movementCancelStatus === "UNKNOWN";
+    return {
+      ok: acknowledged && !received.error && !unknown_cleanup,
+      unknownCleanup: unknown_cleanup,
+      ...received,
+    };
+  }
+
+  function phase20_apply_logistics_overrides(
+    combat_names,
+    merchant_name,
+    target_farmer,
+    farmer_gold,
+  ) {
+    const keep_gold = Math.max(0, Math.floor(farmer_gold) - 1);
+
+    for (const char_name of combat_names) {
+      const char_block = character_manage[char_name];
+      const base = logistics_record(char_block?.runtime_config);
+      char_block.runtime_config = {
+        ...base,
+        logistics:
+          char_name === target_farmer
+            ? {
+                enabled: true,
+                executionEnabled: true,
+                merchant: merchant_name,
+                mluck: { enabled: false },
+                potions: {},
+                items: {},
+                gold: {
+                  enabled: true,
+                  keep: keep_gold,
+                  pickupAbove: keep_gold,
+                  minTransfer: 1,
+                },
+                inventoryPressure: { enabled: false },
+                gear: [],
+              }
+            : {
+                enabled: false,
+                executionEnabled: false,
+              },
+      };
+    }
+
+    const merchant_block = character_manage[merchant_name];
+    const merchant_base = logistics_record(merchant_block?.runtime_config);
+    const merchant_settings = logistics_record(merchant_base.merchant);
+    const merchant_logistics = logistics_record(merchant_settings.logistics);
+    merchant_block.runtime_config = {
+      ...merchant_base,
+      merchant: {
+        ...merchant_settings,
+        logistics: {
+          ...merchant_logistics,
+          enabled: true,
+          executionEnabled: true,
+        },
+      },
+    };
+
+    return refresh_merchant_logistics("PHASE20_INTEGRATION_LOGISTICS_OVERRIDE");
+  }
+
+  function phase20_restore_runtime_config_overrides(character_names, originals) {
+    for (const char_name of character_names) {
+      const char_block = character_manage[char_name];
+      const original = originals[char_name];
+      if (!char_block || !original) continue;
+      char_block.runtime_config = original.runtimeConfig;
+    }
+    refresh_merchant_logistics("PHASE20_INTEGRATION_LOGISTICS_RESTORE");
+    return character_names.every(
+      (char_name) =>
+        character_manage[char_name]?.runtime_config ===
+        originals[char_name]?.runtimeConfig,
+    );
   }
 
   function phase20_group_combat_evidence(character_names, leader, since) {
@@ -2151,7 +2339,8 @@ function migrate_old_storage(path, localStorage) {
       market_trading_live_test_active ||
       account_gear_reservation_live_test_active ||
       account_strategy_live_test_active ||
-      phase20_integration_live_test_active ||
+      (phase20_integration_live_test_active &&
+        !phase20_integration_logistics_dispatch_enabled) ||
       fishing_live_test_active ||
       material_worker_active_count > 0
     )
@@ -2192,14 +2381,21 @@ function migrate_old_storage(path, localStorage) {
       const current = logistics_claim_requests.get(request_id);
       if (!current) return;
       logistics_claim_requests.delete(request_id);
-      merchant_logistics_planner.recordClaimOutcome(claim, {
+      const timeout_result = {
         outcome: "UNKNOWN",
         reason: "LOGISTICS_CLAIM_RESULT_TIMEOUT",
         source: route.source,
         target: route.target,
         itemName: claim.itemName || null,
         fulfilled: false,
-      });
+      };
+      merchant_logistics_planner.recordClaimOutcome(claim, timeout_result);
+      if (
+        phase20_integration_logistics_observation?.requestId === request_id
+      ) {
+        phase20_integration_logistics_observation.result = timeout_result;
+        phase20_integration_logistics_observation.completedAt = Date.now();
+      }
       emit_supervisor_event("LOGISTICS_CLAIM_TIMEOUT", route.source, {
         request_id,
         claim_id: claim.id,
@@ -2210,6 +2406,18 @@ function migrate_old_storage(path, localStorage) {
     pending.timer.unref?.();
     logistics_claim_requests.set(request_id, pending);
 
+    if (phase20_integration_logistics_dispatch_enabled) {
+      phase20_integration_logistics_observation = {
+        requestId: request_id,
+        claim: JSON.parse(JSON.stringify(claim)),
+        source: route.source,
+        target: route.target,
+        dispatchedAt: Date.now(),
+        completedAt: null,
+        result: null,
+      };
+    }
+
     const sent = safe_send(source_block.instance, {
       type: "logistics_claim",
       request_id,
@@ -2218,14 +2426,21 @@ function migrate_old_storage(path, localStorage) {
     if (!sent) {
       clearTimeout(pending.timer);
       logistics_claim_requests.delete(request_id);
-      merchant_logistics_planner.recordClaimOutcome(claim, {
+      const blocked_result = {
         outcome: "BLOCKED",
         reason: "LOGISTICS_CLAIM_IPC_UNAVAILABLE",
         source: route.source,
         target: route.target,
         itemName: claim.itemName || null,
         fulfilled: false,
-      });
+      };
+      merchant_logistics_planner.recordClaimOutcome(claim, blocked_result);
+      if (
+        phase20_integration_logistics_observation?.requestId === request_id
+      ) {
+        phase20_integration_logistics_observation.result = blocked_result;
+        phase20_integration_logistics_observation.completedAt = Date.now();
+      }
       refresh_merchant_logistics("LOGISTICS_CLAIM_IPC_UNAVAILABLE");
       return false;
     }
@@ -15868,6 +16083,14 @@ function migrate_old_storage(path, localStorage) {
             pending.claim,
             execution_result,
           );
+          if (
+            phase20_integration_logistics_observation?.requestId ===
+            m.request_id
+          ) {
+            phase20_integration_logistics_observation.result =
+              JSON.parse(JSON.stringify(execution_result));
+            phase20_integration_logistics_observation.completedAt = Date.now();
+          }
           emit_supervisor_event("LOGISTICS_CLAIM_RESULT_RECEIVED", char_name, {
             request_id: m.request_id,
             claim_id: pending.claim.id,
@@ -16719,6 +16942,28 @@ function migrate_old_storage(path, localStorage) {
             m.error
               ? "PHASE20_GROUP_PROBE_RESULT_FAILED"
               : "PHASE20_GROUP_PROBE_RESULT_RECEIVED",
+            char_name,
+            {
+              request_id: m.request_id || null,
+              operation: m.operation || null,
+              error: m.error || null,
+            },
+          );
+          dashboard?.publishSnapshot();
+          break;
+        }
+        case "phase20_merchant_probe_result": {
+          char_block.phase20_merchant_probe_result = {
+            request_id: m.request_id || null,
+            operation: m.operation || null,
+            result: m.result && typeof m.result === "object" ? m.result : null,
+            error: m.error || null,
+            received_at: Date.now(),
+          };
+          emit_supervisor_event(
+            m.error
+              ? "PHASE20_MERCHANT_PROBE_RESULT_FAILED"
+              : "PHASE20_MERCHANT_PROBE_RESULT_RECEIVED",
             char_name,
             {
               request_id: m.request_id || null,
