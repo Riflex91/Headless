@@ -1600,6 +1600,7 @@ function attachHeadlessDashboard({
           role: req.body?.role,
           leader: req.body?.leader,
           peer: req.body?.peer,
+          members: Array.isArray(req.body?.members) ? req.body.members : undefined,
           baselinePairFormed:
             typeof req.body?.baselinePairFormed === "boolean"
               ? req.body.baselinePairFormed
