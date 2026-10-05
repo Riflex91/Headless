@@ -155,7 +155,9 @@ function passingPayload() {
   };
 }
 
-test("Phase 20.0c evaluator accepts complete parallel autonomy and logistics evidence", () => {
+test(
+  "Phase 20.0c evaluator accepts complete parallel autonomy and logistics evidence",
+  () => {
   const result = evaluatePhase20MerchantLogisticsResult(passingPayload());
 
   assert.equal(result.outcome, "PASS");
@@ -166,9 +168,11 @@ test("Phase 20.0c evaluator accepts complete parallel autonomy and logistics evi
   assert.equal(result.logisticsValid, true);
   assert.equal(result.scopeValid, true);
   assert.equal(result.cleanupValid, true);
-});
-
-test("Phase 20.0c evaluator rejects UNKNOWN logistics even without a retry", () => {
+  },
+);
+test(
+  "Phase 20.0c evaluator rejects UNKNOWN logistics even without a retry",
+  () => {
   const payload = passingPayload();
   payload.result.outcome = "FAIL";
   payload.result.reason = "PHASE20_MERCHANT_LOGISTICS_OUTCOME_UNKNOWN_NO_RETRY";
@@ -184,8 +188,8 @@ test("Phase 20.0c evaluator rejects UNKNOWN logistics even without a retry", () 
   const result = evaluatePhase20MerchantLogisticsResult(payload);
   assert.equal(result.outcome, "FAIL");
   assert.equal(result.logisticsValid, false);
-});
-
+  },
+);
 test("Phase 20.0c evaluator rejects missing completion suppression", () => {
   const payload = passingPayload();
   payload.result.evidence.logistics.completionSuppressed = false;
@@ -197,7 +201,9 @@ test("Phase 20.0c evaluator rejects missing completion suppression", () => {
   assert.equal(result.logisticsValid, false);
 });
 
-test("Phase 20.0c evaluator requires merchant to resume independent work", () => {
+test(
+  "Phase 20.0c evaluator requires merchant to resume independent work",
+  () => {
   const payload = passingPayload();
   payload.result.evidence.merchantParallel.autonomousAfterValid = false;
   payload.result.evidence.merchantParallel.autonomousAfter =
@@ -206,9 +212,11 @@ test("Phase 20.0c evaluator requires merchant to resume independent work", () =>
   const result = evaluatePhase20MerchantLogisticsResult(payload);
   assert.equal(result.outcome, "FAIL");
   assert.equal(result.merchantValid, false);
-});
-
-test("Phase 20.0c evaluator rejects Merchant party membership or stalled farmers", () => {
+  },
+);
+test(
+  "Phase 20.0c evaluator rejects Merchant party membership or stalled farmers",
+  () => {
   const payload = passingPayload();
   payload.result.evidence.groupCombat.merchantNotInParty = false;
   payload.result.evidence.groupCombatParallel.attackCounts.My_Mage = 0;
@@ -216,9 +224,11 @@ test("Phase 20.0c evaluator rejects Merchant party membership or stalled farmers
   const result = evaluatePhase20MerchantLogisticsResult(payload);
   assert.equal(result.outcome, "FAIL");
   assert.equal(result.groupValid, false);
-});
-
-test("Phase 20.0c compact output surfaces autonomy, logistics and cleanup gates", () => {
+  },
+);
+test(
+  "Phase 20.0c compact output surfaces autonomy, logistics and cleanup gates",
+  () => {
   const output = formatCompactResult(
     evaluatePhase20MerchantLogisticsResult(passingPayload()),
   );
@@ -232,9 +242,11 @@ test("Phase 20.0c compact output surfaces autonomy, logistics and cleanup gates"
   assert.match(output, /Ping-pong guard valid: yes/);
   assert.match(output, /Merchant autonomous after: yes/);
   assert.match(output, /Runtime state restored: yes/);
-});
-
-test("Phase 20.0c source reuses production controllers and a single logistics dispatch", () => {
+  },
+);
+test(
+  "Phase 20.0c source reuses production controllers and a single logistics dispatch",
+  () => {
   const coordinator = fs.readFileSync(
     path.join(__dirname, "..", "standalones", "CharacterCoordinator.js"),
     "utf8",
@@ -259,7 +271,10 @@ test("Phase 20.0c source reuses production controllers and a single logistics di
   assert.match(coordinator, /phase20_apply_logistics_overrides/);
   assert.match(coordinator, /dispatch_merchant_logistics_claim\(\)/);
   assert.match(coordinator, /LOGISTICS_CLAIM_RESULT_TIMEOUT_MS \+ 5000/);
-  assert.match(coordinator, /PHASE20_MERCHANT_LOGISTICS_OUTCOME_UNKNOWN_NO_RETRY/);
+  assert.match(
+    coordinator,
+    /PHASE20_MERCHANT_LOGISTICS_OUTCOME_UNKNOWN_NO_RETRY/,
+  );
   assert.match(coordinator, /phase20_restore_runtime_config_overrides/);
   assert.match(thread, /case "phase20_merchant_probe"/);
   assert.match(thread, /runPhase20MerchantProbe/);
@@ -269,9 +284,11 @@ test("Phase 20.0c source reuses production controllers and a single logistics di
   assert.doesNotMatch(coordinator, /send_gold\s*\(/);
   assert.doesNotMatch(coordinator, /send_item\s*\(/);
   assert.doesNotMatch(coordinator, /smart_move\s*\(/);
-});
-
-test("Phase 20.0c source keeps dispatch suppressed outside the controlled window", () => {
+  },
+);
+test(
+  "Phase 20.0c source keeps dispatch suppressed outside the controlled window",
+  () => {
   const coordinator = fs.readFileSync(
     path.join(__dirname, "..", "standalones", "CharacterCoordinator.js"),
     "utf8",
@@ -282,5 +299,9 @@ test("Phase 20.0c source keeps dispatch suppressed outside the controlled window
     coordinator,
     /phase20_integration_live_test_active &&\s*!phase20_integration_logistics_dispatch_enabled/,
   );
-  assert.match(coordinator, /phase20_integration_logistics_dispatch_enabled = false/);
-});
+  assert.match(
+    coordinator,
+    /phase20_integration_logistics_dispatch_enabled = false/,
+  );
+  },
+);
