@@ -12,6 +12,7 @@ export interface GroupLiveTestOptions {
   role: GroupLiveTestRole;
   leader: string;
   peer: string;
+  members?: string[];
   baselinePairFormed?: boolean;
   coordinatedPair?: boolean;
   timeoutMs?: number;
@@ -30,6 +31,7 @@ export interface GroupLiveTestResult {
   role: GroupLiveTestRole;
   leader: string;
   peer: string;
+  members: string[];
   start: {
     ctype: string | null;
     map: string | null;
@@ -48,6 +50,7 @@ export interface GroupLiveTestResult {
   };
   party: {
     formed: boolean;
+    configuredMembers: string[];
     members: string[];
     roleProjected: boolean;
     leaderProjected: boolean;
@@ -96,13 +99,21 @@ function members(party: Record<string, unknown>): string[] {
   return Object.keys(party).sort((a, b) => a.localeCompare(b));
 }
 
-function pairFormed(
+function configuredMembers(options: GroupLiveTestOptions): string[] {
+  const values = [
+    options.leader,
+    options.peer,
+    ...(Array.isArray(options.members) ? options.members : []),
+  ];
+  return [...new Set(values.filter((value) => typeof value === "string" && value.trim()))];
+}
+
+function groupFormed(
   party: Record<string, unknown>,
-  leader: string,
-  peer: string,
+  expectedMembers: string[],
 ): boolean {
   const current = new Set(Object.keys(party));
-  return current.has(leader) && current.has(peer);
+  return expectedMembers.every((name) => current.has(name));
 }
 
 export class GroupLiveTestRunner {
@@ -122,10 +133,10 @@ export class GroupLiveTestRunner {
     const pollIntervalMs = Math.max(50, options.pollIntervalMs || 150);
     const first = this.deps.character();
     const startMembers = members(this.deps.party());
-    const observedInitialPairFormed = pairFormed(
+    const expectedMembers = configuredMembers(options);
+    const observedInitialPairFormed = groupFormed(
       this.deps.party(),
-      options.leader,
-      options.peer,
+      expectedMembers,
     );
     const baselinePairOverrideApplied =
       typeof options.baselinePairFormed === "boolean";
@@ -139,7 +150,7 @@ export class GroupLiveTestRunner {
       !pairLifecycleOwner &&
       initialPairFormed === false &&
       observedInitialPairFormed === true;
-    const allowed = new Set([options.leader, options.peer]);
+    const allowed = new Set(expectedMembers);
     const existingPartyConflict = startMembers.some(
       (name) => !allowed.has(name),
     );
@@ -155,6 +166,7 @@ export class GroupLiveTestRunner {
       role: options.role,
       leader: options.leader,
       peer: options.peer,
+      members: expectedMembers,
       start: {
         ctype: first.ctype,
         map: first.map,
@@ -173,6 +185,7 @@ export class GroupLiveTestRunner {
       },
       party: {
         formed: false,
+        configuredMembers: expectedMembers,
         members: startMembers,
         roleProjected: false,
         leaderProjected: false,
@@ -203,7 +216,10 @@ export class GroupLiveTestRunner {
     }
     if (
       options.leader === options.peer ||
-      ![options.leader, options.peer].includes(first.name)
+      expectedMembers.length < 2 ||
+      !expectedMembers.includes(options.leader) ||
+      !expectedMembers.includes(options.peer) ||
+      !expectedMembers.includes(first.name)
     ) {
       result.reason = "GROUP_LIVE_E2E_PAIR_INVALID";
       return this.finishWithoutOverrides(result, startedAt);
@@ -239,7 +255,7 @@ export class GroupLiveTestRunner {
         enabled: true,
         role: options.role,
         leader: options.leader,
-        members: [options.leader, options.peer],
+        members: expectedMembers,
         party: {
           enabled: true,
           reconcileMs: 750,
@@ -275,11 +291,7 @@ export class GroupLiveTestRunner {
 
         const dissolved = await this.waitFor(
           () =>
-            !pairFormed(
-              this.deps.party(),
-              options.leader,
-              options.peer,
-            ),
+            !groupFormed(this.deps.party(), expectedMembers),
           5000,
           pollIntervalMs,
         );
@@ -366,7 +378,7 @@ export class GroupLiveTestRunner {
       if (!initialPairFormed) {
         if (
           pairLifecycleOwner &&
-          pairFormed(this.deps.party(), options.leader, options.peer)
+          groupFormed(this.deps.party(), expectedMembers)
         ) {
           const leave = await this.deps.actions.partyLeave({
             module: "GroupLiveTest",
@@ -381,31 +393,23 @@ export class GroupLiveTestRunner {
         }
         const restored = await this.waitFor(
           () =>
-            !pairFormed(
-              this.deps.party(),
-              options.leader,
-              options.peer,
-            ),
+            !groupFormed(this.deps.party(), expectedMembers),
           5000,
           pollIntervalMs,
         );
         result.cleanup.initialPartyRestored =
           restored &&
-          !pairFormed(this.deps.party(), options.leader, options.peer);
+          !groupFormed(this.deps.party(), expectedMembers);
       } else {
         const restored = await this.waitFor(
           () =>
-            pairFormed(
-              this.deps.party(),
-              options.leader,
-              options.peer,
-            ),
+            groupFormed(this.deps.party(), expectedMembers),
           5000,
           pollIntervalMs,
         );
         result.cleanup.initialPartyRestored =
           restored &&
-          pairFormed(this.deps.party(), options.leader, options.peer);
+          groupFormed(this.deps.party(), expectedMembers);
       }
 
       this.deps.groupCombat.clearConfigOverride();
