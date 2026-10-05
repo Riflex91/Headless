@@ -715,16 +715,52 @@ export class GroupCombatController {
       if (config.role === "LEADER") {
         next = this.combat.status().target?.id || character.target || null;
       } else {
-        const leader = memberEntity(this.game.entities(), config.leader);
-        const leaderTarget = leader?.target || null;
-        const target = leaderTarget ? this.game.entity(leaderTarget) : null;
-        if (
-          target &&
+        const entities = this.game.entities();
+        const leader = memberEntity(entities, config.leader);
+        const validMonster = (target: EntitySnapshot | null): boolean =>
+          !!target &&
           target.type === "monster" &&
           !target.dead &&
-          !target.rip
-        ) {
-          next = target.id;
+          !target.rip &&
+          (target.hp === null || target.hp > 0);
+
+        if (leader) {
+          const leaderTarget = leader.target || null;
+          const directTarget = leaderTarget
+            ? this.game.entity(leaderTarget)
+            : null;
+
+          if (validMonster(directTarget)) {
+            next = directTarget?.id || null;
+          } else {
+            const assistingTarget =
+              entities
+                .filter(
+                  (entity) =>
+                    validMonster(entity) && entity.target === config.leader,
+                )
+                .map((entity) => ({
+                  entity,
+                  distance: entityDistance(character, entity),
+                }))
+                .filter((entry) => entry.distance !== null)
+                .sort(
+                  (left, right) =>
+                    (left.distance as number) - (right.distance as number) ||
+                    left.entity.id.localeCompare(right.entity.id),
+                )[0]?.entity || null;
+
+            if (assistingTarget) {
+              next = assistingTarget.id;
+            } else {
+              const previousTarget = this.focusTargetId
+                ? this.game.entity(this.focusTargetId)
+                : null;
+              if (validMonster(previousTarget)) {
+                next = previousTarget?.id || null;
+              }
+            }
+          }
         }
       }
     }
