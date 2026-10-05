@@ -63,6 +63,7 @@ function evaluatePhase20GroupCombatResult(payload) {
     group.partyFormed === true &&
     Number(group.confirmedAttackCount) >= 3 &&
     Number(group.unknownAttackCount) === 0 &&
+    Number(group.unknownMovementCount) === 0 &&
     group.movementOwnerValid === true &&
     group.merchantOnlineDuringCombat === true &&
     farmers.every((name) => Number(attackCounts[name]) >= 1) &&
@@ -125,6 +126,8 @@ function formatCompactResult(result) {
     "Party formed: " + (group.partyFormed === true ? "yes" : "no"),
     "Confirmed attacks: " + String(group.confirmedAttackCount ?? "UNKNOWN"),
     "Unknown attacks: " + String(group.unknownAttackCount ?? "UNKNOWN"),
+    "Unknown movement outcomes: " +
+      String(group.unknownMovementCount ?? "UNKNOWN"),
     "Movement ownership valid: " +
       (group.movementOwnerValid === true ? "yes" : "no"),
     "Merchant stayed online: " +
