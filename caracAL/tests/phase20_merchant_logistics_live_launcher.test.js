@@ -90,6 +90,7 @@ function passingPayload() {
         },
         groupCombatParallel: {
           observed: true,
+          leader: "My_Ranger1",
           partyFormed: true,
           partyEvidenceMode: "LEADER_AUTHORITATIVE",
           leaderPartyFormed: true,
