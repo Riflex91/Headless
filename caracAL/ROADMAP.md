@@ -1356,7 +1356,49 @@ Beispiele:
 - Craft Item
 - Boss vorbereiten
 
-## Phase 20 – Boss / Event / Quest / World
+## Phase 20.0 – 3 Farmer + Merchant Integrated Live Gate
+
+Phase 20 beginnt erst nach einem echten integrierten Live-Gate mit vier normalen `bot/main.js`-Runtimes.
+
+Zieltopologie:
+
+```text
+My_Merchant
+├─ unabhängige MerchantAutonomy / Economy-Arbeit
+└─ reagiert bei Bedarf auf Farmer-Logistics
+
+Farmer 1 ─┐
+Farmer 2 ─┼─ 3er Combat-Party
+Farmer 3 ─┘
+```
+
+Der Gate muss seine Voraussetzungen autonom herstellen und anschließend den vorherigen Runtime-/Config-Zustand kontrolliert wiederherstellen. Keine manuellen Preconditions.
+
+Pflichtnachweise:
+
+- genau drei account-owned Combat-Characters plus `My_Merchant` gleichzeitig `ONLINE` und `RUNNING`
+- alle vier verwenden den normalen Einstiegspunkt `bot/main.js`
+- maximal vier Characters gleichzeitig online
+- die drei Farmer bilden eine funktionierende Combat-Gruppe
+- echtes Targeting, Movement und Combat werden über mehrere bestätigte Aktionen/Kills beobachtet
+- Group Focus / Leader-Follower-Koordination funktioniert
+- keine konkurrierenden Movement-Owner oder unkontrolliertes Movement-Pingpong
+- der Merchant bleibt unabhängig und wartet nicht auf eine volle Party oder einen Farmer-Barrier
+- der Merchant führt parallel mindestens eine echte autonome Merchant-/Economy-Aufgabe aus
+- mindestens eine echte Farmer↔Merchant-Logistics-Interaktion wird bestätigt, z. B. MLuck, Potion Delivery, Item Pickup, Gold Pickup oder Gear Delivery
+- nach der Logistics-Interaktion kehrt der Merchant zu unabhängiger Arbeit zurück
+- Anti-Pingpong bleibt wirksam
+- keine Connection-/Restart-Stürme
+- keine doppelte Combat-, Movement- oder Merchant-Implementierung; vorhandene Controller/ActionBoundary-Pfade werden wiederverwendet
+- `UNKNOWN` oder `TIMEOUT` bei wertverändernden Aktionen wird nicht blind erneut ausgeführt
+- Runtime-, Task-, Movement-, Party-, Combat-, Merchant- und Logistics-Evidence ist über Dashboard/Diagnostik nachvollziehbar
+- Cleanup stellt den vorherigen Desired-State- und Test-Config-Zustand wieder her
+
+Der erste Gate ist ein begrenzter deterministischer E2E-Test. Lange 24/7-, Rotation-, Recovery- und Stress-Nachweise bleiben Phase 23.
+
+**Gate:** Phase 20.0 muss `PASS` sein, bevor Phase 20.1 oder andere Boss-/Encounter-Slices freigegeben werden.
+
+## Phase 20.1 – Boss / Event / Quest / World
 
 - Boss Detection
 - Event Detection
