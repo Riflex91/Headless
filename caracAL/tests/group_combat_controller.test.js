@@ -400,7 +400,7 @@ test("follower reacquires a live monster attacking the leader when leader target
   assert.equal(setup.preferred.at(-1), "monster-1");
 });
 
-test("follower uses relayed leader focus when runtime target fields are empty", async () => {
+test("follower applies relayed leader focus before the next scheduler tick", async () => {
   const setup = makeSetup({
     config: {
       groupCombat: {
@@ -449,10 +449,13 @@ test("follower uses relayed leader focus when runtime target fields are empty", 
     setup.controller.setLeaderFocusHint("Leader", "monster-1", 1000),
     true,
   );
-  const status = await setup.controller.tick();
 
-  assert.equal(status.focusTargetId, "monster-1");
+  const immediateStatus = setup.controller.status();
+  assert.equal(immediateStatus.focusTargetId, "monster-1");
   assert.equal(setup.preferred.at(-1), "monster-1");
+
+  const status = await setup.controller.tick();
+  assert.equal(status.focusTargetId, "monster-1");
 });
 
 test("follower rejects an older relayed leader focus", async () => {
