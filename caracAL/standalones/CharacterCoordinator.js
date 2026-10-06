@@ -3304,7 +3304,6 @@ function migrate_old_storage(path, localStorage) {
 
     if (
       normalized.module === "GroupCombatController" &&
-      normalized.type === "GROUP_COMBAT_FOCUS_CHANGED" &&
       normalized.data?.groupCombat?.role === "LEADER" &&
       normalized.data.groupCombat.leader === char_name
     ) {
