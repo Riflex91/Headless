@@ -831,11 +831,15 @@ export class BotRuntimeKernel {
     targetId: string | null;
     timestamp?: number;
   }): boolean {
-    return this.groupCombat.setLeaderFocusHint(
+    const accepted = this.groupCombat.setLeaderFocusHint(
       input.leader,
       input.targetId,
       input.timestamp,
     );
+    if (accepted) {
+      void this.groupCombat.tick();
+    }
+    return accepted;
   }
 
   async start(): Promise<void> {
