@@ -416,11 +416,28 @@ export class GroupCombatController {
       return false;
     }
 
+    const normalizedTargetId = stringValue(targetId);
     this.leaderFocusHint = {
       leader: normalizedLeader,
-      targetId: stringValue(targetId),
+      targetId: normalizedTargetId,
       timestamp,
     };
+
+    const character = this.game.character();
+    const config = normalizeConfig(this.effectiveConfig(), character.name);
+    if (
+      config.enabled &&
+      config.focusEnabled &&
+      config.role === "FOLLOWER" &&
+      config.leader === normalizedLeader
+    ) {
+      this.combat.setPreferredTargetId(normalizedTargetId);
+      if (this.focusTargetId !== normalizedTargetId) {
+        this.focusTargetId = normalizedTargetId;
+        this.emit("GROUP_COMBAT_FOCUS_CHANGED", "GROUP_FOCUS_CHANGED");
+      }
+    }
+
     return true;
   }
 
