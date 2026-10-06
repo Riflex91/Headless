@@ -826,6 +826,18 @@ export class BotRuntimeKernel {
     });
   }
 
+  applyGroupCombatLeaderFocus(input: {
+    leader: string;
+    targetId: string | null;
+    timestamp?: number;
+  }): boolean {
+    return this.groupCombat.setLeaderFocusHint(
+      input.leader,
+      input.targetId,
+      input.timestamp,
+    );
+  }
+
   async start(): Promise<void> {
     if (this.started || this.stopping) return;
 

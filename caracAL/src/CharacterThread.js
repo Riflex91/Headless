@@ -131,6 +131,20 @@ async function make_runner(upper, CODE_file, version, is_typescript) {
         //vscode says this is unreachable.
         //with how whack node is better be safe
         break;
+      case "group_combat_leader_focus": {
+        const runtime = runner_context.__caracalBotRuntime;
+        if (!runtime?.applyGroupCombatLeaderFocus) break;
+
+        runtime.applyGroupCombatLeaderFocus({
+          leader: typeof m.leader === "string" ? m.leader : "",
+          targetId:
+            typeof m.target_id === "string" && m.target_id ? m.target_id : null,
+          timestamp: Number.isFinite(Number(m.timestamp))
+            ? Number(m.timestamp)
+            : Date.now(),
+        });
+        break;
+      }
       case "logistics_claim": {
         const requestId =
           typeof m.request_id === "string" && m.request_id

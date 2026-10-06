@@ -3303,6 +3303,35 @@ function migrate_old_storage(path, localStorage) {
     }
 
     if (
+      normalized.module === "GroupCombatController" &&
+      normalized.type === "GROUP_COMBAT_FOCUS_CHANGED" &&
+      normalized.data?.groupCombat?.role === "LEADER" &&
+      normalized.data.groupCombat.leader === char_name
+    ) {
+      const group_status = normalized.data.groupCombat;
+      const configured_members = Array.isArray(group_status.configuredMembers)
+        ? group_status.configuredMembers
+        : [];
+      const target_id =
+        typeof group_status.focusTargetId === "string" &&
+        group_status.focusTargetId
+          ? group_status.focusTargetId
+          : null;
+
+      configured_members.forEach((member_name) => {
+        if (member_name === char_name) return;
+        const member = character_manage[member_name];
+        if (!member?.instance || member.connected !== true) return;
+        safe_send(member.instance, {
+          type: "group_combat_leader_focus",
+          leader: char_name,
+          target_id,
+          timestamp: normalized.timestamp,
+        });
+      });
+    }
+
+    if (
       char_block &&
       normalized.data?.farmIntelligence &&
       typeof normalized.data.farmIntelligence === "object"
