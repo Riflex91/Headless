@@ -891,7 +891,7 @@ test("dashboard module and coordinator remain syntactically valid", () => {
   assert.match(coordinator, /group_combat_leader_focus/);
   assert.match(coordinator, /GROUP_COMBAT_FOCUS_CHANGED/);
   assert.match(runtimeKernel, /applyGroupCombatLeaderFocus/);
-  assert.match(runtimeKernel, /void this\\.groupCombat\\.tick\\(\\)/);
+  assert.match(runtimeKernel, /void this\.groupCombat\.tick\(\)/);
   assert.match(characterThread, /group_combat_leader_focus/);
   assert.match(characterThread, /applyGroupCombatLeaderFocus/);
   assert.match(coordinator, /farm_intelligence_runtime/);
